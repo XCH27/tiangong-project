@@ -1,0 +1,1692 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts
+index dbf8008a9b279b958fdf64f6efcfca582d9571cd..b6faea39776b9337b921a6dd6acf2252f12e4794 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts
+@@ -1,56 +1,92 @@
+ import type { DatabaseSync } from "node:sqlite";
+ import type { AppUsageModelActivityRow } from "@zcode/contracts";
+ 
+-const uniqueTurnModels = `with relevant_turns as (
+-    select distinct session_id, turn_id from tool_usage
+-    where started_at >= ? and started_at < ? and turn_id is not null
++const attributedTools = `with relevant_tools as (
++    select * from tool_usage where started_at >= ? and started_at < ?
++  ), relevant_turns as (
++    select distinct session_id, turn_id from relevant_tools where turn_id is not null
++  ), tool_request_models as (
++    select tool.id, min(usage.model_id) as modelId
++    from relevant_tools tool join model_usage usage
++      on usage.session_id = tool.session_id and usage.turn_id = tool.turn_id
++    join json_each(usage.provider_metadata_json, '$.fleetAccounting.toolUsageIds') call
++      on call.type = 'text' and call.value = tool.id
++    where usage.query_source in ('main_turn','subagent','workflow_child')
++    group by tool.id having count(distinct usage.model_id) = 1
+   ), unique_turn_models as (
+     select usage.session_id, usage.turn_id, min(usage.model_id) as modelId
+     from model_usage usage join relevant_turns turn
+       on usage.session_id = turn.session_id and usage.turn_id = turn.turn_id
+     where usage.query_source in ('main_turn','subagent','workflow_child')
+     group by usage.session_id, usage.turn_id having count(distinct usage.model_id) = 1
++  ), attributed_tools as (
++    select tool.*, coalesce(request.modelId, turn.modelId) as modelId
++    from relevant_tools tool left join tool_request_models request on request.id = tool.id
++    left join unique_turn_models turn on turn.session_id = tool.session_id and turn.turn_id = tool.turn_id
+ )`;
+ 
+-/** Attribute tools only when one model served that turn; mixed-model turns stay in global totals. */
+-export function queryModelActivity(db: DatabaseSync, since: number, until: number): AppUsageModelActivityRow[] {
+-  const sessions = db.prepare(`select model_id as modelId, count(distinct session_id) as sessionCount
++/** Prefer exact request/call identity; legacy single-model turns retain their safe fallback. */
++export function queryModelActivity(
++  db: DatabaseSync,
++  since: number,
++  until: number,
++): AppUsageModelActivityRow[] {
++  const sessions = db
++    .prepare(`select model_id as modelId, count(distinct session_id) as sessionCount
+     from model_usage where started_at >= ? and started_at < ? and query_source = 'main_turn'
+-    group by model_id`).all(since, until) as unknown as { modelId: string; sessionCount: number }[];
+-  const tools = db.prepare(`${uniqueTurnModels} select m.modelId, t.tool_name as toolName,
++    group by model_id`)
++    .all(since, until) as unknown as { modelId: string; sessionCount: number }[];
++  const tools = db
++    .prepare(`${attributedTools} select t.modelId, t.tool_name as toolName,
+       count(*) as callCount,
+       sum(case when t.status = 'error' then 1 else 0 end) as errorCount,
+       avg(t.duration_ms) as avgDurationMs
+-    from tool_usage t join unique_turn_models m
+-      on t.session_id = m.session_id and t.turn_id = m.turn_id
+-    where t.started_at >= ? and t.started_at < ?
+-    group by m.modelId, t.tool_name
+-    order by m.modelId, callCount desc, t.tool_name`).all(since, until, since, until) as unknown as {
+-    modelId: string; toolName: string; callCount: number; errorCount: number; avgDurationMs: number | null;
++    from attributed_tools t where t.modelId is not null
++    group by t.modelId, t.tool_name
++    order by t.modelId, callCount desc, t.tool_name`)
++    .all(since, until) as unknown as {
++    modelId: string;
++    toolName: string;
++    callCount: number;
++    errorCount: number;
++    avgDurationMs: number | null;
+   }[];
+-  const skills = db.prepare(`${uniqueTurnModels} select m.modelId,
++  const skills = db
++    .prepare(`${attributedTools} select t.modelId,
+       json_extract(t.skill_metadata_json,'$.qualifiedName') as skillId,
+       json_extract(t.skill_metadata_json,'$.pluginId') as pluginId,
+       json_extract(t.skill_metadata_json,'$.source') as source,
+       count(*) as callCount,
+       sum(case when t.status = 'error' then 1 else 0 end) as errorCount,
+       avg(t.duration_ms) as avgDurationMs
+-    from tool_usage t join unique_turn_models m
+-      on t.session_id = m.session_id and t.turn_id = m.turn_id
+-    where t.started_at >= ? and t.started_at < ? and t.tool_name = 'Skill'
++    from attributed_tools t
++    where t.modelId is not null and t.tool_name = 'Skill'
+       and json_type(t.skill_metadata_json,'$.qualifiedName') = 'text'
+       and length(trim(json_extract(t.skill_metadata_json,'$.qualifiedName'))) > 0
+-    group by m.modelId, skillId, pluginId, source
+-    order by m.modelId, callCount desc, skillId`).all(since, until, since, until) as unknown as {
+-    modelId: string; skillId: string; pluginId: string | null; source: string | null;
+-    callCount: number; errorCount: number; avgDurationMs: number | null;
++    group by t.modelId, skillId, pluginId, source
++    order by t.modelId, callCount desc, skillId`)
++    .all(since, until) as unknown as {
++    modelId: string;
++    skillId: string;
++    pluginId: string | null;
++    source: string | null;
++    callCount: number;
++    errorCount: number;
++    avgDurationMs: number | null;
+   }[];
+   const byModel = new Map<string, AppUsageModelActivityRow>();
+   const itemFor = (modelId: string) => {
+     let item = byModel.get(modelId);
+     if (!item) {
+-      item = { modelId, sessionCount: 0, toolCallCount: 0, toolErrorCount: 0,
+-        tools: [], skills: [], unidentifiedSkillCalls: 0 };
++      item = {
++        modelId,
++        sessionCount: 0,
++        toolCallCount: 0,
++        toolErrorCount: 0,
++        tools: [],
++        skills: [],
++        unidentifiedSkillCalls: 0,
++      };
+       byModel.set(modelId, item);
+     }
+     return item;
+@@ -60,13 +96,18 @@ export function queryModelActivity(db: DatabaseSync, since: number, until: numbe
+     const item = itemFor(row.modelId);
+     item.toolCallCount += row.callCount;
+     item.toolErrorCount += row.errorCount;
+-    item.tools.push({ toolName: row.toolName, callCount: row.callCount,
+-      errorCount: row.errorCount, avgDurationMs: row.avgDurationMs });
++    item.tools.push({
++      toolName: row.toolName,
++      callCount: row.callCount,
++      errorCount: row.errorCount,
++      avgDurationMs: row.avgDurationMs,
++    });
+   }
+   for (const { modelId, ...skill } of skills) itemFor(modelId).skills.push(skill);
+   for (const item of byModel.values()) {
+     const skillCalls = item.tools.find((tool) => tool.toolName === "Skill")?.callCount ?? 0;
+-    item.unidentifiedSkillCalls = skillCalls - item.skills.reduce((sum, skill) => sum + skill.callCount, 0);
++    item.unidentifiedSkillCalls =
++      skillCalls - item.skills.reduce((sum, skill) => sum + skill.callCount, 0);
+   }
+   return [...byModel.values()].sort((a, b) => a.modelId.localeCompare(b.modelId));
+ }
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index 02eb80b3ea4ccafb3b9964b156d49ea9ed9f4b93..9bbe7234034d0756109c13e9926905714c02a1f9 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -418,7 +418,7 @@ test("project costs preserve the recorded workspace without assigning historical
+   }
+ });
+ 
+-test("model activity counts only single-model turns; cost rows retain their request source", async () => {
++test("legacy mixed-model activity stays unknown; cost rows retain their request source", async () => {
+   const f = await fixture();
+   const at = Date.UTC(2026, 7, 1);
+   try {
+@@ -474,6 +474,65 @@ test("model activity counts only single-model turns; cost rows retain their requ
+   }
+ });
+ 
++test("exact request receipts attribute skills once and reject conflicting model identities", async () => {
++  const f = await fixture();
++  const turnID = "mixed-exact" as TurnId;
++  const at = Date.UTC(2026, 7, 1);
++  try {
++    const request = (modelId: string, ids: string[]) => ({
++      modelId,
++      turnID,
++      providerMetadata: { fleetAccounting: { toolUsageIds: ids } },
++    });
++    await f.record(
++      "exact-a",
++      "a",
++      "standard",
++      request("model-a", ["tool-a", "skill-a", "ambiguous"]),
++    );
++    await f.record(
++      "exact-a",
++      "a",
++      "standard",
++      request("model-a", ["tool-a", "skill-a", "ambiguous"]),
++    );
++    await f.record("exact-b", "a", "standard", request("model-b", ["tool-b", "ambiguous"]));
++    for (const id of ["tool-a", "skill-a", "tool-b", "ambiguous"]) {
++      await f.store.upsertToolUsage({
++        id,
++        sessionID: "session" as SessionId,
++        turnID,
++        toolCallID: id,
++        toolName: id === "skill-a" ? "Skill" : "Read",
++        status: "completed",
++        startedAt: at,
++        durationMs: 4,
++        ...(id === "skill-a"
++          ? {
++              skillMetadata: {
++                qualifiedName: "suite:review",
++                pluginId: "suite@registry",
++                source: "plugin",
++              },
++            }
++          : {}),
++      });
++    }
++    f.reopen();
++    const result = await f.query();
++    assert.equal(result.toolTotals.toolCallCount, 4);
++    const a = result.modelActivities?.find((model) => model.modelId === "model-a");
++    const b = result.modelActivities?.find((model) => model.modelId === "model-b");
++    assert.equal(a?.toolCallCount, 2);
++    assert.equal(b?.toolCallCount, 1);
++    assert.equal(a?.skills[0]?.skillId, "suite:review");
++    assert.equal(a?.skills[0]?.callCount, 1);
++    assert.equal(a?.unidentifiedSkillCalls, 0);
++  } finally {
++    await f.close();
++  }
++});
++
+ test("skill identity uses existing tool-call upserts, survives restart and leaves legacy attribution unknown", async () => {
+   const f = await fixture();
+   try {
+diff --git a/apps/zcode-cli/packages/core/src/runtime/command-queue.ts b/apps/zcode-cli/packages/core/src/runtime/command-queue.ts
+index 8d2697f30cad1b648124e05d52e2182b40367d81..a02f3234fd2d6e520b19f8a117caa312cf00c49f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/command-queue.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/command-queue.ts
+@@ -1,4 +1,4 @@
+-import type { TraceContext, TurnState } from "./deps.js";
++import type { ModelSelection, TraceContext, TurnState } from "./deps.js";
+ import type { BackgroundResultOriginMeta, WorkflowLaunchMeta } from "@zcode/contracts";
+ import type {
+   ActiveTurnStartReservation,
+@@ -28,6 +28,8 @@ export interface RuntimeCommandBase {
+ }
+ 
+ export interface PromptRuntimeCommand extends RuntimeCommandBase {
++  /** Frozen at queue admission, including legacy callers without input intent metadata. */
++  readonly modelSelection?: ModelSelection;
+   readonly attachments?: TurnState["attachments"];
+   readonly input: string;
+   readonly mode: "prompt";
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
+index f229330a33127bb117ad59a3e7e06f28e63699a5..bf63948329fd09f938a487608f8da4d3c6ff8ef2 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
+@@ -159,8 +159,11 @@ function createRuntimeToolExecutor(
+     registry: runtime.registry,
+     permissionService: runtime.permissionService,
+     permissionBroker: runtime.permissionBroker,
+-    emitEvent: async (event) => {
+-      await runtime.appendEvent(event, getCurrentTraceContext() ?? runtime.rootTraceContext);
++    emitEvent: async (event, traceContext) => {
++      await runtime.appendEvent(
++        event,
++        traceContext ?? getCurrentTraceContext() ?? runtime.rootTraceContext,
++      );
+     },
+     enqueueBackgroundTaskNotification: (notification) => {
+       runtime.enqueueBackgroundTaskNotification(notification);
+diff --git a/apps/zcode-cli/packages/core/src/runtime/input-snapshot.ts b/apps/zcode-cli/packages/core/src/runtime/input-snapshot.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8f52a1383661de2cbdb2dea8743ddfe44fadb584
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/input-snapshot.ts
+@@ -0,0 +1,44 @@
++import type { TurnInputIntentMetadata, TurnState } from "./deps.js";
++import type { ExecuteTurnOptions } from "./types.js";
++
++/** Admission owns a value snapshot; live cancellation and credential ports retain their owners. */
++export function snapshotInputMetadata<
++  T extends {
++    intent?: TurnInputIntentMetadata;
++    toolDisallowlist?: readonly string[];
++  },
++>(input: T): T {
++  return {
++    ...input,
++    ...(input.intent ? { intent: structuredClone(input.intent) } : {}),
++    ...(input.toolDisallowlist ? { toolDisallowlist: [...input.toolDisallowlist] } : {}),
++  };
++}
++
++export function snapshotPromptOptions(
++  options: ExecuteTurnOptions | undefined,
++): ExecuteTurnOptions | undefined {
++  if (!options) return;
++  return {
++    ...snapshotInputMetadata(options),
++    ...(options.sharedContextRefs
++      ? { sharedContextRefs: structuredClone(options.sharedContextRefs) }
++      : {}),
++    ...(options.modelExecution
++      ? {
++          modelExecution: {
++            ...options.modelExecution,
++            ...(options.modelExecution.subagents
++              ? { subagents: { ...options.modelExecution.subagents } }
++              : {}),
++          },
++        }
++      : {}),
++  };
++}
++
++export function snapshotAttachments(
++  attachments: TurnState["attachments"],
++): TurnState["attachments"] {
++  return attachments && structuredClone(attachments);
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/internal-turn-methods.ts b/apps/zcode-cli/packages/core/src/runtime/internal-turn-methods.ts
+index b0220c5305ca74e0e75e73b8cc6151483949c713..9135870947558fbdf64e1d10a4551494b338b2e2 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/internal-turn-methods.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/internal-turn-methods.ts
+@@ -96,6 +96,7 @@ export interface AgentRuntimeTurnMethods {
+     attachments?: TurnState["attachments"],
+     options?: ExecuteTurnOptions,
+     startReservation?: ActiveTurnStartReservation,
++    modelSelection?: ModelSelection,
+   ): Promise<TurnResult>;
+   executeManualCompact(
+     input: string,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/prompt-admission.ts b/apps/zcode-cli/packages/core/src/runtime/methods/prompt-admission.ts
+index 93cdaed95e6e976a5071a9c70edc641e44353f2e..9b6cb029524a6390c5e5d8bd601cd506bc4f5455 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/prompt-admission.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/prompt-admission.ts
+@@ -4,6 +4,8 @@ import type { PromptRuntimeCommand } from "../command-queue.js";
+ import { createRuntimeCommandId } from "../command-queue.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import { enqueueCancellableRuntimeCommand } from "./runtime-command-submit.js";
++import { snapshotAttachments, snapshotPromptOptions } from "../input-snapshot.js";
++import { cloneModelSelection } from "../model-selection.js";
+ import type {
+   ActiveTurnStartReservation,
+   ExecuteTurnOptions,
+@@ -23,6 +25,10 @@ export async function admitPrompt(
+   attachments?: Parameters<AgentRuntimeInternal["executeTurn"]>[1],
+   options?: PromptAdmissionOptions,
+ ): Promise<PromptAdmissionReceipt> {
++  options = snapshotPromptOptions(options) as PromptAdmissionOptions | undefined;
++  attachments = snapshotAttachments(attachments);
++  const selected = options?.intent?.modelSelection ?? this.getSessionModelSelection();
++  const modelSelection = selected && cloneModelSelection(selected);
+   const promotionLeaseOnly =
+     options?.requireIdle === true &&
+     this.foregroundPromotionLease !== undefined &&
+@@ -107,6 +113,7 @@ export async function admitPrompt(
+       createdAt: new Date(),
+       id: createRuntimeCommandId(),
+       input,
++      modelSelection,
+       mode: "prompt",
+       options: {
+         ...executeOptions,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/runtime-command-queue.ts b/apps/zcode-cli/packages/core/src/runtime/methods/runtime-command-queue.ts
+index 32c138dcee14fd7180bee3e8530f337721796042..e36c64d1bc262af74a30e40bf1ad772b152e9d9e 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/runtime-command-queue.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/runtime-command-queue.ts
+@@ -210,6 +210,7 @@ async function runRuntimeCommand(
+             abortSignal: foregroundExecution.controller.signal,
+           },
+           command.startReservation,
++          command.modelSelection,
+         );
+         const continuationResult = await runPostCommandActiveTargetLoop.call(
+           this,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts b/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
+index 3026598422ad0562cac91c233a65a917441f135a..cdeb64082e1165833021a969b7a87771cf0e40d7 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
+@@ -49,6 +49,7 @@ import {
+   type RuntimeMessageEntry,
+ } from "../../agent/message-history.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
++import { snapshotAttachments, snapshotInputMetadata } from "../input-snapshot.js";
+ 
+ function hasSteerInput(request: Pick<TurnSteerInput, "attachments" | "input">): boolean {
+   return request.input.trim().length > 0 || Boolean(request.attachments?.length);
+@@ -58,7 +59,11 @@ export async function steerTurn(
+   this: AgentRuntimeInternal,
+   input: string | TurnSteerInput,
+ ): Promise<TurnSteerResult> {
+-  const request = typeof input === "string" ? { input } : input;
++  const original = typeof input === "string" ? { input } : input;
++  const request = {
++    ...snapshotInputMetadata(original),
++    attachments: snapshotAttachments(original.attachments),
++  };
+   const activeTurn = this.activeTurn;
+   const inputSize = measureUtf8Bytes(request.input);
+   const inputPreview = previewInput(request.input);
+@@ -202,7 +207,11 @@ export async function enqueueDeferredInput(
+   this: AgentRuntimeInternal,
+   input: string | TurnSteerInput,
+ ): Promise<TurnSteerResult> {
+-  const request = typeof input === "string" ? { input } : input;
++  const original = typeof input === "string" ? { input } : input;
++  const request = {
++    ...snapshotInputMetadata(original),
++    attachments: snapshotAttachments(original.attachments),
++  };
+   const inputSize = measureUtf8Bytes(request.input);
+   const inputPreview = previewInput(request.input);
+   const traceContext = request.traceContext ?? this.rootTraceContext;
+@@ -1087,8 +1096,10 @@ export async function emitModelSelected(
+     this.sessionId,
+     {
+       // 模型切换事件必须从本次创建的 Active Model 读取窗口，不能再复制 Runtime Config。
+-      contextWindow: model.contextWindowEvidence !== undefined
+-        ? model.contextWindowEvidence : model.properties.contextWindow,
++      contextWindow:
++        model.contextWindowEvidence !== undefined
++          ? model.contextWindowEvidence
++          : model.properties.contextWindow,
+       modelSelection: cloneModelSelection(options.modelSelection),
+       ...(options.effectiveReasoningLevel
+         ? { effectiveReasoningLevel: options.effectiveReasoningLevel }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+index 51cc88d85383780cc64e140bed4a0625c76e3adc..62e2e95b59940f6c199923a0397e18d40b355bfd 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+@@ -166,6 +166,7 @@ async function runModelBackedTurnStepImpl(
+       : executionContextWindow;
+   const modelTraceContext = createChildTraceContext(state.turnTraceContext, {
+     attributes: {
++      assistantMessageId,
+       providerId: String(model.providerId),
+       modelId: String(model.modelId),
+       iteration: state.toolCallCount === 0 ? 0 : Math.ceil(state.toolCallCount / 10),
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tool-usage.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tool-usage.ts
+index fcc54a4be0344478d7eccc5cb4df58bfb6959f95..cc81f975a5a68474d98460338ed6aaeb2cdf048f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tool-usage.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tool-usage.ts
+@@ -1,6 +1,7 @@
+ import type { ToolExecutionResult, TraceContext } from "../deps.js";
+ import type { UsageStorePort } from "@zcode/contracts";
+ import type { AgentRuntimeInternal } from "../internal.js";
++import { toolUsageId } from "../usage-identity.js";
+ 
+ export async function recordToolUsageFromResult(
+   runtime: AgentRuntimeInternal,
+@@ -14,19 +15,27 @@ export async function recordToolUsageFromResult(
+   const outputBytes = outputSizeBytes(result);
+   const errorType = result.error?.type;
+ 
++  const receiptId = toolUsageId(
++    runtime.sessionId,
++    result.toolCallId,
++    traceContext.turnId,
++    typeof traceContext.attributes?.assistantMessageId === "string"
++      ? traceContext.attributes.assistantMessageId
++      : undefined,
++  );
+   try {
+     await usageStore.upsertToolUsage({
+-      id: toolUsageId(runtime.sessionId, result.toolCallId),
++      id: receiptId,
+       sessionID: runtime.sessionId,
+       turnID: traceContext.turnId,
+       traceID: traceContext.traceId,
+-      toolCallID: result.toolCallId,
++      toolCallID: receiptId,
+       toolName: result.toolName,
+       sideEffectScope: metadata?.sideEffectScope,
+       readOnly: metadata?.readOnly,
+       destructive: metadata?.destructive,
+-      approvalStatus: "none",
+-      status: result.success ? "completed" : "error",
++      // Permission events own the decision. A final result must not erase it with "none".
++      status: result.success ? "completed" : errorType?.includes("cancel") ? "cancelled" : "error",
+       startedAt: result.startedAt.getTime(),
+       firstOutputAt: result.completedAt.getTime(),
+       completedAt: result.completedAt.getTime(),
+@@ -69,10 +78,6 @@ function usageStoreFor(runtime: AgentRuntimeInternal): UsageStorePort | undefine
+     : undefined;
+ }
+ 
+-function toolUsageId(sessionId: string, toolCallId: string): string {
+-  return `usage_tool_${sessionId}_${toolCallId}`;
+-}
+-
+ function outputSizeBytes(result: ToolExecutionResult): number | undefined {
+   if (result.serialization) return result.serialization.returnedBytes;
+   if (typeof result.output === "string") {
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+index 3581d681ca5d5b4bbe9a4792a9d01ec0f3944aba..edadc8a2f67dc2da9a844cfd14743b74a3ebab70 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+@@ -66,6 +66,9 @@ import { applySubmissionExecutionState, createTurnModel } from "./turn-model.js"
+ import { rebuildContextPrefix } from "./context-refresh.js";
+ import { applyTurnVisionBridge } from "./vision-bridge.js";
+ import { subscriptionAccountsForSubmission } from "./model-runtime-headers.js";
++import { cloneModelSelection } from "../model-selection.js";
++import { snapshotAttachments, snapshotPromptOptions } from "../input-snapshot.js";
++import type { ModelSelection } from "../deps.js";
+ 
+ const TARGET_RUN_HEARTBEAT_MS = 15_000;
+ 
+@@ -75,6 +78,10 @@ export async function executeTurn(
+   attachments?: TurnState["attachments"],
+   options?: ExecuteTurnOptions,
+ ): Promise<TurnResult> {
++  options = snapshotPromptOptions(options);
++  attachments = snapshotAttachments(attachments);
++  const selected = options?.intent?.modelSelection ?? this.getSessionModelSelection();
++  const modelSelection = selected && cloneModelSelection(selected);
+   return await enqueueCancellableRuntimeCommand<TurnResult, PromptRuntimeCommand>(this, {
+     abortSignal: options?.abortSignal,
+     createCommand: ({ reject, resolve }) => ({
+@@ -82,6 +89,7 @@ export async function executeTurn(
+       createdAt: new Date(),
+       id: createRuntimeCommandId(),
+       input,
++      modelSelection,
+       mode: "prompt",
+       options,
+       priority: "next",
+@@ -98,11 +106,13 @@ export async function executeTurnCommand(
+   attachments?: TurnState["attachments"],
+   options?: ExecuteTurnOptions,
+   startReservation?: ActiveTurnStartReservation,
++  modelSelection?: ModelSelection,
+ ): Promise<TurnResult> {
+   // 普通 Turn 过去在异步初始化完成后才读取 Session Selection/输出样式，
+   // 初始化期间发生的切模会越过 admission 边界，错误影响已经开始的 Turn。
+   // 这里在任何 await 之前冻结本轮事实；后续配置变化只作用于下一轮。
+-  const admittedModelSelection = options?.intent?.modelSelection ?? this.getSessionModelSelection();
++  const admittedModelSelection =
++    options?.intent?.modelSelection ?? modelSelection ?? this.getSessionModelSelection();
+   const admittedOutputStyle = this.config.outputStyle;
+   const compactInstructions = parseCompactCommand(input);
+   const rewindCommand = parseRewindCommand(input);
+@@ -267,9 +277,13 @@ export async function executeTurnCommand(
+           options?.inputId,
+         );
+       }
+-      activeTurn = this.beginActiveTurn(turnId, turnTraceContext, "regular", true, {
+-        ...(options?.inputId === undefined ? {} : { inputId: options.inputId }),
+-      });
++      activeTurn = this.beginActiveTurn(
++        turnId,
++        turnTraceContext,
++        "regular",
++        true,
++        options?.inputId === undefined ? {} : { inputId: options.inputId },
++      );
+       if (options?.intent?.subscriptionAccountId && admittedModelSelection) {
+         activeTurn.subscriptionAccounts = subscriptionAccountsForSubmission(
+           admittedModelSelection,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index c53d9756f7677fdbb612ba19adfdd61abc5d6c30..821076519b2ed196f5b16801a5328044e52b8587 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -9,13 +9,13 @@ import type {
+   MessageId,
+   Model,
+   SessionEvent,
+-  ToolCallId,
+   TraceContext,
+   TurnId,
+   UsageStorePort,
+ } from "@zcode/contracts";
+ import type { RuntimeModelTextResult } from "../types.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
++import { toolUsageId } from "../usage-identity.js";
+ import { isModelContextExceededError } from "../helpers/index.js";
+ 
+ type ModelUsageQuerySource =
+@@ -124,6 +124,15 @@ export async function recordModelUsageFact(
+           workspacePath: runtime.workspaceRoot,
+           requestedSpeedMode: input.model.options.speedMode ?? "standard",
+           executor: runtime.config.agentExecutor ?? "zcode",
++          // Link aggregate tool activity to this actual request, including mixed-model Guide turns.
++          toolUsageIds: input.result?.toolCalls?.map((call) =>
++            toolUsageId(
++              runtime.sessionId,
++              call.id,
++              input.traceContext.turnId,
++              input.assistantMessageId,
++            ),
++          ),
+         },
+       },
+     });
+@@ -224,17 +233,24 @@ export async function recordToolUsageFromEvent(
+   const toolName = stringValue(payload.toolName) ?? "unknown";
+   const metadata = runtime.registry.get(toolName)?.metadata;
+   const startedAt = event.timestamp.getTime();
++  const receiptId = toolUsageId(
++    runtime.sessionId,
++    toolCallId,
++    event.turnId ?? traceContext.turnId,
++    stringValue(payload.assistantMessageId) ??
++      stringValue(traceContext.attributes?.assistantMessageId),
++  );
+   const base = {
+     ...(payload.skillMetadata && typeof payload.skillMetadata === "object"
+       ? {
+           skillMetadata: payload.skillMetadata as import("@zcode/contracts").SkillTelemetryMetadata,
+         }
+       : {}),
+-    id: toolUsageId(runtime.sessionId, toolCallId),
++    id: receiptId,
+     sessionID: runtime.sessionId,
+     turnID: event.turnId ?? traceContext.turnId,
+     traceID: event.traceId ?? traceContext.traceId,
+-    toolCallID: toolCallId as ToolCallId,
++    toolCallID: receiptId,
+     toolName,
+     sideEffectScope: metadata?.sideEffectScope,
+     readOnly: metadata?.readOnly,
+@@ -365,10 +381,6 @@ function modelUsageId(input: RecordModelUsageInput): string {
+   return `usage_model_${input.querySource}_${logicalId}_${input.attemptIndex ?? 0}`;
+ }
+ 
+-function toolUsageId(sessionId: string, toolCallId: string): string {
+-  return `usage_tool_${sessionId}_${toolCallId}`;
+-}
+-
+ function modelNetworkEvents(events: readonly SessionEvent[]) {
+   return events
+     .filter((event) => event.type === SessionEventType.ModelNetworkStatus)
+diff --git a/apps/zcode-cli/packages/core/src/runtime/usage-identity.ts b/apps/zcode-cli/packages/core/src/runtime/usage-identity.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2979100eff6529812ff3af9a176b30374ef2a92
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/usage-identity.ts
+@@ -0,0 +1,9 @@
++/** Ledger IDs/call keys are request-scoped. Raw upstream IDs remain in canonical ToolPart/trace. */
++export function toolUsageId(
++  sessionId: string,
++  toolCallId: string,
++  turnId?: string,
++  assistantMessageId?: string,
++): string {
++  return `usage_tool_v2_${JSON.stringify([sessionId, turnId ?? null, assistantMessageId ?? null, toolCallId])}`;
++}
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index bde9a6d4a08b3938e4408312b836cb65e4572525..102ef22557a18456a5551b5ea67fd152d0161d7f 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -116,6 +116,12 @@ async function executeToolCallImpl(
+     },
+   });
+   const traceId = traceContext.traceId;
++  // Async output/permission events retain the calling request, even after another request starts.
++  const originalDeps = deps;
++  deps = {
++    ...deps,
++    emitEvent: (event, scope) => originalDeps.emitEvent(event, scope ?? traceContext),
++  };
+   const turnId = traceContext.turnId ?? deps.turnId;
+ 
+   if (!entry) {
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/types.ts b/apps/zcode-cli/packages/core/src/tool/executor/types.ts
+index 6ec8a7df2b91419e0a0451f0e3572107b741b8f1..e1dede085c435aeb63b86283388cb20ce23699f9 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/types.ts
+@@ -78,7 +78,7 @@ export interface ToolExecutorOptions {
+   registry: ToolRegistry;
+   permissionService: PermissionService;
+   permissionBroker?: PermissionBrokerPort;
+-  emitEvent: (event: SessionEvent) => Promise<void>;
++  emitEvent: (event: SessionEvent, traceContext?: TraceContext) => Promise<void>;
+   enqueueBackgroundTaskNotification?: EnqueueBackgroundTaskNotification;
+   shouldEnqueueBackgroundTaskNotification?: ShouldEnqueueBackgroundTaskNotification;
+   sessionId: SessionId;
+@@ -184,7 +184,7 @@ export interface ToolExecutorDeps {
+   registry: ToolRegistry;
+   permissionService: PermissionService;
+   permissionBroker: PermissionBrokerPort;
+-  emitEvent: (event: SessionEvent) => Promise<void>;
++  emitEvent: (event: SessionEvent, traceContext?: TraceContext) => Promise<void>;
+   enqueueBackgroundTaskNotification?: EnqueueBackgroundTaskNotification;
+   shouldEnqueueBackgroundTaskNotification?: ShouldEnqueueBackgroundTaskNotification;
+   sessionId: SessionId;
+diff --git a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0eceea87db892aab1f6c2eb41cc74ccb53df2b29
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+@@ -0,0 +1,240 @@
++import assert from "node:assert/strict";
++import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { DatabaseSync } from "node:sqlite";
++import {
++  createInMemorySessionEventStore,
++  getCurrentModelInvocationContext,
++} from "@zcode/contracts";
++import { AgentRuntime } from "../../src/runtime/agent-runtime.js";
++import { SqliteSessionStore } from "../../../adapters/src/storage/session-store/sqlite-session-store.js";
++
++type Step = (request: any, selection: any) => unknown | Promise<unknown>;
++export const usage = {
++  inputTokens: 100,
++  outputTokens: 10,
++  totalTokens: 110,
++  cacheReadTokens: 20,
++  cacheWriteTokens: 0,
++};
++export const selection = (id = "model-a") => ({
++  providerId: "fixture",
++  modelId: id,
++  options: { reasoningLevel: "off" },
++});
++export const reply = (text: string, toolCalls?: any[]) => ({
++  text,
++  toolCalls,
++  finishReason: toolCalls?.length ? "tool-calls" : "stop",
++  usage,
++});
++export const call = (id: string, value: string) => ({ id, name: "Probe", input: { value } });
++
++export async function fixture(executor?: "pi" | "zcode", streaming = false) {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-pi-turn-"));
++  const path = join(dir, "session.sqlite");
++  let store = new SqliteSessionStore({ dbPath: path });
++  let runtime: AgentRuntime;
++  const steps: Step[] = [];
++  const requests: Array<{ messages: any[]; tools: string[]; selection: any }> = [];
++  let decision = "allow";
++  let effects = 0;
++  let subscription = false;
++  let selectedAccount = "account-a";
++  const accounts: string[] = [];
++  let permissionCalls = 0;
++  let permissionReply: (() => Promise<any>) | undefined;
++  const factory = ({ selection: selected }: any): any => {
++    const model = {
++      providerId: selected.providerId,
++      modelId: selected.modelId,
++      options: selected.options,
++      properties: {
++        contextWindow: 1000000,
++        requiresMfjsToolSchema: false,
++        inputFormat: {
++          supportsText: true,
++          supportsImage: true,
++          supportsAudio: false,
++          supportsVideo: false,
++          supportsPdf: false,
++        },
++        outputFormat: { supportsText: true },
++        supportsToolCall: true,
++        supportsJsonSchemaOutput: false,
++        supportsNativeWebSearch: false,
++        supportsMidConversationSystem: true,
++      },
++      optionSpecs: {
++        maxOutputTokens: { max: 4096, map: "{}" },
++        reasoningLevel: { values: ["off"], map: "{}" },
++      },
++      bind(options: any) {
++        return factory({
++          selection: { ...selected, options: { ...selected.options, ...options } },
++        });
++      },
++      async generateText(request: any) {
++        if (subscription) {
++          const refresh = getCurrentModelInvocationContext()?.refreshRuntimeHeadersBeforeAttempt;
++          assert.ok(refresh, "Pi must preserve the Host per-attempt credential context");
++          await refresh({
++            subscriptionAccess: { provider: "openai-codex" },
++            attempt: 0,
++            providerId: selected.providerId,
++            modelId: selected.modelId,
++          });
++        }
++        requests.push({
++          messages: structuredClone(request.messages),
++          tools: (request.tools ?? []).map((tool: any) => tool.name),
++          selection: selected,
++        });
++        const next = steps.shift();
++        assert.ok(next, "Unexpected physical model request");
++        return await next(request, selected);
++      },
++      async *streamText(request: any) {
++        const result = (await model.generateText(request)) as any;
++        yield { type: "start" };
++        if (result.text) yield { type: "text_delta", text: result.text };
++        for (const toolCall of result.toolCalls ?? []) yield { type: "tool_call", toolCall };
++        yield { type: "finish", finishReason: result.finishReason, usage: result.usage };
++      },
++    };
++    return model;
++  };
++  const create = () => {
++    runtime = new AgentRuntime(
++      "session" as never,
++      {
++        agentExecutor: executor,
++        workingDirectory: dir,
++        modelSelection: selection(),
++        mode: "build",
++        modelStreaming: streaming ? "on" : "off",
++        titleGeneration: { enabled: false },
++        memory: { use: false },
++        dynamicWorkflowEnabled: false,
++        toolAllowlist: ["Probe"],
++      },
++      {
++        eventStore: createInMemorySessionEventStore(),
++        sessionStore: store,
++        modelFactory: factory,
++        providerRuntimeHeadersPort: {
++          async refreshBeforeModelRequest(input: any) {
++            const accountId = input.subscriptionAccess.accountId ?? selectedAccount;
++            accounts.push(accountId);
++            return {
++              headersApplied: true,
++              requestAuth: {
++                apiKey: "synthetic",
++                credentialSelection: { accountId, revision: "fixture" },
++              },
++            };
++          },
++        },
++        permissionBroker: {
++          async requestPermission() {
++            permissionCalls++;
++            if (permissionReply) return await permissionReply();
++            return { decision } as never;
++          },
++        },
++      },
++    );
++    runtime.getToolRegistry().register({
++      metadata: {
++        name: "Probe",
++        description: "write fixture",
++        readOnly: false,
++        destructive: false,
++        concurrentSafe: false,
++        sideEffectScope: "workspace",
++        riskLevel: "high",
++        needsApproval: true,
++      },
++      inputSchema: {
++        type: "object",
++        properties: { value: { type: "string" } },
++        required: ["value"],
++      },
++      async handler(input: any) {
++        effects++;
++        await writeFile(join(dir, "effect.txt"), input.value);
++        return { saved: input.value };
++      },
++    } as never);
++    runtime.invalidateToolCache();
++  };
++  create();
++  return {
++    steps,
++    requests,
++    accounts,
++    enableSubscription() {
++      subscription = true;
++    },
++    selectAccount(id: string) {
++      selectedAccount = id;
++    },
++    get runtime() {
++      return runtime;
++    },
++    get store() {
++      return store;
++    },
++    dir,
++    get effects() {
++      return effects;
++    },
++    get permissionCalls() {
++      return permissionCalls;
++    },
++    permissionWith(reply: () => Promise<any>) {
++      permissionReply = reply;
++    },
++    deny() {
++      decision = "deny";
++    },
++    terminal() {
++      runtime.getToolRegistry().getMetadata("Probe")!.stopTurnOnSuccess = true;
++    },
++    read: () => readFile(join(dir, "effect.txt"), "utf8"),
++    executorFacts() {
++      const db = new DatabaseSync(path, { readOnly: true });
++      try {
++        return db
++          .prepare("select provider_metadata_json from model_usage")
++          .all()
++          .map((row) => JSON.parse(String(row.provider_metadata_json)).fleetAccounting.executor);
++      } finally {
++        db.close();
++      }
++    },
++    toolFacts() {
++      const db = new DatabaseSync(path, { readOnly: true });
++      try {
++        return db
++          .prepare("select approval_status, status, cancelled_by_user from tool_usage")
++          .all();
++      } finally {
++        db.close();
++      }
++    },
++    async reopen() {
++      runtime.beginShutdown();
++      store.close();
++      store = new SqliteSessionStore({ dbPath: path });
++      create();
++      await runtime.resumeFromStore();
++    },
++    async close() {
++      runtime.beginShutdown();
++      store.close();
++      await rm(dir, { recursive: true, force: true });
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts b/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c31bc85bad7d01243faa1ab779e8aee2e28ac255
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
+@@ -0,0 +1,317 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { fixture, selection, reply, call } from "./helpers/pi-runtime-fixture.js";
++
++test(
++  "reused upstream tool-call IDs retain separate request receipts",
++  { timeout: 10000 },
++  async () => {
++    for (const sameInput of [false, true]) {
++      const f = await fixture("pi", true);
++      try {
++        f.steps.push(() => reply("one", [call("upstream-reused", "one")]));
++        if (!sameInput) f.steps.push(() => reply("first done"));
++        f.steps.push(
++          () => reply("two", [call("upstream-reused", "two")]),
++          () => reply("done"),
++        );
++        await f.runtime.executeTurn("First request");
++        if (!sameInput) await f.runtime.executeTurn("Second request");
++        assert.equal(f.effects, 2);
++        const result = await f.store.queryAppUsage({
++          since: 0,
++          until: Date.now() + 1,
++          tzOffsetMs: 0,
++        });
++        assert.equal(result.toolTotals.toolCallCount, 2);
++        assert.equal(result.modelActivities?.[0]?.toolCallCount, 2);
++      } finally {
++        await f.close();
++      }
++    }
++  },
++);
++
++test(
++  "accepted model options cannot be mutated during model initialization",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture("pi", true);
++    const intent = {
++      sourceCommandId: "command",
++      queueItemId: "item",
++      clientId: "fixture",
++      kind: "sendText",
++      admissionSeq: 0,
++      admittedAt: Date.now(),
++      requestedDelivery: "startNow",
++      admittedDelivery: "startNow",
++      modelSelection: { ...selection(), options: { reasoningLevel: "off", speedMode: "standard" } },
++      subscriptionAccountId: "account-a",
++    } as const;
++    try {
++      f.enableSubscription();
++      f.steps.push(() => reply("done"));
++      const accepted = await f.runtime.admitPrompt("Use the selected model", undefined, { intent });
++      assert.equal(accepted.kind, "started");
++      intent.modelSelection.modelId = "model-b";
++      intent.modelSelection.options.reasoningLevel = "high";
++      intent.modelSelection.options.speedMode = "fast";
++      if (accepted.kind === "started") await accepted.completion;
++      assert.equal(f.requests[0]!.selection.modelId, "model-a");
++      assert.equal(f.requests[0]!.selection.options.reasoningLevel, "off");
++      assert.equal(f.requests[0]!.selection.options.speedMode, "standard");
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "Guide keeps its accepted model and account after the caller edits its draft",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture("pi", true);
++    const entered = Promise.withResolvers<void>(),
++      release = Promise.withResolvers<void>();
++    let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++    try {
++      f.enableSubscription();
++      f.steps.push(
++        async () => {
++          entered.resolve();
++          await release.promise;
++          return reply("first response");
++        },
++        () => reply("guided response"),
++      );
++      running = f.runtime.executeTurn("Initial request");
++      await entered.promise;
++      const intent = {
++        sourceCommandId: "guide",
++        queueItemId: "guide-item",
++        clientId: "fixture",
++        kind: "sendText",
++        admissionSeq: 1,
++        admittedAt: Date.now(),
++        requestedDelivery: "guide",
++        admittedDelivery: "guide",
++        modelSelection: selection("model-b"),
++        subscriptionAccountId: "account-b",
++      } as const;
++      const accepted = await f.runtime.admitPrompt("Guide input", undefined, {
++        intent,
++        queueDelivery: "guide",
++      });
++      assert.equal(accepted.kind, "queued");
++      intent.modelSelection.modelId = "model-c";
++      release.resolve();
++      await running;
++      assert.deepEqual(
++        f.requests.map((request) => request.selection.modelId),
++        ["model-a", "model-b"],
++      );
++      assert.deepEqual(f.accounts, ["account-a", "account-b"]);
++    } finally {
++      release.resolve();
++      await running?.catch(() => {});
++      await f.close();
++    }
++  },
++);
++
++test(
++  "queued attachment values cannot be replaced by subsequent draft editing",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture("pi", true);
++    const entered = Promise.withResolvers<void>(),
++      release = Promise.withResolvers<void>();
++    const running: Array<ReturnType<typeof f.runtime.executeTurn>> = [];
++    try {
++      f.steps.push(
++        async () => {
++          entered.resolve();
++          await release.promise;
++          return reply("first done");
++        },
++        (request) => {
++          const text = JSON.stringify(request.messages);
++          assert.ok(text.includes("ORIGINAL_ATTACHMENT"));
++          assert.ok(!text.includes("REPLACED_ATTACHMENT"));
++          return reply("attachment done");
++        },
++      );
++      running.push(f.runtime.executeTurn("First request"));
++      await entered.promise;
++      const attachments = [
++        { type: "file" as const, content: "ORIGINAL_ATTACHMENT", filename: "original.txt" },
++      ];
++      running.push(f.runtime.executeTurn("Queued attachment", attachments));
++      attachments[0]!.content = "REPLACED_ATTACHMENT";
++      attachments[0]!.filename = "replaced.txt";
++      attachments.length = 0;
++      release.resolve();
++      await Promise.all(running);
++    } finally {
++      release.resolve();
++      await Promise.allSettled(running);
++      await f.close();
++    }
++  },
++);
++
++test(
++  "queued direct execution uses its accepted model rather than a later picker change",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture("pi", true);
++    const entered = Promise.withResolvers<void>(),
++      release = Promise.withResolvers<void>();
++    const running: Array<ReturnType<typeof f.runtime.executeTurn>> = [];
++    try {
++      f.steps.push(
++        async () => {
++          entered.resolve();
++          await release.promise;
++          return reply("first done");
++        },
++        () => reply("second done"),
++      );
++      running.push(f.runtime.executeTurn("First input"));
++      await entered.promise;
++      running.push(f.runtime.executeTurn("Queued input"));
++      f.runtime.setSessionModelSelection(selection("model-b"));
++      release.resolve();
++      await Promise.all(running);
++      assert.deepEqual(
++        f.requests.map((request) => request.selection.modelId),
++        ["model-a", "model-a"],
++      );
++    } finally {
++      release.resolve();
++      await Promise.allSettled(running);
++      await f.close();
++    }
++  },
++);
++
++test(
++  "a late permission grant after Stop cannot execute an effect",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture("pi", true);
++    const entered = Promise.withResolvers<void>(),
++      permission = Promise.withResolvers<any>();
++    const controller = new AbortController();
++    let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++    try {
++      f.permissionWith(async () => {
++        entered.resolve();
++        return await permission.promise;
++      });
++      f.steps.push(() => reply("needs permission", [call("pending", "must not run")]));
++      running = f.runtime.executeTurn("Await permission", undefined, {
++        abortSignal: controller.signal,
++      });
++      await entered.promise;
++      controller.abort(new Error("Stop"));
++      permission.resolve({ decision: "allow" });
++      await assert.rejects(running);
++      assert.equal(f.effects, 0);
++      assert.equal(f.requests.length, 1);
++      assert.equal(f.toolFacts()[0]!.status, "cancelled");
++      const stats = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++      assert.equal(stats.toolTotals.toolErrorCount, 0, "Stop is not a tool failure");
++    } finally {
++      permission.resolve({ decision: "deny" });
++      await running?.catch(() => {});
++      await f.close();
++    }
++  },
++);
++
++test(
++  "model-scoped activity retains tools across a Guide model switch",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture("pi", true);
++    const entered = Promise.withResolvers<void>(),
++      release = Promise.withResolvers<void>();
++    let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++    try {
++      f.steps.push(
++        async () => {
++          entered.resolve();
++          await release.promise;
++          return reply("first tool", [call("model-a-tool", "one")]);
++        },
++        () => reply("second tool", [call("model-b-tool", "two")]),
++        () => reply("complete"),
++      );
++      running = f.runtime.executeTurn("First model");
++      await entered.promise;
++      const intent = {
++        sourceCommandId: "activity-guide",
++        queueItemId: "activity-item",
++        clientId: "fixture",
++        kind: "sendText",
++        admissionSeq: 1,
++        admittedAt: Date.now(),
++        requestedDelivery: "guide",
++        admittedDelivery: "guide",
++        modelSelection: selection("model-b"),
++      } as const;
++      assert.equal(
++        (
++          await f.runtime.admitPrompt("Continue with model B", undefined, {
++            intent,
++            queueDelivery: "guide",
++          })
++        ).kind,
++        "queued",
++      );
++      release.resolve();
++      await running;
++      const stats = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++      assert.equal(stats.toolTotals.toolCallCount, 2);
++      assert.deepEqual(
++        stats.modelActivities?.map((item) => [item.modelId, item.toolCallCount]),
++        [
++          ["model-a", 1],
++          ["model-b", 1],
++        ],
++      );
++      await f.reopen();
++      const restored = await f.store.queryAppUsage({
++        since: 0,
++        until: Date.now() + 1,
++        tzOffsetMs: 0,
++      });
++
++      assert.deepEqual(restored.modelActivities, stats.modelActivities);
++    } finally {
++      release.resolve();
++      await running?.catch(() => {});
++      await f.close();
++    }
++  },
++);
++
++test("final accounting retains the real permission decision", { timeout: 10000 }, async () => {
++  for (const denied of [false, true]) {
++    const f = await fixture("pi", true);
++    try {
++      if (denied) f.deny();
++      f.steps.push(
++        () => reply("requires permission", [call("approval", "write")]),
++        () => reply("done"),
++      );
++      await f.runtime.executeTurn("Run a permission-controlled tool");
++      assert.equal(f.toolFacts()[0]!.approval_status, denied ? "denied" : "allowed");
++      assert.equal(f.effects, denied ? 0 : 1);
++    } finally {
++      await f.close();
++    }
++  }
++});
+diff --git a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+index 14df3c54e2438e07a25d029d323fb1f583c93297..bcece9027c37ebe440656404aa8e9360dfb7b390 100644
+--- a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+@@ -1,229 +1,8 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { readFile, writeFile } from "node:fs/promises";
+ import { join } from "node:path";
+-import { tmpdir } from "node:os";
+-import { DatabaseSync } from "node:sqlite";
+-import {
+-  createInMemorySessionEventStore,
+-  getCurrentModelInvocationContext,
+-} from "@zcode/contracts";
+-import { AgentRuntime } from "../src/runtime/agent-runtime.js";
+-import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
+-
+-type Step = (request: any, selection: any) => unknown | Promise<unknown>;
+-const usage = {
+-  inputTokens: 100,
+-  outputTokens: 10,
+-  totalTokens: 110,
+-  cacheReadTokens: 20,
+-  cacheWriteTokens: 0,
+-};
+-const selection = (id = "model-a") => ({
+-  providerId: "fixture",
+-  modelId: id,
+-  options: { reasoningLevel: "off" },
+-});
+-const reply = (text: string, toolCalls?: any[]) => ({
+-  text,
+-  toolCalls,
+-  finishReason: toolCalls?.length ? "tool-calls" : "stop",
+-  usage,
+-});
+-const call = (id: string, value: string) => ({ id, name: "Probe", input: { value } });
+-
+-async function fixture(executor?: "pi" | "zcode", streaming = false) {
+-  const dir = await mkdtemp(join(tmpdir(), "fleet-pi-turn-"));
+-  const path = join(dir, "session.sqlite");
+-  let store = new SqliteSessionStore({ dbPath: path });
+-  let runtime: AgentRuntime;
+-  const steps: Step[] = [];
+-  const requests: Array<{ messages: any[]; tools: string[]; selection: any }> = [];
+-  let decision = "allow";
+-  let effects = 0;
+-  let subscription = false;
+-  let selectedAccount = "account-a";
+-  const accounts: string[] = [];
+-  let permissionCalls = 0;
+-  const factory = ({ selection: selected }: any): any => {
+-    const model = {
+-      providerId: selected.providerId,
+-      modelId: selected.modelId,
+-      options: selected.options,
+-      properties: {
+-        contextWindow: 1000000,
+-        requiresMfjsToolSchema: false,
+-        inputFormat: {
+-          supportsText: true,
+-          supportsImage: true,
+-          supportsAudio: false,
+-          supportsVideo: false,
+-          supportsPdf: false,
+-        },
+-        outputFormat: { supportsText: true },
+-        supportsToolCall: true,
+-        supportsJsonSchemaOutput: false,
+-        supportsNativeWebSearch: false,
+-        supportsMidConversationSystem: true,
+-      },
+-      optionSpecs: {
+-        maxOutputTokens: { max: 4096, map: "{}" },
+-        reasoningLevel: { values: ["off"], map: "{}" },
+-      },
+-      bind(options: any) {
+-        return factory({
+-          selection: { ...selected, options: { ...selected.options, ...options } },
+-        });
+-      },
+-      async generateText(request: any) {
+-        if (subscription) {
+-          const refresh = getCurrentModelInvocationContext()?.refreshRuntimeHeadersBeforeAttempt;
+-          assert.ok(refresh, "Pi must preserve the Host per-attempt credential context");
+-          await refresh({
+-            subscriptionAccess: { provider: "openai-codex" },
+-            attempt: 0,
+-            providerId: selected.providerId,
+-            modelId: selected.modelId,
+-          });
+-        }
+-        requests.push({
+-          messages: structuredClone(request.messages),
+-          tools: (request.tools ?? []).map((tool: any) => tool.name),
+-          selection: selected,
+-        });
+-        const next = steps.shift();
+-        assert.ok(next, "Unexpected physical model request");
+-        return await next(request, selected);
+-      },
+-      async *streamText(request: any) {
+-        const result = (await model.generateText(request)) as any;
+-        yield { type: "start" };
+-        if (result.text) yield { type: "text_delta", text: result.text };
+-        for (const toolCall of result.toolCalls ?? []) yield { type: "tool_call", toolCall };
+-        yield { type: "finish", finishReason: result.finishReason, usage: result.usage };
+-      },
+-    };
+-    return model;
+-  };
+-  const create = () => {
+-    runtime = new AgentRuntime(
+-      "session" as never,
+-      {
+-        agentExecutor: executor,
+-        workingDirectory: dir,
+-        modelSelection: selection(),
+-        mode: "build",
+-        modelStreaming: streaming ? "on" : "off",
+-        titleGeneration: { enabled: false },
+-        memory: { use: false },
+-        dynamicWorkflowEnabled: false,
+-        toolAllowlist: ["Probe"],
+-      },
+-      {
+-        eventStore: createInMemorySessionEventStore(),
+-        sessionStore: store,
+-        modelFactory: factory,
+-        providerRuntimeHeadersPort: {
+-          async refreshBeforeModelRequest(input: any) {
+-            const accountId = input.subscriptionAccess.accountId ?? selectedAccount;
+-            accounts.push(accountId);
+-            return {
+-              headersApplied: true,
+-              requestAuth: {
+-                apiKey: "synthetic",
+-                credentialSelection: { accountId, revision: "fixture" },
+-              },
+-            };
+-          },
+-        },
+-        permissionBroker: {
+-          async requestPermission() {
+-            permissionCalls++;
+-            return { decision } as never;
+-          },
+-        },
+-      },
+-    );
+-    runtime.getToolRegistry().register({
+-      metadata: {
+-        name: "Probe",
+-        description: "write fixture",
+-        readOnly: false,
+-        destructive: false,
+-        concurrentSafe: false,
+-        sideEffectScope: "workspace",
+-        riskLevel: "high",
+-        needsApproval: true,
+-      },
+-      inputSchema: {
+-        type: "object",
+-        properties: { value: { type: "string" } },
+-        required: ["value"],
+-      },
+-      async handler(input: any) {
+-        effects++;
+-        await writeFile(join(dir, "effect.txt"), input.value);
+-        return { saved: input.value };
+-      },
+-    } as never);
+-    runtime.invalidateToolCache();
+-  };
+-  create();
+-  return {
+-    steps,
+-    requests,
+-    accounts,
+-    enableSubscription() {
+-      subscription = true;
+-    },
+-    selectAccount(id: string) {
+-      selectedAccount = id;
+-    },
+-    get runtime() {
+-      return runtime;
+-    },
+-    get store() {
+-      return store;
+-    },
+-    dir,
+-    get effects() {
+-      return effects;
+-    },
+-    get permissionCalls() {
+-      return permissionCalls;
+-    },
+-    deny() {
+-      decision = "deny";
+-    },
+-    terminal() {
+-      runtime.getToolRegistry().getMetadata("Probe")!.stopTurnOnSuccess = true;
+-    },
+-    read: () => readFile(join(dir, "effect.txt"), "utf8"),
+-    executorFacts() {
+-      const db = new DatabaseSync(path, { readOnly: true });
+-      try {
+-        return db
+-          .prepare("select provider_metadata_json from model_usage")
+-          .all()
+-          .map((row) => JSON.parse(String(row.provider_metadata_json)).fleetAccounting.executor);
+-      } finally {
+-        db.close();
+-      }
+-    },
+-    async reopen() {
+-      runtime.beginShutdown();
+-      store.close();
+-      store = new SqliteSessionStore({ dbPath: path });
+-      create();
+-      await runtime.resumeFromStore();
+-    },
+-    async close() {
+-      runtime.beginShutdown();
+-      store.close();
+-      await rm(dir, { recursive: true, force: true });
+-    },
+-  };
+-}
++import { fixture, selection, reply, call, usage } from "./helpers/pi-runtime-fixture.js";
+ 
+ test(
+   "full Pi executor writes model and tool results through the existing Host, once per call",
+diff --git a/package.json b/package.json
+index b5290bb1db42f9cdeec011efd9b00c0fd9dbb92b..0e1bb2ccc868e10f05594b9f3aeff84835b1752a 100644
+--- a/package.json
++++ b/package.json
+@@ -49,11 +49,11 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+-    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
++    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs"
+   },
+   "dependencies": {
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index cf152fc8c962c763d5ad1a1a690843deb1935506..6cf63afb5bc55011d371ce366a3d56a0cea908af 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -492,15 +492,22 @@ export class ProviderSettingsFacade {
+     providerId: ProviderId,
+     modelId: ModelId,
+     enabled: boolean,
++    basedOnRevision?: number,
+   ): Promise<ProviderSettingsView> {
+-    return this.#mutateProvider(providerId, "set-model-enabled", (target) =>
+-      target.setPersonalModelEnabled(
++    return this.#mutateProvider(providerId, "set-model-enabled", (target) => {
++      const snapshot = requireSnapshot(this.#source);
++      if (basedOnRevision !== undefined && snapshot.registry.revision !== basedOnRevision) {
++        throw new Error(
++          `Provider Settings revision conflict: expected ${basedOnRevision}, current ${snapshot.registry.revision}`,
++        );
++      }
++      return target.setPersonalModelEnabled(
+         providerId,
+         modelId,
+         enabled,
+-        this.#modelMembership(providerId),
+-      ),
+-    );
++        this.#modelMembership(providerId, snapshot),
++      );
++    });
+   }
+ 
+   #modelMembership(
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 80c738e5020d2edef62d65d7bd6fdbe9a03d7a28..686923791fadc6b2e4c8f68288f56878fc74279c 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -114,6 +114,7 @@ export interface IProviderSettingsService {
+     providerId: ProviderId,
+     modelId: ModelId,
+     enabled: boolean,
++    basedOnRevision?: number,
+   ): Promise<ProviderSettingsView>;
+   /** 测试已经保存并进入目标 Environment Registry 的正式 Model。 */
+   testModelConnectivity(
+@@ -333,9 +334,9 @@ export function createProviderSettingsService(
+       await ensureReady();
+       return facade.savePersonalModelDraft(input);
+     },
+-    setPersonalModelEnabled: async (providerId, modelId, enabled) => {
++    setPersonalModelEnabled: async (providerId, modelId, enabled, basedOnRevision) => {
+       await ensureReady();
+-      return facade.setPersonalModelEnabled(providerId, modelId, enabled);
++      return facade.setPersonalModelEnabled(providerId, modelId, enabled, basedOnRevision);
+     },
+     testModelConnectivity: async (input) => {
+       await ensureReady();
+diff --git a/packages/services/test/model-enabled-revision.test.ts b/packages/services/test/model-enabled-revision.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8bd3f58e5f053928b430aedd8b31faa3e6ce6975
+--- /dev/null
++++ b/packages/services/test/model-enabled-revision.test.ts
+@@ -0,0 +1,79 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, readFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { NodeProviderRegistryRuntime } from "@zcode/provider-node";
++import { ProviderSettingsFacade, parseModelConfig, parseProviderConfig } from "@zcode/provider";
++
++test("stale model visibility rejects without overwriting a concurrent edit; fresh change survives reopen", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-model-toggle-"));
++  const options = {
++    personalFilePath: join(root, "providers.json"),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  let runtime = new NodeProviderRegistryRuntime(options);
++  try {
++    await runtime.start();
++    const { providerId } = await runtime.configService.createPersonalProvider({
++      providerName: "Fixture",
++      initialConfig: parseProviderConfig({
++        api: { type: "openai-chat-completions", baseUrl: "https://fixture.invalid/v1" },
++        access: { type: "api-key", apiKey: "synthetic" },
++      }),
++    });
++    await runtime.configService.addPersonalModel(
++      providerId,
++      "fixture-model",
++      parseModelConfig({ enabled: true }),
++    );
++    await runtime.registryService.refresh("fixture");
++    const facade = new ProviderSettingsFacade(runtime.registryService, {
++      setPersonalModelEnabled: (
++        ...args: Parameters<typeof runtime.configService.setPersonalModelEnabled>
++      ) => runtime.configService.setPersonalModelEnabled(...args),
++      refresh: (reason: string) => runtime.registryService.refresh(reason),
++    } as never);
++    const stale = facade.getView().revision;
++    await runtime.configService.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig({ api: { baseUrl: "https://changed.fixture.invalid/v1" } }),
++    );
++    await runtime.registryService.refresh("concurrent edit");
++    const before = await readFile(options.personalFilePath, "utf8");
++    await assert.rejects(
++      facade.setPersonalModelEnabled(providerId, "fixture-model", false, stale),
++      /revision conflict/,
++    );
++    assert.equal(await readFile(options.personalFilePath, "utf8"), before);
++    await facade.setPersonalModelEnabled(
++      providerId,
++      "fixture-model",
++      false,
++      facade.getView().revision,
++    );
++    runtime.dispose();
++    runtime = new NodeProviderRegistryRuntime(options);
++    await runtime.start();
++    const saved = (await runtime.configService.read()).personalModels
++      .getExact(providerId, "fixture-model")!
++      .toJSON();
++    assert.equal(saved.enabled, false);
++    const restored = (await runtime.configService.read()).personalProviders
++      .get(providerId)!
++      .toJSON();
++    assert.equal(
++      restored.api?.baseUrl,
++      "https://changed.fixture.invalid/v1",
++      "the model action cannot overwrite the newer endpoint",
++    );
++  } finally {
++    runtime.dispose();
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index d96bd492515e1a5ba126098daca9ca9f31dde9d3..ed425d2233586e3b7b22c90c8e2188699e115891 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -192,11 +192,12 @@ export function useModelProviders(target: {
+         providerId,
+         modelId,
+         enabled,
++        providerSettingsView?.revision,
+       );
+       commitProviderSettingsView(view);
+       return view;
+     },
+-    [commitProviderSettingsView, providerSettingsService],
++    [commitProviderSettingsView, providerSettingsService, providerSettingsView?.revision],
+   );
+ 
+   const deletePersonalModel = useCallback(
+diff --git a/scripts/test-pi-bundle.mjs b/scripts/test-pi-bundle.mjs
+index 850f09f23d2623f5cc4bf84da7b3691e83d8c8f3..8dc281c122e8cff8847b89f6c50a09b360705ac9 100644
+--- a/scripts/test-pi-bundle.mjs
++++ b/scripts/test-pi-bundle.mjs
+@@ -30,8 +30,8 @@ const server = createServer(async (req, res) => {
+     assert.equal(body.model, "fixture-model");
+     assert.equal(body.stream, true);
+     requests.push(body);
+-    assert.ok(requests.length <= 3, "Unexpected physical request");
+-    const first = requests.length === 1;
++    assert.ok(requests.length <= 4, "Unexpected physical request");
++    const first = requests.length === 1 || requests.length === 3;
+     if (!first)
+       assert.ok(
+         body.messages.some((m) => m.role === "tool" && JSON.stringify(m.content).includes(marker)),
+@@ -293,15 +293,15 @@ try {
+     modelSelection: model,
+   });
+   await waitFor("fixture-restored");
+-  assert.equal(requests.length, 3);
++  assert.equal(requests.length, 4);
+   const stats = await rpc("usage/stats", { range: "all" });
+   assert.equal(
+     stats.models.reduce((total, model) => total + model.requestCount, 0),
+-    3,
++    4,
+   );
+-  assert.equal(stats.summary.toolCallCount, 1);
++  assert.equal(stats.summary.toolCallCount, 2);
+   console.log(
+-    "PASS staged Pi CLI: streaming, real Read, renderer events, restart hydration, 3 model receipts and 1 tool receipt",
++    "PASS staged Pi CLI: streaming, real Read, renderer events, restart hydration, 4 model receipts and 2 separate receipts for a reused upstream tool ID",
+   );
+ } catch (error) {
+   console.error(error);

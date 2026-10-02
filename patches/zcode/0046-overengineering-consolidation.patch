@@ -1,0 +1,3208 @@
+diff --git a/package.json b/package.json
+index 5b8e22aa05f7479006b19ca8726f0f1288aa6639..43befc489cb0896305acb4ff8e14079ee92e567e 100644
+--- a/package.json
++++ b/package.json
+@@ -50,7 +50,7 @@
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+-    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts",
++    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts"
+   },
+   "dependencies": {
+diff --git a/packages/services/test/usage-cost-report.test.ts b/packages/services/test/usage-cost-report.test.ts
+index 4805d5b4eb6d80ae7dd3c1243639c8adcd492577..8798c216e08701e1922defdef10b6df94c1d5363 100644
+--- a/packages/services/test/usage-cost-report.test.ts
++++ b/packages/services/test/usage-cost-report.test.ts
+@@ -1,18 +1,8 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import type { SubscriptionPayment, UsageAccountingRow } from "../../shared/src/usage-accounting.js";
++import type { UsageAccountingRow } from "../../shared/src/usage-accounting.js";
+ import { buildUsageCostReport } from "../../shared/src/usage-cost-report.js";
+ 
+-const payment: SubscriptionPayment = {
+-  id: "bill",
+-  providerId: "chat",
+-  accountId: "a",
+-  accountLabel: "A",
+-  start: 100,
+-  end: 200,
+-  amount: 30,
+-  currency: "USD",
+-};
+ const row = (patch: Partial<UsageAccountingRow> = {}): UsageAccountingRow => ({
+   providerId: "chat",
+   accountId: "a",
+@@ -35,216 +25,8 @@ const row = (patch: Partial<UsageAccountingRow> = {}): UsageAccountingRow => ({
+   priceVersions: "official",
+   ...patch,
+ });
+-const close = (actual: number | null, expected: number) => {
+-  assert.notEqual(actual, null);
+-  assert.ok(Math.abs(actual! - expected) < 1e-9, `${actual} != ${expected}`);
+-};
+-
+-test("one account-period links API value and actual fee without other-account or date leakage", () => {
+-  const report = buildUsageCostReport(
+-    [
+-      row(),
+-      row({ modelId: "second", estimatedUsd: 4, estimatedCredits: 2 }),
+-      row({ accountId: "b", estimatedUsd: 90, firstAt: 1, lastAt: 300 }),
+-      row({ providerId: "other", accountId: null, estimatedUsd: 90 }),
+-      row({ firstAt: 200, lastAt: 200, estimatedUsd: 90 }),
+-      row({ firstAt: 99, lastAt: 99, estimatedUsd: 90 }),
+-    ],
+-    { payment },
+-  );
+-  assert.equal(report.summary.requests, 2);
+-  assert.equal(report.summary.apiUsd, 6);
+-  assert.equal(report.summary.actualAmount, 30);
+-  assert.equal(report.summary.allocationBasis, "credits");
+-  assert.equal(report.summary.apiMinusActualUsd, -24);
+-  assert.equal(report.summary.apiPerMillion, 30_000);
+-  assert.equal(report.summary.actualPerMillion, 150_000);
+-  assert.deepEqual(
+-    report.models.map((item) => [item.modelId, item.actualAmount]),
+-    [
+-      ["first", 10],
+-      ["second", 20],
+-    ],
+-  );
+-  assert.equal(report.summary.unknownAccountRequests, 0);
+-});
+-
+-test("native credit weights win over API values and amount edits do not alter estimates", () => {
+-  const rows = [row(), row({ modelId: "second", estimatedCredits: 3, estimatedUsd: 2 })];
+-  const before = buildUsageCostReport(rows, { payment });
+-  const after = buildUsageCostReport(rows, { payment: { ...payment, amount: 60 } });
+-  assert.deepEqual(
+-    before.models.map((item) => item.actualAmount),
+-    [7.5, 22.5],
+-  );
+-  assert.deepEqual(
+-    after.models.map((item) => item.actualAmount),
+-    [15, 45],
+-  );
+-  assert.equal(before.summary.apiUsd, after.summary.apiUsd);
+-  assert.equal(before.summary.apiPerMillion, after.summary.apiPerMillion);
+-});
+-
+-test("complete API values provide the existing fallback when credits are incomplete", () => {
+-  const report = buildUsageCostReport(
+-    [row({ creditCount: 0 }), row({ modelId: "second", estimatedUsd: 4 })],
+-    { payment },
+-  );
+-  assert.equal(report.summary.allocationBasis, "api-value");
+-  assert.deepEqual(
+-    report.models.map((item) => item.actualAmount),
+-    [10, 20],
+-  );
+-});
+-
+-test("project allocation uses the whole bill including unassigned rows before filtering", () => {
+-  const rows = [row(), row({ workspacePath: "/two" }), row({ workspacePath: null })];
+-  const whole = buildUsageCostReport(rows, { payment });
+-  const filtered = buildUsageCostReport(rows, { payment, workspacePath: "/two" });
+-  const unassigned = buildUsageCostReport(rows, { payment, workspacePath: null });
+-  close(
+-    whole.projects.reduce((sum, item) => sum + item.actualAmount!, 0),
+-    payment.amount,
+-  );
+-  assert.equal(whole.projects.length, 3);
+-  assert.equal(filtered.summary.actualAmount, 10);
+-  assert.equal(filtered.models[0]?.actualAmount, 10);
+-  assert.equal(filtered.summary.apiUsd, 2);
+-  assert.equal(filtered.projects.length, 1);
+-  assert.equal(unassigned.summary.actualAmount, 10);
+-  assert.equal(unassigned.projects[0]?.workspacePath, null);
+-  assert.equal(
+-    buildUsageCostReport(rows, { payment, workspacePath: "/missing" }).summary.actualAmount,
+-    0,
+-  );
+-});
+-
+-test("model and project totals conserve a fee when each model spans several projects", () => {
+-  const rows = [
+-    row({ estimatedCredits: 1 }),
+-    row({ estimatedCredits: 2, workspacePath: "/two" }),
+-    row({ modelId: "second", estimatedCredits: 4, workspacePath: undefined }),
+-    row({ modelId: "second", estimatedCredits: 8, workspacePath: "/two" }),
+-  ];
+-  const report = buildUsageCostReport(rows, { payment });
+-  close(
+-    report.models.reduce((sum, item) => sum + item.actualAmount!, 0),
+-    30,
+-  );
+-  close(
+-    report.projects.reduce((sum, item) => sum + item.actualAmount!, 0),
+-    30,
+-  );
+-  for (const model of report.models) {
+-    close(
+-      report.projects
+-        .flatMap((project) => project.models)
+-        .filter((item) => item.modelId === model.modelId)
+-        .reduce((sum, item) => sum + item.actualAmount!, 0),
+-      model.actualAmount!,
+-    );
+-  }
+-});
+-
+-test("legacy unknown accounts block allocation but are never assigned to the selected account", () => {
+-  const rows = [row(), row({ accountId: null, estimatedUsd: 100, workspacePath: "/legacy" })];
+-  const report = buildUsageCostReport(rows, { payment });
+-  assert.equal(report.summary.requests, 1);
+-  assert.equal(report.summary.apiUsd, 2);
+-  assert.equal(report.summary.actualAmount, 30);
+-  assert.equal(report.summary.actualPerMillion, null);
+-  assert.equal(report.summary.unallocatedAmount, 30);
+-  assert.equal(report.summary.unknownAccountRequests, 1);
+-  assert.equal(report.summary.apiMinusActualUsd, null);
+-  assert.equal(report.models[0]?.actualAmount, null);
+-  assert.equal(report.projects.length, 1);
+-  const filtered = buildUsageCostReport(rows, { payment, workspacePath: "/one" });
+-  assert.equal(filtered.summary.actualAmount, null);
+-  assert.equal(filtered.summary.unallocatedAmount, null);
+-  assert.equal(filtered.summary.unknownAccountRequests, 1);
+-});
+-
+-test("membership-key connection totals explicitly match only accountless rows", () => {
+-  const report = buildUsageCostReport([row({ accountId: null }), row()], {
+-    payment: { ...payment, accountId: "connection" },
+-  });
+-  assert.equal(report.summary.requests, 1);
+-  assert.equal(report.summary.unknownAccountRequests, 0);
+-  assert.equal(report.summary.actualAmount, 30);
+-  assert.equal(report.summary.allocationBasis, "credits");
+-});
+-
+-test("partial price and counter coverage cannot produce a complete unit quote or saving", () => {
+-  const report = buildUsageCostReport(
+-    [
+-      row(),
+-      row({
+-        modelId: "missing",
+-        pricedCount: 0,
+-        reportedCount: 0,
+-        creditCount: 0,
+-        estimatedUsd: 0,
+-        inputTokens: 0,
+-        outputTokens: 0,
+-      }),
+-    ],
+-    { payment },
+-  );
+-  assert.equal(report.summary.apiUsd, 2);
+-  assert.equal(report.summary.apiPerMillion, null);
+-  assert.equal(report.summary.actualPerMillion, null);
+-  assert.equal(report.summary.apiMinusActualUsd, null);
+-  assert.equal(report.models.find((item) => item.modelId === "missing")?.apiUsd, null);
+-  assert.equal(report.summary.unallocatedAmount, 30);
+-});
+-
+-test("accepted credit allocation with missing token reports has no actual unit quote", () => {
+-  const report = buildUsageCostReport(
+-    [row({ reportedCount: 0, inputTokens: 0, outputTokens: 0 })],
+-    { payment },
+-  );
+-  assert.equal(report.summary.allocationBasis, "credits");
+-  assert.equal(report.models[0]?.actualAmount, 30);
+-  assert.equal(report.models[0]?.actualPerMillion, null);
+-  assert.equal(report.summary.apiMinusActualUsd, null);
+-});
+-
+-test("cross-currency fees are not compared or converted", () => {
+-  const report = buildUsageCostReport([row()], {
+-    payment: { ...payment, amount: 100, currency: "CNY" },
+-  });
+-  assert.equal(report.summary.apiUsd, 2);
+-  assert.equal(report.summary.actualAmount, 100);
+-  assert.equal(report.summary.apiMinusActualUsd, null);
+-});
+ 
+-test("free price stays zero, missing price stays null, and zero tokens have no unit quote", () => {
+-  const free = buildUsageCostReport([row({ estimatedUsd: 0, inputTokens: 0, outputTokens: 0 })], {
+-    payment,
+-  });
+-  assert.equal(free.summary.apiUsd, 0);
+-  assert.equal(free.summary.apiPerMillion, null);
+-  assert.equal(free.summary.actualPerMillion, null);
+-  const missing = buildUsageCostReport([row({ pricedCount: 0, estimatedUsd: 0 })]);
+-  assert.equal(missing.summary.apiUsd, null);
+-  assert.equal(missing.summary.actualAmount, null);
+-  assert.equal(missing.summary.allocationBasis, null);
+-  const empty = buildUsageCostReport([], { payment });
+-  assert.equal(empty.summary.actualAmount, 30);
+-  assert.equal(empty.summary.unallocatedAmount, 30);
+-  assert.equal(empty.summary.apiMinusActualUsd, null);
+-});
+-
+-test("an aggregate spanning a bill edge blocks allocation rather than inventing period usage", () => {
+-  const report = buildUsageCostReport([row(), row({ firstAt: 90, lastAt: 110 })], { payment });
+-  assert.equal(report.summary.requests, 1);
+-  assert.equal(report.summary.apiUsd, 2);
+-  assert.equal(report.summary.actualAmount, 30);
+-  assert.equal(report.summary.unallocatedAmount, 30);
+-  assert.equal(report.summary.allocationBasis, "unavailable");
+-});
+-
+-test("without a payment global API totals and project filters preserve stable model order", () => {
++test("the current cost report contains only recorded API equivalents and stable model order", () => {
+   const report = buildUsageCostReport([
+     row({ modelId: "z", inputTokens: 180 }),
+     row({ modelId: "b" }),
+@@ -255,113 +37,67 @@ test("without a payment global API totals and project filters preserve stable mo
+     report.models.map((item) => item.modelId),
+     ["a", "z", "b"],
+   );
++  assert.equal(report.summary.requests, 4);
+   assert.equal(report.summary.apiUsd, 8);
+-  assert.equal(report.summary.actualAmount, null);
+-  assert.equal(report.summary.unallocatedAmount, null);
+-  const filtered = buildUsageCostReport([row(), row({ workspacePath: "/two" })], {
+-    workspacePath: "/two",
+-  });
+-  assert.equal(filtered.summary.requests, 1);
+-  assert.equal(filtered.summary.apiUsd, 2);
+-  assert.equal(filtered.summary.actualAmount, null);
++  assert.equal("actualAmount" in report.summary, false);
++  assert.equal("allocationBasis" in report.summary, false);
++});
++
++test("known zero and unknown price remain distinct under incomplete request coverage", () => {
++  const report = buildUsageCostReport([
++    row({ estimatedUsd: 0, inputTokens: 0, outputTokens: 0 }),
++    row({ modelId: "unpriced", pricedCount: 0, reportedCount: 0, estimatedUsd: 0 }),
++  ]);
++  assert.equal(report.summary.requests, 2);
++  assert.equal(report.summary.pricedCount, 1);
++  assert.equal(report.summary.reportedCount, 1);
++  assert.equal(report.summary.apiUsd, 0);
++  assert.equal(report.models.find((item) => item.modelId === "unpriced")?.apiUsd, null);
++  assert.equal(buildUsageCostReport([]).summary.apiUsd, null);
+ });
+ 
+-test("model and project provenance stays distinct across price revisions and account/provider scopes", () => {
++test("unregistered and projectless usage stays in Other without inventing a Project", () => {
+   const rows = [
+-    row({
+-      priceSources:
+-        " https://vendor.test/pricing,https://models.dev/api.json,,https://vendor.test/pricing ",
+-      priceVersions: "official-v1,catalog-v1,",
+-    }),
+-    row({
+-      workspacePath: "/two",
+-      priceSources: "https://vendor.test/pricing",
+-      priceVersions: "official-v2,official-v1",
+-    }),
+-    row({
+-      accountId: "b",
+-      priceSources: "https://other-account.test/pricing",
+-      priceVersions: "other-account-v1",
+-    }),
+-    row({
+-      providerId: "other",
+-      priceSources: "https://other-provider.test/pricing",
+-      priceVersions: "other-provider-v1",
+-    }),
+-    row({
+-      modelId: "second",
+-      priceSources: "https://second-model.test/pricing",
+-      priceVersions: "second-v1",
+-    }),
++    row({ workspacePath: "/project" }),
++    row({ workspacePath: "/conversation-backing" }),
++    row({ workspacePath: null }),
+   ];
+-  const report = buildUsageCostReport(rows, { payment });
+-  const first = report.models.find((model) => model.modelId === "first")!;
+-  assert.deepEqual(first.priceSources, [
+-    "https://models.dev/api.json",
+-    "https://vendor.test/pricing",
++  const report = buildUsageCostReport(rows, { projectPaths: ["/project"] });
++  assert.equal(report.summary.apiUsd, 6);
++  assert.equal(report.projects.find((project) => project.workspacePath === null)?.apiUsd, 4);
++  assert.equal(report.projects.find((project) => project.workspacePath === "/project")?.apiUsd, 2);
++  assert.equal(
++    buildUsageCostReport(rows, { projectPaths: ["/project"], workspacePath: null }).summary.apiUsd,
++    4,
++  );
++  assert.equal(
++    buildUsageCostReport(rows, { projectPaths: ["/project"], workspacePath: "/missing" }).summary
++      .apiUsd,
++    null,
++  );
++  assert.equal(rows[1]!.workspacePath, "/conversation-backing");
++});
++
++test("price provenance stays with the model and selected Project", () => {
++  const report = buildUsageCostReport([
++    row({ priceSources: " https://vendor.test/a,https://vendor.test/a ", priceVersions: "v1," }),
++    row({ workspacePath: "/two", priceSources: "https://vendor.test/b", priceVersions: "v2" }),
++    row({ modelId: "second", priceSources: "https://other.test/price", priceVersions: "v3" }),
++  ]);
++  assert.deepEqual(report.models.find((model) => model.modelId === "first")?.priceSources, [
++    "https://vendor.test/a",
++    "https://vendor.test/b",
+   ]);
+-  assert.deepEqual(first.priceVersions, ["catalog-v1", "official-v1", "official-v2"]);
+-  const project = report.projects.find((item) => item.workspacePath === "/two")!;
+-  assert.deepEqual(project.models[0]?.priceSources, ["https://vendor.test/pricing"]);
+-  assert.deepEqual(project.models[0]?.priceVersions, ["official-v1", "official-v2"]);
+-  const global = buildUsageCostReport(rows).models.find((model) => model.modelId === "first")!;
+-  assert.deepEqual(global.priceSources, [
+-    "https://models.dev/api.json",
+-    "https://other-account.test/pricing",
+-    "https://other-provider.test/pricing",
+-    "https://vendor.test/pricing",
++  assert.deepEqual(report.models.find((model) => model.modelId === "first")?.priceVersions, [
++    "v1",
++    "v2",
+   ]);
+   assert.deepEqual(
+-    buildUsageCostReport([row({ priceVersions: null })]).models[0]?.priceSources,
+-    [],
++    report.projects.find((project) => project.workspacePath === "/two")?.models[0]?.priceSources,
++    ["https://vendor.test/b"],
+   );
+   assert.deepEqual(
+     buildUsageCostReport([row({ priceVersions: null })]).models[0]?.priceVersions,
+     [],
+   );
+ });
+-
+-test("unregistered paths and projectless usage share Other without dropping their fee weight", () => {
+-  const payment: SubscriptionPayment = {
+-    id: "bill",
+-    providerId: "p",
+-    accountId: "a",
+-    accountLabel: "A",
+-    start: 0,
+-    end: 100,
+-    amount: 90,
+-    currency: "USD",
+-  };
+-  const row = (workspacePath: string | null): UsageAccountingRow => ({
+-    providerId: "p",
+-    accountId: "a",
+-    workspacePath,
+-    modelId: "m",
+-    speedMode: "standard",
+-    requestCount: 1,
+-    reportedCount: 1,
+-    inputTokens: 100,
+-    outputTokens: 10,
+-    cacheReadTokens: 0,
+-    cacheInputTokens: 100,
+-    cacheReportedCount: 1,
+-    estimatedUsd: 1,
+-    pricedCount: 1,
+-    estimatedCredits: 1,
+-    creditCount: 1,
+-    firstAt: 1,
+-    lastAt: 2,
+-    priceVersions: "v",
+-  });
+-  const rows = [row("/project"), row("/conversation-backing"), row(null)];
+-  const report = buildUsageCostReport(rows, { payment, projectPaths: ["/project"] });
+-  assert.equal(report.summary.actualAmount, 90);
+-  assert.equal(report.projects.find((p) => p.workspacePath === null)?.actualAmount, 60);
+-  assert.equal(report.projects.find((p) => p.workspacePath === "/project")?.actualAmount, 30);
+-  assert.equal(
+-    buildUsageCostReport(rows, { payment, projectPaths: ["/project"], workspacePath: null }).summary
+-      .actualAmount,
+-    60,
+-  );
+-  assert.equal(rows[1]!.workspacePath, "/conversation-backing");
+-});
+diff --git a/packages/shared/src/usage-cost-report.ts b/packages/shared/src/usage-cost-report.ts
+index 726f689120e523b7a5a1ef78af3f05e41a54a0c1..bde6c162be51a39d3b009fbb06a4d14824483ce1 100644
+--- a/packages/shared/src/usage-cost-report.ts
++++ b/packages/shared/src/usage-cost-report.ts
+@@ -1,8 +1,4 @@
+-import {
+-  allocateSubscriptionPayment,
+-  type SubscriptionPayment,
+-  type UsageAccountingRow,
+-} from "./usage-accounting.js";
++import type { UsageAccountingRow } from "./usage-accounting.js";
+ 
+ export interface UsageCostTotals {
+   requests: number;
+@@ -10,9 +6,6 @@ export interface UsageCostTotals {
+   pricedCount: number;
+   totalTokens: number;
+   apiUsd: number | null;
+-  actualAmount: number | null;
+-  apiPerMillion: number | null;
+-  actualPerMillion: number | null;
+ }
+ 
+ export interface UsageCostModel extends UsageCostTotals {
+@@ -27,44 +20,18 @@ export interface UsageCostProject extends UsageCostTotals {
+ }
+ 
+ export interface UsageCostReport {
+-  summary: UsageCostTotals & {
+-    unallocatedAmount: number | null;
+-    unknownAccountRequests: number;
+-    allocationBasis: "credits" | "api-value" | "unavailable" | null;
+-    apiMinusActualUsd: number | null;
+-  };
++  summary: UsageCostTotals;
+   models: UsageCostModel[];
+   projects: UsageCostProject[];
+ }
+ 
+ export interface UsageCostReportOptions {
+-  payment?: SubscriptionPayment;
+   workspacePath?: string | null;
+   /** Existing registered projects; other paths are grouped as Other without changing ledger facts. */
+   projectPaths?: readonly string[];
+ }
+ 
+ const compareId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+-type SumField =
+-  | "requestCount"
+-  | "reportedCount"
+-  | "pricedCount"
+-  | "inputTokens"
+-  | "outputTokens"
+-  | "estimatedUsd";
+-const sum = (rows: readonly UsageAccountingRow[], field: SumField) =>
+-  rows.reduce((total, row) => total + row[field], 0);
+-const provenance = (rows: readonly UsageAccountingRow[], field: "priceSources" | "priceVersions") =>
+-  [
+-    ...new Set(
+-      rows.flatMap((row) =>
+-        (row[field] ?? "")
+-          .split(",")
+-          .map((value) => value.trim())
+-          .filter(Boolean),
+-      ),
+-    ),
+-  ].sort(compareId);
+ 
+ function groupRows<K>(rows: readonly UsageAccountingRow[], key: (row: UsageAccountingRow) => K) {
+   const groups = new Map<K, UsageAccountingRow[]>();
+@@ -77,134 +44,64 @@ function groupRows<K>(rows: readonly UsageAccountingRow[], key: (row: UsageAccou
+   return groups;
+ }
+ 
+-function coverage(rows: readonly UsageAccountingRow[], field: "reportedCount" | "pricedCount") {
+-  return rows.every((row) => row[field] === row.requestCount);
++function provenance(rows: readonly UsageAccountingRow[], field: "priceSources" | "priceVersions") {
++  return [
++    ...new Set(
++      rows.flatMap((row) =>
++        (row[field] ?? "")
++          .split(",")
++          .map((value) => value.trim())
++          .filter(Boolean),
++      ),
++    ),
++  ].sort(compareId);
+ }
+ 
+-function totals(rows: readonly UsageAccountingRow[], actualAmount: number | null): UsageCostTotals {
+-  const requests = sum(rows, "requestCount");
+-  const reportedCount = sum(rows, "reportedCount");
+-  const pricedCount = sum(rows, "pricedCount");
+-  const totalTokens = sum(rows, "inputTokens") + sum(rows, "outputTokens");
+-  const apiUsd = pricedCount > 0 ? sum(rows, "estimatedUsd") : null;
+-  const unitsKnown = requests > 0 && totalTokens > 0 && coverage(rows, "reportedCount");
++function totals(rows: readonly UsageAccountingRow[]): UsageCostTotals {
++  const count = (field: "requestCount" | "reportedCount" | "pricedCount") =>
++    rows.reduce((total, row) => total + row[field], 0);
++  const pricedCount = count("pricedCount");
+   return {
+-    requests,
+-    reportedCount,
++    requests: count("requestCount"),
++    reportedCount: count("reportedCount"),
+     pricedCount,
+-    totalTokens,
+-    apiUsd,
+-    actualAmount,
+-    apiPerMillion:
+-      unitsKnown && coverage(rows, "pricedCount") && apiUsd !== null
+-        ? (apiUsd * 1_000_000) / totalTokens
+-        : null,
+-    actualPerMillion:
+-      unitsKnown && actualAmount !== null ? (actualAmount * 1_000_000) / totalTokens : null,
++    totalTokens: rows.reduce((total, row) => total + row.inputTokens + row.outputTokens, 0),
++    apiUsd: pricedCount > 0 ? rows.reduce((total, row) => total + row.estimatedUsd, 0) : null,
+   };
+ }
+ 
+-/** Derive one cost view from the existing ledger; the payment allocator remains the sole authority. */
++function modelRows(rows: readonly UsageAccountingRow[]): UsageCostModel[] {
++  return [...groupRows(rows, (row) => row.modelId)]
++    .map(([modelId, modelUsage]) => ({
++      modelId,
++      priceSources: provenance(modelUsage, "priceSources"),
++      priceVersions: provenance(modelUsage, "priceVersions"),
++      ...totals(modelUsage),
++    }))
++    .sort((a, b) => b.totalTokens - a.totalTokens || compareId(a.modelId, b.modelId));
++}
++
++/** One read-only API-equivalent projection over the existing ledger; saved payments stay separate. */
+ export function buildUsageCostReport(
+   rows: readonly UsageAccountingRow[],
+   options: UsageCostReportOptions = {},
+ ): UsageCostReport {
+-  const { payment } = options;
+   const projects = options.projectPaths ? new Set(options.projectPaths) : undefined;
+   const workspace = (row: UsageAccountingRow) =>
+     row.workspacePath && (!projects || projects.has(row.workspacePath)) ? row.workspacePath : null;
+-  const matchesAccount = (row: UsageAccountingRow) =>
+-    !payment ||
+-    (row.providerId === payment.providerId &&
+-      row.accountId === (payment.accountId === "connection" ? null : payment.accountId));
+-  const overlapsPeriod = (row: UsageAccountingRow) =>
+-    !payment || (row.firstAt < payment.end && row.lastAt >= payment.start);
+-  const withinPeriod = (row: UsageAccountingRow) =>
+-    !payment || (row.firstAt >= payment.start && row.lastAt < payment.end);
+-  const allocationRows = payment
+-    ? rows.filter(
+-        (row) =>
+-          row.providerId === payment.providerId &&
+-          (matchesAccount(row) || row.accountId === null) &&
+-          overlapsPeriod(row),
+-      )
+-    : [];
+-  const eligible = rows.filter((row) => matchesAccount(row) && withinPeriod(row));
+-  const unknownAccountRequests =
+-    payment && payment.accountId !== "connection"
+-      ? sum(
+-          allocationRows.filter((row) => row.accountId === null),
+-          "requestCount",
+-        )
+-      : 0;
+-  const hasBoundaryOverlap = allocationRows.some((row) => !withinPeriod(row));
+-  const allocation = payment ? allocateSubscriptionPayment(payment, allocationRows) : null;
+-  const allocated = allocation !== null && allocation.basis !== "unavailable";
+-  const modelAllocations = new Map(allocation?.models.map((model) => [model.modelId, model]));
+-  const weight = (row: UsageAccountingRow) =>
+-    allocation?.basis === "credits" ? row.estimatedCredits : row.estimatedUsd;
+-
+-  // 先让既有分摊器计算整个账号账期，再按项目取其份额，避免每个项目重复承担整张账单。
+-  const modelAmount = (modelId: string, selectedRows: readonly UsageAccountingRow[]) => {
+-    if (!allocated) return null;
+-    const model = modelAllocations.get(modelId);
+-    if (!model || model.weight === 0) return 0;
+-    const selectedWeight = selectedRows.reduce((total, row) => total + weight(row), 0);
+-    return model.amount * (selectedWeight / model.weight);
+-  };
+-  const modelRows = (selectedRows: readonly UsageAccountingRow[]): UsageCostModel[] =>
+-    [...groupRows(selectedRows, (row) => row.modelId)]
+-      .map(([modelId, modelUsage]) => ({
+-        modelId,
+-        priceSources: provenance(modelUsage, "priceSources"),
+-        priceVersions: provenance(modelUsage, "priceVersions"),
+-        ...totals(modelUsage, modelAmount(modelId, modelUsage)),
+-      }))
+-      .sort((a, b) => b.totalTokens - a.totalTokens || compareId(a.modelId, b.modelId));
+-  const actualTotal = (models: readonly UsageCostModel[]) =>
+-    allocated ? models.reduce((total, model) => total + model.actualAmount!, 0) : null;
+-  const hasProjectFilter = options.workspacePath !== undefined;
+-  const selected = hasProjectFilter
+-    ? eligible.filter((row) => workspace(row) === options.workspacePath)
+-    : eligible;
+-  const models = modelRows(selected);
+-  const actualAmount = payment ? (hasProjectFilter ? actualTotal(models) : payment.amount) : null;
+-  const summary = totals(selected, actualAmount);
+-  // 缺失归属或跨账期聚合不能被当前设置补齐，也不能算作完整的费用对比。
+-  const comparable =
+-    payment?.currency === "USD" &&
+-    !hasBoundaryOverlap &&
+-    unknownAccountRequests === 0 &&
+-    summary.requests > 0 &&
+-    actualAmount !== null &&
+-    summary.apiUsd !== null &&
+-    coverage(eligible, "reportedCount") &&
+-    coverage(eligible, "pricedCount");
++  const selected =
++    options.workspacePath === undefined
++      ? rows
++      : rows.filter((row) => workspace(row) === options.workspacePath);
+   return {
+-    summary: {
+-      ...summary,
+-      actualPerMillion: allocated ? summary.actualPerMillion : null,
+-      unallocatedAmount: !payment
+-        ? null
+-        : hasProjectFilter
+-          ? allocated
+-            ? 0
+-            : null
+-          : allocation!.unallocated,
+-      unknownAccountRequests,
+-      allocationBasis: allocation?.basis ?? null,
+-      apiMinusActualUsd: comparable ? summary.apiUsd! - actualAmount! : null,
+-    },
+-    models,
++    summary: totals(selected),
++    models: modelRows(selected),
+     projects: [...groupRows(selected, workspace)]
+-      .map(([workspacePath, projectRows]) => {
+-        const projectModels = modelRows(projectRows);
+-        return {
+-          workspacePath,
+-          ...totals(projectRows, actualTotal(projectModels)),
+-          models: projectModels,
+-        };
+-      })
++      .map(([workspacePath, projectRows]) => ({
++        workspacePath,
++        ...totals(projectRows),
++        models: modelRows(projectRows),
++      }))
+       .sort(
+         (a, b) =>
+           b.totalTokens - a.totalTokens ||
+diff --git a/packages/ui/src/SettingsPage.tsx b/packages/ui/src/SettingsPage.tsx
+index 85cc3f8774d103f3738df38a24336df652f5fb99..7e90e02931a4ccbb26c5563434b715378214e420 100644
+--- a/packages/ui/src/SettingsPage.tsx
++++ b/packages/ui/src/SettingsPage.tsx
+@@ -55,7 +55,7 @@ import {
+ } from "@/lib/accountProviderAccess.js";
+ import { buildUsageEntitlementCacheKey } from "@/lib/usageEntitlementCache.js";
+ import { ModelProviderSection } from "@/settings/ModelProviderSection.js";
+-import { useEnterpriseCodingPlanProducts } from "@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js";
++import { useTeamSubscriptionProducts } from "@/settings/model-provider-section/useTeamSubscriptionProducts.js";
+ import { UsageStatsSection, type UsageStatsSectionTab } from "@/settings/UsageStatsSection.js";
+ import {
+   buildCodingPlanUsageSources,
+@@ -358,6 +358,12 @@ export function SettingsPage({
+   const usageBigmodelProvider = usageProviderSettingsView?.providers.find(
+     (provider) => provider.providerId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+   );
++  const usageZaiTeamProvider = usageProviderSettingsView?.providers.find(
++    (provider) => provider.providerId === BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan,
++  );
++  const usageBigmodelTeamProvider = usageProviderSettingsView?.providers.find(
++    (provider) => provider.providerId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan,
++  );
+   const usageZaiProviderAccess = resolveEntitledAccountProviderAccess(
+     usageProviderSettingsView,
+     BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+@@ -422,24 +428,26 @@ export function SettingsPage({
+   // 永远拿不到 team project 上下文；后续又误用 Individual Provider 的权益作为 Team
+   // 商品门禁，导致仅有 Team Plan 的账号仍然没有 Usage 来源。企业商品只依赖对应的
+   // Team Account Provider，个人额度继续依赖 Individual Provider，避免两个产品身份串线。
+-  const usageBigmodelEnterpriseProducts = useEnterpriseCodingPlanProducts({
+-    enabled: !usageProviderSettingsLoading && Boolean(usageBigmodelTeamProviderFingerprint),
+-    authenticated: true,
++  const usageBigmodelEnterpriseProducts = useTeamSubscriptionProducts({
++    enabled:
++      activeSection === "usage" &&
++      !usageProviderSettingsLoading &&
++      Boolean(usageBigmodelTeamProviderFingerprint),
+     family: "bigmodel",
++    identity: usageBigmodelTeamProviderFingerprint,
+   });
+-  const usageZaiEnterpriseProducts = useEnterpriseCodingPlanProducts({
+-    enabled: !usageProviderSettingsLoading && Boolean(usageZaiTeamProviderFingerprint),
+-    authenticated: true,
++  const usageZaiEnterpriseProducts = useTeamSubscriptionProducts({
++    enabled:
++      activeSection === "usage" &&
++      !usageProviderSettingsLoading &&
++      Boolean(usageZaiTeamProviderFingerprint),
+     family: "zai",
++    identity: usageZaiTeamProviderFingerprint,
+   });
+   const usageSubscribedTeamProducts = useMemo(
+     () => [
+-      ...(usageBigmodelEnterpriseProducts.snapshot?.productList.filter(
+-        (product) => product.subscribed === true,
+-      ) ?? []),
+-      ...(usageZaiEnterpriseProducts.snapshot?.productList.filter(
+-        (product) => product.subscribed === true,
+-      ) ?? []),
++      ...(usageBigmodelEnterpriseProducts.snapshot?.productList ?? []),
++      ...(usageZaiEnterpriseProducts.snapshot?.productList ?? []),
+     ],
+     [
+       usageBigmodelEnterpriseProducts.snapshot?.productList,
+@@ -1863,6 +1871,25 @@ export function SettingsPage({
+                             activeTab={usageActiveTab}
+                             providerSourcesLoading={usageProviderSettingsLoading}
+                             selectedCodingPlanSource={selectedUsageCodingPlanSource}
++                            teamSourceFailures={[
++                              ...(usageZaiEnterpriseProducts.error
++                                ? [
++                                    {
++                                      provider: usageZaiTeamProvider?.providerName ?? "Z.AI",
++                                      error: usageZaiEnterpriseProducts.error,
++                                    },
++                                  ]
++                                : []),
++                              ...(usageBigmodelEnterpriseProducts.error
++                                ? [
++                                    {
++                                      provider:
++                                        usageBigmodelTeamProvider?.providerName ?? "BigModel",
++                                      error: usageBigmodelEnterpriseProducts.error,
++                                    },
++                                  ]
++                                : []),
++                            ]}
+                             workspaceIdentity={activeWorkspaceIdentity}
+                             workspacePath={activeWorkspacePath ?? undefined}
+                           />
+diff --git a/packages/ui/src/WorkspaceSidebarFooterPlanBadgeHelpers.ts b/packages/ui/src/WorkspaceSidebarFooterPlanBadgeHelpers.ts
+deleted file mode 100644
+index 7323e72d66559dfa80fad85c54942f2726f691e2..0000000000000000000000000000000000000000
+--- a/packages/ui/src/WorkspaceSidebarFooterPlanBadgeHelpers.ts
++++ /dev/null
+@@ -1,73 +0,0 @@
+-import type { UsageEntitlementSnapshot } from "@zcode/shared";
+-import { hasActiveCodingPlanSnapshot } from "@/CodingPlanUsageRemainingPanel.js";
+-
+-type SidebarFooterProfilePlanBadge =
+-  | {
+-      audience: "individual";
+-      snapshot: UsageEntitlementSnapshot;
+-    }
+-  | {
+-      audience: "team";
+-      snapshot?: never;
+-    };
+-
+-export function resolveSidebarFooterProfilePlanBadge({
+-  hasTeamPlanEntitlement,
+-  individualEntitlements,
+-}: {
+-  hasTeamPlanEntitlement: boolean;
+-  individualEntitlements: Array<{
+-    providerId: string;
+-    snapshot: UsageEntitlementSnapshot | null;
+-    loading?: boolean;
+-  }>;
+-}): SidebarFooterProfilePlanBadge | null {
+-  const activeIndividualEntitlement = individualEntitlements.find((entitlement) =>
+-    hasActiveCodingPlanSnapshot(entitlement.snapshot, entitlement.providerId),
+-  );
+-  if (activeIndividualEntitlement?.snapshot) {
+-    return {
+-      audience: "individual",
+-      snapshot: activeIndividualEntitlement.snapshot,
+-    };
+-  }
+-
+-  if (individualEntitlements.some((entitlement) => entitlement.loading)) {
+-    return null;
+-  }
+-
+-  // 头像旁徽标只展示已确认的权益。个人权益显示套餐等级；没有个人权益但有团队权益时才显示团队。
+-  // 不能把当前连接方式或历史 selectedKey 当作 Team 兜底，否则切换 family 后会误显示 Team。
+-  return hasTeamPlanEntitlement ? { audience: "team" } : null;
+-}
+-
+-export function resolveSidebarFooterPlanBadgeLabel(
+-  snapshot: UsageEntitlementSnapshot | null,
+-): string | null {
+-  if (!snapshot || snapshot.unavailableReason === "no_plan") {
+-    return null;
+-  }
+-
+-  const rawLabel =
+-    snapshot.quota?.level?.trim() || snapshot.subscription?.details[0]?.productName?.trim() || null;
+-  if (!rawLabel) {
+-    return null;
+-  }
+-
+-  const withoutPrefix = rawLabel.replace(/^glm\s+coding\s+/i, "").trim();
+-  const normalized = withoutPrefix || rawLabel;
+-  return normalized.length > 0 ? normalizePlanBadgeWordCasing(normalized) : null;
+-}
+-
+-function normalizePlanBadgeWordCasing(label: string): string {
+-  if (!/^[a-z][a-z0-9 -]*$/i.test(label)) {
+-    return label;
+-  }
+-
+-  return label.replace(/\b[a-z][a-z0-9]*\b/gi, (word) => {
+-    if (word.length <= 1) {
+-      return word.toUpperCase();
+-    }
+-    return word.slice(0, 1).toUpperCase() + word.slice(1).toLowerCase();
+-  });
+-}
+diff --git a/packages/ui/src/WorkspaceSidebarFooterUsageSummary.tsx b/packages/ui/src/WorkspaceSidebarFooterUsageSummary.tsx
+deleted file mode 100644
+index 12b7393659651d9fa62d88d74fbd36558c16c53b..0000000000000000000000000000000000000000
+--- a/packages/ui/src/WorkspaceSidebarFooterUsageSummary.tsx
++++ /dev/null
+@@ -1,473 +0,0 @@
+-/* eslint-disable max-lines -- footer 套餐徽标、升级入口与 entitlement 探测共用同一份
+-   provider 选择与 family 过滤上下文，拆文件会让 zai/bigmodel 对称性难以追踪。 */
+-import { useEffect, useMemo } from "react";
+-import {
+-  BUILTIN_MODEL_PROVIDER_IDS,
+-  normalizeProviderFamilyDomain,
+-  resolveModelProviderFamilyIdByProviderId,
+-  TID_SIDEBAR_CODING_PLAN_USAGE_BUTTON,
+-} from "@zcode/shared";
+-import { BarChart3Icon } from "lucide-react";
+-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu.js";
+-import {
+-  resolveCodingPlanUsageRemainingState,
+-  type CodingPlanUsageAvailableProvider,
+-} from "@/CodingPlanUsageRemainingPanel.js";
+-import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
+-import { useUsageEntitlement } from "@/hooks/useUsageEntitlement.js";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { useSettings } from "@/hooks/useSettingService.js";
+-import {
+-  resolveEntitledAccountProviderAccess,
+-  resolveEntitledAccountProviderAccessFingerprint,
+-} from "@/lib/accountProviderAccess.js";
+-import { buildUsageEntitlementCacheKey } from "@/lib/usageEntitlementCache.js";
+-import {
+-  isMaxCodingPlanSnapshot,
+-  resolveSidebarCodingPlanUpgradeFallbackProviderId,
+-} from "@/lib/sidebarCodingPlanUpgrade.js";
+-import { type CodingPlanFunnelContext } from "@/lib/codingPlanFunnelTelemetry.js";
+-import { type SidebarUsageCodingPlanProviderId } from "@/lib/sidebarUsageCodingPlanProviderPreference.js";
+-import { useEnterpriseCodingPlanProducts } from "@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js";
+-import {
+-  buildCodingPlanUsageSources,
+-  resolveSidebarCurrentCodingPlanUsageSource,
+-} from "@/lib/codingPlanUsageSources.js";
+-import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
+-import { parseCustomProviderIdFromSupplierKey } from "@/lib/modelConfigSync.js";
+-import { setPendingSettingsUsageIntent } from "@/lib/settingsNavigation.js";
+-import {
+-  resolveSidebarFooterPlanBadgeLabel,
+-  resolveSidebarFooterProfilePlanBadge,
+-} from "@/WorkspaceSidebarFooterPlanBadgeHelpers.js";
+-
+-export {
+-  resolveSidebarFooterPlanBadgeLabel,
+-  resolveSidebarFooterProfilePlanBadge,
+-} from "@/WorkspaceSidebarFooterPlanBadgeHelpers.js";
+-
+-const TID_SIDEBAR_CODING_PLAN_UPGRADE_BUTTON = "sidebar-coding-plan-upgrade-button";
+-
+-export function WorkspaceSidebarFooterUsageSummary({
+-  enabled,
+-  onUsageClick,
+-  onUpgradeClick,
+-  workspaceIdentity,
+-  workspacePath,
+-}: {
+-  enabled: boolean;
+-  onUsageClick?: () => void;
+-  onUpgradeClick?: (
+-    providerId: SidebarUsageCodingPlanProviderId,
+-    funnelContext: CodingPlanFunnelContext,
+-  ) => void;
+-  workspaceIdentity?: string;
+-  workspacePath?: string;
+-}) {
+-  const state = useWorkspaceSidebarFooterUsageSummaryState({
+-    enabled,
+-    workspaceIdentity,
+-    workspacePath,
+-  });
+-  return (
+-    <WorkspaceSidebarFooterUsageSummaryContent
+-      state={state}
+-      onUsageClick={onUsageClick}
+-      onUpgradeClick={onUpgradeClick}
+-    />
+-  );
+-}
+-
+-export function useWorkspaceSidebarFooterUsageSummaryState({
+-  enabled,
+-  workspaceIdentity,
+-  workspacePath,
+-}: {
+-  enabled: boolean;
+-  workspaceIdentity?: string;
+-  workspacePath?: string;
+-}) {
+-  const { settings: sharedSettings } = useSettings();
+-  const providerFamilyDomain = normalizeProviderFamilyDomain(sharedSettings?.providerFamilyDomain);
+-  const providerSettingsRead = useProviderSettingsView();
+-  const providerSettingsView =
+-    providerSettingsRead.state.status === "ready" ? providerSettingsRead.state.view : null;
+-  // 首次读取失败也不能被解释成“已经加载且没有套餐”；只有 Ready 才能消费 Provider 事实。
+-  const providerSourcesLoading = providerSettingsRead.state.status !== "ready";
+-  const selectedSupplierKey = useZCodeSessionStore((state) =>
+-    workspacePath
+-      ? selectWorkspaceZCodeState(state, workspacePath, workspaceIdentity).selectedSupplierKey
+-      : "",
+-  );
+-  const availableCodingPlanProviders = useMemo(
+-    () =>
+-      [
+-        BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-        BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-      ].flatMap((providerId): CodingPlanUsageAvailableProvider[] => {
+-        const access = resolveEntitledAccountProviderAccess(providerSettingsView, providerId);
+-        if (!access) return [];
+-        return [
+-          {
+-            providerId,
+-            accountAccess: access.access,
+-            label:
+-              access.label ||
+-              (providerId === BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan
+-                ? "Z.ai - Coding Plan"
+-                : "BigModel - Coding Plan"),
+-          },
+-        ];
+-      }),
+-    [providerSettingsView],
+-  );
+-  const zaiProvider = availableCodingPlanProviders.find(
+-    (provider) => provider.providerId === BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-  );
+-  const bigmodelProvider = availableCodingPlanProviders.find(
+-    (provider) => provider.providerId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-  );
+-  const zaiProviderFingerprint = resolveEntitledAccountProviderAccessFingerprint(
+-    providerSettingsView,
+-    BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-  );
+-  const bigmodelProviderFingerprint = resolveEntitledAccountProviderAccessFingerprint(
+-    providerSettingsView,
+-    BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-  );
+-  const zaiTeamProvider = resolveEntitledAccountProviderAccess(
+-    providerSettingsView,
+-    BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan,
+-  );
+-  const bigmodelTeamProvider = resolveEntitledAccountProviderAccess(
+-    providerSettingsView,
+-    BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan,
+-  );
+-  const selectedProviderIdFromSupplierKey =
+-    parseCustomProviderIdFromSupplierKey(selectedSupplierKey);
+-  const selectedProviderFamilyId = selectedProviderIdFromSupplierKey
+-    ? resolveModelProviderFamilyIdByProviderId(selectedProviderIdFromSupplierKey)
+-    : null;
+-  // providerFamilyDomain 是当前登录/运行 family 边界；BigModel Team selectedKey
+-  // 会在切换到 Z.ai 后保留，footer 若不按当前 domain 过滤会把头像旁徽标误显示成 Team。
+-  const scopedSelectedProviderId =
+-    selectedProviderFamilyId &&
+-    providerFamilyDomain &&
+-    selectedProviderFamilyId !== providerFamilyDomain
+-      ? null
+-      : selectedProviderIdFromSupplierKey;
+-  const bigmodelFamilyAllowed = providerFamilyDomain !== "zai";
+-  // 原只有 bigmodelFamilyAllowed 单变量，zai family 下 enterprise products 完全不拉。
+-  // zai team plan 对称化需要 zai family 也独立拉一份 enterprise pricing。
+-  const zaiFamilyAllowed = providerFamilyDomain !== "bigmodel";
+-  const bigmodelEnterpriseProducts = useEnterpriseCodingPlanProducts({
+-    // footer badge 和升级入口都需要识别 Team Plan。
+-    // Team 项目上下文只在企业 pricing/customerInfo 返回，账号级头像徽标也不能被当前连接方式卡住。
+-    enabled:
+-      enabled && !providerSourcesLoading && bigmodelFamilyAllowed && Boolean(bigmodelTeamProvider),
+-    authenticated: true,
+-    family: "bigmodel",
+-  });
+-  const zaiEnterpriseProducts = useEnterpriseCodingPlanProducts({
+-    enabled: enabled && !providerSourcesLoading && zaiFamilyAllowed && Boolean(zaiTeamProvider),
+-    authenticated: true,
+-    family: "zai",
+-  });
+-  const subscribedTeamProducts = useMemo(
+-    () => [
+-      ...(bigmodelEnterpriseProducts.snapshot?.productList.filter(
+-        (product) => product.subscribed === true,
+-      ) ?? []),
+-      ...(zaiEnterpriseProducts.snapshot?.productList.filter(
+-        (product) => product.subscribed === true,
+-      ) ?? []),
+-    ],
+-    [bigmodelEnterpriseProducts.snapshot?.productList, zaiEnterpriseProducts.snapshot?.productList],
+-  );
+-  const teamSources = useMemo(
+-    () =>
+-      buildCodingPlanUsageSources({
+-        accountAccesses: {
+-          ...(zaiTeamProvider?.access
+-            ? {
+-                zai: zaiTeamProvider.access,
+-              }
+-            : {}),
+-          ...(bigmodelTeamProvider?.access
+-            ? {
+-                bigmodel: bigmodelTeamProvider.access,
+-              }
+-            : {}),
+-        },
+-        subscribedTeamProducts,
+-      }),
+-    [bigmodelTeamProvider?.access, subscribedTeamProducts, zaiTeamProvider?.access],
+-  );
+-  const currentUsageSource = useMemo(
+-    () =>
+-      resolveSidebarCurrentCodingPlanUsageSource({
+-        selections: sharedSettings?.providerFamilyConnectionSelections,
+-        selectedProviderId: scopedSelectedProviderId,
+-        accountAccesses: {
+-          ...(resolveEntitledAccountProviderAccess(
+-            providerSettingsView,
+-            BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-          )?.access
+-            ? {
+-                zai: resolveEntitledAccountProviderAccess(
+-                  providerSettingsView,
+-                  BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-                )!.access,
+-              }
+-            : {}),
+-          ...(resolveEntitledAccountProviderAccess(
+-            providerSettingsView,
+-            BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-          )?.access
+-            ? {
+-                bigmodel: resolveEntitledAccountProviderAccess(
+-                  providerSettingsView,
+-                  BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-                )!.access,
+-              }
+-            : {}),
+-        },
+-        teamSources,
+-      }),
+-    [
+-      scopedSelectedProviderId,
+-      bigmodelProvider?.accountAccess,
+-      sharedSettings?.providerFamilyConnectionSelections,
+-      teamSources,
+-      zaiProvider?.accountAccess,
+-    ],
+-  );
+-  const selectedProviderId = currentUsageSource?.sourceId;
+-
+-  const zaiEntitlement = useUsageEntitlement({
+-    enabled:
+-      enabled &&
+-      !providerSourcesLoading &&
+-      providerFamilyDomain !== "bigmodel" &&
+-      Boolean(zaiProvider),
+-    includeSubscription: true,
+-    preferredProviderId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-    accountAccess: resolveEntitledAccountProviderAccess(
+-      providerSettingsView,
+-      BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-    )?.access,
+-    allowDisabledPreferredProvider: true,
+-    requirePreferredProvider: true,
+-    allowEnvApiKey: false,
+-    cacheKey: buildUsageEntitlementCacheKey({
+-      providerId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-      providerFingerprint: zaiProviderFingerprint,
+-    }),
+-    refreshOnMount: false,
+-  });
+-  const bigmodelEntitlement = useUsageEntitlement({
+-    enabled:
+-      enabled && !providerSourcesLoading && bigmodelFamilyAllowed && Boolean(bigmodelProvider),
+-    includeSubscription: true,
+-    preferredProviderId: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-    accountAccess: resolveEntitledAccountProviderAccess(
+-      providerSettingsView,
+-      BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-    )?.access,
+-    allowDisabledPreferredProvider: true,
+-    requirePreferredProvider: true,
+-    allowEnvApiKey: false,
+-    cacheKey: buildUsageEntitlementCacheKey({
+-      providerId: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-      providerFingerprint: bigmodelProviderFingerprint,
+-    }),
+-    refreshOnMount: false,
+-  });
+-  const teamEntitlement = useUsageEntitlement({
+-    // 原硬绑 bigmodelCodingPlan providerId 判断，zai team source 的 providerId
+-    // 是 zaiCodingPlan，永远进不到 team 分支，导致 zai team 额度不查询、badge 不显示。
+-    // 改为按 currentUsageSource.audience === "team" 路由，providerId 动态取。
+-    enabled: enabled && !providerSourcesLoading && currentUsageSource?.audience === "team",
+-    includeSubscription: true,
+-    preferredProviderId:
+-      currentUsageSource?.providerId ?? BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-    accountAccess: currentUsageSource?.teamSource?.accountAccess,
+-    allowDisabledPreferredProvider: true,
+-    requirePreferredProvider: true,
+-    allowEnvApiKey: false,
+-    cacheKey: currentUsageSource?.teamSource?.id,
+-    refreshOnMount: false,
+-  });
+-  // footer 是常驻入口，refreshOnMount: false 后冷启动没有其它
+-  // 入口预热 entitlement，个人计划徽标缺失。可见时触发一次 access 刷新，复用共享
+-  // 1 分钟 freshness window、失败退避和 in-flight 合并；hook disabled 时 refresh 是 no-op。
+-  useEffect(() => {
+-    for (const refresh of [
+-      zaiEntitlement.refresh,
+-      bigmodelEntitlement.refresh,
+-      teamEntitlement.refresh,
+-    ]) {
+-      void refresh({ silent: true, reason: "access" });
+-    }
+-  }, [zaiEntitlement.refresh, bigmodelEntitlement.refresh, teamEntitlement.refresh]);
+-  const profilePlanBadge = resolveSidebarFooterProfilePlanBadge({
+-    individualEntitlements: [
+-      ...(providerFamilyDomain !== "bigmodel"
+-        ? [
+-            {
+-              providerId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-              snapshot: zaiEntitlement.snapshot,
+-              loading: zaiEntitlement.loading,
+-            },
+-          ]
+-        : []),
+-      ...(bigmodelFamilyAllowed
+-        ? [
+-            {
+-              providerId: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-              snapshot: bigmodelEntitlement.snapshot,
+-              loading: bigmodelEntitlement.loading,
+-            },
+-          ]
+-        : []),
+-    ],
+-    // 头像徽标使用账号的 Team entitlement；pricing 结果只负责额度来源和套餐详情。
+-    hasTeamPlanEntitlement:
+-      providerFamilyDomain === "zai"
+-        ? Boolean(zaiTeamProvider)
+-        : providerFamilyDomain === "bigmodel"
+-          ? Boolean(bigmodelTeamProvider)
+-          : Boolean(zaiTeamProvider || bigmodelTeamProvider),
+-  });
+-  const providerEntitlements = [
+-    ...(currentUsageSource?.providerId === BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan &&
+-    currentUsageSource.audience === "individual"
+-      ? [
+-          {
+-            sourceId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-            providerId: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
+-            accountAccess: currentUsageSource.accountAccess,
+-            ...zaiEntitlement,
+-          },
+-        ]
+-      : []),
+-    ...(currentUsageSource?.providerId ===
+-      BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan &&
+-    currentUsageSource.audience === "individual"
+-      ? [
+-          {
+-            sourceId: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-            providerId: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
+-            accountAccess: currentUsageSource.accountAccess,
+-            ...bigmodelEntitlement,
+-          },
+-        ]
+-      : []),
+-    // 原 team 分支硬判 bigmodelCodingPlan providerId，zai team source 走不进来。
+-    // 改为统一按 audience === "team" 路由，覆盖 zai/bigmodel 两种 family 的 team source。
+-    ...(currentUsageSource?.audience === "team" && currentUsageSource.teamSource
+-      ? [
+-          {
+-            sourceId: currentUsageSource.teamSource.id,
+-            providerId: currentUsageSource.teamSource.providerId,
+-            accountAccess: currentUsageSource.teamSource.accountAccess,
+-            label: currentUsageSource.teamSource.label,
+-            ...teamEntitlement,
+-          },
+-        ]
+-      : []),
+-  ];
+-  const usageState = resolveCodingPlanUsageRemainingState({
+-    availableProviders: availableCodingPlanProviders,
+-    entitlements: providerEntitlements,
+-    modelProvidersLoading: providerSourcesLoading,
+-    selectedProviderId,
+-  });
+-  const visibleUsageState = usageState?.hasAnyActiveCodingPlan ? usageState : null;
+-  const selectedUpgradeProviderId: SidebarUsageCodingPlanProviderId | undefined =
+-    selectedProviderId === BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan ||
+-    selectedProviderId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan
+-      ? selectedProviderId
+-      : undefined;
+-  const upgradeTargetProviderId =
+-    selectedUpgradeProviderId ??
+-    currentUsageSource?.providerId ??
+-    availableCodingPlanProviders[0]?.providerId ??
+-    resolveSidebarCodingPlanUpgradeFallbackProviderId(providerFamilyDomain);
+-  return {
+-    audience: currentUsageSource?.audience,
+-    availableCodingPlanProviders,
+-    providerSourcesLoading,
+-    providerEntitlements,
+-    profilePlanBadge,
+-    selectedProviderId,
+-    upgradeTargetProviderId,
+-    usageState: visibleUsageState,
+-  };
+-}
+-
+-type WorkspaceSidebarFooterUsageSummaryState = ReturnType<
+-  typeof useWorkspaceSidebarFooterUsageSummaryState
+->;
+-
+-export function WorkspaceSidebarFooterUsageSummaryContent({
+-  state,
+-  onUsageClick,
+-  onUpgradeClick,
+-}: {
+-  state: WorkspaceSidebarFooterUsageSummaryState;
+-  onUsageClick?: () => void;
+-  onUpgradeClick?: (
+-    providerId: SidebarUsageCodingPlanProviderId,
+-    funnelContext: CodingPlanFunnelContext,
+-  ) => void;
+-}) {
+-  const { intl } = useZCodeIntl();
+-  const { providerEntitlements, upgradeTargetProviderId } = state;
+-  const upgradeProviderSnapshot =
+-    providerEntitlements.find((item) => item.providerId === upgradeTargetProviderId)?.snapshot ??
+-    null;
+-  const upgradeActionLabelId = isMaxCodingPlanSnapshot(upgradeProviderSnapshot)
+-    ? "sidebar.usage.plan.renew"
+-    : "sidebar.usage.plan.upgrade";
+-
+-  return (
+-    <>
+-      <DropdownMenuSeparator />
+-      <DropdownMenuItem
+-        data-testid={TID_SIDEBAR_CODING_PLAN_USAGE_BUTTON}
+-        onSelect={() => {
+-          setPendingSettingsUsageIntent();
+-          onUsageClick?.();
+-        }}
+-      >
+-        <BarChart3Icon className="size-4" />
+-        {intl.formatMessage({ id: "sidebar.usage.plan.openStats" })}
+-      </DropdownMenuItem>
+-    </>
+-  );
+-}
+-
+-export function WorkspaceSidebarFooterPlanBadge({
+-  state,
+-}: {
+-  state: WorkspaceSidebarFooterUsageSummaryState;
+-}) {
+-  const { intl } = useZCodeIntl();
+-  const label =
+-    state.profilePlanBadge?.audience === "team"
+-      ? intl.formatMessage({ id: "sidebar.usage.plan.audienceTeam" })
+-      : resolveSidebarFooterPlanBadgeLabel(state.profilePlanBadge?.snapshot ?? null);
+-  if (!label) {
+-    return null;
+-  }
+-
+-  return (
+-    <span
+-      className="min-w-0 max-w-20 shrink truncate rounded-full border border-border bg-surface px-1 py-px text-ui-xs font-medium leading-normal text-foreground-subtle"
+-      title={label}
+-    >
+-      {label}
+-    </span>
+-  );
+-}
+diff --git a/packages/ui/src/hooks/index.ts b/packages/ui/src/hooks/index.ts
+index a7b746b5adee0f23fb69af6280650f7fb3b007e0..f9be4ee2dde055ec24e45feee618a4dab06c481e 100644
+--- a/packages/ui/src/hooks/index.ts
++++ b/packages/ui/src/hooks/index.ts
+@@ -53,4 +53,3 @@ export { useGitActions } from "./useGitActions.js";
+ // workspace provider 配置路径
+ export { useTaskNativeSessionLogFile } from "./useTaskNativeSessionLogFile.js";
+ export { useTaskSessionFilePath } from "./useTaskSessionFilePath.js";
+-export { useUsageStats } from "./useUsageStats.js";
+diff --git a/packages/ui/src/hooks/useUsageStats.ts b/packages/ui/src/hooks/useUsageStats.ts
+index bff9c89b6577c597885f9c4a2f8f7afab9b5ef13..6e8babe6748a963d3387ba8c5f52404f7982ee89 100644
+--- a/packages/ui/src/hooks/useUsageStats.ts
++++ b/packages/ui/src/hooks/useUsageStats.ts
+@@ -4,8 +4,6 @@ import type {
+   AppUsageSnapshot,
+   CodingPlanUsageRange,
+   CodingPlanUsageSnapshot,
+-  UsageStatsRange,
+-  UsageStatsSnapshot,
+   ZCodeAccountAccess,
+   ZCodeProviderAccountAccess,
+ } from "@zcode/shared";
+@@ -14,12 +12,6 @@ import { useServices } from "@/hooks/useServices.js";
+ import { useStableAccountAccess } from "@/hooks/useStableAccountAccess.js";
+ import { USAGE_ENTITLEMENT_ACCESS_REFRESH_MS } from "@/lib/usageEntitlementRefreshPolicy.js";
+ 
+-interface UsageStatsState {
+-  snapshot: UsageStatsSnapshot | null;
+-  loading: boolean;
+-  error: string | null;
+-}
+-
+ interface AppUsageStatsState {
+   snapshot: AppUsageSnapshot | null;
+   loading: boolean;
+@@ -63,131 +55,6 @@ function getErrorMessage(error: unknown): string {
+   return String(error);
+ }
+ 
+-const INITIAL_STATE: UsageStatsState = {
+-  snapshot: null,
+-  loading: false,
+-  error: null,
+-};
+-
+-export function useUsageStats(
+-  range: UsageStatsRange,
+-  options: {
+-    dataSource?: "local" | "monitor";
+-    enabled?: boolean;
+-    preferredProviderId?: string;
+-    accountAccess?: ZCodeProviderAccountAccess | ZCodeAccountAccess;
+-    requirePreferredProvider?: boolean;
+-    allowEnvApiKey?: boolean;
+-  } = {},
+-) {
+-  const { usageStatsService } = useServices();
+-  const [state, setState] = useState<UsageStatsState>(INITIAL_STATE);
+-  const requestVersionRef = useRef(0);
+-  const dataSource = options.dataSource;
+-  const enabled = options.enabled ?? true;
+-  const preferredProviderId = options.preferredProviderId;
+-  const accountAccess = useStableAccountAccess(options.accountAccess);
+-  const requirePreferredProvider = options.requirePreferredProvider === true;
+-  const allowEnvApiKey = options.allowEnvApiKey;
+-  const requestScope = [
+-    dataSource ?? "",
+-    preferredProviderId ?? "",
+-    JSON.stringify(accountAccess ?? null),
+-    requirePreferredProvider ? "strict" : "relaxed",
+-    allowEnvApiKey === false ? "no-env" : "env",
+-  ].join("|");
+-  const lastRequestScopeRef = useRef(requestScope);
+-
+-  const refresh = useCallback(async () => {
+-    if (!enabled) {
+-      return;
+-    }
+-
+-    const requestVersion = requestVersionRef.current + 1;
+-    requestVersionRef.current = requestVersion;
+-    const keepPreviousSnapshot = lastRequestScopeRef.current === requestScope;
+-    lastRequestScopeRef.current = requestScope;
+-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+-
+-    setState((current) => ({
+-      // App Usage 与 Coding Plan 共用同一个 hook 实例。
+-      // 切 tab 后如果继续保留旧 snapshot，Coding Plan 请求期间或失败后会显示本地 App Usage 数据。
+-      snapshot: keepPreviousSnapshot ? current.snapshot : null,
+-      loading: true,
+-      error: null,
+-    }));
+-
+-    try {
+-      const snapshot = await usageStatsService.getSnapshot({
+-        range,
+-        dataSource,
+-        preferredProviderId,
+-        accountAccess,
+-        requirePreferredProvider,
+-        allowEnvApiKey,
+-        timeZone,
+-      });
+-      if (requestVersionRef.current !== requestVersion) {
+-        return;
+-      }
+-      setState({
+-        snapshot,
+-        loading: false,
+-        error: null,
+-      });
+-    } catch (error) {
+-      if (requestVersionRef.current !== requestVersion) {
+-        return;
+-      }
+-      const message = getErrorMessage(error);
+-      logger.warn("[useUsageStats] 读取 usage 统计失败", {
+-        dataSource,
+-        range,
+-        preferredProviderId,
+-        timeZone,
+-        error: message,
+-      });
+-      setState((current) => ({
+-        snapshot: lastRequestScopeRef.current === requestScope ? current.snapshot : null,
+-        loading: false,
+-        error: message,
+-      }));
+-    }
+-  }, [
+-    accountAccess,
+-    allowEnvApiKey,
+-    dataSource,
+-    enabled,
+-    preferredProviderId,
+-    range,
+-    requestScope,
+-    requirePreferredProvider,
+-    usageStatsService,
+-  ]);
+-
+-  useEffect(() => {
+-    if (!enabled) {
+-      setState({
+-        // Coding Plan provider 被移除或禁用后，使用统计查询会被关闭。
+-        // 这里清空旧快照，避免设置页继续显示上一家账号的用量数据。
+-        snapshot: null,
+-        loading: false,
+-        error: null,
+-      });
+-      return;
+-    }
+-
+-    void refresh();
+-  }, [enabled, refresh]);
+-
+-  return {
+-    snapshot: state.snapshot,
+-    loading: state.loading,
+-    error: state.error,
+-    refresh,
+-  };
+-}
+-
+ export function useAppUsageStats(range: AppUsageRange) {
+   const { usageStatsService } = useServices();
+   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 96fd50b3cf2f12b266bb5ed2ffdd84d62d6d2761..ccdc391c7c4e80fc31951d3d981d05916db8febc 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3960,8 +3960,16 @@ const enUS: Record<string, string> = {
+   "settings.usage.checkApiKey": "Check account",
+   "usage.error.stats.credential":
+     "Unable to load usage stats. Reconnect the Coding Plan account or confirm that the account has an active plan.",
++  "usage.error.stats.accessDenied":
++    "The provider denied usage access (403). Check account permissions, plan access or region; this alone does not prove the sign-in expired.",
+   "usage.error.stats.generic":
+     "Unable to load usage stats. Try again later or check the network and provider configuration.",
++  "usage.error.teamSource.credential":
++    "{provider} subscription details are unavailable. Reconnect the account.",
++  "usage.error.teamSource.accessDenied":
++    "{provider} denied subscription access. Check the account and plan permissions.",
++  "usage.error.teamSource.generic":
++    "Could not read {provider} subscription details. Try again later.",
+   "settings.usage.emptyTitle": "No usage data yet",
+   "settings.usage.emptyDescription": "The selected range has no usage data yet.",
+   "settings.usage.estimationHint": "Estimated from local session history",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 2c7e5e64c926e8f9806680f49332fce88ed76925..6d80efbaf7b2dfb5f098425d964b3bf43a6123be 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -3704,7 +3704,12 @@ const zhCN: Record<string, string> = {
+   "settings.usage.checkApiKey": "检查账号",
+   "usage.error.stats.credential":
+     "无法读取用量统计。请重新连接编程套餐账号，或确认该账号已开通编程套餐。",
++  "usage.error.stats.accessDenied":
++    "服务商拒绝读取用量统计（403）。请核对账号权限、套餐权益或地区限制；仅凭此错误不能认定登录已过期。",
+   "usage.error.stats.generic": "无法读取用量统计。请稍后重试，或检查网络和供应商配置。",
++  "usage.error.teamSource.credential": "无法读取 {provider} 订阅信息。请重新连接账号。",
++  "usage.error.teamSource.accessDenied": "{provider} 拒绝读取订阅信息。请检查账号及套餐权限。",
++  "usage.error.teamSource.generic": "暂时无法读取 {provider} 订阅信息，请稍后重试。",
+   "settings.usage.emptyTitle": "还没有可展示的数据",
+   "settings.usage.emptyDescription": "当前区间暂无可展示的用量数据。",
+   "settings.usage.estimationHint": "根据本地会话历史估算",
+diff --git a/packages/ui/src/lib/codingPlanUsageSources.ts b/packages/ui/src/lib/codingPlanUsageSources.ts
+index ca8794ef2b63fc0ecf5f21fa74bc7e705516b01b..49c389ed301158baeb18513cbe58dfae9609df3c 100644
+--- a/packages/ui/src/lib/codingPlanUsageSources.ts
++++ b/packages/ui/src/lib/codingPlanUsageSources.ts
+@@ -7,10 +7,7 @@ import {
+   type ZCodeAccountAccess,
+   type ZCodeProviderAccountAccess,
+ } from "@zcode/shared";
+-import {
+-  resolveEnterpriseCodingPlanProductFamily,
+-  type EnterpriseCodingPlanProductDisplay,
+-} from "@/settings/model-provider-section/enterpriseCodingPlanProducts.js";
++import { type TeamSubscriptionProduct } from "@/settings/model-provider-section/teamSubscriptionProducts.js";
+ import type {
+   SidebarUsageCodingPlanProviderId,
+   SidebarUsageCodingPlanSourceId,
+@@ -69,13 +66,13 @@ export function buildCodingPlanUsageSources({
+   subscribedTeamProducts,
+ }: {
+   accountAccesses: Partial<Record<ProviderFamilyDomain, ZCodeProviderAccountAccess>>;
+-  subscribedTeamProducts: EnterpriseCodingPlanProductDisplay[];
++  subscribedTeamProducts: TeamSubscriptionProduct[];
+ }): CodingPlanUsageSource[] {
+   return buildTeamCodingPlanUsageSources(subscribedTeamProducts, accountAccesses);
+ }
+ 
+ function buildTeamCodingPlanUsageSources(
+-  subscribedTeamProducts: EnterpriseCodingPlanProductDisplay[],
++  subscribedTeamProducts: TeamSubscriptionProduct[],
+   accountAccesses: Partial<Record<ProviderFamilyDomain, ZCodeProviderAccountAccess>>,
+ ): CodingPlanUsageSource[] {
+   const seen = new Set<string>();
+@@ -113,7 +110,7 @@ function buildTeamCodingPlanUsageSources(
+       // 原 createBigModelTeamPlanConnectionKey + bigmodelCodingPlan providerId
+       // 硬编码 bigmodel，zai team product 的 sourceId 用了 bigmodel 前缀、providerId 也错。
+       // 按 product.family 用 family-aware key + 对应 codingPlan providerId。
+-      const productFamily = resolveEnterpriseCodingPlanProductFamily(product);
++      const productFamily = product.family;
+       const baseAccess = accountAccesses[productFamily];
+       if (baseAccess?.mode !== "team-coding-plan") {
+         return [];
+@@ -195,7 +192,7 @@ function formatTeamUsageSourceLabel({
+   projectId,
+   projectName,
+ }: {
+-  product: EnterpriseCodingPlanProductDisplay;
++  product: TeamSubscriptionProduct;
+   organizationId?: string | null;
+   organizationName?: string | null;
+   projectId?: string | null;
+@@ -213,6 +210,6 @@ function formatTeamUsageSourceLabel({
+   }
+   // 原硬编码 "BigModel - " 前缀，zai team source 显示出来品牌也错位。
+   // 按 product.family 取品牌前缀，与 codingPlanItem.providerName 对齐。
+-  const brandPrefix = `${getModelProviderFamilySpec(resolveEnterpriseCodingPlanProductFamily(product)).label} - `;
++  const brandPrefix = `${getModelProviderFamilySpec(product.family).label} - `;
+   return `${brandPrefix}${teamPlanName}`;
+ }
+diff --git a/packages/ui/src/lib/usageErrorCopy.ts b/packages/ui/src/lib/usageErrorCopy.ts
+index 4df508c58ce21f19f9b39cacd564f68a039c97bb..b37bde5afb7a85849708bcf594d1a514f8635331 100644
+--- a/packages/ui/src/lib/usageErrorCopy.ts
++++ b/packages/ui/src/lib/usageErrorCopy.ts
+@@ -1,7 +1,5 @@
+ import type { IntlInstance } from "@/i18n/IntlProvider.js";
+ 
+-type UsageErrorSurface = "chatPlan" | "entitlement" | "stats";
+-
+ const CREDENTIAL_ERROR_PATTERNS = [
+   /token\s+(expired|incorrect)/i,
+   /expired.*token/i,
+@@ -9,15 +7,15 @@ const CREDENTIAL_ERROR_PATTERNS = [
+   /invalid.*(?:api\s*)?key/i,
+   /(?:api\s*)?key.*invalid/i,
+   /unauthorized/i,
+-  /forbidden/i,
+-  /\b40[13]\b/,
+-  /认证|鉴权|授权|密钥|无效|过期/i,
++  /authentication failed/i,
++  /oauth_required/i,
++  /\b401\b/,
++  /(?:认证|鉴权)(?:失败|错误|未通过)/,
++  /(?:api\s*)?密钥.{0,8}(?:无效|过期|错误)/i,
+ ];
++const ACCESS_DENIED_PATTERNS = [/\b403\b/i, /forbidden/i, /访问被拒绝|权限不足|无权限|拒绝访问/];
+ 
+-// 团队套餐业务错误（如"仅企业主账号可查询企业汇总数据"、
+-// "您当前暂无有效的团队套餐授权记录，无法创建API Key"）是远端明确的业务拒绝原因，
+-// 必须原文展示。其中"授权记录"含"授权"字样，若先走 credential 判断会被
+-// 误判成凭据问题（走翻译文案 + 检查 API Key 按钮），因此业务错误优先匹配。
++// Explicit plan denial takes precedence over generic credential wording.
+ const TEAM_PLAN_BUSINESS_ERROR_PATTERNS = [
+   /企业主账号/,
+   /团队套餐/,
+@@ -41,24 +39,32 @@ export function isUsageCredentialError(error: string | null | undefined): boolea
+   return CREDENTIAL_ERROR_PATTERNS.some((pattern) => pattern.test(error));
+ }
+ 
++export function isUsageAccessDenied(error: string | null | undefined): boolean {
++  return Boolean(error && ACCESS_DENIED_PATTERNS.some((pattern) => pattern.test(error)));
++}
++
+ export function formatUsageErrorMessage(
+   intl: IntlInstance,
+-  surface: UsageErrorSurface,
+   error: string | null | undefined,
++  provider?: string,
+ ): string {
+-  // 团队套餐业务错误是远端明确的业务拒绝原因，generic 文案会掩盖真实失败原因
+-  // （如"仅企业主账号可查询企业汇总数据"），用户无法判断是权限问题还是网络问题。
+-  // 必须先于 credential 判断："您当前暂无有效的团队套餐授权记录…"含"授权"字样，
+-  // 若后判断会被误认为凭据错误而走翻译文案。
++  if (provider) {
++    const id = isUsageCredentialError(error)
++      ? "usage.error.teamSource.credential"
++      : isUsageAccessDenied(error) || isUsageTeamPlanBusinessError(error)
++        ? "usage.error.teamSource.accessDenied"
++        : "usage.error.teamSource.generic";
++    return intl.formatMessage({ id }, { provider });
++  }
+   if (isUsageTeamPlanBusinessError(error) && error?.trim()) {
+     return error.trim();
+   }
+ 
+-  // 供应商接口会返回英文鉴权错误，直接展示会让用户不知道下一步怎么排查。
+-  // 这里统一把可恢复的 key/OAuth 问题翻译成用户可执行的检查项，原始错误仍由调用方写入日志。
+   if (isUsageCredentialError(error)) {
+-    return intl.formatMessage({ id: `usage.error.${surface}.credential` });
++    return intl.formatMessage({ id: "usage.error.stats.credential" });
+   }
+-
+-  return intl.formatMessage({ id: `usage.error.${surface}.generic` });
++  if (isUsageAccessDenied(error)) {
++    return intl.formatMessage({ id: "usage.error.stats.accessDenied" });
++  }
++  return intl.formatMessage({ id: "usage.error.stats.generic" });
+ }
+diff --git a/packages/ui/src/settings/UsageStatsSection.tsx b/packages/ui/src/settings/UsageStatsSection.tsx
+index a3321e60d20052ffd177ddfb4878260c249ec45b..2c9ae84969905f748d9377d23b81cf8bff03b7f5 100644
+--- a/packages/ui/src/settings/UsageStatsSection.tsx
++++ b/packages/ui/src/settings/UsageStatsSection.tsx
+@@ -3,6 +3,7 @@ import {
+   CodingPlanUsagePanel,
+   type CodingPlanUsageSource,
+ } from "@/settings/usage-stats/CodingPlanUsagePanel.js";
++import { UsageStatsErrorNotice } from "@/settings/usage-stats/UsageStatsErrorNotice.js";
+ 
+ export type UsageStatsSectionTab = "app" | "codingPlan" | `codingPlan:${string}`;
+ 
+@@ -12,23 +13,30 @@ export function UsageStatsSection({
+   workspaceIdentity,
+   workspacePath,
+   selectedCodingPlanSource,
++  teamSourceFailures = [],
+ }: {
+   activeTab: UsageStatsSectionTab;
+   providerSourcesLoading: boolean;
+   workspaceIdentity?: string;
+   workspacePath?: string;
+   selectedCodingPlanSource?: CodingPlanUsageSource | null;
++  teamSourceFailures?: Array<{ provider: string; error: string }>;
+ }) {
+-  if (activeTab === "app") {
+-    return <AppUsagePanel />;
+-  }
+-
+   return (
+-    <CodingPlanUsagePanel
+-      loadingSources={providerSourcesLoading}
+-      workspaceIdentity={workspaceIdentity}
+-      workspacePath={workspacePath}
+-      selectedSource={selectedCodingPlanSource}
+-    />
++    <div className="space-y-4">
++      {teamSourceFailures.map(({ provider, error }) => (
++        <UsageStatsErrorNotice key={provider} error={error} provider={provider} />
++      ))}
++      {activeTab === "app" ? (
++        <AppUsagePanel />
++      ) : (
++        <CodingPlanUsagePanel
++          loadingSources={providerSourcesLoading}
++          workspaceIdentity={workspaceIdentity}
++          workspacePath={workspacePath}
++          selectedSource={selectedCodingPlanSource}
++        />
++      )}
++    </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/codingPlanProductPresentation.ts b/packages/ui/src/settings/model-provider-section/codingPlanProductPresentation.ts
+deleted file mode 100644
+index 16fa3d10e79772ab9c34e85f35458be1661b3ffc..0000000000000000000000000000000000000000
+--- a/packages/ui/src/settings/model-provider-section/codingPlanProductPresentation.ts
++++ /dev/null
+@@ -1,76 +0,0 @@
+-import type { CodingPlanCardCopyItem, CodingPlanProductPreviewPayment } from "@zcode/shared";
+-
+-export function normalizeCodingPlanCardCopyItems(items: unknown): CodingPlanCardCopyItem[] {
+-  if (!Array.isArray(items)) {
+-    return [];
+-  }
+-  return items.flatMap((item) => {
+-    if (typeof item !== "string" && (!item || typeof item !== "object")) {
+-      return [];
+-    }
+-    const text =
+-      typeof item === "string"
+-        ? item.trim()
+-        : typeof (item as { text?: unknown }).text === "string"
+-          ? (item as { text: string }).text.trim()
+-          : "";
+-    if (!text) {
+-      return [];
+-    }
+-    const tooltip =
+-      typeof item === "string" || typeof (item as { tooltip?: unknown }).tooltip !== "string"
+-        ? ""
+-        : (item as { tooltip: string }).tooltip.trim();
+-    return [{ text, ...(tooltip ? { tooltip } : {}) }];
+-  });
+-}
+-export type CodingPlanPriceCurrency = "CNY" | "USD";
+-export type CodingPlanPriceUnit = "month" | "quarter" | "year";
+-
+-export type CodingPlanProductDisplay = CodingPlanProductPreviewPayment & {
+-  priceCurrency?: CodingPlanPriceCurrency;
+-  externalPurchaseUrl?: string;
+-  hasPreview?: boolean;
+-  equity?: CodingPlanCardCopyItem[];
+-  descriptionItems?: CodingPlanCardCopyItem[];
+-};
+-
+-const CODING_PLAN_CURRENCY_LABELS_ZH: Record<CodingPlanPriceCurrency, string> = {
+-  CNY: "人民币",
+-  USD: "美元",
+-};
+-
+-export function pickProductPrice(product: CodingPlanProductPreviewPayment): number | null {
+-  return product.payAmount ?? product.discountAmount ?? product.renewAmount ?? null;
+-}
+-
+-function normalizeCodingPlanCurrency(currency: string | null | undefined): CodingPlanPriceCurrency {
+-  return currency?.trim().toUpperCase() === "USD" ? "USD" : "CNY";
+-}
+-
+-export function formatCodingPlanAmount(
+-  amount: number,
+-  currency: string | null | undefined,
+-  locale: string,
+-): string {
+-  const resolvedCurrency = normalizeCodingPlanCurrency(currency);
+-  const isChineseLocale = locale.toLowerCase().startsWith("zh");
+-  const formattedAmount = new Intl.NumberFormat(locale, {
+-    minimumFractionDigits: 2,
+-    maximumFractionDigits: 2,
+-  }).format(amount);
+-  const currencyPrefix = isChineseLocale
+-    ? resolvedCurrency === "USD"
+-      ? "$"
+-      : "¥"
+-    : resolvedCurrency === "USD"
+-      ? "US$"
+-      : "CN¥";
+-  const formatted = `${currencyPrefix}${formattedAmount}`;
+-
+-  // 套餐页需要同时展示中英文和跨币种价格；依赖 Intl currency 会在不同 locale 下输出
+-  // 不一致的 ISO code/符号组合，因此这里按产品文案规范固定符号和中文币种名。
+-  return isChineseLocale
+-    ? `${formatted} ${CODING_PLAN_CURRENCY_LABELS_ZH[resolvedCurrency]}`
+-    : formatted;
+-}
+diff --git a/packages/ui/src/settings/model-provider-section/enterpriseCodingPlanProducts.ts b/packages/ui/src/settings/model-provider-section/enterpriseCodingPlanProducts.ts
+deleted file mode 100644
+index 5a8c3ee508dd7294118d9022110b1ff0173a1c9d..0000000000000000000000000000000000000000
+--- a/packages/ui/src/settings/model-provider-section/enterpriseCodingPlanProducts.ts
++++ /dev/null
+@@ -1,192 +0,0 @@
+-/* eslint-disable max-lines -- 企业套餐展示模型集中承载静态目录、实时定价与支付参数转换，拆分会模糊合并边界。 */
+-import type {
+-  CodingPlanStaticTeamProduct,
+-  EnterpriseCodingPlanPricingProduct,
+-  EnterpriseCodingPlanSubscribePeriod,
+-  ProviderFamilyDomain,
+-} from "@zcode/shared";
+-import {
+-  normalizeCodingPlanCardCopyItems,
+-  type CodingPlanPriceUnit,
+-  type CodingPlanProductDisplay,
+-} from "@/settings/model-provider-section/codingPlanProductPresentation.js";
+-
+-export type EnterpriseCodingPlanProductDisplay = CodingPlanProductDisplay & {
+-  enterpriseProduct: EnterpriseCodingPlanPricingProduct;
+-  tier: EnterpriseCodingPlanPricingProduct["tier"];
+-  subscribeMode: EnterpriseCodingPlanPricingProduct["subscribeMode"];
+-  subscribePeriod: EnterpriseCodingPlanPricingProduct["subscribePeriod"];
+-  purchaseMethodName: string;
+-  organizationId?: string | null;
+-  organizationName?: string | null;
+-  projectId?: string | null;
+-  projectName?: string | null;
+-  teamProjects?: EnterpriseCodingPlanPricingProduct["teamProjects"];
+-  apiKeyStatus?: EnterpriseCodingPlanPricingProduct["apiKeyStatus"];
+-  apiKeyUnavailableReason?: EnterpriseCodingPlanPricingProduct["apiKeyUnavailableReason"];
+-  apiKeyUnavailableMessage?: EnterpriseCodingPlanPricingProduct["apiKeyUnavailableMessage"];
+-  subscribed?: boolean | null;
+-  dynamicPricingAvailable?: boolean;
+-  staticCatalogAvailable?: boolean;
+-  /**
+-   * 该企业套餐所属的 family（zai / bigmodel）。
+-   * 原 UI 层把 team plan items 硬编码为 bigmodelCodingPlan 派生，
+-   * zai family 即使有订阅也无法渲染。加 family 标记后，下游可见性函数可按
+-   * product.family 找到对应 family 的 codingPlanItem 和 team key 前缀。
+-   * 缺省 bigmodel 保持向后兼容。
+-   */
+-  family?: ProviderFamilyDomain;
+-};
+-
+-/** 旧商品缺少 family 时只在这一规范化边界解释为 BigModel。 */
+-export function resolveEnterpriseCodingPlanProductFamily(
+-  product: Pick<EnterpriseCodingPlanProductDisplay, "family">,
+-): ProviderFamilyDomain {
+-  return product.family ?? "bigmodel";
+-}
+-
+-function buildEnterpriseCodingPlanProductList(
+-  products: EnterpriseCodingPlanPricingProduct[],
+-): EnterpriseCodingPlanProductDisplay[] {
+-  return products.map((product): EnterpriseCodingPlanProductDisplay => {
+-    const purchaseMethodName = product.purchaseMethodName?.trim() ?? "";
+-    return {
+-      productId: product.productId,
+-      productName: formatEnterpriseCodingPlanTier(product.tier),
+-      productBigTitle: formatEnterpriseCodingPlanTier(product.tier),
+-      originalAmount: product.originalAmount,
+-      payAmount: resolveEnterpriseCodingPlanDisplayPayAmount(product),
+-      renewAmount: product.renewAmount,
+-      canRepurchase: product.canRepurchase,
+-      inCurrentPeriod: product.subscribed === true,
+-      campaignDiscountDetails: product.campaignDiscountDetails,
+-      priceUnit: mapEnterpriseCodingPlanPriceUnit(product.subscribePeriod),
+-      priceCurrency: "CNY",
+-      productEquityList: [],
+-      hasPreview: true,
+-      enterpriseProduct: product,
+-      tier: product.tier,
+-      subscribeMode: product.subscribeMode,
+-      subscribePeriod: product.subscribePeriod,
+-      purchaseMethodName,
+-      organizationId: product.organizationId,
+-      organizationName: product.organizationName,
+-      projectId: product.projectId,
+-      projectName: product.projectName,
+-      teamProjects: product.teamProjects,
+-      apiKeyStatus: product.apiKeyStatus,
+-      apiKeyUnavailableReason: product.apiKeyUnavailableReason,
+-      apiKeyUnavailableMessage: product.apiKeyUnavailableMessage,
+-      subscribed: product.subscribed,
+-      dynamicPricingAvailable: true,
+-    };
+-  });
+-}
+-
+-function mergeEnterpriseCodingPlanProductList(
+-  staticProducts: CodingPlanStaticTeamProduct[],
+-  pricingProducts: EnterpriseCodingPlanPricingProduct[],
+-): EnterpriseCodingPlanProductDisplay[] {
+-  const pricingByProductId = new Map(
+-    pricingProducts.map((product) => [product.productId, product]),
+-  );
+-  const staticProductIds = new Set(staticProducts.map((product) => product.productId));
+-  const mergedStaticProducts = staticProducts.map((staticProduct) => {
+-    const pricingProduct = pricingByProductId.get(staticProduct.productId);
+-    const enterpriseProduct: EnterpriseCodingPlanPricingProduct = pricingProduct ?? {
+-      productId: staticProduct.productId,
+-      tier: staticProduct.tier,
+-      subscribeMode: staticProduct.subscribeMode,
+-      subscribePeriod: staticProduct.subscribePeriod,
+-      purchaseMethodName: staticProduct.purchaseMethodName,
+-      originalAmount: staticProduct.originalAmount,
+-      discountAmount: staticProduct.discountAmount,
+-      payAmount: staticProduct.payAmount,
+-      renewAmount: staticProduct.renewAmount,
+-      canRepurchase: false,
+-    };
+-    const display = buildEnterpriseCodingPlanProductList([enterpriseProduct])[0]!;
+-    return {
+-      ...display,
+-      productName: staticProduct.productName,
+-      productBigTitle: staticProduct.productName,
+-      originalAmount: pricingProduct?.originalAmount ?? staticProduct.originalAmount,
+-      payAmount: pricingProduct
+-        ? display.payAmount
+-        : (staticProduct.payAmount ?? staticProduct.renewAmount),
+-      renewAmount: pricingProduct?.renewAmount ?? staticProduct.renewAmount,
+-      priceCurrency: staticProduct.priceCurrency,
+-      equity: normalizeCodingPlanCardCopyItems(staticProduct.equity ?? []),
+-      descriptionItems: normalizeCodingPlanCardCopyItems(staticProduct.description ?? []),
+-      dynamicPricingAvailable: pricingProduct !== undefined,
+-      staticCatalogAvailable: true,
+-    };
+-  });
+-  const purchasedPricingProducts = pricingProducts
+-    .filter((product) => product.subscribed === true && !staticProductIds.has(product.productId))
+-    .map((product) => ({
+-      ...buildEnterpriseCodingPlanProductList([product])[0]!,
+-      // client/configs 的团队静态目录只负责可购买 SKU 展示；
+-      // 已购 Team Plan 身份来自 pricing/customerInfo，不能因为静态目录灰度为空或漏发商品
+-      // 就把真实团队连接方式和使用统计入口隐藏。
+-      staticCatalogAvailable: false,
+-    }));
+-  return [...mergedStaticProducts, ...purchasedPricingProducts];
+-}
+-
+-export function resolveEnterpriseCodingPlanProductList(
+-  staticProducts: CodingPlanStaticTeamProduct[] | undefined,
+-  pricingProducts: EnterpriseCodingPlanPricingProduct[],
+-): EnterpriseCodingPlanProductDisplay[] {
+-  // 静态目录缺失或读取失败时，pricing 仍是团队订阅身份与项目上下文的权威来源；
+-  // 只有成功读取到显式空数组时，才按配置语义隐藏全部团队 SKU。
+-  return !Array.isArray(staticProducts)
+-    ? buildEnterpriseCodingPlanProductList(pricingProducts)
+-    : mergeEnterpriseCodingPlanProductList(staticProducts, pricingProducts);
+-}
+-
+-function resolveEnterpriseCodingPlanDisplayPayAmount(
+-  product: EnterpriseCodingPlanPricingProduct,
+-): number | undefined {
+-  const candidateAmounts = [product.payAmount, product.renewAmount].filter(hasPositiveOrZeroAmount);
+-  if (candidateAmounts.length > 0) {
+-    // 真实企业 pricing 年付商品会下发 payAmount=originalAmount、renewAmount=折后价。
+-    // 卡片要和个人套餐一致展示“折后价 + 原价划线”，因此显示价取可用支付金额里的最低值。
+-    return Math.min(...candidateAmounts);
+-  }
+-  if (
+-    hasPositiveOrZeroAmount(product.originalAmount) &&
+-    hasPositiveAmount(product.discountAmount)
+-  ) {
+-    // 个人套餐卡片展示的是折后价 + 原价划线；企业 pricing 的 discountAmount 是优惠金额，
+-    // 不能直接传给通用卡片当价格，但年付商品可能只下发 originalAmount + discountAmount。
+-    return roundCurrencyAmount(Math.max(0, product.originalAmount - product.discountAmount));
+-  }
+-  return undefined;
+-}
+-
+-function hasPositiveAmount(value: number | undefined): value is number {
+-  return typeof value === "number" && Number.isFinite(value) && value > 0;
+-}
+-
+-function hasPositiveOrZeroAmount(value: number | undefined): value is number {
+-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+-}
+-
+-function roundCurrencyAmount(value: number): number {
+-  return Math.round((value + Number.EPSILON) * 100) / 100;
+-}
+-
+-function formatEnterpriseCodingPlanTier(tier: EnterpriseCodingPlanPricingProduct["tier"]): string {
+-  const normalized = tier.trim();
+-  if (!normalized) {
+-    return tier;
+-  }
+-  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+-}
+-
+-function mapEnterpriseCodingPlanPriceUnit(
+-  period: EnterpriseCodingPlanSubscribePeriod,
+-): CodingPlanPriceUnit {
+-  return period === "YEARLY" ? "year" : period === "QUARTERLY" ? "quarter" : "month";
+-}
+diff --git a/packages/ui/src/settings/model-provider-section/teamSubscriptionProducts.ts b/packages/ui/src/settings/model-provider-section/teamSubscriptionProducts.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c09691109e71af65b6f1a8fbf221afbf791a8927
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/teamSubscriptionProducts.ts
+@@ -0,0 +1,33 @@
++import type { EnterpriseCodingPlanPricingProduct, ProviderFamilyDomain } from "@zcode/shared";
++
++/** Only the account's subscribed identity and project scope enter the usage picker. */
++export interface TeamSubscriptionProduct {
++  family: ProviderFamilyDomain;
++  productId: string;
++  organizationId?: string | null;
++  organizationName?: string | null;
++  projectId?: string | null;
++  projectName?: string | null;
++  teamProjects?: EnterpriseCodingPlanPricingProduct["teamProjects"];
++}
++
++export function projectTeamSubscriptionProducts(
++  products: readonly EnterpriseCodingPlanPricingProduct[],
++  family: ProviderFamilyDomain,
++): TeamSubscriptionProduct[] {
++  return products.flatMap((product) =>
++    product.subscribed === true
++      ? [
++          {
++            family,
++            productId: product.productId,
++            organizationId: product.organizationId,
++            organizationName: product.organizationName,
++            projectId: product.projectId,
++            projectName: product.projectName,
++            teamProjects: product.teamProjects,
++          },
++        ]
++      : [],
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/useCodingPlanProducts.ts b/packages/ui/src/settings/model-provider-section/useCodingPlanProducts.ts
+deleted file mode 100644
+index 505a1bb957d55242967b27b2e6c5f57fd73ac4a2..0000000000000000000000000000000000000000
+--- a/packages/ui/src/settings/model-provider-section/useCodingPlanProducts.ts
++++ /dev/null
+@@ -1,546 +0,0 @@
+-/* eslint-disable max-lines -- Coding Plan 套餐需要集中处理静态套餐、远端试算、缓存与登录态回退，避免把共享状态拆散。 */
+-import { useCallback, useEffect, useMemo, useState } from "react";
+-import {
+-  BUILTIN_MODEL_PROVIDER_IDS,
+-  CODING_PLAN_SYSTEM_BUSY,
+-  type CodingPlanBatchPreviewResponse,
+-  type CodingPlanProductPreviewPayment,
+-  type CodingPlanStaticProduct,
+-  type CodingPlanStaticProductsConfig,
+-  type StartPlanPreviewConfig,
+-  isZaiCodingPlanProviderId,
+-} from "@zcode/shared";
+-import { useOptionalServices } from "@/hooks/useServices.js";
+-import { logger } from "@/logger.js";
+-import {
+-  normalizeCodingPlanCardCopyItems,
+-  type CodingPlanProductDisplay,
+-} from "@/settings/model-provider-section/codingPlanProductPresentation.js";
+-import type { CodingPlanProviderId } from "@/settings/model-provider-section/constants.js";
+-
+-interface CodingPlanProductsState {
+-  snapshot: CodingPlanProductsSnapshot | null;
+-  loading: boolean;
+-  error: string | null;
+-}
+-
+-type CodingPlanProductsSnapshot = Omit<CodingPlanBatchPreviewResponse, "productList"> & {
+-  productList: CodingPlanProductDisplay[];
+-};
+-
+-const CODING_PLAN_OAUTH_REQUIRED_ERROR = "coding_plan_oauth_required";
+-const ZAI_START_FREE_PRODUCT_ID = "zai-start-free";
+-const ZAI_START_FREE_PRODUCT_IDS = {
+-  month: `${ZAI_START_FREE_PRODUCT_ID}-monthly`,
+-  quarter: `${ZAI_START_FREE_PRODUCT_ID}-quarterly`,
+-  year: `${ZAI_START_FREE_PRODUCT_ID}-yearly`,
+-} as const;
+-const CODING_PLAN_PRODUCTS_CACHE_TTL_MS = 30_000;
+-const CODING_PLAN_STATIC_PRODUCTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+-const productRequestCache = new Map<string, Promise<CodingPlanProductsSnapshot>>();
+-const productSnapshotCache = new Map<
+-  string,
+-  { snapshot: CodingPlanProductsSnapshot; expiresAt: number }
+->();
+-const productCacheGeneration = new Map<string, number>();
+-let staticProductsConfigCache: {
+-  config: CodingPlanStaticProductsConfig;
+-  expiresAt: number;
+-} | null = null;
+-let staticProductsConfigRequest: Promise<CodingPlanStaticProductsConfig> | null = null;
+-
+-export function useCodingPlanProducts(
+-  providerId: CodingPlanProviderId,
+-  options?: { remotePreviewEnabled?: boolean },
+-) {
+-  const services = useOptionalServices();
+-  const service = services?.codingPlanSubscriptionService;
+-  const supportedProvider =
+-    providerId === BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan ||
+-    isZaiCodingPlanProviderId(providerId);
+-  const enabled = supportedProvider && options?.remotePreviewEnabled !== false;
+-  const staticSnapshot = useMemo(() => buildStaticProductsSnapshot(providerId), [providerId]);
+-  const [state, setState] = useState<CodingPlanProductsState>(() => ({
+-    snapshot: null,
+-    loading: supportedProvider,
+-    error: null,
+-  }));
+-
+-  const refresh = useCallback(
+-    async (options?: { force?: boolean }) => {
+-      if (!supportedProvider) {
+-        setState({
+-          snapshot: staticSnapshot,
+-          loading: false,
+-          error: "unsupported",
+-        });
+-        return;
+-      }
+-      if (!enabled) {
+-        const loadedStaticSnapshot = service
+-          ? await loadCodingPlanStaticProductsSnapshotForTest(providerId, service)
+-          : staticSnapshot;
+-        setState({
+-          // 未登录/未连接时禁止打 paid batch-preview，但仍要展示静态套餐。
+-          // 之前这里返回空 snapshot + loading，导致套餐列表一直卡在加载态。
+-          snapshot: loadedStaticSnapshot,
+-          loading: false,
+-          error: null,
+-        });
+-        return;
+-      }
+-      if (!service) {
+-        setState({
+-          snapshot: staticSnapshot,
+-          loading: false,
+-          error: "service_unavailable",
+-        });
+-        return;
+-      }
+-
+-      setState((current) => ({
+-        // 静态套餐改为远端配置后，首次查看套餐列表时没有本地数据可兜底；
+-        // 请求配置和试算期间必须保持空 snapshot，让外层展示整块加载态，而不是先闪空列表。
+-        snapshot: options?.force === true ? current.snapshot : null,
+-        loading: true,
+-        error: null,
+-      }));
+-
+-      let loadedStaticSnapshot = staticSnapshot;
+-      try {
+-        const staticProducts = await loadCodingPlanStaticProductListForTest(providerId, service);
+-        loadedStaticSnapshot = buildStaticProductsSnapshotFromList(providerId, staticProducts);
+-        const snapshot = await loadCodingPlanProducts(
+-          providerId,
+-          service,
+-          options?.force === true,
+-          staticProducts,
+-        );
+-        setState({
+-          snapshot,
+-          loading: false,
+-          error: null,
+-        });
+-      } catch (error) {
+-        const message = normalizeErrorMessage(error);
+-        logger.warn("[useCodingPlanProducts] 读取 Coding Plan 套餐失败", {
+-          providerId,
+-          error: message,
+-        });
+-        setState((current) => ({
+-          // 手动刷新失败不能用静态套餐覆盖上一轮有效 preview。
+-          // soldOut/canPurchase/forbidden 只存在于 batch-preview，覆盖后周期列表会把“已售罄”误算成可订阅。
+-          snapshot: resolveCodingPlanProductsFailureSnapshot(
+-            current.snapshot,
+-            loadedStaticSnapshot,
+-          ),
+-          loading: false,
+-          error: message,
+-        }));
+-      }
+-    },
+-    [enabled, providerId, service, staticSnapshot, supportedProvider],
+-  );
+-
+-  useEffect(() => {
+-    void refresh();
+-  }, [refresh]);
+-
+-  return {
+-    ...state,
+-    refresh,
+-  };
+-}
+-
+-async function loadCodingPlanProductsForTest(
+-  providerId: CodingPlanProviderId,
+-  service: NonNullable<ReturnType<typeof useOptionalServices>>["codingPlanSubscriptionService"],
+-  force: boolean,
+-  staticProducts?: CodingPlanStaticProduct[],
+-): Promise<CodingPlanProductsSnapshot> {
+-  const now = Date.now();
+-  const generation = force
+-    ? invalidateCodingPlanProductsCache(providerId)
+-    : (productCacheGeneration.get(providerId) ?? 0);
+-  const cachedSnapshot = productSnapshotCache.get(providerId);
+-  if (!force && cachedSnapshot && cachedSnapshot.expiresAt > now) {
+-    return cachedSnapshot.snapshot;
+-  }
+-
+-  const cachedPromise = productRequestCache.get(providerId);
+-  if (!force && cachedPromise) {
+-    return cachedPromise;
+-  }
+-
+-  // React 严格模式和设置页状态刷新会短时间重复挂载套餐卡，
+-  // BigModel/Z.AI 套餐预览接口对连发请求会偶发返回“系统繁忙”；这里合并进行中请求，并只短缓存成功结果，
+-  // 手动刷新、登录/连接成功和购买完成都用 force 绕过缓存，避免交易状态长期陈旧。
+-  // 登录/连接成功还必须让旧的未登录试算请求失去写缓存资格，避免它晚返回后覆盖新的登录态试算结果。
+-  const promise = loadBatchPreviewWithStaticProducts(providerId, service, staticProducts ?? []);
+-  productRequestCache.set(providerId, promise);
+-
+-  try {
+-    const snapshot = await promise;
+-    if ((productCacheGeneration.get(providerId) ?? 0) === generation) {
+-      productSnapshotCache.set(providerId, {
+-        snapshot,
+-        expiresAt: now + CODING_PLAN_PRODUCTS_CACHE_TTL_MS,
+-      });
+-    }
+-    return snapshot;
+-  } finally {
+-    if (productRequestCache.get(providerId) === promise) {
+-      productRequestCache.delete(providerId);
+-    }
+-  }
+-}
+-
+-async function loadCodingPlanStaticProductsSnapshotForTest(
+-  providerId: CodingPlanProviderId,
+-  service: NonNullable<ReturnType<typeof useOptionalServices>>["codingPlanSubscriptionService"],
+-): Promise<CodingPlanProductsSnapshot> {
+-  const staticProducts = await loadCodingPlanStaticProductListForTest(providerId, service);
+-  return buildStaticProductsSnapshotFromList(providerId, staticProducts);
+-}
+-
+-const loadCodingPlanProducts = loadCodingPlanProductsForTest;
+-
+-function resolveCodingPlanProductsFailureSnapshot(
+-  currentSnapshot: CodingPlanProductsSnapshot | null,
+-  fallbackSnapshot: CodingPlanProductsSnapshot,
+-): CodingPlanProductsSnapshot {
+-  return currentSnapshot ?? fallbackSnapshot;
+-}
+-
+-function invalidateCodingPlanProductsCache(providerId: CodingPlanProviderId) {
+-  const nextGeneration = (productCacheGeneration.get(providerId) ?? 0) + 1;
+-  productCacheGeneration.set(providerId, nextGeneration);
+-  productRequestCache.delete(providerId);
+-  productSnapshotCache.delete(providerId);
+-  return nextGeneration;
+-}
+-
+-async function loadBatchPreviewWithStaticProducts(
+-  providerId: CodingPlanProviderId,
+-  service: NonNullable<ReturnType<typeof useOptionalServices>>["codingPlanSubscriptionService"],
+-  staticProducts: CodingPlanStaticProduct[],
+-): Promise<CodingPlanProductsSnapshot> {
+-  const previewSnapshot = await service.batchPreview({ providerId });
+-  const previewByProductId = new Map(
+-    previewSnapshot.productList.map((product) => [product.productId, product]),
+-  );
+-  const productList =
+-    staticProducts.length > 0
+-      ? buildStaticProductDisplayList(staticProducts).map((product) =>
+-          mergeStaticProductWithPreview(product, previewByProductId.get(product.productId)),
+-        )
+-      : previewSnapshot.productList.map((product) => ({
+-          ...product,
+-          hasPreview: true,
+-        }));
+-
+-  return {
+-    ...previewSnapshot,
+-    productList: filterCodingPlanPurchaseProducts(providerId, productList),
+-  };
+-}
+-
+-function buildStaticProductsSnapshot(providerId: CodingPlanProviderId): CodingPlanProductsSnapshot {
+-  return buildStaticProductsSnapshotFromList(providerId, []);
+-}
+-
+-function buildZaiStartStaticProducts(preview: StartPlanPreviewConfig): CodingPlanStaticProduct[] {
+-  const isChineseLocale =
+-    typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh");
+-  const previewName = preview.name.trim() || "Z.ai Start";
+-  const equityList = preview.entitlements.map((entitlement) => ({
+-    productEquityTitle: entitlement.showName,
+-    productEquityDetails: formatStartPlanPreviewEntitlement(entitlement, isChineseLocale),
+-  }));
+-
+-  return [
+-    {
+-      productId: ZAI_START_FREE_PRODUCT_IDS.month,
+-      productName: previewName,
+-      productSmallTitle: "Free Coding Plan",
+-      description: "Free Coding Plan entry for connected Z.ai users.",
+-      productEquityList: equityList,
+-      priceUnit: "month",
+-      displayOrder: 0,
+-      priceCurrency: "USD",
+-      originalAmount: 0,
+-      payAmount: 0,
+-      monthlyPayAmount: 0,
+-    },
+-    {
+-      productId: ZAI_START_FREE_PRODUCT_IDS.quarter,
+-      productName: previewName,
+-      productSmallTitle: "Free Coding Plan",
+-      description: "Free Coding Plan entry for signed-in Z.ai users.",
+-      productEquityList: equityList,
+-      priceUnit: "quarter",
+-      displayOrder: 0,
+-      priceCurrency: "USD",
+-      originalAmount: 0,
+-      payAmount: 0,
+-      monthlyPayAmount: 0,
+-    },
+-    {
+-      productId: ZAI_START_FREE_PRODUCT_IDS.year,
+-      productName: previewName,
+-      productSmallTitle: "Free Coding Plan",
+-      description: "Free Coding Plan entry for signed-in Z.ai users.",
+-      productEquityList: equityList,
+-      priceUnit: "year",
+-      displayOrder: 0,
+-      priceCurrency: "USD",
+-      originalAmount: 0,
+-      payAmount: 0,
+-      monthlyPayAmount: 0,
+-    },
+-  ];
+-}
+-
+-function formatStartPlanPreviewEntitlement(
+-  entitlement: StartPlanPreviewConfig["entitlements"][number],
+-  isChineseLocale: boolean,
+-): string {
+-  const amount = new Intl.NumberFormat(isChineseLocale ? "zh-CN" : "en-US").format(
+-    entitlement.grantUnits,
+-  );
+-  const unit = entitlement.unitType.trim();
+-  const period = entitlement.period.trim();
+-  return [amount, unit, period].filter(Boolean).join(" ");
+-}
+-
+-function isZaiStartFreeProductId(productId: string | null | undefined) {
+-  if (!productId) {
+-    return false;
+-  }
+-  return (
+-    productId === ZAI_START_FREE_PRODUCT_ID || productId.startsWith(`${ZAI_START_FREE_PRODUCT_ID}-`)
+-  );
+-}
+-
+-function buildStaticProductsSnapshotFromList(
+-  providerId: CodingPlanProviderId,
+-  staticProducts: CodingPlanStaticProduct[],
+-): CodingPlanProductsSnapshot {
+-  return {
+-    productList: filterCodingPlanPurchaseProducts(
+-      providerId,
+-      buildStaticProductDisplayList(staticProducts),
+-    ),
+-    isSubscribed: false,
+-    isAuthenticated: null,
+-  };
+-}
+-
+-function buildStaticProductDisplayList(
+-  products: CodingPlanStaticProduct[],
+-): CodingPlanProductDisplay[] {
+-  return products.map((product) => {
+-    const descriptionItems = normalizeCodingPlanCardCopyItems(
+-      typeof product.description === "string"
+-        ? product.description.split(/\r?\n/)
+-        : product.description,
+-    );
+-    return {
+-      ...product,
+-      // 展示模型仍需要换行字符串供旧卡片逻辑读取，同时保留结构化条目，
+-      // 否则 client/configs 下发的单条 tooltip 会在归一化时丢失。
+-      productDescription:
+-        descriptionItems.length > 0
+-          ? descriptionItems.map((item) => item.text).join("\n")
+-          : typeof product.description === "string"
+-            ? product.description
+-            : undefined,
+-      descriptionItems,
+-      equity: normalizeCodingPlanCardCopyItems(product.equity ?? []),
+-      hasPreview: false,
+-    };
+-  });
+-}
+-
+-async function loadCodingPlanStaticProductListForTest(
+-  providerId: CodingPlanProviderId,
+-  service: NonNullable<ReturnType<typeof useOptionalServices>>["codingPlanSubscriptionService"],
+-): Promise<CodingPlanStaticProduct[]> {
+-  try {
+-    const config = await loadCodingPlanStaticProductsConfig(service);
+-    // 套餐描述由远端 client/configs 统一维护，前端不能再按 Lite/Pro/Max 写死覆盖，
+-    // 否则远端更新后设置页仍展示旧文案。
+-    const remoteProducts = config[providerId] ?? [];
+-    if (providerId === BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan) {
+-      return filterCodingPlanPurchaseProducts(providerId, remoteProducts);
+-    }
+-    if (providerId !== BUILTIN_MODEL_PROVIDER_IDS.zaiStartPlan) {
+-      return remoteProducts;
+-    }
+-
+-    const startPlanPreview =
+-      typeof service.getStartPlanPreview === "function"
+-        ? await service.getStartPlanPreview()
+-        : null;
+-    if (!startPlanPreview) {
+-      // 体验套餐是否存在由 client/configs.startPlanPreview 决定。
+-      // 后端缺字段时不能再用本地硬编码兜底，否则会展示已经被配置关闭的体验套餐。
+-      return remoteProducts;
+-    }
+-
+-    // Start 免费档现在归属于独立的 Start Plan 入口，且必须由远端 preview 开关显式打开。
+-    // Z.AI - Coding Plan 的购买列表只展示付费升级项，避免把 Start 当成可购买套餐重复显示。
+-    const seen = new Set<string>();
+-    return [...buildZaiStartStaticProducts(startPlanPreview), ...remoteProducts].filter(
+-      (product) => {
+-        if (seen.has(product.productId)) {
+-          return false;
+-        }
+-        seen.add(product.productId);
+-        return true;
+-      },
+-    );
+-  } catch (error) {
+-    logger.warn("[useCodingPlanProducts] 读取远端 Coding Plan 静态套餐失败", {
+-      providerId,
+-      error: normalizeErrorMessage(error),
+-    });
+-    return [];
+-  }
+-}
+-
+-function filterCodingPlanPurchaseProducts<
+-  TProduct extends { productId: string | null | undefined },
+->(providerId: CodingPlanProviderId, products: TProduct[]): TProduct[] {
+-  if (providerId !== BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan) {
+-    return products;
+-  }
+-  return products.filter((product) => !isZaiStartFreeProductId(product.productId));
+-}
+-
+-async function loadCodingPlanStaticProductsConfig(
+-  service: NonNullable<ReturnType<typeof useOptionalServices>>["codingPlanSubscriptionService"],
+-): Promise<CodingPlanStaticProductsConfig> {
+-  const now = Date.now();
+-  if (staticProductsConfigCache && staticProductsConfigCache.expiresAt > now) {
+-    return staticProductsConfigCache.config;
+-  }
+-  if (staticProductsConfigRequest) {
+-    return staticProductsConfigRequest;
+-  }
+-
+-  if (typeof service.getStaticProducts !== "function") {
+-    return {};
+-  }
+-
+-  // 静态套餐来自远端 client/configs，但只有用户真正查看套餐列表时才需要请求；
+-  // 这里做一天内存缓存和进行中请求合并，避免设置页重渲染或多个 provider 卡片重复拉配置。
+-  const request = service.getStaticProducts();
+-  staticProductsConfigRequest = request;
+-  try {
+-    const config = await request;
+-    staticProductsConfigCache = {
+-      config,
+-      expiresAt: now + CODING_PLAN_STATIC_PRODUCTS_CACHE_TTL_MS,
+-    };
+-    return config;
+-  } finally {
+-    if (staticProductsConfigRequest === request) {
+-      staticProductsConfigRequest = null;
+-    }
+-  }
+-}
+-
+-function mergeStaticProductWithPreview(
+-  staticProduct: CodingPlanProductDisplay,
+-  previewProduct: CodingPlanProductPreviewPayment | undefined,
+-): CodingPlanProductDisplay {
+-  if (!previewProduct) {
+-    return {
+-      ...staticProduct,
+-      hasPreview: false,
+-    };
+-  }
+-
+-  return {
+-    ...staticProduct,
+-    inCurrentPeriod: previewProduct.inCurrentPeriod,
+-    lastValid: previewProduct.lastValid,
+-    effectiveTime: previewProduct.effectiveTime,
+-    originalAmount: previewProduct.originalAmount,
+-    discountAmount: previewProduct.discountAmount,
+-    payAmount: previewProduct.payAmount,
+-    monthlyOriginalAmount: previewProduct.monthlyOriginalAmount,
+-    monthlyRenewAmount: previewProduct.monthlyRenewAmount,
+-    monthlyPayAmount: previewProduct.monthlyPayAmount,
+-    renewAmount: previewProduct.renewAmount,
+-    canPurchase: previewProduct.canPurchase,
+-    soldOut: previewProduct.soldOut,
+-    hasFirstTimeSubscriptionPromo: previewProduct.hasFirstTimeSubscriptionPromo,
+-    delay: previewProduct.delay,
+-    canRepurchase: previewProduct.canRepurchase,
+-    forbidden: previewProduct.forbidden,
+-    campaignDiscountDetails: previewProduct.campaignDiscountDetails,
+-    hasPreview: true,
+-  };
+-}
+-
+-export function normalizeErrorMessage(error: unknown): string {
+-  const message = readErrorMessage(error);
+-  if (isCodingPlanSystemBusyMessage(message)) {
+-    // 支付接口可能返回 WAF HTML 或 JSON 解析错误。
+-    // 这类内容不能直接展示给用户，统一提示系统繁忙。
+-    return CODING_PLAN_SYSTEM_BUSY;
+-  }
+-  if (isCodingPlanOAuthRequiredMessage(message)) {
+-    // 套餐/支付接口仍依赖 OAuth 登录态。
+-    // token 过期、损坏或缺失时要引导用户重新登录/连接，不能直接展示后端原始 token 错误。
+-    return CODING_PLAN_OAUTH_REQUIRED_ERROR;
+-  }
+-  return message;
+-}
+-
+-function readErrorMessage(error: unknown): string {
+-  if (error instanceof Error) {
+-    return error.message || error.name;
+-  }
+-  if (typeof error === "object" && error !== null && "message" in error) {
+-    const message = (error as { message?: unknown }).message;
+-    if (typeof message === "string" && message.trim()) {
+-      return message;
+-    }
+-  }
+-  return String(error);
+-}
+-
+-function isCodingPlanSystemBusyMessage(message: string): boolean {
+-  const normalized = message.trim().toLowerCase();
+-  if (!normalized) {
+-    return false;
+-  }
+-  return (
+-    normalized.startsWith("<!doctype") ||
+-    /<\s*(html|head|body|script|style|title|meta)\b/.test(normalized) ||
+-    normalized.includes("errors.aliyun.com") ||
+-    normalized.includes("request has been blocked") ||
+-    normalized.includes("unexpected token '<'") ||
+-    normalized.includes("unexpected end of json input") ||
+-    normalized.includes("invalid json response")
+-  );
+-}
+-
+-function isCodingPlanOAuthRequiredMessage(message: string): boolean {
+-  const normalized = message.toLowerCase();
+-  return (
+-    normalized === "bigmodel_oauth_required" ||
+-    normalized === "zai_oauth_required" ||
+-    normalized.includes("oauth_required") ||
+-    /\b401\b|\b403\b/.test(normalized) ||
+-    normalized.includes("unauthorized") ||
+-    normalized.includes("forbidden") ||
+-    normalized.includes("token expired") ||
+-    normalized.includes("expired or incorrect") ||
+-    normalized.includes("invalid token") ||
+-    normalized.includes("access token")
+-  );
+-}
+diff --git a/packages/ui/src/settings/model-provider-section/useEnterpriseCodingPlanProducts.ts b/packages/ui/src/settings/model-provider-section/useEnterpriseCodingPlanProducts.ts
+deleted file mode 100644
+index fea38d545aec48e91307fe5a06b18d6294535f4f..0000000000000000000000000000000000000000
+--- a/packages/ui/src/settings/model-provider-section/useEnterpriseCodingPlanProducts.ts
++++ /dev/null
+@@ -1,237 +0,0 @@
+-import { useCallback, useEffect, useMemo, useState } from "react";
+-import {
+-  getModelProviderFamilySpec,
+-  type CodingPlanStaticTeamProduct,
+-  type EnterpriseCodingPlanPricingResponse,
+-  type ProviderFamilyDomain,
+-} from "@zcode/shared";
+-import { useOptionalServices } from "@/hooks/useServices.js";
+-import { isRemoteWorkspaceDisconnectedError } from "@/lib/remoteWorkspaceServiceError.js";
+-import { logger } from "@/logger.js";
+-import {
+-  resolveEnterpriseCodingPlanProductList,
+-  type EnterpriseCodingPlanProductDisplay,
+-} from "@/settings/model-provider-section/enterpriseCodingPlanProducts.js";
+-import { normalizeErrorMessage } from "@/settings/model-provider-section/useCodingPlanProducts.js";
+-
+-interface EnterpriseCodingPlanProductsState {
+-  snapshot: EnterpriseCodingPlanProductsSnapshot | null;
+-  loading: boolean;
+-  error: string | null;
+-}
+-
+-interface EnterpriseCodingPlanProductsSnapshot {
+-  productList: EnterpriseCodingPlanProductDisplay[];
+-  raw: EnterpriseCodingPlanPricingResponse;
+-  authenticated: boolean;
+-  /** 静态目录控制购买横幅，不能用实时 pricing 补造目录中缺失的商品。 */
+-  staticProductIds?: string[];
+-}
+-
+-function shouldRetainEnterprisePricingSnapshotForRefresh(
+-  snapshot: EnterpriseCodingPlanProductsSnapshot | null,
+-  authenticated: boolean,
+-): boolean {
+-  return snapshot?.authenticated === authenticated;
+-}
+-
+-function resolveEnterprisePricingFailureSnapshot({
+-  currentSnapshot,
+-  authenticated,
+-  staticProducts,
+-  family = "bigmodel",
+-}: {
+-  currentSnapshot: EnterpriseCodingPlanProductsSnapshot | null;
+-  authenticated: boolean;
+-  staticProducts: CodingPlanStaticTeamProduct[] | undefined;
+-  family?: ProviderFamilyDomain;
+-}): EnterpriseCodingPlanProductsSnapshot | null {
+-  if (shouldRetainEnterprisePricingSnapshotForRefresh(currentSnapshot, authenticated)) {
+-    return currentSnapshot;
+-  }
+-  if (!Array.isArray(staticProducts)) {
+-    return null;
+-  }
+-  const raw: EnterpriseCodingPlanPricingResponse = { productList: [] };
+-  return {
+-    raw,
+-    productList: tagEnterpriseProductsFamily(
+-      resolveEnterpriseCodingPlanProductList(staticProducts, raw.productList),
+-      family,
+-    ),
+-    authenticated,
+-  };
+-}
+-
+-/**
+- * 给企业套餐展示列表打上 family 标记（zai / bigmodel）。
+- * 下游可见性函数（appendSubscribedTeamPlanItems 等）需要按 family
+- * 找到对应 codingPlanItem 和 team key 前缀；原列表无 family 字段，只能按
+- * bigmodelCodingPlan 派生，导致 zai team plan 无法渲染。
+- */
+-function tagEnterpriseProductsFamily(
+-  products: EnterpriseCodingPlanProductDisplay[],
+-  family: ProviderFamilyDomain,
+-): EnterpriseCodingPlanProductDisplay[] {
+-  return products.map((product) => ({ ...product, family }));
+-}
+-
+-/**
+- * 原 hook 只服务 bigmodel family，getStaticTeamProducts 硬编码
+- * 读 bigmodelCodingPlan bucket、getEnterprisePricing 不传 family。
+- * zai family 对称化后，hook 接受 family 参数：
+- *   - 按 family 读 static bucket（zaiCodingPlan / bigmodelCodingPlan）
+- *   - 传 family 给 service.getEnterprisePricing，service 据此路由到对应 provider
+- * 缺省 family 时保持 bigmodel，向后兼容既有调用点。
+- */
+-export function useEnterpriseCodingPlanProducts({
+-  enabled,
+-  authenticated,
+-  family = "bigmodel",
+-  staticOnly = false,
+-}: {
+-  enabled: boolean;
+-  /** 未登录购买横幅只读取公开静态目录，不请求实时 pricing。 */
+-  staticOnly?: boolean;
+-  authenticated: boolean;
+-  family?: ProviderFamilyDomain;
+-}) {
+-  const services = useOptionalServices();
+-  const service = services?.codingPlanSubscriptionService;
+-  const codingPlanProviderId = getModelProviderFamilySpec(family).individualCodingPlanProviderId;
+-  const [state, setState] = useState<EnterpriseCodingPlanProductsState>({
+-    snapshot: null,
+-    loading: enabled,
+-    error: null,
+-  });
+-
+-  const refresh = useCallback(
+-    async (_options?: { force?: boolean }) => {
+-      if (!enabled) {
+-        setState((current) => ({
+-          snapshot: current.snapshot,
+-          loading: false,
+-          error: null,
+-        }));
+-        return;
+-      }
+-      if (!service) {
+-        setState({
+-          snapshot: null,
+-          loading: false,
+-          error: "service_unavailable",
+-        });
+-        return;
+-      }
+-
+-      setState((current) => ({
+-        // 企业/个人切换和登录态刷新时不应把套餐区域替换成整块 loading；
+-        // 保留上一轮企业套餐数据，让刷新状态只体现在刷新按钮和卡片局部状态上。
+-        // 但公开 pricing 与登录态 pricing 的字段语义不同，切换鉴权来源时必须丢弃旧数据，
+-        // 否则升级 Coding Plan 列表页会继续展示未鉴权的套餐结果。
+-        snapshot: shouldRetainEnterprisePricingSnapshotForRefresh(current.snapshot, authenticated)
+-          ? current.snapshot
+-          : null,
+-        loading: true,
+-        error: null,
+-      }));
+-
+-      try {
+-        // 静态目录是展示配置，pricing 是订阅身份与实时价格的权威来源。
+-        // 两者必须独立请求，避免灰度环境缺少新配置字段时阻断已购 Team Plan 的恢复。
+-        const [staticResult, pricingResult] = await Promise.allSettled([
+-          service.getStaticTeamProducts(),
+-          staticOnly
+-            ? Promise.resolve<EnterpriseCodingPlanPricingResponse>({ productList: [] })
+-            : service.getEnterprisePricing({ authenticated, family }),
+-        ]);
+-        const staticProducts =
+-          staticResult.status === "fulfilled"
+-            ? Object.prototype.hasOwnProperty.call(staticResult.value, codingPlanProviderId)
+-              ? staticResult.value[codingPlanProviderId]
+-              : undefined
+-            : undefined;
+-        const raw: EnterpriseCodingPlanPricingResponse =
+-          pricingResult.status === "fulfilled" ? pricingResult.value : { productList: [] };
+-        const pricingError = pricingResult.status === "rejected" ? pricingResult.reason : null;
+-        if (pricingError) {
+-          const message = normalizeErrorMessage(pricingError);
+-          setState((current) => ({
+-            // pricing 刷新失败代表实时状态未知，不能用静态目录或空列表覆盖
+-            // 同鉴权态下上一轮有效的订阅身份与价格；首次失败时才展示静态禁用卡片。
+-            snapshot: resolveEnterprisePricingFailureSnapshot({
+-              currentSnapshot: current.snapshot,
+-              authenticated,
+-              staticProducts,
+-              family,
+-            }),
+-            loading: false,
+-            error: message,
+-          }));
+-          if (!isRemoteWorkspaceDisconnectedError(pricingError)) {
+-            logger.warn("[useEnterpriseCodingPlanProducts] 读取企业实时定价失败", {
+-              authenticated,
+-              error: message,
+-            });
+-          }
+-          return;
+-        }
+-        setState({
+-          snapshot: {
+-            raw,
+-            staticProductIds: staticProducts?.map((product) => product.productId) ?? [],
+-            productList: tagEnterpriseProductsFamily(
+-              resolveEnterpriseCodingPlanProductList(staticProducts, raw.productList),
+-              family,
+-            ),
+-            authenticated,
+-          },
+-          loading: false,
+-          error: pricingError ? normalizeErrorMessage(pricingError) : null,
+-        });
+-        if (
+-          staticResult.status === "rejected" &&
+-          !isRemoteWorkspaceDisconnectedError(staticResult.reason)
+-        ) {
+-          logger.warn("[useEnterpriseCodingPlanProducts] 读取团队静态配置失败，回退实时 pricing", {
+-            authenticated,
+-            error: normalizeErrorMessage(staticResult.reason),
+-          });
+-        }
+-      } catch (error) {
+-        const message = normalizeErrorMessage(error);
+-        // 远端 workspace 壳层会早于 attachment 绑定短暂渲染；此时断连代理报错是
+-        // 可预期的初始化等待态，不应伪装成 pricing 故障。真实 RPC 错误仍保留 warn。
+-        if (!isRemoteWorkspaceDisconnectedError(error)) {
+-          logger.warn("[useEnterpriseCodingPlanProducts] 读取企业 Coding Plan 套餐失败", {
+-            authenticated,
+-            error: message,
+-          });
+-        }
+-        setState((current) => ({
+-          // 企业定价接口失败时如果直接清空 snapshot，
+-          // 切换到团队套餐页会只剩“暂无可购买的编程套餐”，用户无法分辨是接口失败还是确实无商品。
+-          // 保留上一轮可见套餐并把错误显式抛给 UI，避免把可恢复的刷新失败伪装成空列表。
+-          snapshot: shouldRetainEnterprisePricingSnapshotForRefresh(current.snapshot, authenticated)
+-            ? current.snapshot
+-            : null,
+-          loading: false,
+-          error: message,
+-        }));
+-      }
+-    },
+-    [authenticated, codingPlanProviderId, enabled, family, service, staticOnly],
+-  );
+-
+-  useEffect(() => {
+-    void refresh();
+-  }, [refresh]);
+-
+-  return useMemo(
+-    () => ({
+-      ...state,
+-      refresh,
+-    }),
+-    [refresh, state],
+-  );
+-}
+diff --git a/packages/ui/src/settings/model-provider-section/useTeamSubscriptionProducts.ts b/packages/ui/src/settings/model-provider-section/useTeamSubscriptionProducts.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0684ae7fd0030d277eabd082939263be6bca98d3
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/useTeamSubscriptionProducts.ts
+@@ -0,0 +1,159 @@
++import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
++import { CODING_PLAN_SYSTEM_BUSY, type ProviderFamilyDomain } from "@zcode/shared";
++import { useOptionalServices } from "@/hooks/useServices.js";
++import { isRemoteWorkspaceDisconnectedError } from "@/lib/remoteWorkspaceServiceError.js";
++import { logger } from "@/logger.js";
++import {
++  projectTeamSubscriptionProducts,
++  type TeamSubscriptionProduct,
++} from "@/settings/model-provider-section/teamSubscriptionProducts.js";
++
++interface TeamSubscriptionState {
++  scope: object;
++  snapshot: TeamSubscriptionSnapshot | null;
++  loading: boolean;
++  error: string | null;
++}
++
++interface TeamSubscriptionSnapshot {
++  productList: TeamSubscriptionProduct[];
++}
++
++/** The purchase-card hook is retired; this reader projects existing subscribed Team identities. */
++export function useTeamSubscriptionProducts({
++  enabled,
++  family = "bigmodel",
++  identity,
++}: {
++  enabled: boolean;
++  family?: ProviderFamilyDomain;
++  /** Existing account-provider revision/fingerprint; never displayed or logged. */
++  identity: string;
++}) {
++  const services = useOptionalServices();
++  const service = services?.codingPlanSubscriptionService;
++  const scope = useMemo(
++    () => ({ service, enabled, family, identity }),
++    [service, enabled, family, identity],
++  );
++  const currentScopeRef = useRef<object | null>(scope);
++  const requestVersionRef = useRef(0);
++  const [state, setState] = useState<TeamSubscriptionState>({
++    scope,
++    snapshot: null,
++    loading: enabled,
++    error: null,
++  });
++
++  const refresh = useCallback(async () => {
++    if (currentScopeRef.current !== scope) return;
++    const requestVersion = ++requestVersionRef.current;
++    if (!scope.enabled) {
++      setState({ scope, snapshot: null, loading: false, error: null });
++      return;
++    }
++    if (!scope.service) {
++      setState({ scope, snapshot: null, loading: false, error: "service_unavailable" });
++      return;
++    }
++
++    setState((current) => ({
++      scope,
++      snapshot: current.scope === scope ? current.snapshot : null,
++      loading: true,
++      error: null,
++    }));
++
++    try {
++      const pricing = await scope.service.getEnterprisePricing({
++        authenticated: true,
++        family: scope.family,
++      });
++      if (requestVersionRef.current !== requestVersion || currentScopeRef.current !== scope) return;
++      setState({
++        scope,
++        snapshot: {
++          productList: projectTeamSubscriptionProducts(pricing.productList, scope.family),
++        },
++        loading: false,
++        error: null,
++      });
++    } catch (error) {
++      if (requestVersionRef.current !== requestVersion || currentScopeRef.current !== scope) return;
++      const message = normalizeEnterprisePricingError(error);
++      // 远端 workspace 壳层会早于 attachment 绑定短暂渲染；此时断连代理报错是
++      // 可预期的初始化等待态，不应伪装成 pricing 故障。真实 RPC 错误仍保留 warn。
++      if (!isRemoteWorkspaceDisconnectedError(error)) {
++        logger.warn("[useTeamSubscriptionProducts] 读取企业 Coding Plan 套餐失败", {
++          error: message,
++        });
++      }
++      setState({
++        scope,
++        // Team sources are selectable account identities. Without a dated stale label,
++        // a failed refresh must not leave a former subscription looking active.
++        snapshot: null,
++        loading: false,
++        error: message,
++      });
++    }
++  }, [scope]);
++
++  useLayoutEffect(() => {
++    currentScopeRef.current = scope;
++    return () => {
++      currentScopeRef.current = null;
++      requestVersionRef.current += 1;
++    };
++  }, [scope]);
++
++  useEffect(() => {
++    void refresh();
++  }, [refresh]);
++
++  // 切换 family/账号的首帧也不能显示旧商品，不能只在 effect 完成时过滤。
++  return {
++    snapshot: scope.enabled && state.scope === scope ? state.snapshot : null,
++    loading: scope.enabled && state.scope === scope ? state.loading : scope.enabled,
++    error: scope.enabled && state.scope === scope ? state.error : null,
++    refresh,
++  };
++}
++
++/** Keep transport denial distinct from an explicit expired or invalid OAuth credential. */
++export function normalizeEnterprisePricingError(error: unknown): string {
++  const message =
++    error instanceof Error
++      ? error.message || error.name
++      : typeof error === "object" &&
++          error !== null &&
++          "message" in error &&
++          typeof error.message === "string" &&
++          error.message.trim()
++        ? error.message
++        : String(error);
++  const normalized = message.trim().toLowerCase();
++  if (
++    normalized.startsWith("<!doctype") ||
++    /<\s*(html|head|body|script|style|title|meta)\b/.test(normalized) ||
++    normalized.includes("errors.aliyun.com") ||
++    normalized.includes("request has been blocked") ||
++    normalized.includes("unexpected token '<'") ||
++    normalized.includes("unexpected end of json input") ||
++    normalized.includes("invalid json response")
++  )
++    return CODING_PLAN_SYSTEM_BUSY;
++  if (
++    normalized === "bigmodel_oauth_required" ||
++    normalized === "zai_oauth_required" ||
++    normalized.includes("oauth_required") ||
++    /\b401\b/.test(normalized) ||
++    normalized.includes("unauthorized") ||
++    normalized.includes("token expired") ||
++    normalized.includes("expired or incorrect") ||
++    normalized.includes("invalid token") ||
++    normalized.includes("access token")
++  )
++    return "coding_plan_oauth_required";
++  return message;
++}
+diff --git a/packages/ui/src/settings/usage-stats/UsageStatsErrorNotice.tsx b/packages/ui/src/settings/usage-stats/UsageStatsErrorNotice.tsx
+index 573f172982a5d6f9cda031c00b0688d7d70be7a8..d454ce717e4f56524ed45e5f227684a1028e80ca 100644
+--- a/packages/ui/src/settings/usage-stats/UsageStatsErrorNotice.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageStatsErrorNotice.tsx
+@@ -8,16 +8,12 @@ import {
+   isUsageTeamPlanBusinessError,
+ } from "@/lib/usageErrorCopy.js";
+ 
+-export function UsageStatsErrorNotice({ error }: { error: string }) {
++export function UsageStatsErrorNotice({ error, provider }: { error: string; provider?: string }) {
+   const { intl } = useZCodeIntl();
+-  // 团队套餐业务错误（如"您当前暂无有效的团队套餐授权记录…"）含"授权"字样，
+-  // 直接 isUsageCredentialError 会误判成凭据问题（显示检查 API Key 按钮），业务错误优先。
+-  const usageErrorIsTeamPlanBusiness = isUsageTeamPlanBusinessError(error);
++  const usageErrorIsTeamPlanBusiness = isUsageTeamPlanBusinessError(error) && !provider;
+   const usageErrorIsCredential = !usageErrorIsTeamPlanBusiness && isUsageCredentialError(error);
+ 
+   return (
+-    // 参考 Plan Card teamUnavailable 的内联展示（InfoIcon + warning 文字），
+-    // 不加边框/背景容器，避免把业务状态提示渲染成独立错误条。
+     <div className="flex w-fit min-w-0 items-center gap-1.5 text-ui-base">
+       {usageErrorIsTeamPlanBusiness ? (
+         <InfoIcon className="size-3 shrink-0 text-warning" aria-hidden="true" />
+@@ -39,7 +35,7 @@ export function UsageStatsErrorNotice({ error }: { error: string }) {
+               : "min-w-0 truncate whitespace-nowrap text-destructive"
+         }
+       >
+-        {formatUsageErrorMessage(intl, "stats", error)}
++        {formatUsageErrorMessage(intl, error, provider)}
+       </span>
+       {usageErrorIsCredential ? (
+         <Button
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 0e537984e35ffd0f9b752bb1972017e146798547..56f575fa7a56aacd4cdca3b4d12d7fdce7b2b77c 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -85,8 +85,11 @@ import {
+   type SidebarUsageCodingPlanProviderId,
+   type SidebarUsageCodingPlanSourceId,
+ } from "@/lib/sidebarUsageCodingPlanProviderPreference.js";
+-import { resolveEntitledAccountProviderAccess } from "@/lib/accountProviderAccess.js";
+-import { useEnterpriseCodingPlanProducts } from "@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js";
++import {
++  resolveEntitledAccountProviderAccess,
++  resolveEntitledAccountProviderAccessFingerprint,
++} from "@/lib/accountProviderAccess.js";
++import { useTeamSubscriptionProducts } from "@/settings/model-provider-section/useTeamSubscriptionProducts.js";
+ import {
+   resolveDraftDisplayedConfig,
+   resolveDraftModelThoughtOption,
+@@ -497,18 +500,22 @@ function V4ComposerModelControlsImpl({
+   // 原 hook 不传 family，默认只拉 bigmodel 企业 pricing，
+   // zai team plan 拿不到订阅产品，模型选择器里的 team 模型组建不出来。
+   // 按 contextPlanConnection.family 让 hook 拉对应 family 的 team products。
+-  const enterpriseProducts = useEnterpriseCodingPlanProducts({
++  const enterpriseProducts = useTeamSubscriptionProducts({
+     enabled:
+       !providerSourcesLoading &&
+       contextPlanConnection.kind === "teamCoding" &&
+       Boolean(contextAccountProviderAccess),
+-    authenticated: true,
+     family: contextPlanConnection.kind === "teamCoding" ? contextPlanConnection.family : undefined,
++    identity:
++      contextPlanConnection.kind === "teamCoding"
++        ? resolveEntitledAccountProviderAccessFingerprint(
++            providerSettingsView,
++            contextPlanConnection.providerId,
++          )
++        : "",
+   });
+   const subscribedTeamProducts = useMemo(
+-    () =>
+-      enterpriseProducts.snapshot?.productList.filter((product) => product.subscribed === true) ??
+-      [],
++    () => enterpriseProducts.snapshot?.productList ?? [],
+     [enterpriseProducts.snapshot?.productList],
+   );
+   const contextTeamUsageSourceCacheRef = useRef<CodingPlanUsageSource[]>([]);
+diff --git a/packages/ui/test/teamSubscriptionProducts.test.ts b/packages/ui/test/teamSubscriptionProducts.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..30fe68482bb7699873eab2d98a1be1321bf747d8
+--- /dev/null
++++ b/packages/ui/test/teamSubscriptionProducts.test.ts
+@@ -0,0 +1,60 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { EnterpriseCodingPlanPricingProduct, ZCodeProviderAccountAccess } from "@zcode/shared";
++import { projectTeamSubscriptionProducts } from "../src/settings/model-provider-section/teamSubscriptionProducts.js";
++import { buildCodingPlanUsageSources } from "../src/lib/codingPlanUsageSources.js";
++
++const subscribed: EnterpriseCodingPlanPricingProduct = {
++  productId: "team-pro",
++  tier: "PRO",
++  subscribeMode: "CONTINUOUS",
++  subscribePeriod: "MONTHLY",
++  subscribed: true,
++  payAmount: 999,
++  campaignDiscountDetails: [],
++  organizationId: "org-a",
++  organizationName: "Team A",
++  projectId: "project-a",
++  projectName: "Project A",
++  teamProjects: [
++    { organizationId: "org-a", organizationName: "Team A", projectId: "project-a" },
++    { organizationId: "org-a", organizationName: "Team A", projectId: "project-b" },
++  ],
++};
++
++test("Team usage reads only subscribed account/project identity, never purchase prices or SKUs", () => {
++  const products = projectTeamSubscriptionProducts(
++    [subscribed, { ...subscribed, productId: "public-sku", subscribed: false }],
++    "zai",
++  );
++  assert.deepEqual(products, [
++    {
++      family: "zai",
++      productId: "team-pro",
++      organizationId: "org-a",
++      organizationName: "Team A",
++      projectId: "project-a",
++      projectName: "Project A",
++      teamProjects: subscribed.teamProjects,
++    },
++  ]);
++  assert.equal("payAmount" in products[0]!, false);
++  assert.equal("campaignDiscountDetails" in products[0]!, false);
++
++  const sources = buildCodingPlanUsageSources({
++    subscribedTeamProducts: products,
++    accountAccesses: {
++      zai: {
++        type: "zhipu-account",
++        family: "zai",
++        mode: "team-coding-plan",
++        entitled: true,
++      } as ZCodeProviderAccountAccess,
++    },
++  });
++  assert.deepEqual(
++    sources.map((source) => source.accountAccess.projectId),
++    ["project-a", "project-b"],
++  );
++  assert.ok(sources.every((source) => source.providerId.includes("zai")));
++});
+diff --git a/packages/ui/test/usageErrorCopy.test.tsx b/packages/ui/test/usageErrorCopy.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..23028bbc5489b0bbf497dfbf5a1fd8e8ba4047f0
+--- /dev/null
++++ b/packages/ui/test/usageErrorCopy.test.tsx
+@@ -0,0 +1,70 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import React from "react";
++import { renderToStaticMarkup } from "react-dom/server";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { UsageStatsErrorNotice } from "../src/settings/usage-stats/UsageStatsErrorNotice.js";
++import { normalizeEnterprisePricingError } from "../src/settings/model-provider-section/useTeamSubscriptionProducts.js";
++
++function render(error: string, locale: "en-US" | "zh-CN", provider?: string) {
++  const previous = Object.getOwnPropertyDescriptor(globalThis, "React");
++  Object.defineProperty(globalThis, "React", { configurable: true, value: React });
++  try {
++    return renderToStaticMarkup(
++      <ZCodeIntlProvider initialLocale={locale}>
++        <UsageStatsErrorNotice error={error} provider={provider} />
++      </ZCodeIntlProvider>,
++    );
++  } finally {
++    if (previous) Object.defineProperty(globalThis, "React", previous);
++    else Reflect.deleteProperty(globalThis, "React");
++  }
++}
++
++test("bare 403 is localized access denial without an account-login shortcut", () => {
++  const english = render("Provider HTTP 403 forbidden", "en-US");
++  assert.match(english, /provider denied usage access/i);
++  assert.doesNotMatch(english, /<button\b/);
++  const chinese = render("Provider HTTP 403 forbidden", "zh-CN");
++  assert.match(chinese, /服务商拒绝读取用量统计/);
++  assert.doesNotMatch(chinese, /<button\b/);
++});
++
++test("confirmed 401 still offers the existing account recovery action", () => {
++  const html = render("HTTP 401 unauthorized", "en-US");
++  assert.match(html, /Reconnect the Coding Plan account/);
++  assert.match(html, /Check account/);
++});
++
++test("Team source errors identify the provider and only confirmed auth failure offers reconnect", () => {
++  const denied = render("HTTP 403 forbidden", "zh-CN", "Z.ai");
++  assert.match(denied, /Z\.ai 拒绝读取订阅信息/);
++  assert.doesNotMatch(denied, /<button\b/);
++
++  const credential = render("coding_plan_oauth_required", "en-US", "BigModel");
++  assert.match(credential, /BigModel subscription details are unavailable/);
++  assert.match(credential, /Check account/);
++
++  const unknown = render("network timeout", "en-US", "Z.ai");
++  assert.match(unknown, /Could not read Z\.ai subscription details/);
++  assert.doesNotMatch(unknown, /network timeout/);
++});
++
++test("enterprise pricing retains explicit auth and busy errors without turning 403 into expiry", () => {
++  assert.equal(
++    normalizeEnterprisePricingError(new Error("HTTP 401")),
++    "coding_plan_oauth_required",
++  );
++  assert.equal(
++    normalizeEnterprisePricingError(new Error("HTTP 403 forbidden")),
++    "HTTP 403 forbidden",
++  );
++  assert.equal(
++    normalizeEnterprisePricingError(new Error("zai_oauth_required")),
++    "coding_plan_oauth_required",
++  );
++  assert.equal(
++    normalizeEnterprisePricingError(new Error("<!doctype html>")),
++    "coding_plan_system_busy",
++  );
++});

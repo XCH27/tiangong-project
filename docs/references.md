@@ -1,6 +1,7 @@
-# References — open-source projects and what each is for
+# References — implementation evidence and comparisons
 
-Reference projects are evidence, not dependencies. Craft is checked first for every capability; a
+Reference projects are evidence, not dependencies. On the retained branch Craft is the current
+implementation comparison; it has no automatic preference in the OV-025 baseline reassessment. A
 project enters a module only after source comparison, a fixed-commit review, a licence review
 and a local surpass test. A product-only reference informs behaviour and never authorizes copying
 code. Each record carries: repository and commit, licence, exact files and symbols, mechanism
@@ -15,17 +16,140 @@ Raw research notes live in [`research/`](research/) and have these consumers:
 | [Mode and permission comparison](research/context/06-MODE-SELECTION-COMPARISON.md) | R1 Plan and action permission; ZCode controls and Cindy model popup |
 | [xAI authentication](research/context/07-XAI-GROK-AUTHENTICATION.md) | Existing connection authority; client registration must be verified before an OAuth integration |
 | [Pi, Hermes and OpenClaw provider architecture](research/context/09-PI-HERMES-OPENCLAW-PROVIDER-ARCHITECTURE.md) | Existing runtime adapter; SDK versions are source locks, not upgrade instructions |
-| [Context federation benchmark](research/context/00-UNABYSS-BENCHMARK.md), [multi-agent context research](research/context/01-MULTI-AGENT-CONTEXT-RESEARCH.md), [token-saving inventory](research/context/02-TOKEN-SAVING-CANDIDATE-INVENTORY.md), [harness efficiency diagnosis](research/context/03-HARNESS-EFFICIENCY-DIAGNOSIS.md), [gateway comparison](research/context/04-GATEWAY-AGENT-COMPARISON.md) | [SYS-03](modules/context.md); evidence only |
+| [Context-economy observations](#retained-context-economy-observations), [multi-agent context research](research/context/01-MULTI-AGENT-CONTEXT-RESEARCH.md), [token-saving inventory](research/context/02-TOKEN-SAVING-CANDIDATE-INVENTORY.md) | [SYS-03](modules/context.md); source/product evidence only; current policy is not defined here |
 | [Canvas product reverse analysis](research/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md) | [SYS-05](modules/canvas.md) |
 | [Video candidates](research/video/00-CANDIDATE-INVENTORY.md) | [SYS-06](modules/media.md) |
 | [MiniMax hub plugin stack](research/plugins/00-MINIMAX-HUB-PLUGIN-STACK.md) | [marketplace](modules/marketplace.md#plugin-skill-and-marketplace-design) |
+
+## Composer defaults and selector comparison
+
+Owner OV-077 requests actual Cursor interaction and project/global default comparison. Installed
+Cursor 3.23.12 was opened: its existing unsent draft and model/effort/Fast/context values were
+preserved, and the parameter popup and searchable grouped model list were inspected without
+sending. Immutable bundle `Resources/app/out/vs/workbench/workbench.glass.main.js` implements
+`writeSurfaceModelConfig` through application-user persistent model configuration, while
+`resetEmptyStateDraft` reloads that configuration plus per-model parameter preferences. Its
+`createComposerImpl` additionally has a default-switch option. These facts do not prove that
+Cursor's coordinator Projects are Fleet's folder Projects; their product meanings differ.
+
+Installed Codex 26.928.31416 was inspected from its ASAR, not a live GUI interaction: the computer
+control tool refused the Codex app. In `app-initial-8a7b00193cb6.js`, `H7r` reads new-thread model
+configuration keyed by host/cwd and distinguishes current-conversation changes from default
+writes. `L7r` chooses a saved model or catalog default and validates the saved effort against
+advertised levels. The native update path calls `setDefaultModelConfig`, clears prewarmed threads
+and retains a host/cwd override when the write reports `okOverridden`. Work additionally has its own
+last-used-model source. This is evidence for explicit scopes and truthful startup defaults; it
+does not establish the owner's tentative claim that every project always copies its last chat.
+Ignored source copies and byte-lock observations remain under `.fleet/reviews/model-default-study`.
+
+Original ZCode `composerRecent.ts`/`newTaskDraft.ts` already scope accepted submissions by workspace
+identity, but an empty initialized mode can prevent a later connected model from being selected.
+Cindy's `ChatInput.tsx` distinguishes explicit model choices (`markModelChoice`) from effort/Fast
+preference changes and scopes remote-device writes. OpenChamber's `useConfigStore.ts` resolves
+project defaults before profile/agent/server defaults and keeps a project's variant paired with
+its model. Those are reference mechanisms, not dependencies or new Fleet preference authorities.
+The [Models contract](modules/models.md#new-conversation-model-defaults) owns the selected behavior
+and actual local regressions; no Cursor/Codex proprietary code was imported.
+
+The further source comparison separates **default model identity** from **model-specific parameters**:
+
+| Source lock and actual path | Mechanism and Fleet disposition |
+|---|---|
+| OpenCode `f66b86ceec1a`, `packages/app/src/context/local.tsx:162-194,230-365`; `context/models.tsx:14-39,125-140`; `components/dialog-select-model.tsx:56-117` | Explicit Session/draft → agent pin → configured/recent/provider fallback; searchable connection groups; variants are remembered by exact provider/model. Its [official loading order](https://opencode.ai/docs/models/#loading-models) confirms configured before last-used, which differs from the owner's Project last-choice requirement. Keep Fleet's explicit scoped choice before Host fallback; absorb parameter identity and direct search, not global recent/favorite UI or a Manage Models link. |
+| OpenChamber `1a566db6c292`, `packages/ui/src/stores/useConfigStore.ts:2954-3075` | Project default → application default → agent/server fallback; manual selections survive unrelated agent/mode changes. This supports distinct owners and preserving active input; it does not justify another Fleet default-model settings page. |
+| Pi `2b0a123de983`, `packages/coding-agent/src/core/settings-manager.ts:737-760,809-835`; `core/agent-session.ts:2310-2328` | Model/provider defaults are paired; per-model thinking overrides use exact provider/model and are validated/clamped on switch. The [current settings reference](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md) also distinguishes project settings and per-model thinking. Absorb scoped parameter memory; do not copy Pi's medium default or thinking enum onto every vendor. |
+| Cindy `a46bb58fc326`, `apps/desktop/src/renderer/components/new-chat/ChatInput.tsx:6368-6430,7667-7685` | `markModelChoice` distinguishes selecting a model from adjusting its effort/Fast; connection/model parameter writes and remote identity are separate. Editing an old conversation's parameters must not change another model's active new-chat choice. Its multiple native engines and preference stores are not imported. |
+| Craft v0.13.4 `b2d6c8aabdfd`, `apps/electron/src/renderer/components/app-shell/input/CompactModelSelector.tsx:78-164` | Uses an effective connection and pairs the selected model with its connection; a single configured compatibility model can avoid redundant model choice. Retain exact connection identity. Its hard-coded fallback Anthropic models are not evidence for a different connected vendor. |
+
+Fleet's former picker reset parameters on every different-model selection; real renderer tests
+reproduced loss before sending, across reopen and after a late acceptance. Corrections reuse the
+existing scoped composer preference key for exact connection/model parameters. A 500-model actual
+renderer test also reproduced unbounded mounting; the existing TanStack virtualizer now bounds
+large menus while retaining search, all keyboard destinations, item positions and original rows.
+Small menus retain their original DOM and controls. These local tests do not prove live provider
+execution or owner visual acceptance. The module owns the resulting contract, not this table.
+
+### Grok subscription Fast pairing
+
+The built review's same-account native directory contains `grok-4.7` and
+`grok-4.7-build-fast`. Listing both did not wire the Fast control. Cindy's inspected
+`apps/desktop/src/main/maker-host/model-fast-mode.ts` resolves `fastModelId` within the selected
+connection, while `__tests__/xaiSyncImport.test.ts` rejects missing, stale and other-account
+targets and keeps the 4.7 pair separate from 4.6. These are mechanism observations, not evidence
+that its fallback-to-standard behavior or quoted Fast tariffs are appropriate for Fleet.
+Ignored byte-lock observations remain in `.fleet/reviews/model-default-study`.
+
+Grok Build `2bdd1d6a6369` `xai-grok-sampler/src/stream/responses.rs:803` leaves `service_tier`
+unset; its source does not establish a generic Fast flag. The [official xAI Priority documentation](https://docs.x.ai/developers/advanced-api-usage/priority-processing)
+defines a separate API operation and requires the response's served tier before premium billing.
+Fleet absorbs the exact same-connection variant pairing, keeps the selected Fast ID in its existing
+immutable input/account path, and retains the original API Priority gate. It does not convert
+subscription Fast into API Priority or assume a universal quota or price multiplier.
+
+## Commercial desktop references
+
+The owner authorized copying the installed NewMax and Minara clients and their Downloads installers
+to the AIGC volume, with disjoint offline workers while primary development continued. These are
+`EVIDENCE_ONLY` commercial comparisons. Preserve their original notices and provenance; neither
+bundled dependency notices nor formatted JavaScript establish permission to import product code.
+Remote service clients do not reveal their hosted server implementation. No app launch, user-profile
+or secret access, paid request or third-party mutation was part of these audits.
+
+| Reference | Source identity and preserved evidence | Fleet consumer and limit |
+|---|---|---|
+| [NewMax reference index](/Volumes/AIGC/天工参考/commercial/NewMax/README.md) | Installed 1.1.18 is retained separately from installer 1.1.19. DMG SHA256 `dc723fd60f170a51917814c07c332e9a8e9cca409beee4e2df011ffd5400063e`; installer ASAR `42038c7a7a6991d013a1a0fe945b20d2cda69256e5dc9e12746176854bf4ee99`. Decoded main/preload/renderer reading aids retain original spans and warnings; exact synthetic leaf tests remain synthetic. | [Comparison and dispositions](/Volumes/AIGC/天工参考/commercial/NewMax/FLEET-COMPARISON.md): bounded capability search/invoke and packaged topic help inform Context; sender-bound app view/data plumbing informs Components. The broker exists in both versions. Capsule backend entry, manifest permissions and separate AI path do not prove a unified application-operation host; app deletion loses its data. Hosted services, native helper internals and live behavior remain unknown. |
+| [Minara reference index](/Volumes/AIGC/天工参考/commercial/Minara/README.md) | Installed 1.2.1 build `36741430652.1`, claimed source commit `164e677a43f63bc03eafe95a94a3ad5460acd79a`. DMG SHA256 `01a9060fa1b135876cdb8fb6ff0351b908e6ef6a389a453bdcced55b613dad36`. Its separate app copy matches 12,837 file/symlink records; primary rechecked 2,089 exact gateway spans, 6,363 ASAR entries and 83 evidence anchors. Installer mounting failed, so full installer/app equivalence is unproved. | [Source audit and Fleet comparison](/Volumes/AIGC/天工参考/commercial/Minara/research/AUDIT.md): GUI leases retained until settlement inform Browser/remote operations; account-bound unknown-submission recovery informs Media; accepted-version preview/data contracts inform Components. Conditional sequential automations and Full permission defaults do not satisfy Fleet governance. Office XML edits are not a native human editor; finance behavior is not Fleet product intent. |
+
+### Primary NewMax model-configuration comparison
+
+The primary traced installer 1.1.19's `ModelSettingsTab`, `NewPresetConfigPanel`, imported
+`ModelListEditor`, settings store, preload IPC and Main's provider/settings/OAuth services.
+[Detailed path map](/Volumes/AIGC/天工参考/commercial/NewMax/FINDINGS.md#primary-model-configuration-implementation-trace),
+[original-bundle anchors](/Volumes/AIGC/天工参考/commercial/NewMax/evidence/model-configuration-anchors.json)
+and [exact leaf probes](/Volumes/AIGC/天工参考/commercial/NewMax/evidence/model-configuration-probes.json)
+retain source identity and proof limits. The primary separately viewed installed **1.1.18**
+Settings/Connections and a managed detail/action list without enabling anything or executing a
+model/connector action; this is not 1.1.19 visual acceptance or server implementation evidence.
+
+Useful mechanisms are same-slot configuration, preserving custom URLs when changing preset
+formats, exact manual additions, distinct directory/capability tests, account-keyed catalog reads
+and layered model/effort defaults. The inspected implementation also clears frontend test results
+on sidebar selection, enables at most 20 IDs after a model-array update, falls back to the full
+catalog if every ID matches a non-chat name pattern, and can acknowledge settings after failed
+SQLite persistence. First-model success publishes provider activation before later reasoning
+refresh, which can issue paid probes for unknown models. Fleet retains its original controls,
+exact capability/credential scope, explicit paid tests, catalog membership without the 20-model UI cap and
+commit-before-publish instead of importing those behaviors. Detailed consumers belong to
+[Models](modules/models.md); optional capability search belongs to [Context](modules/context.md#optional-capability-discovery-boundary).
+
+### Media acquisition and recovery comparison
+
+| Inspected implementation / contract | Mechanism and Fleet disposition |
+|---|---|
+| NewMax 1.1.19 reading aid `analysis/installer-1.1.19/main.js:80679` (`generateImageWithSettings`), `:80730` (`recoverImageWithSettings`), `:81727` (`generateVideo`) | Resolve the configured image provider/model and OAuth account separately; image recovery is specific to its gateway request API. Video retains a task ID in a blocking submit/poll loop without a persisted restart or abort contract. Reuse the selection lesson, not its gateway or unproved recovery guarantee. Generated reading-aid lines map to the preserved bundle; these are not recovered TypeScript. |
+| Minara 1.2.1 `extracted/gateway-readable/media/state.js:20`, `media/manager.js:824`; canonical bundle anchors E61–E62 in `research/SOURCE-EVIDENCE.md` | Interrupted submission becomes unknown; resume rejects blind generation, requires the original account, queries known receipts and downloads missing output again. Fleet applies these failure principles to native Session artifacts and its existing ledger, without importing Minara's media database or Fal service. |
+| Grok Build `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`, `xai-grok-tools/src/implementations/grok_build/{image_gen,image_edit,video_gen}/mod.rs`, `xai-grok-login/src/side_call_bearer.rs` (under `crates/codegen/`) | Per-request side-call bearer and issuer checks; image JSON versus video submit/poll/download are separate. Subscription transport requires its own existing-owner adapter; an xAI API adapter cannot borrow a Grok login or advertise membership access from chat readiness. |
+| Official [xAI edits](https://docs.x.ai/developers/model-capabilities/images/editing), [multi-image edits](https://docs.x.ai/developers/model-capabilities/images/multi-image-editing), [video generation](https://docs.x.ai/developers/model-capabilities/video/generation), checked 2026-10-02 | Edits use JSON references, with up to five images; video uses a retained request ID and a temporary `vidgen.x.ai` MP4 URL. Fleet downloads without bearer headers or redirects, bounds bytes and retains the original credential reference. Stop means stop waiting, not provider cancellation/refund. |
+| Official [OpenAI Images API](https://developers.openai.com/api/reference/resources/images/methods/generate), checked 2026-10-02 | Exact published GPT Image IDs plus authenticated `/models` membership establish API image classification. Unknown variants and retired DALL-E IDs receive no generated capability. GPT Image returns base64; generation omits legacy `response_format`, editing uses multipart. Returned model/cost absence stays unknown, with no invented zero invoice. |
+| Official [Sign in with ChatGPT preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations), checked 2026-10-02; Codex `ext/image-generation/src/backend.rs` | Public plan Responses currently excludes hosted image generation. Codex's standalone Images client resolves its own active provider/authentication; the source does not establish standalone image permission for Fleet's newly issued public grant. Preserve protocol/audience separation and do not route that token through Cindy's legacy private Responses example. |
+
+These comparisons establish client mechanisms and published contracts only. The candidate's
+own fixture/build/visual evidence belongs in Engineering and its capability register; no paid
+provider result or remote-server implementation was obtained by this review.
+
+Antigravity's public Python SDK is retained at `/Volumes/AIGC/天工参考/software/antigravity-sdk-python`, commit
+`12f9a4c3becf487302dc799b0f59054f01f3ddb9`, Apache-2.0. This is `EVIDENCE_ONLY` for
+`connections/local/{local_connection_config,local_connection}.py`: the Gemini/Vertex endpoint and
+tool/policy protocol are inspectable, but consumer-subscription authentication is not established.
+The [Models contract](modules/models.md#model-connection-correction) owns the verified CLI observations
+and unresolved integration boundary. No SDK dependency or replacement executor was admitted.
 
 Per-project `FLEET-ADAPTATION.md` guides inside each reference checkout are generated from the
 tables below and the modules' `Execution` sections. After changing either, run
 `python3 scripts/reference-guides.py --write`; `--check` validates without fetching. Refreshing a
 checkout is not code admission or a baseline update.
 
-Current checkout observation: 2026-09-25. Historical findings below retain their original revisions and dates.
+Current checkout observation: 2026-09-29. Historical findings below retain their original revisions and dates.
 
 Current checkout/document intake and revision-locked mechanism observations are recorded separately below.
 This registry owns source evidence and admission gaps; the consuming suite owns the required proof.
@@ -40,6 +164,927 @@ format; their `pending` labels describe the older admission ledger, not the curr
 has now completed a structured Grok source review but remains `INSUFFICIENT_COMPARISON`, not an
 admitted reference. The local commit and license facts below were checked directly against the
 checkout; they are not claims that the mechanism has passed product comparison.
+
+## Whole-product baseline comparison
+
+OV-025 reopens the complete baseline. This assessment uses the confirmed requirements in
+[Product](product.md#baseline-reassessment); earlier rows that forbid another runtime describe
+in-place ports into Craft, not a reason to exclude that software as a complete replacement.
+
+**OV-027 selects ZCode as the product-base direction**, superseding the earlier Cindy-first
+feasibility recommendation. Its existing execution/model boundaries are inspected
+[below](#zcode-baseline-and-pi-integration); its native-suite gap remains to prove. Keep
+OpenChamber and DeepSeek Harness as comparison evidence, not parallel production hosts. The
+[reuse challenge](#requirements-and-reuse-challenge) adds portable UI/tools and document-centric
+editing paths that need not inherit Cindy's private API or Session-bound artifact model. Prefer the
+host requiring the fewest replacements of its core to finish the agreed work chain, not the most
+features. ZCode is not yet an accepted Fleet build; product direction is distinct from runtime or data migration acceptance.
+
+### Evidence level and revision boundary
+
+Inspected local source locks: Craft `b2d6c8aabdfd` (v0.13.4), Cindy `d4489b81a34c`, ZCode
+`29628c9acdb8` (3.14.3), OpenChamber `f9d212f38a90`, DeepSeek Harness `477b4f420553`, AionUi
+`6744099b279b` with separately checked AionCore `153c6f5cd03d`. Paths below start at
+`源码参考/software/<project>/`. Cindy's abbreviated `main/` and `renderer/` paths are under
+`apps/desktop/src/`; ZCode's composer/Session paths are under `packages/ui/src/v4/`.
+Full revisions remain in the inventory or Git checkouts.
+
+Read-only upstream-head checks found ZCode, DeepSeek Harness and AionUi at the same revision;
+Cindy's remote main was `4109c63decced95e567cc9c2db31a54d2b4a5d12` and OpenChamber's was
+`60d836c4893b6b694610b5b0277be54111359428`. Those newer revisions were **not** inspected or applied.
+Do not transfer the findings to them automatically. No reference was re-pinned. Official repository
+and license pages were also consulted; local implementation claims use the locks above.
+
+The six candidate roots have no `node_modules`; an installed `/Applications/ZCode.app` is present,
+so missing checkout dependencies do not imply every candidate is unavailable. No candidate app, package installation, real-model
+call, account login or cross-platform build ran in this assessment. Existing test files were read
+for coverage and mocking boundaries, not reported as passing. The specified Claude history
+`1fd52c4f-6d91-47a2-bd43-d489866d9224` was read for human-authored direction; pasted Agent reviews
+were treated as claims to verify, not instructions or acceptance.
+
+### Complete candidates, not a feature-count ranking
+
+| Candidate | Relevant implementation inspected | Gap against Fleet and cost implication | Proposed role |
+|---|---|---|---|
+| **Cindy** · Apache-2.0 | `packages/plugin-protocol/src/manifest.ts:47` declares tool, panel, file, main-view, Skill and on-demand worker contracts. `apps/desktop/src/main/cindy-brain/ghostWorkdirPrefs.ts:1` persists directory exclusions and reloads external edits. `main/mcp-integrations/ghost.ts:1563,1872,2256` filters discovery and gates calls before dispatch. `renderer/cindy-brain/ghostPanelBody.tsx:24` mounts the sandboxed panel with crash/reload handling. | Closest source fit for a Project choosing native work suites, but not already Fleet. Directory preferences are owner-global exclusions, not portable Project configuration; bundled Skills can remain globally visible. Account-managed plugins and Device Link depend on Cindy services. Complete ZCode shell interaction and Craft visual/document adaptation still cost work. | Application-plugin and Pi integration reference; earlier first-candidate ranking superseded by OV-027. |
+| **DeepSeek Harness** · MIT | `vendor/loader/src/config/entry.ts:73,134` controls subtree disable/disposal. `packages/preset/agent-preset-registry/src/mount.ts:258` mounts/audits isolated plugin trees; `session.ts:21` records preset selection in Session events. `packages/client/ui-slots/src/index.ts:112` defines UI slot scopes; `apps/desktop/README.md:5` describes the desktop host sharing the Web runtime. | Stronger general composition primitives; not proof of Fleet's Project suite semantics or artifact editing. `README.md` and `SAFETY.md` explicitly identify experimental developer-preview status and compatibility risk. Requires a broader product-shaping effort, provider/desktop verification and Craft surface ports. Cordis service isolation is not a security sandbox. | Modular-runtime alternative; do not embed it beside another candidate's kernel. |
+| **ZCode** · Apache-2.0 | `packages/ui/src/v4/ConversationComposer.tsx`, `composer/V4ComposerToolbar.tsx` and `SessionPane.tsx:1395` join composer state to command acknowledgement; `SessionPane.tsx:2278` also has draft prewarming, so “draft means no backend record” would be an incorrect port. `packages/shared/src/plugin-types.ts:11` enumerates agent/command/skill/hook/MCP/LSP contributions. | Strongest direct match to the requested shell flow. That plugin inventory is not a native domain-panel runtime; replacing branding cannot supply document editing, per-Project suite lifecycle or human/Agent domain commands. Keep vendor-specific account/quota/marketing controls out of a shell port. | Selected product-base direction (OV-027); Fleet build and native-suite path remain unverified. |
+| **OpenChamber** · MIT | `packages/sdk/src/manifest.ts:9,322` declares panels/backgrounds and local service surfaces; `src/host.ts:84` exposes host project/session/files operations. `packages/web/server/lib/guests/{service,grant-scope,persist}.js` owns lifecycle/grants. `packages/ui/src/components/github/GitHubAccountControl.tsx:43` uses OAuth/gh identities through runtime APIs. | It has real extension surfaces and must not be dismissed as “Git UI only.” Its Agent/session runtime remains OpenCode (`packages/web/server/index.js:54..102`). Guest `contributes.tools` describes existing tool output, not arbitrary new domain command registration; `service.provides` currently names browser. Project suite activation and shared domain tools need extra integration. | Strong challenger and Git/GitHub/reference SDK; not a second runtime to graft in. |
+| **AionUi + AionCore** · Apache-2.0 | AionUi's `packages/desktop/src/renderer/pages/guid/hooks/useGuidSend.ts` reaches AionCore's Conversation service; AionCore's `crates/aionui-extension/src/types.rs:284` supports ACP/MCP, assistants, Skills, Web routes, settings and models. AionUi's `packages/desktop/src/renderer/hooks/system/useExtensionSettingsTabs.ts:46` subscribes to backend extension changes. | Broad general-assistant product, but the UI repository is not the entire runtime. `packages/shared-scripts/src/prepare-aioncore.js` prepares a separate native binary. Preserve the correct UI/backend pair: the inspected latest AionCore checkout is not automatically the binary/version AionUi releases. Domain-editor command sharing remains unproven. | General-workbench challenger; higher multi-language integration/build burden to establish. |
+| **Craft Agents** · Apache-2.0 | `packages/session-tools-core/src/handlers/pages.ts:1` delegates Agent page actions to injected storage callbacks; chat, preview and Pages are valuable existing consumers. Current `docs/modules/components.md` records the absence of a suite resolver/native component lifecycle. | Continuing the current approach means replacing creation/navigation while building the central suite host and preserving Workspace compatibility. The current uncommitted diff spans 71 tracked files, with substantial `AppShell`/composer edits, without closing that central loop. Diff size alone is not the defect; missing core outcomes and owner rejection are. | Preserve valuable surfaces/data and compare a minimal correction; no longer the presumed whole baseline. |
+
+### ZCode baseline and Pi integration
+
+**Source locks:** ZCode `29628c9acdb8`, Cindy `d4489b81a34c`, Pi
+`d6af72e1857c` (packages 0.87.1). Read-only review; no candidate build, paid request, dependency
+installation or data migration was performed. The [official Pi repository](https://github.com/earendil-works/pi)
+also distinguishes its model API, Agent loop and coding CLI. This is not evidence that every
+provider, modality or account is supported by any one adapter.
+
+| Question | Exact source evidence | Consequence for Fleet |
+|---|---|---|
+| Does ZCode need a new kernel to offer multiple protocols? | `zcode/packages/provider/src/config/provider-data-schema.ts:4` already declares Messages, Chat Completions and Responses; `:31,66` hold key-management URL, Base URL and headers. `model-config.ts` resolves model properties/options. | Rectify and neutralize the existing configuration-to-runtime path; do not rebuild these controls as a separate provider system. This is source support, not a real request/entitlement test. |
+| What executes ZCode today? | `zcode/packages/services/src/zcode-agent/zcodeAgentProcessManager.ts:369,386` starts `app-server --stdio`; source is under `apps/zcode-cli/`. Its `packages/core/src/runtime/methods/{turn-loop,turn-model-step,model}.ts` executes turns; `packages/adapters/src/storage/session-store/sqlite-session-store.ts` persists Sessions. | This is a complete native executor, not Pi beneath a ZCode skin. Retain its lifecycle while establishing the base. |
+| Is there a narrower model seam? | Under `zcode/apps/zcode-cli/`: `packages/adapters/src/model/model.ts:21` defines `ModelExecutor`; `runner.ts:138,258` constructs a model with an AI SDK executor; `runner-runtime.ts:1` imports AI SDK `generateText`/`streamText`. `packages/core/src/runtime/methods/model.ts:36,157` consumes the model contract. | A Pi model adapter can be compared without replacing Sessions, permissions or the Agent loop. It must preserve streaming/tool/reasoning events, usage, cancellation and per-attempt credential refresh. A small interface does not imply a trivial adapter. |
+| How does Cindy use Pi? | `cindy/packages/maker-core/src/agents/pi/index.ts:4,2428` hosts `pi --mode rpc`; `translator.ts:640` maps its events. `cindy-bridge-source.ts:3992` gates tool calls, and `packages/maker-pi-manager/` owns remote Pi process management. Native-provider routing also exists; the introductory single-gateway comment is not the whole implementation. | Reuse bounded bridge mechanisms if replacing an executor; do not transplant Cindy's whole host or claim Pi supplies its permission/UI/remote stack. |
+| Which Pi layer replaces what? | `pi-mono/packages/agent/src/agent.ts:114` exposes Agent options/hooks. `packages/coding-agent/docs/sdk.md:38,40,98` makes SessionManager authoritative for finalized context and supplies default storage/settings/tools; `:94` distinguishes `agent_settled` from `agent_end`. | `pi-ai` replaces model transport; `pi-agent-core` replaces the loop; full `pi-coding-agent` adds Session/compaction/extensions. These have different migration costs. Do not keep ZCode SQLite and Pi JSONL as competing histories. |
+| Can Pi be the universal capability catalog? | `pi-mono/packages/ai/README.md:5` restricts its chat catalog to tool-calling models. `src/types.ts:535,1068` declares text/image chat content; `:421` includes cache usage. ZCode's model contract also validates PDF/video input. | Keep authenticated discovery, manual additions and capabilities in the existing host owner. Native files/audio/video/realtime may need operation-specific adapters; converting PDF to text is not native file support. Retain actual usage for the token ring; do not equate usage totals with current context occupancy. |
+| Does Pi solve native work-suite hosting? | `pi-mono/README.md:42` explicitly lacks built-in filesystem/process/network/credential permissions. Its coding-agent extension/UI contract is not Cindy's domain-panel host. Current Craft already depends on all three Pi packages in `app/packages/shared/package.json:88`. | Kernel selection does not resolve Fleet's missing plugin surfaces or human/Agent shared operations. Keep that proof separate; existing Pi use did not prevent the rejected product outcome. |
+| Is debranding just renaming UI? | ZCode's provider schema distinguishes `zhipu-account`, account entitlement, off-peak modes and vendor groups. `packages/provider-node/src/zcode-builtin-*`, `packages/services/src/coding-plan-subscription/` and CLI `official-coding-plan-gateway.ts` own further vendor behaviour. | Remove mandatory vendor/product coupling and review service endpoints; retain supported vendor access as an ordinary optional connection. Preserve license notices and explicitly migrate identifiers; do not globally replace strings or delete useful generic capabilities. |
+
+**Historical intake options (not a veto on the full-SDK comparison below):**
+
+1. **ZCode host + existing execution/model stack:** lowest integration cost and the first baseline
+   proof. Multi-protocol support already exists; improve setup, model discovery and actual request
+   binding before changing libraries. Do not claim it meets all Fleet requirements already.
+2. **Same host/loop + `pi-ai` adapter:** a bounded comparison for a demonstrated provider gap.
+   Recommended next experiment only where Pi improves real behaviour; it is not a full Pi kernel.
+   Freeze one connection/model/protocol/effort selection per request, use one credential authority,
+   and never silently execute both adapters or introduce a second catalog owner.
+3. **ZCode host + Pi Agent runtime:** possible, but requires explicit mappings for tools/MCP,
+   approval/refusal, cancellation/steering, compaction/replay, extensions, remote recovery and usage.
+   SDK embedding avoids a CLI bridge but transfers more lifecycle work to Fleet; Cindy-style RPC
+   reuses CLI behaviour but brings protocol and persistence mapping. Neither wins without proof.
+
+Those were the earlier intake priorities. OV-067/068 require a kernel-first full-SDK comparison;
+existing code or an extensible transport alone does not establish the best execution layer. Measure identical fixtures and a
+separately authorized real task: route correctness, stream recovery, tool refusal, restart,
+capability preservation and cache/usage accounting. Same SDK does not guarantee better model
+performance or cache hits. This recommendation selects no new production dependency. Project
+plugins, Craft-assisted operations and neutral model management remain requirements under OV-026/027.
+
+### Hermes, OpenClaw and CC Switch
+
+OV-029 requests comparison **and implementation**, following the selected ZCode direction.
+The following local source locks were inspected without changing their pins. All three carry MIT
+licenses; ZCode carries Apache-2.0. This slice borrows mechanisms, not their code or storage systems.
+
+| Reference | Reviewed HEAD | Concrete evidence and landing decision |
+|---|---|---|
+| Hermes | `fae9e5677a3ef339ec582e967ee19cac13bf68af` | `agent/prompt_cache_scope.py` preserves logical cache identity across compression but separates forks/new conversations; explicit inherited scope is possible for cache-parity auxiliary calls. `prompt_cache_boundary.py` records the stable/volatile boundary at assembly time. `prompt_caching.py` applies request-local, route-specific cache markers. Reuse these rules at ZCode's context/request seam, not Hermes's Session DB or a text-marker heuristic. |
+| Hermes | same | `agent/credential_pool_model_cooldowns.py` distinguishes model-scoped rate/entitlement cooldown from credential-wide failure. `provider_registry.py` uses scoped registrations with generation-aware restoration. Native Anthropic, Gemini, Codex Responses and other adapters coexist. These are evidence for scoped policy and extension lifecycle, not a reason to wrap every vendor in Chat Completions. Do not copy long fixed entitlement cooldowns as Fleet defaults. |
+| OpenClaw | `cac0c021273af695cb257492b3c2b4b20075b665` | `src/plugins/provider-model-compat.ts` fills missing compatibility facts from provider request capabilities while keeping explicit overrides. It imports the workspace `@openclaw/ai`; this revision is **not simply an unchanged Pi adapter**. Separate discovery metadata from execution dependencies and scope facts to the actual route. |
+| OpenClaw | same | `src/agents/model-extra-params.ts` separates typed thinking/fast controls from provider request parameters. `auth-profiles/order.ts` respects configured ordering, pinning and model cooldowns; an explicit empty order is meaningful. `auth-profiles/session-override.ts` preserves unavailable account selections and protects late commits by snapshot identity. Port the semantics through Fleet's chosen host owners, not its profile store and another Session layer. |
+| CC Switch | `854c9f5fbf38edcb1ec940446ccf99d751b953fb` | `src-tauri/src/services/provider/live.rs` projects one provider into each tool's native config. `proxy/providers/adapter.rs` separates base URL, authentication, URL construction and optional transformations; `proxy/providers/mod.rs` distinguishes tool type from provider/auth type and defaults native-compatible routes to passthrough. Reuse explicit mappings and native-first transport. Model-ID translation is not capability, entitlement or harness-quality parity. |
+| CC Switch | same | `src-tauri/src/services/proxy.rs:start_with_takeover` backs up configs, establishes the proxy, records takeover intent, writes live config and restores on failure; failed restoration keeps recovery evidence. This is a good future **external CLI integration** boundary. Fleet's in-process model requests do not need a localhost proxy or edits to other tools' configuration. Neither external takeover nor export is implemented here. |
+| CC Switch | same | `src-tauri/src/proxy/thinking_optimizer.rs` can force adaptive effort to `max` or enable previously disabled thinking. Do **not** copy that policy: the user's selected effort and budget win. `cache_injector.rs` counts existing breakpoints, respects a limit and is opt-in; do not duplicate SDK markers or send Anthropic fields on all routes. `src/config/piThinkingProfiles.ts` distinguishes absence, `null` and `{}`; preserve explicit overrides and disabled options. |
+
+**Synthesis:** keep ZCode's complete host and one execution loop. Its existing Provider instances
+already carry access, endpoint and API format; its option-map/compiler and SDK adapters own request
+encoding. Improve those owners instead of introducing a universal proxy, second model catalog or
+second credential store. A brand/template supplies defaults, a connection identifies an account
+and route, and model capabilities belong to that connection's model/protocol. One vendor may have
+many connections and multiple supported protocols; API credentials never imply subscription login.
+Pi remains a bounded adapter comparison for a demonstrated gap, not a prerequisite for these fixes.
+
+**Cache and recovery admission:** stable tool/system prefixes, opaque thinking replay and supported
+cache fields can be retained without changing user effort. Logical cache scope must survive compact
+but isolate branches/accounts/routes; provider/model/policy changes must not reuse incompatible replay.
+Actual cached-token usage, current context occupancy and cumulative billing are different quantities.
+Auth rotation must distinguish bad credentials, model-only throttling, entitlement and transient
+network failure; account/model changes cannot silently replay tools or migrate an in-flight turn.
+Paid retention, larger reasoning budgets and cross-provider failover need explicit product semantics
+and measurements. None is enabled merely under the name “optimization”.
+
+**First implemented correction:** ZCode's `model-execution.ts:createProviderTransportFetch` wrapped
+*all* connections in `official-coding-plan-gateway.ts`, which rewrites matching Z.ai/BigModel URLs
+to the ZCode platform gateway. A user-owned API key was therefore insufficient to keep its selected
+endpoint. The isolated Fleet candidate moves gateway selection to the already-frozen model binding:
+only `zhipu-account` retains the platform route; both API-key access types use their configured URL.
+The transport cache now contains network policy only. No schema, dependency, credential migration
+or Agent loop changes. See [preparation and patch workflow](engineering.md#zcode-candidate).
+The actual SDK request/response suite fails 9/11 checks on unchanged upstream and passes 11/11
+with the correction, including streaming, two same-vendor keys, old/new bindings and all three API
+formats. This is offline endpoint/credential evidence, not a live entitlement or cache-hit claim.
+
+### Model service and credential comparison
+
+OV-033 requests Cherry Studio and installed NewMax, including the Antigravity path. Evidence is
+read-only source/package inspection and model-settings UI, not a live OAuth or inference test.
+Cherry pin: `09d4ea5e2f6756a31377a388446d66253f87cd1b`. NewMax: installed macOS **1.1.18**, `/Applications/NewMax.app/Contents/Resources/app.asar`.
+NewMax's obfuscated main bundle was inspected after restoring its string/property references;
+`out/main/index.js` SHA-256 is `bf9646e514b21e3edff32e50ba2c0d9d7ea93ed7a46f2c670e961881d0270995`.
+The inspected decoder is a pure string lookup; the application was not initialized for extraction.
+Backend function traces and a synthetic selection probe establish the findings below, not a complete
+security audit or live authorization proof. Its bundled implementation is inspection evidence,
+not code admitted for copying. No account files, tokens or embedded OAuth secrets were imported.
+
+| Concern | Traceable evidence | Fleet disposition |
+|---|---|---|
+| Provider selection | Cherry `ProviderSettingsPage.tsx` keys detail by provider and retains selection; ZCode `InlineEditableProviderCard.tsx` already owns the inline draft and connection form. | Keep ZCode's single provider owner and visual primitives; do not add a second settings route. Address and supported API format precede credentials. |
+| Vendor vs. connection classification | Cindy `apps/desktop/src/renderer/components/settings/AddProviderWizard.tsx` begins with vendor search and a single vendor identity, then supported authentication/routes; Cherry `ProviderSettings/utils/providerApiOptions.ts` keeps dialect in connection settings. CC Switch `ProviderPresetSelector.tsx` also groups sponsored/partner presets, which is a different product concern. | Under OV-037, Subscription/API precedes the explicit vendor entry; service/plan, region and protocol are subsequent choices. OV-034 rejects the extra selection dialog. Installed NewMax keeps its connection form in the same content slot and exposes API formats as buttons; Fleet uses ZCode’s segmented-tab values, URL/key fields and existing authorization control in place. Vendor selection writes only a local draft. Preserve all 41 templates, independent account instances and custom providers; never merge identity by logo/name/URL. |
+| Fetch and choose models | Cindy `apps/desktop/src/renderer/components/settings/UnifiedModelList.tsx:1078` puts search/refresh in the list; Cherry `ProviderSettings/ModelList/ModelListSyncContent.tsx` reconciles configured and available rows with inline selection. | OV-035 removes the dedicated fetch button/dialog. Candidate auto-loads only committed, credential-ready connections and automatically registers the complete discovered list through the existing owner, per the later owner correction. Search filters the single saved list; filtering disables reorder. Manual Add covers undiscovered IDs. Connection/account edits invalidate stale results; failed, partial or oversized discovery preserves saved models. Cindy `apps/desktop/src/main/maker-host/provider-model-fetch.ts:218-244,311` bounds model response bytes before parsing, including missing Content-Length. The candidate now applies an 8 MiB page and 20,000-entry cap rather than calling unbounded `response.json()`. The original ZCode Add opens one metadata dialog; Fleet’s lighter inline ID editor likewise admits one draft at a time, keeps explicit confirmation, and reports local save failure without exposing raw upstream text. No silent deletion or inferred entitlement. |
+| Protocol defaults and overrides | Cherry `ProviderSettings/utils/providerApiOptions.ts:13` hides dialect settings for system providers; Pi `packages/ai/src/providers/{openai,anthropic}.ts` binds native APIs; OpenCode `packages/opencode/src/provider/provider.ts:208` selects Responses for OpenAI; Cindy `packages/model-providers/src/types.ts:170` carries explicit route/feature facts; OpenClaw `src/plugins/provider-model-compat.ts:71` preserves declared compatibility; CC Switch `src/config/piProviderPresets.ts:93` binds protocol, URL and model facts. | OV-035 and the later button correction: preset-owned default with directly visible, full-width format segments. NewMax `percentages-BXMCSKIN-B3EYv3z9.js:204922,205388` links declared preset URLs to format buttons and preserves custom URLs; ZCode `SettingsSegmentedTabs.tsx` supplies the visual tokens. [DeepSeek’s API reference](https://api-docs.deepseek.com/) explicitly pairs its Chat and Anthropic formats with distinct addresses. The candidate projects these routes from its existing template catalog; custom connections retain three explicit adapter formats. Candidate domain policy is shared with the host write boundary; legacy overrides remain, and no protocol probing or account/model fallback is added. The current three adapters do not imply Gemini-native coverage or universal lossless conversion. |
+| Multiple API keys | NewMax renderer `percentages-BXMCSKIN-B3EYv3z9.js:203065` (`ApiKeyListEditor`); `settingsStore-DLnF3SYD.js:1691` (`normalizeProviderCredentialFields`) trims/deduplicates the array and retains a legacy primary key. The switch requires two distinct keys. | Candidate extends the existing API access schema with backup keys and a default-off switch. Primary-key compatibility, draft saving and Registry serialization share the existing provider owner; no second secret store. The original ZCode `ApiKeyInput.tsx` uses one inline field and blur/Enter saving; CC Switch hides the reveal action on empty input. Fleet keeps that first-key form, treats a second empty row as a cancellable draft, and exposes saved-key default/delete/switch only after two real keys. |
+| Multiple subscription accounts | NewMax renderer account card around `percentages-BXMCSKIN-B3EYv3z9.js:205577`; OAuth stores expose status/list/start/cancel/setActive/removeAccount, then refresh models. | Separate account identity, credentials and entitlement from model identity. Persisted `connected` is not proof of current access. Switching/removing an account must invalidate in-flight catalog results and refresh bindings. CC Switch `CodexOAuthSection.tsx:480-545` places identity/badges left and account actions right; ZCode `StatusCards.tsx:70-110` uses the same information/action split. Fleet’s account row follows those slots with its own tier and allowance controls. |
+| Backend settings consistency | Main `registerSettingsHandlers` serializes saves, checks `baseRevision`, computes a patch for legacy window snapshots, persists through `conversationStore.setSetting`, selectively synchronizes consumers and broadcasts a revision. Its persistence catch logs a SQLite failure while the operation can still return success. | Reuse revision checks and serial mutations through Fleet's existing owner; do not copy success-before-durable-save semantics or introduce NewMax's second gateway/proxy authority. |
+| Backend account refresh and catalog | Main `OpenAIOAuthService` stores an account array and selected ID separately. `ensureFreshTokenForAccount` coalesces refresh by account; `listAvailableModels` captures the selected account before awaiting, coalesces its catalog request, caches successful results for six hours and retains a prior catalog on failure. | Account-bound coalescing and last-good data are valuable. Fleet must additionally reject stale connection revisions. This catalog TTL does not establish a six-hour quota cache or prove model entitlement. |
+| Backend credential storage | Main `OpenAIOAuthService.getEncryptionKey/saveToDisk` uses AES-256-GCM and a separate 32-byte key file created with mode 0600 in the same user-data directory. Account metadata is projected separately from tokens. | Do not mistake local encryption with an adjacent key for OS-keychain protection. Retain Fleet's existing CredentialService boundary; do not read NewMax's actual account files. |
+| Switch presentation and linked account state | NewMax `OpenAIOAuthPanel` at `percentages-BXMCSKIN-B3EYv3z9.js:205802`; ZCode `StatusCards.tsx:PlanStatusCardSurface`; Cindy `usage/codexAccountUsageRefresh.ts`; cc-switch `proxy/providers/copilot_auth.rs:fetch_usage_for_account` and `services/codex_oauth_models.rs` | Separate full-width switch panel with title/eligibility left and switch right. Candidate account allowance uses selected-credential WHAM/Copilot readers with post-response account/revision validation. A quota HTTP 403 has no proved authentication cause and remains an access-denied reading; Grok /settings enriches tier only and cannot overturn a successful credits response. Native app-server quota/model RPC is not available in the Pi runtime; bundled model catalogs remain explicitly labelled. Private endpoint support is not a live entitlement claim. |
+| Failure recovery | Main `expandProviderKeyCandidates`, `recordProviderCredentialFailure`, `shouldProbePrimaryApiKey`, `classifyPreOutputRetry` distinguish preferred credentials, cooldown, cancellation and effective output. 401/403 stop primary probes; transient failures delay them. | Keep recovery within the exact service/model, default off. Provider error codes must distinguish invalid credentials, model entitlement, model throttling and policy errors; a bare 403 is insufficient. Stop automatic replay after any admitted output/tool action. |
+| Counter-evidence | A synthetic probe of the actual `recordProviderCredentialFailure`, `recordProviderCredentialSuccess` and `expandProviderKeyCandidates` functions returns `[backup, primary]` after primary HTTP 401 and backup success, although the primary recovery record has `retryAt: null`. Failure tracking there is primary-only. Separately, image configuration calls `selectProviderApiKey`, which advances a round-robin cursor. | Priority demotion is not exclusion: a rejected key can re-enter after the backup fails. Fleet excludes unavailable identities and has one bounded attempt budget. Do not claim NewMax uses the same recovery policy for every modality. |
+| Discovery, tests and allowance | Main `listProviderModels` builds format-specific catalog requests, validates response shape and returns metadata with `fetchedAt`. `runProviderTest` makes a model request. `getProviderBalance` and `fetchKimiUsage` use vendor-specific endpoints; no universal subscription-quota cache was established in these functions. | Keep catalog discovery separate from paid inference and quota acquisition. A format or model name alone cannot establish image/video/audio/tool capabilities. |
+
+**Antigravity path:** renderer `ProviderOnboardingScreen-p5N8e6F4.js:8490–8630`
+(`useAntigravityAuthStore`) calls `window.newmax.antigravityOAuth`, exposes account/tier/project/expiry
+metadata and resynchronizes models after login, selection and removal. Main
+`resolveAntigravityReadyCredentials` resolves the chosen account; `forwardAntigravity` requires its
+access token and project ID, maps logical model/effort values, converts the Anthropic-shaped request
+with `anthropicToAntigravity`, then forwards through a dedicated endpoint and response adapter.
+`AntigravityCliTutorialCard` also offers official `agy` installation/login assistance; that is a
+separate path, not evidence that every inference is executed by the official CLI. The installer and
+login were not executed. This is a substantial account/catalog/protocol adapter, not an API URL preset.
+
+The [current official terms](https://antigravity.google/terms) §6 explicitly restrict third-party
+software using Antigravity OAuth; the page separately excludes specified enterprise arrangements.
+The [official SDK overview](https://antigravity.google/docs/sdk/overview/) documents Gemini API-key
+and enterprise/Google Cloud authentication. It is a Python Agent harness, not a neutral consumer
+subscription transport. The [CLI authentication guide](https://antigravity.google/docs/cli/install/)
+describes official-client login/keyring handling, not permission for a cloned desktop OAuth client.
+Therefore NewMax's button does not establish a supported consumer integration for Fleet. Do not
+copy a client identity, read another application's account store or label an unverified subscription
+as supported. A supported vendor API and an explicitly selected external official harness are
+different product choices; no second harness is admitted by this inspection.
+
+**Landing boundary:** the isolated candidate extends `providerFacadeServices`,
+`subscriptionConnections`, `CredentialService` and the request-auth seam. Address/format remain
+above key/account rows; discovery automatically registers models in the single saved list. Manual
+Add is its footer action and covers undiscovered IDs. Legacy single credentials remain readable.
+Recovery keeps the exact service/model/protocol/endpoint, requires the user's switch, and accepts
+only HTTP 401 or account-specific quota HTTP 429 before a success stream. It has ten distinct
+identities and a two-minute admission limit; shared limits, policy/403, 5xx, network uncertainty and
+streams do not rotate. Exhaustion also stops the outer workflow retry loop. API health remains in
+the execution instance and is lost at process restart; subscription failure facts persist under
+the existing encrypted account owner. Known reset/Retry-After windows are respected; unknown
+temporary throttling has bounded backoff. No background inference probes are sent. Account
+revisions reject stale results, and the existing file lock serializes refresh across hosts. Synthetic
+transport/lifecycle cases cover these boundaries, not live exhaustion or a guarantee against account
+suspension. See [engineering](engineering.md#zcode-candidate) for the candidate checks.
+
+### Subscription admission evidence
+
+The owner requests complete subscription access, not a count of provider presets. Track five
+independent paths: authorization/renewal, account-bound model discovery, inference, allowance and
+multi-account recovery. A template, OAuth login or meter alone proves none of the other paths.
+
+| Provider family / source | Evidence and landing boundary |
+|---|---|
+| ChatGPT; GitHub Copilot | Current Pi 0.99.2 supplies public ChatGPT and Copilot OAuth, registered through `bun-oauth` for the desktop bundle. Public ChatGPT uses Fleet registration, OIDC/JWKS account validation and public model/Responses routing; isolated minified/unminified tests use signed local identity fixtures. Earlier private Codex credentials retain refresh/read compatibility only. Prior region-policy HTTP 403 and OS-proxy investigation are historical transport evidence, not current public entitlement proof. |
+| GLM, Kimi, MiniMax, Alibaba, MiMo, OpenCode Go | CC Switch `src/config/codingPlanProviders.ts` separates plan credentials from ordinary API credentials. Its substring-based host classification is not copied. Existing Fleet template metadata groups plan keys separately from OAuth accounts. Five additional regional routes cover MiniMax China/global, Kimi global and Alibaba Coding Plan China/global; saved provider instances remain untouched. Existing plan keys, API formats and same-model recovery keep their original owners. |
+| Kimi Code | [Official integration guide](https://www.kimi.com/code/docs/en/) documents third-party membership keys and China/global coding endpoints. Native-client OAuth identities and user-agent spoofing are not required for that key route. The current `kimi-code` source also has a distinct managed OAuth account, native catalog and `/usages` allowance path; Fleet has not implemented it. An ordinary Moonshot API key is not evidence of Kimi membership access. |
+| MiniMax; Alibaba | [MiniMax Token Plan](https://platform.minimax.io/subscribe/token-plan), [Alibaba regional Base URLs](https://help.aliyun.com/zh/model-studio/base-url) and [international Coding Plan](https://www.alibabacloud.com/help/tc/model-studio/coding-plan) distinguish plan/region routes. Hermes `plugins/model-providers/alibaba-coding-plan/__init__.py` confirms Coding Plan endpoints. Region and plan must survive retries; do not rewrite ordinary API connections or treat a key as an allowance response. |
+| Claude | Cindy `apps/desktop/src/main/maker-host/claude-native-cli.ts` delegates login and status to native Claude Code; `packages/maker-core/src/agents/claude-code/index.ts` executes it and maps permission/events. [Official integration conditions](https://code.claude.com/docs/en/legal-and-compliance) allow end users to authenticate to the unmodified executable under the stated conditions, while forbidding a third-party clone of Claude account sign-in/token intermediation. [Current account-login guidance](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account) distinguishes native subscription usage from third-party usage credits. Orca `src/main/rate-limits/claude-oauth-usage-request.ts` calls a private usage endpoint with a Claude Code user agent; it is not a neutral membership inference transport. Do not advertise Pro/Max included usage through a generic API preset. |
+| Gemini / Antigravity | Gemini CLI `docs/cli/acp-mode.md`, `packages/cli/src/acp/acpSessionManager.ts:164` and `acpSession.ts:781` expose native authentication/session/model/permission/cancel paths. Prefer that executor route for Google subscriptions; it is not implemented in Fleet. Orca `src/main/rate-limits/gemini-oauth-sources.ts` reads Gemini/OpenCode credential files, extracts CLI client credentials and calls private Code Assist endpoints. These are foreign-account management paths, not a Fleet-owned connection. Antigravity's official limitations and separate supported SDK route are recorded above; neither a Pi driver nor NewMax's button settles those boundaries. |
+| Grok | Pi 0.87.1 supplies device OAuth but defaults to the ordinary API host. Official Grok Build `crates/codegen/xai-grok-login/src/manager/enrichment.rs`, `xai-grok-shell/src/remote/model_source/oai.rs` and `extensions/billing.rs:182` separately establish user identity, subscription models and `cli-chat-proxy.grok.com/v1/billing?format=credits`; its Imagine media bearer checks the OAuth issuer and API-key preference again per side call. The candidate binds chat/allowance to the existing encrypted account owner and Responses transport, with exact-account headers and reported credit/reset fields; its media adapter currently accepts only an xAI API key. Grok direct transport is not its full native harness. Offline coverage is not a successful live subscription login/inference/allowance claim. Cockpit remains comparison evidence; no account files were imported. |
+| Qwen OAuth and plans | [Current Qwen authentication guide](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/auth/) records retirement of the old OAuth free tier. Coding Plan uses a fixed-fee subscription key on its China/international coding endpoints; Token Plan uses an API key on different regional endpoints and bills actual token use. Fleet has explicit templates for both and no obsolete OAuth preset. Patch 0053 moves the usage-billed Token Plan to API intake while leaving Coding Plan under subscriptions; neither category proves a quota or actual bill. |
+| Official Codex banked resets | `software/codex` @ `67a709665`, `codex-rs/backend-client/src/client/rate_limit_resets.rs`, `types.rs:23`; `tui/src/chatwidget/usage.rs:218`. Separate read/detail/consume endpoints, selected credit, stable redemption identity and explicit confirmation. [Official account behavior](https://help.openai.com/en/articles/20001498-how-banked-codex-resets-work). | Fleet reuses its encrypted subscription owner and account lock; confirmed consumption invalidates cached quota. No automatic consumption, paid checkout or assertion of public/stable API availability. Real redemption is intentionally untested. |
+| Cockpit quota request ownership | `software/cockpit-tools` @ `a24199f735051f13f6f1af6f63b1fd2562a62a84`, `src-tauri/src/modules/codex_quota_refresh_scheduler.rs:1` coalesces same-account refreshes and bounds concurrency; `codex_oauth.rs:926` preserves account egress and rejects silent direct fallback. | Fleet keeps one derived allowance cache per subscription owner; credential/account revisions isolate entries, duplicate refresh joins in flight, and old successful readings retain their timestamp on failure. Its existing host network correction owns login/refresh/usage egress. |
+| Cindy OAuth extension metadata | `packages/model-providers/src/provider-oauth.ts` rejects overrides of client ID, scope, state, redirect and PKCE parameters. `types.ts` distinguishes native-client authentication from configurable OAuth. Extensibility must not permit a provider preset to override the host's authorization invariants. |
+
+These references inform the existing connection owner; they do not admit a second Agent loop,
+read other applications' live credentials, or certify private interfaces as official APIs.
+
+### Official harnesses versus Pi
+
+**OV-028 asks for vendor-harness comparison before kernel selection.** Inspect request and history
+paths, not screenshots or model rankings. At the OV-028 review no checkout was updated, dependency
+installed, official CLI launched or live credential used. OV-029's candidate work is documented above. These source
+locks describe the mechanisms reviewed, not an assertion that they are current releases:
+
+| Checkout under `源码参考/software/` | Reviewed HEAD |
+|---|---|
+| ZCode | `29628c9acdb81b703bbd4080c207a0e7ce5e276e` |
+| pi-mono | `d6af72e1857cfb10b41d8ff8e69f0d72b4cf6d31` |
+| deepseek-harness | `477b4f420553e8a52c2fbccc464d7561b239c443` |
+| codex | `8b78f4796605bda8e31329537f5fef036e405e66` |
+| kimi-code | `be7d5f5fea7800778e4660cd5f36780ba783bddd` |
+| gemini-cli | `562f0361fe63952fcf2db793e3e9fc0ae69ec506` |
+| grok-build | `f0e3be1100ef5252488e3be8bb0e91cf68d8c305` |
+
+Paths below are relative to the named checkout. Pi request experiments use the **installed
+`app/node_modules/@earendil-works/pi-ai` 0.87.1**, not a build of the reference tree. A model in
+that catalog is a serializer fixture, not evidence of access, entitlement or server acceptance.
+
+| Comparator and exact source | Mechanism worth retaining | What Pi covers / what remains outside it |
+|---|---|---|
+| **DeepSeek Harness:** `packages/llm/llm-deepseek/src/serialize.ts:55,70,146`; `replay.ts:27,38`; `packages/llm/llm-pi-ai/src/adapter.ts:318` | Native Messages serializes thinking signatures, Files image references and in-history system/tool changes. Replay metadata is versioned and model-scoped. Native and Pi adapters share one LLM seam; prepared calls freeze configuration. | Pi's DeepSeek Chat adapter already preserves `reasoning_content` and maps thinking/effort. That does not establish parity for native Files or another protocol. Reuse the adapter pattern without importing Cordis, its Session store or a second Agent loop. Native image `file_id` is not arbitrary document support. |
+| **Codex:** `codex-rs/core/src/client.rs:315,345,969`; `codex-rs/models-manager/src/model_info.rs:46,105` | Native reasoning items survive replay; session cache keys and service tiers respect model/provider support. WebSocket continuation compares instructions, tools, reasoning and other request properties before delta reuse. Model instructions and supported tools are part of the harness. | Pi Responses preserves encrypted reasoning and session cache keys. Its captured request does not prove Codex's connection recovery, native tool policies or whole-loop behaviour. An OpenAI-compatible endpoint is not proof of those capabilities. Keep opaque replay and reconnect logic within the selected route. |
+| **GLM / ZCode:** `apps/zcode-cli/packages/adapters/src/model/transform.ts:76,145`; `packages/provider/src/registry.ts:138`; [official preserved-thinking contract](https://docs.z.ai/guides/capabilities/thinking-mode) | ZCode already translates provider options and checks configured effort levels. Z.AI requires complete unmodified reasoning history for preserved thinking; defaults differ between Coding Plan and ordinary API endpoints. | Pi sends `clear_thinking:false` plus reasoning history. Do not write a duplicate optimization. The host still owns truthful effort choices and endpoint-specific capabilities; the GLM-5.3 fixture clamps unsupported `off` to enabled/low. Official documentation says GLM-5.3 thinking cannot be disabled. |
+| **Gemini CLI:** `packages/core/src/core/geminiChat.ts:955,1260`; `packages/core/src/context/chatCompressionService.ts:48,128,352` | Preserve native part signatures; append retry information without rewriting the system prefix. Compression protects recent turns and retrieval tools and retains oversized output in files. | Pi preserves valid same-model function-call signatures and removes foreign-model signatures. CLI compression and raw-output recovery belong to the host context owner, not `pi-ai`. Its retrieval-tool names and numeric thresholds must be adapted and measured, not copied as universal policy. |
+| **Kimi Code:** `packages/node-sdk/src/kimi-code-model-provider.ts:65`; `packages/kosong/src/providers/kimi.ts:504,597`; `packages/oauth/src/{managed-kimi-code,open-platform,managed-usage}.ts`; `packages/agent-core-v2/src/llm-adapter/model/catalog.ts` | Native managed Kimi OAuth and ordinary Moonshot API keys are mutually exclusive credential modes. Account-scoped `/models` declares protocol, thinking, tool use, image/video input and context; `/usages` has 5-hour, 7-day and monthly windows plus an optional booster wallet. The native request path also supports `thinking.keep`, session cache keys and endpoint-scoped media reuse. | Fleet's existing Kimi Code plan-key route is not its managed OAuth account or ordinary Moonshot API. Preserve the actual account/protocol/region and unknown allowance; do not copy its configuration store, default-model mutation or Agent loop. Fetched `395d537237d7` was inspected without moving the retained checkout. |
+| **Grok Build:** `crates/codegen/xai-grok-login/src/{credential_provider,side_call_bearer}.rs`; `xai-grok-tools/src/implementations/grok_build/{media_bearer,image_gen,video_gen}/`; `xai-grok-shell/src/session/{usage_file.rs,acp_session_impl/side_call.rs}` | Chat requests refresh a wire-valid bearer before send; Imagine/voice side calls separately choose xAI-issued OAuth or a configured API key and refuse foreign issuers. Consumer tier gates and `GET /user?include=subscription` are distinct from API billing. Image generation is a tool; video start/poll/download is asynchronous at the provider; usage records model-scoped counters, reported USD and incomplete coverage. Auxiliary calls retain parent tools/effort/cache identity where supported. | Fleet's Grok OAuth conversation and xAI API media are separate current paths; a media catalog or chat token alone does not enable subscription Imagine. Reuse issuer-scoped credential checks and provider request shapes through the existing Provider/Job/Session owners. Do not copy Grok's blocking tool poll as Fleet's durable Job, private proxy headers, hidden automatic credential fallback or a second permission authority. No live Grok request was made. |
+| **Qwen Code:** `packages/core/src/services/visionBridge/{vision-bridge-service,tool-result-vision-bridge}.ts`; `models/{modelRegistry,image-generation-capability}.ts`; `tools/image-gen.ts`; [current auth guide](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/auth/) | The retired Qwen OAuth free tier is still present in source but not a supported new login. Coding Plan uses a regional subscription key/endpoint; Token Plan is usage-based on different regional endpoints. Tool-result images are projected before the next model request; a separate vision model can caption them while the original result remains available. Image generation uses a separately configured API key and permission gate. | Fleet's templates distinguish the regional endpoints and patch 0053 puts the usage-billed Token Plan under API intake without changing its route. Fleet's final request projection already replaces unsupported tool media with an unavailable marker; actual tool-result captioning with explicit backend/usage and cold replay is `not implemented`. Do not copy Qwen's name-based vision guesses or silent full-turn model switch. Fetched `5ef79837be06` was not checked out. |
+| **Qwen-MM-Plugins:** `src/capabilities/core/qwen_mm_plugins_core/readers/image.py`; `src/shared/native_mode.py`; `src/mcp_framework.py:190-240` | Its core reader returns resized MCP image blocks for a vision-capable main model. Text-only mode batches a separate VL caption request, then replaces the tool's images with ordered text or an unavailable marker. The global mode switch can send images to a paid endpoint and has no Fleet usage receipt. | Reuse media result/description ordering and failure semantics inside Fleet's one Session and consent path, not the plugin's hidden global switch or separate credential store. A local image-to-image-block transform does not give a text-only model vision by itself. |
+| **Qwen-Live-Harness:** `packages/qwen-live-harness/src/realtime/{realtime-session,tool-confirmation}.ts`; `src/tools/{dispatcher,handles}.ts`; `src/config.ts` | Realtime Omni uses a region-bound DashScope API key over WebSocket, call epochs, bounded input/output and per-function receipts. Handler timeout reports that work may still finish instead of retrying; background ACP is optional. | This is not Qwen Coding Plan subscription access. Borrow the call/receipt/uncertain-effect semantics for a future Fleet voice adapter, retaining Fleet's one Session, permissions and durable Job. The current desktop host is macOS-only; no three-platform support follows from this checkout. |
+| **Claude protocol:** [official cache/tool contract](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching); installed Pi `dist/api/anthropic-messages.js:791,1108,1177` | System/tools/history cache boundaries and opaque thinking signatures must survive correctly; dynamic tools and effort changes have provider-specific effects. | Pi already emits system/tool/tail cache markers and adaptive effort. This is protocol/SDK evidence, **not a full-source Claude Code audit** or an assertion of equal Claude Code performance. |
+| **Pi Agent core:** `packages/agent/src/agent-loop.ts:174,301,389,516,722` | Steering/follow-up, context transforms, tool execution and pre-tool hooks are useful existing mechanisms. | `pi-agent-core` is a loop, not just transport. `pi-coding-agent` additionally owns compaction/session/extensions. Adopting either does not automatically import vendors' prompt/tool/continuation recipes and would require the migration proof described above. |
+
+**Protocol distinction verified against official documentation:**
+[DeepSeek Responses](https://api-docs.deepseek.com/guides/responses_api/) accepts the format but
+ignores `prompt_cache_key`/`prompt_cache_retention`, has no `previous_response_id`, and does not
+support OpenAI encrypted reasoning input. Its caching is automatic. An OpenAI optimization
+cannot be enabled merely because a connection selects “Responses”.
+[Gemini signatures](https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures)
+belong to response parts and must survive replay; they are not user-facing thinking text.
+
+#### Reproducible offline request evidence
+
+Run `bun scripts/probes/provider-harness-contracts.ts` from the repository root. The probe uses
+synthetic keys and messages, intercepts Pi's actual `onPayload` callback and throws before sending;
+an independent `fetch` guard rejects attempted egress. Result: **12 payload captures, six model
+routes, zero fetch attempts, zero inference requests**. It checks:
+
+- DeepSeek Chat high/max/off parameters and reasoning history; unsupported `medium` becomes `high`.
+- GLM Chat `clear_thinking:false` and history; unsupported `off` becomes enabled/low.
+- Claude adaptive effort, cache markers and opaque replay; an appended user turn leaves the
+  system/tool request structures unchanged. This is not a server cache-hit measurement.
+- OpenAI Responses encrypted reasoning, session cache key and stateless request fields.
+- Gemini valid same-model tool signatures, and removal after changing the history's model identity.
+- Kimi Coding's Messages/adaptive route; no inference about Moonshot Chat `thinking.keep`.
+- Durable input-history immutability on every capture. Fixture signatures are synthetic; their
+  preservation is verified, not their acceptance by a server.
+
+This is a narrow executable comparison of **request construction** against the source contracts
+above. It does not exercise native CLIs, provider responses, stream recovery, actual cache reads,
+cost, quality or ZCode integration. Neither generic transport nor a vendor's complete harness is
+declared the overall winner. The proposed landing boundary and next controlled comparison live in
+[Context — First proof](modules/context.md#first-proof); kernel migration remains `not implemented`.
+
+### Kernel choice against Fleet's complete product
+
+OV-036 extends the comparison beyond connection setup. Source revisions above remain fixed;
+additional inspected locks are Cindy `d4489b81a34cadee8842a356a2318fcc0c7a5404`, OpenClaw
+`cac0c021273af695cb257492b3c2b4b20075b665`, Hermes `fae9e5677a3ef339ec582e967ee19cac13bf68af`
+and OpenCode `adee738d1e4597a2d0d317ca61a1625eff289efa`. These are historical review locks;
+the later owner-authorized refresh and new comparisons below do not retroactively update that evidence.
+
+The decision uses four whole-workflow gates, not a model-count or plugin-count ranking: (1) one
+durable Session/queue/event writer and one permission path; (2) exact model/account/usage routing;
+(3) Project-scoped human/Agent operations with media artifacts and native page contributions;
+(4) cancellation, restart and remote replay without rerunning effects. A candidate that supplies
+only inference, an IPC protocol or terminal extensions cannot pass the complete host gate by itself.
+Existing behavior is retained on a tie; a new loop must prove enough improvement to justify
+replacing the same authority across all four gates. Source evidence does not establish model-quality
+or token-efficiency superiority.
+
+The code trace below names the actual writer and call site. “Chose” means the composition visible
+in the locked source, not a maintainer's unstated motive. References with a business Session plus a
+native SDK Session must bind both IDs and reconcile both lifecycles; a model SDK under a `Model`
+interface has a different cost. The source-locked matrix distinguishes current implementations
+from comments marking incomplete work.
+
+| Project / source-locked execution choice | Submitted turn → model and tool path | State, authorization, extensions and integration cost |
+|---|---|---|
+| **ZCode** `29628c9acdb8`; candidate follows the same owner | V4 `handlers/session-flow.ts:184-285` admits `sendText` through `startPromptTurn`; `core/runtime/methods/turn.ts:95,633` runs `runRegularTurnLoop`; `turn-model.ts:14-33` binds the selected `Model.streamText` and per-attempt credentials; `tool/executor/call-runner.ts:65` executes tool calls. | `runtime/methods/events.ts:81-105` appends before live publication; `tool/executor/permission-flow.ts:175-225` routes approval through the existing broker. `bootstrap/app/create-app.ts:745` and V4 handlers' direct `record.app.runtime` calls show that a native executor cannot be dropped into the `Model` port or swapped through one interface. Plugin manifest `contracts/plugins/index.ts:97-154` covers Agent/command/Skill/hook/MCP, not a Fleet page. The candidate's first-party queue/account corrections reuse this path. |
+| **Pi Agent core** `2b0a123de983` / installed `0.87.1` | `packages/agent/src/agent.ts:188,299-305,376-401` owns prompt, steering and follow-up; `agent-loop.ts:174-305,722` performs model and tool steps and calls optional `beforeToolCall`. The seven-case offline probe confirms denial and cancellation hooks, not Fleet integration. | Core messages/queues are in-process state; no Pi coding-agent `ExtensionAPI` or durable Session manager is loaded merely by importing it. A missing host callback lets a tool run. Replacing ZCode's loop means remapping durable queue, event sequence, compaction and permission results even though `pi-ai` already supplies model transport. |
+| **Pi coding-agent** same pin | `packages/coding-agent/src/core/sdk.ts:175,437` creates an `AgentSession` around Pi Agent core and a `SessionManager`; `docs/sdk.md:38-84` states that manager owns finalized model context. `core/extensions/types.ts:1363` exposes `ExtensionAPI` tools/events/commands and terminal UI. Craft embeds this SDK in its own helper process; Cindy launches the standard Pi RPC CLI. Both use more than `pi-ai`. | Its native branch/compaction state can be private executor continuation beneath one Fleet Host. A competing outer Agent loop or two independently editable canonical transcripts would violate ownership; the native Session alone does not. Project extensions run with the Pi process's OS permissions ([Pi documentation](https://pi.dev/docs/latest/how-pi-works)); the stable extension UI is terminal-oriented. This does not automatically register Fleet native pages. |
+| **Pi durable + Chord**, separate refreshed checkout `2532a0bef7f7` | `packages/durable/src/harness/harness.ts:174-185` admits a submission; `session/transaction.ts:187-205,343-358` commits entries/tasks/documents atomically; `harness/tool.ts:42-115` records the tool intent and replays only an explicitly safe call. New `test/harness-ownership.test.ts:115-600` checks child foreground/background cancellation and restart. `packages/chord/src/facets/host.ts:43-130` validates facet lifecycle and reverse disposal; the coding agent has a distinct `src/experimental/` Chord client/worker. | A leading substrate for Fleet's shared human/Agent data and durable Jobs, subject to the switching/recovery tests below; it is not a drop-in package. Durable calls its API experimental and does not yet read images (`packages/durable/README.md:1,131`); Chord offers multi-environment facets/replicated state but supplies no Fleet permission policy or finished page contract. An internal Fleet fork can own these gaps without keeping a second Session. |
+| **Craft v0.13.4** `b2d6c8aabdfd` | `packages/shared/src/agent/backend/factory.ts:132-150,528-575` chooses `ClaudeAgent` or `PiAgent` from the LLM connection; `backend/types.ts:346` presents one `chat()` event stream. `pi-agent.ts:1-16,465-507` spawns a full Pi coding-agent subprocess; `server-core/src/sessions/SessionManager.ts:3518,6174-6220` builds the selected backend and consumes its chat stream. | The Craft business Session is separate from Pi/Claude native session state; `pi-agent.ts:1228-1390` routes tool checks back through Craft's PreToolUse path. This proves a multi-backend host can work, but selecting its host would reverse OV-027's product-base choice; merely copying its `PiAgent` would still require ZCode V4 event/permission mappings. |
+| **Cindy** `374923c219ba` | `maker-core/src/maker.ts:714-730,1349` chooses a registered `agentKind` per business Session; `agents/index.ts:1-45` exposes Pi, Codex and Claude adapters. `agents/pi/index.ts:3751-3762` spawns `pi --mode rpc`; the Claude adapter uses the native Agent SDK, and Codex uses its native app-server. | Maker persists a business ID and native resume binding (`maker.ts:714-730`), handles invalid native resume, and translates permissions/events per backend. Its Pi adapter's launch, model mapping and cleanup occupy dedicated code, not a zero-cost SDK setting. Cindy's application-plugin host is a separate host facility; switching the default Agent loop alone would not bring that UI host to Fleet. |
+| **OpenCode v2** `b471c2b44957` | `packages/core/src/session/execution/local.ts:12-38` coordinates one local drain; `runner/llm.ts:78-105` loads persisted history, resolves model/tools and streams the next call; `session/store.ts:27-64` reads SQLite history. `permission.ts:115-175` merges agent rules and saved project grants; `plugin/host.ts:20-74` exposes scoped transforms over Agent/SDK/catalog. | A complete alternative host with its own DB, permission and plugin services. The current `runner/llm.ts:47-78` explicitly lists incomplete V2 interruption/status, plugin-tool, progress and recovery work; do not infer parity from its API surface or treat the older V1 paths as current V2 proof. Importing it would replace ZCode's host rather than just its loop. |
+| **OpenChamber** `60d836c489` | `packages/ui/src/lib/opencode/client.ts:1-35` wraps `@opencode/client` with runtime scoping and wire projection; `packages/web/server/index.js:1-55` starts/manages an OpenCode runtime and adds web endpoints. | Its `packages/sdk/src/manifest.ts:325-436` and `host.ts:84-163` define guest panels/actions/capabilities over **OpenCode's** Agent runtime. This is a useful Fleet UI-plugin/operation reference, not a separate Agent kernel. The server and UI still need a real OpenCode instance. |
+| **Goose** `add40e76589b` | Desktop `ui/desktop/src/acp/mcp-apps.ts:1-105` calls the same Goose ACP backend; Rust `crates/goose/src/agents/agent.rs:2079-2115,2455-2495` owns replies, `session/session_manager.rs:455,1919-1965` writes SQLite messages, and `agents/state_machine/session.rs:30-105` applies effects. Its ACP provider `acp/provider.rs:799-806` delegates context and permissions to the complete external Agent. | Stronger desktop/CLI/native-executor evidence than a terminal-only SDK. MCP extensions and rendered MCP Apps are real, but `StandaloneAppView.tsx:57-113` opens a distinct ACP Session for a standalone App; that is not Fleet's shared human/Agent Project document authority. The inspected storage tracks Sessions/messages rather than atomic domain documents, media Jobs and tool-effect intent. Reuse ACP executor, permission-route and MCP App acceptance cases, not the whole Rust Host. |
+| **AionCore** `153c6f5cd03d` | `crates/aionui-session/src/backend/mod.rs:81-155` defines `BackendConnection.open_session` and per-session `SessionBackend.dispatch → CommandReceipt`, `events()` and capability snapshot; implementations adapt Claude, Codex, Antigravity and ACP. `capability.rs:264-298` permits mid-turn delivery only for proven backends. | More than a thin connector: the shared orchestrator owns logical Session state while native executors own their processes. The source flags a concrete ACP pending-permission recovery gap in `backend/mod.rs:97-111`; current routing still uses a legacy ACP path. It is valuable for a future ZCode native-executor seam, but lifting its Rust orchestrator would replace the product's Session/protocol authority. |
+| **Deep Agents JS** `9a64a1751ca4` | `libs/deepagents/src/agent.ts:180-235,303-405,450-533` composes LangChain `createAgent` with filesystem, subagents, Skill/memory and approval middleware. It passes a caller checkpointer/store; `backends/state.ts:1-51` keeps one file mode in graph state. | This is an embeddable graph executor, not a desktop host. The graph checkpoint, filesystem backend, todo and subagent state need explicit mapping to Fleet's Session/Project/Action owners. Human interrupt middleware exists, but it does not by itself provide Fleet's existing queue semantics or native page plugin lifecycle. |
+| **OpenAI Agents JS** `fdaf0a66ca6e` | `packages/agents-core/src/run.ts:623-675` constructs `Runner` for tools, guardrails and handoffs; `memory/session.ts:27-99` lets callers supply history; `runState.ts` serializes approval/continuation, and `agents-extensions/src/ai-sdk/index.ts` adapts other model providers. | A legitimate embeddable alternative; its supplied Session interface avoids imposing a database, but the runner's item/approval state still needs lossless projection into ZCode's event and permission protocol. `run.ts:650-651` enables tracing and sensitive-data inclusion by default, requiring explicit Fleet policy. It is not Codex native execution or ChatGPT subscription access. |
+| **DeepSeek Harness** `477b4f420553` | `packages/core/agent-loop/src/index.ts:331,369,652-715` registers the loop as `ctx.agents` factory; `agent.ts:305-408` logs turn/step/request facts; `tool-calls.ts:64-90,264-286` schedules parallel-safe calls and records call/result. Cordis scopes services and disposal through `ctx.effect`. | Plugin-first composition genuinely separates loop, storage, LLM and tools, which informs Fleet's future suite activation. Adopting Cordis as root would replace one authority with a new runtime composition tree. Its root `README.md:11-13` labels the project developer-preview; source composition is not a same-workflow migration proof. |
+| **Codex** `67a709665ac7` | Rust Core snapshots per-turn model/environment and permission profile in `codex-rs/core/src/session/turn_context.rs:305,539-565,749-790`; tool handlers use those permissions; `app-server-protocol/src/protocol/v2/{thread,turn}.rs` exposes separate thread/turn commands and events. | A complete native executor with its own sandbox, Session and OpenAI-specific model/account route. The app-server is an appropriate optional-executor boundary, not a replacement for Fleet's general API-key loop or an embeddable model port. It must own its internal tool loop once selected. |
+| **Kimi Code** `be7d5f5fea78` | `agent-core-v2/src/agent/loop/loopService.ts:1-105` binds a turn machine; `loop/machine/engine.ts:1-110` coordinates model and tool events. `permissionGate/permissionGateService.ts:19-95` adjudicates at tool execution; `llm-adapter/model/model-auth.ts:28-72` refuses simultaneous OAuth and API-key credentials. | Not merely a Kimi HTTP wrapper: it has scoped DI, event state and its own tool policy. `agent/plugin/agentPluginService.ts:35-60` defers a changed plugin prompt/tool snapshot to `/new` or `/reload`. Native Kimi auth and Session state cannot be copied into Fleet's generic key form without a second owner; model/effort and policy mechanisms remain useful. |
+| **MiniMax Code** `d8a32b6bc3b4` | TUI `runtime/adapter.ts:110-131` consumes `CliService`; `local-runtime-v2/src/runtime.ts:299` creates it from V2 services; `service/turn-system/agent-host/native-production-dependencies.ts:125-174` composes the host and `@mavis/agent-runtime`; `agent-core/src/pi-turn-runner/pi-turn-runner.ts:154-217` runs the vendored Pi Agent. | A serious complete-host comparator: V2 owns SQLite Session, committed history, queue leases, permission gate and plugin publication. MiniApp manifests bind a client surface and a supervised process/MCP endpoint (`plugin/package/miniapp/validation.ts:32-49`, `plugin/runtime/miniapp/publication.ts:36-110`). The published repo covers TUI/exec/ACP; its desktop source is absent, so a native Fleet panel cannot be transplanted. Its vendored Pi Agent is `0.79.1`, not the refreshed durable/Chord engine; inspected writers remain Session/queue-specific, so generic shared Project documents and crash-safe media effects still need a separate proof. MiniMax OAuth/Token Plan is its own credential authority, not Fleet subscription access. |
+| **Qwen Code** `88d881491b32` | `packages/core/src/core/client.ts:408,3055` owns the LLM streaming/retry loop; `coreToolScheduler.ts:3414-3445` settles tool calls. `permissionFlow.ts:1-28,60-110` factors the intrinsic tool permission and rule override shared by CLI and ACP, with approval-mode handling in the callers. `omni/tool-result-media.ts:80-110` normalizes media after tools. | Better reusable permission-layer and multimodal-input mechanisms than a generic name-based capability guess. It is another complete Session/tool/permission owner; adapting its bounded media pipeline is smaller than replacing ZCode with a Qwen-centered CLI. |
+| **Grok Build** `f0e3be1100ef` | `xai-grok-pager/src/agent_runtime.rs:1-44` selects the Shell implementation; the real Agent resides under `xai-grok-shell/src/agent/mvp_agent/`. `xai-grok-workspace/src/permission/gate_preflight.rs:28-68` combines policy as deny > ask > allow. `xai-grok-shell/src/session/persistence.rs:1-15,1552-1576` has durable append/fsync barriers. | The source also offers configurable Chat/Responses model backends (`agent/config.rs:3766-3785`): calling it Grok-only transport was too coarse. Its account/remote-service and Rust Session architecture are still not a general Fleet replacement. Copy scoped model/permission/media receipts where useful; do not infer consumer-subscription entitlement from a custom API backend. |
+| **Hermes / OpenClaw** locked details above | Hermes `agent/conversation_loop.py` runs its own Python loop; DirectSDK routes native Claude as a model client with replay and an admission relay. OpenClaw `extensions/{anthropic,google}/cli-backend.ts` distinguishes CLI model backends from its ACP runtime/gateway. | These show two different integration choices, not a universal native bridge. DirectSDK's replay/policy machinery and OpenClaw's gateway/channel owners would duplicate Fleet state if wholesale imported; neither source proves that Fleet may reuse another app's subscription token. |
+| **Claude / Cursor (closed kernels)** official docs | [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview) runs the complete Claude Code binary with native tools, permissions and Session; [Cursor docs](https://cursor.com/docs) document behavior but expose no inspected embeddable Agent-loop implementation. | Claude is an optional full-executor candidate under its authorization terms; Cursor is UX/workflow evidence only. Neither supports a code-level transplant of its private internal kernel. |
+| **CC Switch / Cockpit / CLIProxyAPI / HarnessRouter** locked details below | The first three select credentials, quotas or upstream HTTP protocols. HarnessRouter routes complete external harness tasks and normalizes receipts. | These are valuable at connection or external-executor seams, not alternatives to Fleet's default in-process Agent loop. Their own daemon/state/permission services are not imported. |
+
+The 2026-09-29 refresh also checked changed kernel-path code, rather than treating the older
+source locks as current. Cindy now passes Session identity into its Pi vision/companion launch
+(`agents/pi/index.ts:5114,5148,5231`), still through its native adapter. Kimi now injects hook
+parts into a prompt while filtering them from the displayed text
+(`loopService.ts:594-605,1216`); Qwen restores memory bodies and invalidates delivery state when
+history is replaced (`client.ts:1093-1098,1179-1186`). These changes reinforce that prompt and
+Session state live in each complete harness. DeepSeek now records pending tool results on a failed
+step (`agent.ts:331-356`), a recovery mechanism worth testing rather than importing its root.
+Grok moved managed permission preflight into `xai-grok-permission-rules/src/gate_preflight.rs:27-96`;
+it distinguishes rule-matched Ask from analysis-failure Ask instead of treating all prompts alike.
+OpenClaw added a `subscription-auth` CLI dispatch gated on an owning transcript and a nonempty,
+named tool allowlist (`embedded-agent-runner/cli-backend-dispatch.ts:36-74,85-94`), not a general
+subscription-to-API bridge. Hermes still drives turns in its Python
+`agent/conversation_loop.py`; the refreshed loop now rebuilds and re-pins a changed desktop/TUI
+toolset with its system prompt (`conversation_loop.py:719-809`), explicitly breaking cache once
+instead of silently retaining disabled tools. OpenCode V2's current `session/runner/llm.ts:47-78`
+still lists interruption/status, plugin-tool and recovery work as incomplete; its named
+session/runner/permission source files did not change at the refreshed HEAD. Codex's inspected
+turn-context change only renamed a persistent execution feature predicate
+(`turn_context.rs:956`); AionCore's backend/capability paths were unchanged. These checks support
+the authority analysis below; they are not a full review of every refreshed commit.
+
+**Implementation conclusion (OV-066, extended by OV-069):** evolve the selected ZCode Host
+and add complete native executor adapters; its current default execution lane uses a Pi AgentSession loop with Host-owned requests/tools. Human/Agent feature
+operations remain on the same domain owners. This closes the whole-Host selection for development;
+Pi durable/Chord and the other compared Hosts remain mechanism evidence, not concurrent replacement
+projects. The probes below support particular invariants, not a universal quality/cost ranking.
+The selected route and reopening conditions are in [OV-066](decisions.md#ov-066--close-foundation-choices-and-deliver-in-dependency-order-2026-09-29).
+
+| Whole-product route | Long-term capability and counter-evidence | Recommendation |
+|---|---|---|
+| Extend ZCode `AgentRuntime` and its existing workflow engine | Queue, billing, context and a journaled dynamic-workflow engine already exist. V4 calls `record.app.runtime` directly. Completed workflow effects replay from the journal, but an interrupted `world.run` with no recorded result is dispatched again. | **Selected development route.** Extend its existing owners and extract the complete-executor seam. Paid media needs receipt reconciliation; page/domain operations and native adapter parity remain delivery acceptance, not another base-selection gate. |
+| Adopt full Pi coding-agent | Mature community extensions and model/tool loop; `SessionManager` owns a separate JSONL tree, and stable extension UI is terminal-oriented. A plugin executes with the Pi process's permissions. | A viable complete executor under a single Fleet Host, as Craft/Cindy demonstrate. Bind native continuation explicitly and replace the selected execution lane instead of running a second outer tool loop. The full-SDK/provider probe below removes the earlier categorical exclusion. |
+| Build a Fleet kernel from zero | Could fit every domain exactly, but would reimplement atomic transcript/document/task commits, crash-safe tool intent, forks, ownership and replicated facet lifecycle already exercised in Pi's open MIT code. | Not selected. Build Fleet-specific operations on existing owners; no demonstrated requirement needs a blank-sheet executor or universal replacement store. |
+| Fleet-owned Pi durable/Chord foundation | `pi-durable` `2532a0bef7f7` atomically commits entries/tasks/docs within its store, records tool intent and tracks child ownership. Chord supplies facets and replicated state. Raw config writes can change the model between tool rounds of one submitted input, and queued inputs do not capture their route. | **Not selected as the replacement.** Reuse a specific proven recovery/composition mechanism if a real consumer needs it. At this tested lock, whole-workbench fit, input binding and native page/editor behavior remain unproved; fixture benefits do not settle a whole-Host migration. |
+| Adopt MiniMax Code V2 wholesale | It demonstrates a real in-process SQLite host, turn/history/queue ownership, permission gate and supervised MiniApp process publication above a vendored Pi loop. Its official source has no desktop implementation; account and managed-tool services are MiniMax-specific, while generic Project documents/Jobs are not established by the inspected Session/queue writers. | Extract the committed-history, queue-lease and MiniApp publication acceptance cases. Replacing Fleet's Host with its product stack would still require a new desktop suite/data/credential boundary and would not remove the need for a durable domain Job engine. |
+| Adopt Goose Rust core wholesale | One open-source desktop/CLI/ACP loop with SQLite Session records, MCP tools/Apps and external complete ACP Agents. Its standalone App launches another ACP Session, while Project domain objects and media effect-intent transactions are outside the inspected Session schema. | Use its complete-executor and MCP App wiring as acceptance fixtures; a Fleet replacement still needs the shared Project operation and durable Job owner, plus data migration from ZCode. |
+
+The source-level negative test matters: `pi-durable/test/harness-tools.test.ts:132` deliberately
+shows that disabling an advertised tool after model preparation does not cancel that in-flight
+call. Fleet must recheck Project grant, resource revision and permission **at execution**, even if
+its tool registry or plugin facet has already changed. Its built-in `beforeTool` hook is a seam, not
+an authorization system. The offline
+[`fleet-kernel-shared-operation.mjs`](../scripts/probes/fleet-kernel-shared-operation.mjs)
+probe runs one shared human/Agent document mutation, rejects a stale version, persists and revokes
+a simple grant after the model reply but before tool execution, rejects another Project's missing
+tool and restores the record and grant from SQLite. It also interrupts a fake media Job after its
+external receipt, reopens SQLite, reconciles that receipt without another call, and disposes a
+Chord-backed Project projection service. It makes zero network requests. This is a
+candidate-substrate test: its one Boolean grant is not Fleet's full permission policy, the media
+receipt is a fake, the facet is a backend service rather than a renderer, and there is no paid
+inference or cross-platform release proof. The refreshed source's 125 focused ownership/recovery tests and
+189 document/tool/SQLite/facet tests pass; overlapping test files are not additive coverage.
+
+A follow-up fetch observed Pi HEAD `1b347794e2a630e4359f2584f4eea388145d0ddf` on 2026-09-29.
+Its only diff from the tested `2532a0bef7f7` is `packages/durable/test/harness-ownership.test.ts`
+(206 additions, 3 removals); runtime sources and the experimental-API notice are unchanged.
+The proof checkout was not re-pinned, and the counts above are not claimed for the added cases.
+The [Agent Skills specification](https://agentskills.io/specification) and official
+[MCP Apps repository](https://github.com/modelcontextprotocol/ext-apps) were also checked for
+OV-066's contribution boundary: portable instructions and tool UIs do not provide Fleet's installer,
+native-document ownership or persistent page lifecycle.
+
+The selected Fleet Host coordinates admission and receipts; existing domain owners retain their
+data, including native editors' save and undo. Human controls and Agent tools submit the same typed
+operation with resource version and caller identity. Transactions are local to each store; native
+file and remote-effect partial outcomes require reconciliation. Authorization is checked before
+admission and again at execution. Chord facets can register backend, renderer and remote services, but a
+Fleet manifest grants no OS access by itself. The host must supply package identity, scoped grants,
+view slots, signed/reviewed assets, revocation, failure and recovery. Media bytes live in an
+artifact store referenced by a transaction, while deferred image/video generation has a durable
+request/receipt/unknown-outcome state rather than a blind retry. This deliberately has one Session
+and one permission authority; Chord is service composition, not a parallel store.
+
+Complete official agents remain optional **whole executors** behind a capability-negotiated
+`ExecutorPort` patterned after AionCore's receipt/event separation. The host stores an opaque native
+continuation binding and projects its ordered events, but never runs an outer Pi/Fleet tool loop over
+native Codex or Claude. An executor without enforceable approval, resume or usage reports declares
+that limit. Current ZCode V4 handlers directly call `record.app.runtime`
+(`bootstrap/.../handlers/session-flow.ts:184-285`, `queue.ts:185`, `fork-edit-retry.ts:104`), so
+an executor adapter and versioned data cutover are real migration work, not a provider setting.
+Retain the ZCode shell and existing data writers while mapping these calls through the Host
+executor boundary. Adding a native adapter does not by itself authorize replacing Session storage
+or importing credentials; those changes retain their applicable checkpoint.
+
+**Why this does not settle the UI plugin host:** ZCode's
+`apps/zcode-cli/packages/contracts/src/plugins/index.ts:149` covers Agent/command/Skill/hook/MCP,
+not a general Fleet page/right-panel contribution. Stable Pi `ExtensionAPI` supplies terminal UI;
+Chord's newer presentation facets are still under `coding-agent/src/experimental/`. Cindy's
+OpenDesign package and OpenChamber's guest SDK remain concrete UI contribution references. Fleet
+must finish its own manifest, shared design system, scoped domain operation bridge and renderer
+isolation over the existing Host services; importing a composition package alone does not do it.
+
+Delivery acceptance follows [TODO](../TODO.md#delivery-order): OV-067 puts kernel admission,
+persistence, permissions/recovery and native adapters before page operations and document packages. Preserve existing
+Session/Provider/artifact writers and user data; a later replacement would require its own copied-data
+replay and rollback proof. Source reconstruction is not a live-data migration. The ZCode candidate
+remains `wired but not visually checked`; native executor adapters and the page-operation bridge
+remain `not implemented`. No matched live quality/cost result is claimed.
+
+**Executable evidence:** `bun scripts/probes/agent-kernel-contracts.ts` runs seven scenarios on installed
+Pi 0.87.1 with a scripted model and blocked fetch: default execution without host policy; pre-tool
+denial; unregistered-tool rejection; concurrent human-edit rejection by a shared revision-checked
+operation; cooperative tool cancellation/idle; image-result replay without re-executing completed
+tools; steering before follow-up. Zero network attempts. The first case is deliberate counter-evidence:
+a Pi hook is not a ready-made Fleet permission system. In-memory restored history is not a crash-durable
+storage proof; no native CLI inference, sandbox, complete Fleet migration or model-quality claim follows.
+
+The corresponding Fleet proof must add the full Project policy, UI registration and real media
+artifacts, then verify the same workflow against a copied ZCode Session. The current candidate
+remains the baseline; source suites and synthetic models do not establish live inference quality.
+
+### Switching executors and downstream development
+
+The owner's follow-up reopens the earlier categorical kernel claim: a user-selectable execution
+mode must be evaluated as part of the architecture. Three routes were compared: one embedded
+loop for everything; several whole product kernels with independent state; and one Fleet Host
+with several capability-checked executors. The third is the recommendation. The two selectable
+operations have different semantics: model/account selection within one executor and handoff
+between complete executors. Neither is an in-flight pointer swap.
+
+| Current source | Executed or traced boundary | Consequence for Fleet |
+|---|---|---|
+| Cindy `a46bb58fc3`, `apps/desktop/src/main/maker-ipc/sessionAgentSwitchHandler.ts:510-645,875-950`, `agentHandoff.ts:73-90,434`, `maker-orchestration/rewind.ts:227` | Choice is staged until send; the old native Session is parked and switching back resumes it plus a delta memo. A fresh target receives a bounded textual handoff. Cross-engine rewind is rejected. DB route commit precedes boundary insertion, and a failed boundary insertion degrades to RAM handoff. | Adopt deferred choice and explicit handoff semantics. Make the route binding and durable handoff receipt one Host transaction; do not copy the process-crash gap. Preserve artifacts independently and never claim that text transfer preserves thinking signatures, cache or image bytes. |
+| Craft latest `3eac37be5e`, `server-core/src/sessions/runtime-config.ts:46-99`, `SessionManager.ts:3221-3266` | Credential/provider identity changes require backend recreation; runtime refresh waits until the active turn is idle. | Account switching must rebind credentials and native continuation, not merely change a model label or quota card. |
+| AionCore `ea24f50af2`, `aionui-session/src/{backend/mod.rs:78-150,capability.rs:74-115}` | `dispatch` returns an admission receipt separately from ordered turn events. Queue, steer, mode effective time, media input, approvals and context query are distinct capabilities. 609 library tests passed using its native-wire fakes/reducer tests. | A common adapter method cannot promise equal behavior. Keep request accepted, turn running, permission waiting and completed separate; gate each control on the actual adapter and current connection. This does not verify live vendor authentication. |
+| Goose `add40e7658`, `crates/goose/src/acp/{handoff.rs:18-105,provider.rs:799-806,1042-1098}` | The complete ACP Agent owns its context and tools. Handoff uses a bounded text memo. A first prompt rejected for certain context errors can retry without the memo; cancelled/refused handoff may be sent again. | Use complete-executor dispatch, but do not silently drop required context to make a request succeed. Preserve a receipt for what context was accepted; a rejected handoff should offer a visible new branch or retry. |
+| Pi durable `2532a0bef7`, `harness/generation.ts:104-140`, `harness/harness.ts:242` | The actual runtime was exercised with two scripted providers. `setModel` during a tool made the same input's next model request use B; a paused input submitted on A also used B after config changed. Waiting for idle kept the first input on A. | Fleet must persist a complete execution binding on each admitted input and use it for the whole run/retries. Pi's request checkpoint is narrower than Fleet's user-turn boundary. |
+| Original ZCode `29628c9acd`, `dynamic-workflow/src/engine/{engine-world.ts:42-75,engine.ts:332-345}`, `adapters/.../dwf-journal.ts:95-110` | Three source-backed replay tests: completed world effects are cached; changed scripts cannot resume; a running world effect with no result is dispatched again. Candidate package source was byte-compared with the original before execution, using the candidate's installed TypeScript 5.9.3. | Corrects the earlier overly broad lack-of-durability claim. Journal replay is valuable, but unknown paid effects need receipt lookup or human reconciliation before retry. |
+
+**New reproducible checks:** `node --test scripts/probes/executor-switching.mjs` passes 3
+upstream-Pi behavior cases. `node 源码参考/software/pi-mono-latest/node_modules/vitest/vitest.mjs
+run --config scripts/probes/cindy-handoff.config.mjs` passes the 70 unmodified Cindy handoff tests
+and 3 added boundary cases: long-history loss, no transfer of thinking/image bytes, and delta
+handoff's dependence on a valid parked native Session. `bun test
+scripts/probes/zcode-workflow-replay.test.ts` passes the 3 original-engine observations.
+`cargo +1.97.0 test -p aionui-session --lib --locked` in AionCore passes 609 tests. The first
+offline build could not resolve an uncached locked Git dependency; the successful build fetched
+development dependencies in the reference checkout without adding a Fleet production dependency.
+
+`node scripts/probes/durable-process-recovery.mjs` additionally kills a real child process with
+SIGKILL after a fake external effect but before Host result commit, then opens the actual Pi SQLite
+store in two new processes. A queryable receipt completes without another effect; an unqueryable
+receipt stays `needs-reconciliation`, also without another effect. This proof relies on the
+adapter's explicit local fake receipt lookup; Pi cannot confer exactly-once semantics on an
+arbitrary remote API. No real model, subscription or paid media request was sent.
+
+The installed native binaries report Codex `0.156.1` and Claude Code `2.1.281`; AionCore's
+verified descriptors name `0.151.0` and `2.1.274`. The installed Codex binary successfully exported
+its current experimental JSON schema without inference. `node scripts/probes/native-protocol-surface.mjs`
+checks provider/thread scope, subsequent-turn model/policy changes, steering with `expectedTurnId`,
+and tool/approval correlation. The [official App Server contract](https://learn.chatgpt.com/docs/app-server)
+and generated schema separate thread configuration, turn identity, steering and approvals. Aion's
+test result therefore validates its adapter fixtures, not blanket compatibility with the user's
+newer binaries. Ship version/capability negotiation and integration tests, not only a name match.
+
+The resulting switching contract is in [Agent core](modules/agent-core.md#kernel-target-under-ov-036);
+the feature-by-feature implementation impact is in [Architecture](architecture.md#executor-choice-and-feature-development).
+Model quality, task success, actual cache savings and provider latency remain unmeasured. Those
+need fixed real tasks and authorized inference on the same accounts; passing offline contract
+tests cannot rank their intelligence or establish a universal winning engine.
+
+**Whole-product evidence limit:** the existing product contract already requires shared live
+native artifacts, human/Agent editing, save/undo/reopen, Project-scoped page contributions and
+contextual feature operations. The probes above do not execute those loops: the shared-operation
+probe edits a JSON record, its media receipt is fake, and its facet is a backend service. These results
+do not establish a universal whole-workbench winner. OV-066 selects the existing Host for development.
+This is a limit of the comparison, not a new requirement
+or an instruction to invent a universal document store. Start from the existing ZCode settings
+service and the [already-defined page-operation proof](modules/components.md#context-menu-assistance-source-backed-landing-boundary),
+then the [native-format proof](modules/canvas.md#native-document-editing-info-05--create-16-r10).
+Cindy/DeepSeek composition, GenOffice operations and Craft contextual interaction must be assessed
+at those actual callers; a coding benchmark or pure SDK test cannot substitute for them.
+
+### DeepSeek Harness desktop source comparison
+
+Owner requested the open-source implementation, rather than a screen-only review. The official
+repository and local reference both resolve to `639ed015397290b3745d163aafe02ffee4aa3f84`
+(`0.2.0-rc.2`); the read-only upstream HEAD check on 2026-09-30 matched. No reference was re-pinned.
+This is source/mechanism evidence, not Fleet integration or permission to replace its Host.
+
+| Source at that pin | Implementation finding | Fleet consequence |
+|---|---|---|
+| `apps/desktop/src/main.ts:662,683`; `host-process.ts:146`; `backend-controller.ts:82`; `paths.ts:19` | Electron serves bundled Web assets through its app scheme and forwards application operations to one authenticated Host child. Startup/stop are generation-owned; Desktop has its own reserved profile. | Reuse failure/cleanup and boundary tests over the existing supervised Fleet CLI; avoid a second backend per feature page. Desktop packaging is separate from Agent-loop choice. |
+| `packages/core/agent-loop/src/agent.ts:31,331,436,534`; `packages/llm/llm-pi-ai/package.json` | Its own queued-turn driver derives requests from Session history, calls the LLM seam and executes tools. The Pi package here is `pi-ai@^0.87.1`, not full pi-coding-agent. | Do not describe this desktop release as another full-Pi Host or reopen the current executor choice from screenshots. Compare concrete queue/recovery gaps, not dependency names or an unmeasured quality ranking. |
+| `packages/client/ui-model-selection/src/client/{directory.ts:91,155,ModelSelect.tsx:100}` | Composer and `/model` share one per-Session directory. Host reasoning metadata supplies the default; generation guards reject stale settlements and unavailable saved identities remain distinct from routability. | Preserve one selection owner and default-effort resolver. Borrow focus/search and state cases; its two-level menu and combined model/effort caption are not automatic replacements for the owner's simpler ZCode controls. |
+| `packages/client/ui-settings-models/src/client/{operations.ts:86,ProviderEditor.tsx:121,295,302,store.ts:277}`; `packages/settings/settings/src/index.ts:367` | Settings use versioned path edits over a redacted namespace; credential storage is separate. Provider readiness is active registration plus credential presence, not a successful inference probe. Settings and credential Apply are two writes. | The contextual Agent operation should call the existing narrow version-checked Fleet writer and receive a non-secret snapshot. Do not treat a key-state dot as model availability or copy the two-write failure boundary without reconciliation. Keep original key Enter/blur interaction. |
+| `packages/client/ui-chat/src/client/presentation-policy.ts:24`; `ui-settings-account/src/client/onboarding-state.ts:113,158` | Office/development onboarding saves process/usage presentation and Developer-tools visibility. Shared policy resolves detail levels; it does not select another execution engine or establish a Project suite loadout. | Default density and progressive detail are useful. Hiding coding controls is insufficient for Fleet's Project-scoped tool/Skill/native-page activation requirement. Do not import its onboarding/account dependency. |
+| `packages/interaction/{tool-ask-user/src/timed.ts:36,user-questions/src/timed-wait.ts:12}`; `packages/client/ui-user-questions/src/client/{draft-store.ts:43,question-reply.ts:134}` | Opt-in timed questions preserve pending versus skipped, expire the foreground wait without cancelling the Turn, retain per-request answer drafts and identify late replies. An open answer UI claims the wait. The tool explicitly denies treating timeout as permission. | A bounded reference for the unfinished asynchronous question/reply workflow. Preserve explicit approval for dependent operations and use Fleet's existing question/Session owners; no shadow chat or guessed answer. |
+| `packages/skill/skill-office/src/index.ts:13,65`; `packages/client/ui-sidebar-documentpreview/src/client/{office/OfficeBody.tsx:73,excel/excel.tsx:64}` | Office authoring uses bundled DOCX/PPTX/XLSX Skills and a supplied standalone Node/LibreOffice Kit. Office preview converts to PDF; Excel uses FortuneSheet with `allowEdit=false` and `forceCalculation=false`. | Useful creation/check/conversion mechanisms, not proof of a native shared human/Agent Office editor. Retain Fleet's real edit/undo/save/export/reopen acceptance and per-component licence review. |
+| `packages/client/ui-settings-models/src/client/{ModelRow.tsx:79,ModelListEditor.tsx:5,116}`; `packages/client/ui-slots/README.md` | Model rows remove entries, an empty override inherits the built-in catalog, and capacity placeholders are route-level constants. Slot declarations bind rendering to scope and disposal, but also introduce a substantial framework. | Preserve Fleet's enabled switches, explicit catalog membership and unknown-capacity evidence. Borrow scoped lifecycle invariants without copying the empty-list fallback, arbitrary constants or the full Slot/Cordis implementation. |
+
+Executed [bounded source probe](../scripts/probes/deepseek-desktop-source.mjs) directly against this
+checkout: original fuzzy ranking, presentation policy, unattended timed wait and answer-UI claim all
+passed. Four mechanisms, zero provider calls and zero user-state writes; the probe does not validate
+the complete Desktop Host, React pages, model quality, subscription entitlement or native Office editing.
+Use the [engineering probe entry](engineering.md#test-map-where-verification-lives) for the command. These findings
+inform the existing [page-operation](modules/components.md#context-menu-assistance-source-backed-landing-boundary),
+[context](modules/context.md) and [document](modules/canvas.md) contracts; their capability status is unchanged.
+
+### Full Pi SDK and provider extensibility reassessment
+
+The owner asks whether Cindy/Craft's full Pi composition is a better default and whether missing
+built-in vendors block it (OV-068). Three different packages must stay distinct: `pi-ai` supplies
+model transport, `pi-coding-agent` supplies AgentSession/context/tools/extensions, and the newer
+`pi-durable`/Chord experiments supply a different persistence/composition substrate. A limitation
+of durable is not evidence against the full coding-agent SDK.
+
+| Inspected implementation | Actual mechanism and Fleet consequence |
+|---|---|
+| Craft v0.13.4 `b2d6c8aabdfd` | `packages/shared/src/agent/pi-agent.ts:446–507` starts its helper process. `packages/pi-agent-server/src/index.ts:487` registers custom endpoint models; `:623–652,739` supplies wrapped `customTools`, an explicit name allowlist and `createAgentSession`; `:660` isolates the Agent directory and `:669` binds native Pi sessions to one Craft session. `pi-agent.ts:1221` sends tool authorization through Craft's existing checks. This is a full SDK in a supervised process, not just a transport or a second application. |
+| Cindy `a46bb58fc3263f1a3dde04cf9470ed9b0379c82c` | `packages/maker-core/src/agents/pi/index.ts:2325–2377` projects each native connection to its own provider definition and `:3752` launches `pi --mode rpc` with controlled resources and a permission bridge. `cindy-bridge-source.ts:3997` intercepts `tool_call`. `native-provider-adapter-source.ts:24–59` keeps the upstream protocol serializer while mapping independent connection identity and auth. Its fallback capability/window values are not verified provider facts and must not be copied into Fleet's UI. |
+| Pi reference 0.99.1 `2532a0bef7f7` | `packages/coding-agent/docs/custom-provider.md:7–15,21–29,97–133` distinguishes static compatible endpoints, dynamic discovery, OAuth and custom streams. `docs/sdk.md:26–43,96–110` assigns finalized context to SessionManager and accepts host-selected settings/resources/tools. Native continuation is valid beneath one logical Host session, provided admission, mutation and recovery have one owner per entity. |
+| Current Fleet candidate | `packages/provider/src/config/provider-data-schema.ts:5–9` exposes only three ordinary API dialects. Missing native protocol coverage can therefore be a Fleet adapter/configuration gap even when Pi itself has the serializer. Catalog membership, protocol support, account entitlement and media execution are separate checks. |
+
+Executed [full SDK probe](../scripts/probes/pi-sdk-provider-boundary.mjs): installed SDK 0.87.1
+and reference source 0.99.1 each performed seven scripted model requests with zero network calls.
+Both registered an unlisted model/custom wire API under two independently authenticated synthetic
+connections, ran a Host-owned non-coding feature tool with an explicit allowlist, rejected Host
+permission denial and stale domain revisions, and restored native tool outcomes and the selected
+connection after SessionManager reopen. The fixture domain operation is not Fleet's real page
+bridge; this proves SDK feasibility, not live OAuth, model quality, media or migration parity.
+
+Counter-evidence is retained: in both versions, an injected `appendModelChange` failure makes
+`session.setModel()` reject **after** changing `agent.state.model`. The Host must reconcile or
+retire that executor before another input; a bare SDK switch cannot replace Fleet's commit and
+input-binding contract. Provider registration alone also supplies no subscription allowance,
+Job receipt or UI contribution. These are integration requirements, not reasons to dismiss Pi.
+
+OV-069 executes that proposal in the isolated candidate: full SDK 0.99.1 inside the existing
+supervised CLI process, explicit Host tool wrappers/resources and existing credential/model ports.
+`pi-turn.ts` drives the native AgentSession; physical requests use the Host context/compiler and
+transport. One admitted tool batch is committed once; SDK siblings consume its cached results.
+SDK state is private and in-memory per input, while Host SQLite preserves canonical history.
+Native SDK compaction, global/project extension discovery and native page UI are not enabled.
+The integration retains commit-before-publish and fixes unsent Session config writes that exposed
+a foreign-key error. Actual staged-binary tests verify streaming, one real Read, renderer events
+and process restart using a loopback provider. This is real local execution with fake inference,
+not live vendor behavior, model-quality improvement, paid billing or full native-CLI parity.
+
+Missing-provider handling follows the [official custom-provider documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/custom-provider.md):
+compatible API → configure a provider/model; special auth/discovery → Provider extension; unsupported
+wire → custom stream preserving tools/cancellation/usage. Native CLI-only capabilities use a full
+native executor. Images/video require their own verified operation/entitlement and durable result
+path; a chat model's name or protocol does not grant those capabilities.
+
+### Token efficiency evidence and Pi extension boundary
+
+The owner's remembered vendor study is consistent with Databricks' July 8, 2026
+[internal coding benchmark](https://www.databricks.com/blog/benchmarking-coding-agents-databricks-multi-million-line-codebase).
+Matched models and thinking levels incurred more than a twofold task-cost difference in some
+harness pairs with comparable quality, and the authors report approximately one-third as much
+context per request for Pi. It covers their internal code tasks, not every framework or Fleet's
+document/media workflows. The article does not publish the task count, full traces or a universal
+winner. Its dollar-per-task examples must not be mixed with unmatched harness/model points.
+
+The September 17 [SoL-Pi paper](https://arxiv.org/html/2609.20519v1) and
+[official NVIDIA source](https://github.com/NVlabs/SoL-Pi) provide another bounded result. On
+EdgeBench with GPT-5.6 Sol, base Pi averages 44.833 score; the four-mechanism Efficiency setting
+scores 42.003 with 49.0% less recorded token traffic and 33.2% lower estimated API cost. Its
+separate Performance setting scores 47.208 with 6.1% less traffic. These are different settings,
+not simultaneous maxima. In the paper's 63 CPU-only Terminal-Bench 4 tasks, Pi and native Codex
+solve 18 each while SoL-Pi solves 15. Treat the lower-cost quality tradeoff explicitly.
+
+The study evaluates a coding harness, not `pi-ai` transport or the new experimental `pi-durable`
+and Chord packages. Fleet now hosts Pi AgentSession beneath ZCode's context/tool/permission
+owners (OV-069); it does not inherit these savings. Pi's extension API supports tool registration, effective
+loadout selection, context projection and lifecycle hooks; Skills expose metadata before their
+full body is read (`coding-agent/docs/{extensions,skills}.md`). That makes Pi a strong customizable
+execution-layer candidate. It does not establish the strongest complete desktop/plugin/data Host.
+
+SoL-Pi source `1559b5cb12c7` was cloned and inspected, not installed. Four mechanisms are opt-in:
+fused edit+validation, archived large observations with exact recall, quote-verified diagnostic
+reduction, and economical compaction. `src/sol-pi/extensions/observation-pack/index.ts:137` changes
+provider projection while preserving stored history. The reducer's exact-quote checks verify
+quotes, not completeness of the selected evidence. `action-fusion/then-run.ts:111` directly calls
+the built-in Bash definition: a Fleet adaptation must still apply its command policy to that
+nested effect. `online-context-compact` uses a configured cache write/read ratio that remains
+fixed after model changes; it is neither automatic vendor pricing nor total-cost accounting.
+The package's documented compatibility is Pi coding-agent 0.85.1/0.84.2, not Fleet's 0.87.1
+transport seam or the 0.99.1 durable candidate. Its repository tests and claimed savings were not
+reproduced in Fleet in this source-only intake.
+
+Fleet's evaluation target is minimum cost per **accepted complete outcome**, subject to no
+material quality regression. Count retries, helper models, compaction, handoff, input/output and
+cache classes; separately report successful-task ratio, evidence loss, false completion and
+wall time. A richer deterministic Host should expose only the currently useful tools and context
+to the model. Registered plugins do not all need to become prompt schemas. Benchmark shorter
+projections against the unchanged task and verifier; fewer tokens alone cannot establish better
+attention or task performance. Start with source-backed output shaping and selective loadouts;
+do not enable an entire optimization stack solely from a paper's headline.
+
+### Retained context-economy observations
+
+The superseded context diagnosis recorded **31,561 characters / 31,713 UTF-8 bytes** in a full
+Craft prompt and **26 session-tool definitions / 27,288 serialized bytes**. These are historical
+byte inventories, not tokens, not the current ZCode request and not complete SDK/Source/Skill
+accounting. Its source locks were Craft `4289b1609732`, Pi `13437ca828894f43`, OpenHands
+`613406ca2bca`, Hermes `2ea39daeb1f6`, OpenClaw `9f5609382b54`. Reproduce from that source before
+comparing; current commands and metrics are owned by Engineering and Context.
+
+Historical gateway research identified stable/dynamic prompt sections, cache-TTL-aware output
+pruning, bounded auxiliary summaries, explicit context visibility and named toolsets. Navigation
+at that review was OpenClaw `docs/concepts/{system-prompt,context,compaction,session-pruning,memory,dreaming}.md`
+and `src/{context-engine,agents/system-prompt*.ts}`; Hermes
+`agent/{context_engine,conversation_compression,curator,turn_finalizer}.py` and
+`tools/code_execution_tool.py`. Those are mechanism leads requiring current-source verification,
+not admission of a Gateway, memory store, fixed prompt budget or automatic routing.
+
+[Unabyss](https://unabyss.com/how-it-works) was a product-only comparison for connected source
+context, per-tool visibility, sensitivity and refresh/write-back. Its implementation, conflict
+handling and freshness guarantees were not inspected. The useful requirement is scoped,
+source-attributed, revocable retrieval; no hosted universal profile or internal MCP bus is selected.
+The distinct multi-agent papers and provider implementation notes remain in the routed research
+set. Product contracts and the active order are not repeated in these evidence records.
+
+Other source leads retained from those notes (not refreshed experimental results):
+[OpenHands SDK paper](https://arxiv.org/abs/2511.03690),
+[condenser guide](https://docs.openhands.dev/sdk/guides/context-condenser),
+[SWE-agent](https://arxiv.org/abs/2405.15793), [Agentless](https://arxiv.org/abs/2407.01489),
+[HarnessBench](https://arxiv.org/abs/2605.27922),
+[Don't Break the Cache](https://arxiv.org/abs/2601.06007),
+[historical Craft origin](https://github.com/lukilabs/craft-agents-oss),
+[Hermes docs](https://hermes-agent.nousresearch.com/docs/),
+[OpenClaw docs](https://docs.openclaw.ai/). Current source claims require the lock and code review
+specified elsewhere in this registry; these links are not dependency or architecture approvals.
+
+### Additional kernel and protocol comparisons
+
+The owner requested current sources and challenged the completeness of the recommendation. The
+following are bounded source inspections at the exact current locks, not an equal-task runtime
+benchmark. No claim that all 80 reference checkouts have been deeply audited is made.
+
+| Source / revision | Concrete mechanism inspected | Fleet consequence |
+|---|---|---|
+| Deep Agents JS `9a64a1751ca4d5aba003e5c15f972b183202238f` | `libs/deepagents/src/agent.ts:180,450,510,533` composes filesystem, subagents, summarization, model-specific profiles and optional human-in-the-loop middleware into LangChain `createAgent`, passing a caller checkpointer/store. `backends/state.ts:1,51` stores files in graph state; filesystem backends are separate. | A serious general-workbench executor comparator, especially for interruption/checkpointing. It does not require another Fleet database by definition, but checkpoint, file, todo and subagent state must map into existing owners. More integration overlap than bare Pi; do not dismiss it as coding-only or assume graph checkpoints solve exactly-once external effects. |
+| OpenAI Agents JS `fdaf0a66ca6e9d89498909ad7cf64745630e8afb` | `packages/agents-core/src/memory/session.ts:27` exposes a caller-provided Session interface; `runState.ts:3153,3180,3203,3488` supports approve/reject and serialized continuation. `packages/agents-extensions/src/ai-sdk/index.ts` adapts other model providers. `run.ts:650` defaults tracing on and sensitive-data inclusion on. | Another embeddable executor comparator, not restricted to OpenAI models and not a Codex/ChatGPT subscription bridge. Fleet must project its existing store, disable external tracing by default, and test replay/stream/provider fidelity. No production dependency admitted. |
+| DeepSeek Harness `477b4f4205` | `docs/architecture.md` and `packages/core/agent-loop/README.md` describe plugin-composed loop, durable Session projections, scoped tools and prepared model calls; developer-preview warning remains in README. | Strong composition reference for suites. Replacing Fleet with its Cordis composition root would also replace authority boundaries; E14/H41 remain in force. Modularity does not require importing its whole kernel. |
+| ACP `15219ed70b6cfc19a0951b2a7e9272ed1d23640f` | `README.md` distinguishes stable wire protocol **1** from schema package versions; `docs/protocol/v1/tool-calls.mdx:135,193` specifies permission requests and cancellation outcomes. V2 material also exists but is not the stable baseline. | Prefer negotiated capabilities for interactive native-agent adapters over invented uniform support. ACP is an executor communication protocol, not an executor, plugin UI host or proof every CLI enforces Fleet permissions. |
+| MCP Apps `82221c0c8ce7661efa6771c9d461511b1650495f` | `src/app-bridge.ts:127,190,503` maps tool UI resources, requested iframe permissions and host tool handlers; `src/styles.ts:77` propagates host CSS variables; `src/spec.types.ts:340` carries theme/display context. | Useful portable embedded-tool UI boundary. Host code still owns CSP/permission enforcement and Fleet's page/right-panel registration. Theme variables alone do not enforce the design language; native contribution SDK and shared operations remain necessary. License transition distinguishes Apache/MIT code from CC-BY documentation. |
+| Current Craft `53393340aa3616db78fb5e19abd6bb528a2a4b3c` | `packages/shared/src/agent/backend/{index,types}.ts` retains distinct Claude/Pi backends, callbacks and branch-readiness contracts. | New separate comparison checkout; neither Craft pin nor `app/` moved. Reinforces learning the existing backend boundary before inventing a second one; no new full-host adoption decision. |
+
+At the earlier source lock, Cindy `374923c219ba` was traced through
+`model-plane/modelPlanePolicy.ts` and `model-discovery/anthropic.ts:700`: subscription catalog
+membership comes from account/native results, while auth-generation and probe identity prevent a
+late result from a logged-out/replaced account populating the current catalog. Gemini CLI
+`2fe7c2d3f065` / change `361b0bbc` resolves the resumed identity before config initialization and
+adds filename collision coverage. Pi `2b0a123de983` has no runtime change under `packages/agent`
+versus `d6af72e1857c`; the AI change there is a test fixture, not new kernel proof. OpenClaw's
+current `docs/gateway/cli-backends.md:17` still distinguishes fallback CLI backends from ACP.
+These narrow checks do not revalidate every changed module or the earlier installed-Pi tests.
+
+**Change-control gate:** this best-first target changes a Session/permission authority and would
+add a maintained internal fork. The owner's approval is the final checkpoint after an isolated
+schema, migration and acceptance result is reviewable. Before that, no production cutover or new
+dependency is authorized. A later target change needs the same Project document/media/native
+executor fixture, not an argument from ecosystem size or migration cost.
+
+### CLIProxyAPI — provider gateway comparison
+
+The owner-supplied [CLIProxyAPI repository](https://github.com/router-for-me/CLIProxyAPI) was already
+present and is now at `ef9e71201e0ca72b03a540d9b6e0862f8c053347` (MIT). It is valuable at the
+provider/credential/protocol layer; its `ProviderExecutor` means an upstream request executor,
+not a complete Agent that owns tool execution, approvals and conversation continuation.
+
+| Inspected source | Useful mechanism | Required adaptation / limit |
+|---|---|---|
+| `sdk/cliproxy/auth/selector.go:27,68,90`; `conductor_refresh.go:489,536`; selector/cooldown tests | Stable credential identity, availability/cooldown, refresh coordination, session-affinity and retry selection. | Extend Fleet's current credential owner. Default-off failover remains same provider, endpoint/service and exact model; no round-robin-by-default, automatic model change or replay after visible output/tool effects. |
+| `sdk/translator/registry.go:14,106`; `internal/runtime/executor/claude_executor_execute.go:20,80,296` | Separate request/stream/non-stream protocol translation and provider execution. The Claude path performs an HTTP Messages request, not an official Claude tool loop. | Prefer native provider formats; reuse bounded mappings/fixtures where needed. Never call converted schemas or copied client headers official-harness parity. The missing-translator pass-through is not Fleet capability detection. |
+| `sdk/pluginapi/types.go:1553,1605,1654`; `internal/api/handlers/management/plugin_quota.go:60,132`; `helps/codex_quota.go:16` | Account-scoped quota providers normalize plan, windows and reset times; Codex observations can come from HTTP/WebSocket signals. Unsupported quota returns an explicit error. | Keep quota separate from context-token usage. Preserve account, source, observation time and unknown/stale state; do not interpret an absent numeric field as exhausted or unlimited. The interface does not prove every listed subscription has a working quota implementation. |
+| `sdk/cliproxy/service_models.go:74–171` | Per-credential registration, plugin overrides and provider-specific model catalogs. | Several paths still use static plan/model lists. They are not proof of current account entitlement; prefer actual account catalogs as in Cindy, enriching returned entries without inventing access. |
+| `config.example.yaml:210–287`; `internal/auth/claude/anthropic_auth.go:24` | Source exposes OAuth/refresh routes, model switching, request cloaking and separate proxy configuration. | Do not import identity disguise, system-prompt replacement or third-party consumer-login assumptions. The example also permits quota-triggered preview-model/project switches that conflict with OV-033. API compatibility does not establish authorized subscription use or native capabilities. |
+
+Recommended landing: extract independently useful mechanisms into Fleet's existing providers;
+an already user-managed proxy can remain an explicit external endpoint. Bundling a Go service,
+its account store, management surface and scheduler would introduce a second provider authority,
+additional process/port/update duties and hidden routing. That whole-service integration is not selected.
+CLIProxyAPI complements Pi's model adapters and HarnessRouter's complete-executor comparison;
+neither proxy replaces the other layer. Media API passthrough also does not supply Fleet's durable
+media-job, artifact, preview or permission lifecycle.
+
+Verification here is source/diff inspection only: no `go` executable was available on PATH,
+so its Go tests were not run. `go.mod` requires Go 1.26 / module v7, while `docs/sdk-advanced.md`
+still contains v6 / Go 1.24 examples; copying those examples without checking code would be wrong.
+No proxy was started, account token read, OAuth session initiated or production dependency added.
+
+### HarnessRouter — executor infrastructure comparison
+
+Owner-supplied [repository](https://github.com/HarnessRouter/harnessrouter), inspected at
+`5f82db1d1f13ea25b8ed0893c38b5b7d2e3e57e3` in a temporary read-only source checkout. Existing
+reference pins, production dependencies and the running candidate were not changed. UHP is a
+versioned **draft**, currently `2026-09-12`; its Responses-shaped endpoint runs a complete task.
+
+| Exact source at this revision | Evidence / adaptation decision |
+|---|---|
+| `runner/server.py:1387,1735,1844,2422,4637,6352` | Separate builders/normalizers for Claude, Codex, Pi, Gemini and other harnesses; `Auth` describes API keys and cloud credentials. Gemini explicitly rejects missing `api_key`. No provider subscription-login lifecycle was found in the inspected gateway/runner. Running an official CLI does not establish ChatGPT/Claude/Gemini consumer subscription support. |
+| `runner/server.py:1797,1866,2472,4669,6680`; `docs/self-hosting-guide.md:984` | Claude skips interactive permissions, Codex uses `approvalPolicy: never` with full sandbox access, Gemini uses `yolo`, Pi uses `--approve`. CE relies on per-session OS users inside a shared Linux container; hosted deployment may use isolated session sandboxes. These choices serve autonomous jobs; copying their flags into Fleet's local project would discard its approval contract. |
+| `protocol/versions/2026-09-12/tasks.md:113`; `lifecycle.md:90`; `streaming.md:134` | Request `tools` are reserved/ignored and reported as such; tool events describe server-executed work, with no client `function_call_output` return path. There is no normative approval-response/steering/fork protocol in this version. Reconnect can read the persisted response; SSE replay is optional. UHP conformance does not prove interactive Fleet parity. A separately governed MCP bridge could expose host operations; observing an event alone cannot approve a pending side effect. |
+| `runner/server.py:333,1916,6463,7849`; `gateway/app.py:5390,6780` | Resume identities, missing-history reporting, process-group cancellation plus Linux `/proc` straggler cleanup, and served-model reporting are reusable mechanisms. A missing native history may start fresh with a visible note; unavailable models may execute the configured default and report substitution. Fleet must instead require explicit recovery/model changes, retain exact-provider/model switching, and port process cleanup per OS. Do not modify native histories merely to make a resume appear successful. |
+| `gateway/backing.py:107,192,299`; `runner/server.py:7496`; `protocol/versions/2026-09-12/plugins.md:15` | CE owns records, blobs, secrets, per-session workspaces and checkpoints. UHP plugins package Skills/MCP, not Fleet page/right-toolbar contributions. Do not import the CE control store beside Fleet's Session store or equate session workspaces with shared Project folders. A remote executor may retain private continuation state, with an explicit host binding and artifact transfer contract. |
+| `gateway/media_plane.py:1,476,712`; `gateway/app.py:11271,11494,11865,12338` | Agent MCP tools and editor routes share capability adapters, durable generation jobs, media bytes and revisioned scene edits; keys resolve server-side. This directly informs the requested text-agent + image/video/audio cooperation. Adapt the common operation/job/artifact mechanism, not its provider catalog or automatic cross-model/provider candidate walk. Media routing requires an explicit authorized model/budget policy. |
+
+**Reuse decision:** prioritize event/error normalization, declared execution capabilities, native
+continuation diagnostics and cancellation tests as source mechanisms. Compare a UHP client as an
+optional remote executor after admission/ownership is mapped. Keep embedded Pi as the local default
+candidate and native interactive transports where their approval/resume features are needed; neither
+choice is promoted by this review. No Docker runtime, HarnessRouter account or hosted service is
+required merely to learn from or adapt the Apache-2.0 Community Edition code.
+
+**License boundary:** CE `LICENSE`/`NOTICE` cover that repository; native CLIs retain their own terms.
+The linked Starter Kits are a different repository: inspected license at
+[`d3d4f5a60e1df33f66894b69cabf938c059023da`](https://github.com/HarnessRouter/starter-kit/blob/d3d4f5a60e1df33f66894b69cabf938c059023da/kits/LICENSE.md)
+restricts redistribution and requires separate commercial coverage. Do not bulk-import its slide,
+sheet or video kit assets as if covered by CE's Apache license. No kit source was imported.
+
+**Verification:** Python 3.12, isolated temporary dependencies; upstream
+`runner/tests/test_{pi_normalize,claude_error_filter,codex_reasoning_strip}.py`: **37 passed**.
+A Python audit hook blocked socket connections and subprocess creation; zero attempts occurred.
+The cases exercise command/config construction, event/error mapping and fixture-only history handling.
+They do not prove live model quality, subscription login, container isolation, process cancellation,
+media generation or Fleet integration. HarnessRouter integration remains `not implemented`.
+
+### Cindy OpenDesign application plugin
+
+**OV-026 names this implementation as the desired kind of reuse.** Read-only source inspection of
+[Cindy's official plugins repository](https://github.com/makecindy/cindy-official-plugins/tree/8cc054b938d0acf49c63639caa38cd9ebc6990b5/opendesign-trial)
+at `8cc054b938d0acf49c63639caa38cd9ebc6990b5` found `opendesign-trial` version **0.4.25**,
+minimum Cindy **0.1.83**. This is a separate repository from the Cindy host, not a missing directory
+in the local host checkout. Selected text sources were read from that immutable revision; no
+package, model call, candidate application or browser test was run, and no reference pin changed.
+
+Paths in this table are relative to `opendesign-trial/` in that repository:
+
+| Source evidence | What it establishes / Fleet consequence |
+|---|---|
+| `UPSTREAM.json:1` | Names `nexu-io/open-design` at `eca7c7ab989852fb586384e19bcb6a6f2d7321f4` (web package v0.22.1), Apache-2.0; the retained SketchEditor is from `38bdb59d868831c5c98602da9522acc84cabd97e` (v0.1.0). Records deliberate patches; not wholesale current OpenDesign. |
+| `ghost.json:1` | Native package with session context, tools, cards, preview permission and resident JSON-RPC Node worker. No `mainView`/general toolbar declaration; this example alone does not prove every desired Fleet entry slot. |
+| `source/build/FullStudio.tsx:4,215,236`; `source/build/build.mjs:1` | Imports and bundles real upstream FileViewer and SketchEditor; hooks comments, manual saves and drawing feedback to the adapter. Supports substantial domain-application reuse without reproducing its whole shell. |
+| `main.js:97,135,256` | Card identity is bound to a draft and Session; click calls `cindy.preview`. Tools read/update the same draft; explicit feedback uses `cindy.agent.run(mode:continue)` against the owning Session. No new model credentials/executor. Host receipt must match that Session; unknown outcomes are not retried as success. |
+| `node/server.cjs:127,242,415` | UI routes and Agent draft writes reach the same serialized, revision-checked HTML writer with backups and atomic rename. Local Node routes replace original daemon routes. Storage is useful domain ownership, not a duplicate Session system. |
+| `main.js:135`; `node/server.cjs:432,452` | Requires local writable context, creates a subdirectory and persists a fixed Session binding. Remote support and Project documents shared across conversations require deliberate adaptation. |
+| `main.js:77`; `source/build/studio.css:1` | Cards/editor chrome still contain hardcoded color/type/radius choices. This package proves integration structure, not compliance with Fleet's common design system. |
+| `README.md:1`; `.tests/opendesign/session.cjs:18,83` | README explicitly limits this to component integration, hiding unsupported cloud sharing/collaboration/version browsing. Session tests mock host/model dispatch. README also records an unresolved WebRTC boundary; do not infer full network isolation from iframe/CSP. Its reported upstream device acceptance is not Fleet acceptance. |
+
+**Recommendation:** exercise this existing package before creating a substitute plugin framework.
+Keep useful domain UI/engine/data formats, adapt host operations and apply Fleet's common chrome.
+Do not copy its limitations as product requirements. The [application-plugin contract](modules/components.md#adapting-an-independent-application--cindy-opendesign-evidence)
+and [Board plugin](modules/components.md#board-plugin--craft-and-dashi) apply the mechanism to Fleet.
+This strengthens Cindy's candidacy; it does not establish the complete baseline proof.
+
+### Findings that prevent a false-positive Cindy selection
+
+- **Source chain exists, full outcome not yet proven.** The official OpenDesign package above
+  provides a concrete editor/Agent integration. `ghost.ts` routes Agent calls through
+  `getGhostPipeDispatcher().callGhostTool`; `ghostPreload.ts` gives the main plugin logic a host pipe,
+  while panel pages have no privileged preload bridge. That is an integration seam, not proof every plugin uses one undoable domain
+  operation. The first suite must prove the human and Agent operate the same document/version.
+- **Project exclusion is not a complete suite policy.** `ghostWorkdirPrefs.ts` stores exclusions
+  in userData and normalizes paths as strings. It does not include host identity in the key.
+  Identical paths on different remote hosts need explicit comparison. The `skill` contract in
+  `plugin-protocol/src/manifest.ts:69` says links in the shared Skill root remain visible across
+  projects until global disable/uninstall. Do not advertise project isolation without fixing and
+  testing that path as well as tool/panel visibility.
+- **Local mode and vendor services are distinct.** `README.md:115` offers Skip Sign-In for local
+  agents; `main/cindy-brain/index.ts:930` gates account-managed built-ins on cloud capabilities.
+  `main/device-link/ipc.ts:106` requires an account. Keep local suite loading; do not relabel Cindy's
+  cloud-dependent distribution, account plugins or remote pairing as Fleet-owned features.
+- **Tests are narrower than product acceptance.** `main/mcp-integrations/__tests__/ghostWorkdirGate.test.ts`
+  uses real temporary preference storage but mocks heavy runtime dependencies and dispatch.
+  Its directory-denial cases are useful regression inputs, not evidence of a running isolated suite.
+- **License scope is per artifact.** Root Apache/MIT labels are initial source facts, not clearance
+  for every bundled CLI, binary, model or domain editor. No dependency or package is admitted here.
+
+### Broader comparable-software screening
+
+This is deliberately a separate evidence tier. These checks widen the search beyond the named UI
+references; they are not full application audits or categorical claims that a product cannot work.
+
+| Product family / lock | Source or official material checked | Selection consequence |
+|---|---|---|
+| **Omnigent** `ae8a850fb614` · Apache-2.0 | `omnigent/extensions/api.py:17` and `web/src/extensions/services/registry.ts:3` expose navigation, project and cached Session methods. `docs/extending/extension_manifest.md` explicitly reserves commands/activation metadata without V1 execution. | Multi-harness coordination is relevant, but the inspected extension contract is not yet the native-suite operation/lifecycle Fleet needs. |
+| **Cherry Studio** `09d4ea5e2f67` · AGPL-3.0 text | `src/main/data/services/AgentWorkspaceService.ts:38` and the Agent session services implement folder-backed work. `package.json` includes several Agent runtimes, including a DeepSeek bridge. | Do not classify it as just a model chat client. Model/catalog and artifact flows deserve module comparison; adding another multi-runtime product and its distribution obligations is not presently a cheaper whole-base proof. Runtime evaluation remains open. |
+| **OpenHands Agent Canvas** `7dc6805406ea` · MIT | `src/api/canvas-extensions-service.ts:53` requires an appropriate Agent Server; cloud or missing APIs are explicitly unsupported. Its extension testing guide distinguishes mocks from server behaviour. | Useful backend capability detection and developer workflow reference. Frontend extension demos do not prove the local native-suite loop; a compatible backend must be assessed with it. |
+| **Open Design / Cowart / GenOffice** | Open Design `1b47e60bd466`; Cowart `43fc8882daf2`; GenOffice `480548fd55f1`. The [reuse challenge](#requirements-and-reuse-challenge) traces UI resources, persistence and live-document tools beyond manifest screening. | Domain surface candidates, not complete workbench substitutes. Their interfaces can improve the plugin strategy before a base is selected. |
+| **OpenClaw / Hermes** | Local OpenClaw `cac0c021273a` gateway/plugin layout; Hermes `fae9e5677a3e` runtime/toolset and existing reference evidence. | Useful messaging, memory and harness comparisons. This pass did not establish a matching native document workbench; do not choose a complete base from their gateway/learning feature lists. |
+| **Herdr / Waku / Multica / Kun** | Local entry manifests/README/license screening only (`21d0ce60`, `5454cd4`, `12f8f3f31`, `e67f656b`). | Terminal/remote orchestration, native coding desktop and agent-board approaches expand interaction references; they are not deep-source finalists from this pass. Kun's Noncommercial license requires a separate distribution decision before code adoption. |
+| **LibreChat** | [Official repository](https://github.com/LibreChat-AI/LibreChat), [deployment source](https://github.com/LibreChat-AI/LibreChat/blob/main/docker-compose.yml). | Agent/MCP/artifact features are relevant; the inspected default deployment brings server/database services. Native desktop Project-suite behaviour is unproven, so it is a module/product reference rather than the first base candidate. |
+| **LobeHub** | [Official repository](https://github.com/lobehub/lobehub), [license](https://github.com/lobehub/lobehub/blob/canary/LICENSE), root package manifest. | Broad agent operations warrant comparison; do not assume permissive commercial derivative distribution from its Apache ancestry. This pass has not verified its local suite lifecycle. |
+| **Dify / Open WebUI** | [Dify deployment](https://github.com/langgenius/dify/blob/main/docker/docker-compose.yaml), [Dify license](https://github.com/langgenius/dify/blob/main/LICENSE), [Open WebUI license](https://docs.openwebui.com/license/). | Workflow/server and model-client patterns are relevant mechanisms; complete-base reuse would introduce a different deployment model and requires license/branding review. No framework was added and neither was rejected merely for looking different. |
+
+### Requirements and reuse challenge
+
+The owner asked whether the proposal is actually best, what is insufficiently understood, and
+where a different approach is better. This is an adversarial source review, **not runtime or owner
+acceptance**. The six host traces above and the bounded mechanisms below were inspected; other
+inventory rows retain their narrower evidence levels. Reading an inventory is not reviewing every
+repository. No reference pin, application code, dependency or real profile changed in this review.
+
+Paths are relative to `源码参考/software/<project>/` unless marked `app/`. Additional locks:
+Cowart `43fc8882daf2`, GenOffice `480548fd55f1`, Orca `800993938104`, Penpot `9d08e26cb3d0`.
+
+| Assumption challenged | Source evidence | Better direction / remaining limit |
+|---|---|---|
+| Cindy's OpenDesign example determines the entire base and plugin API | Its `ghost.json`/`main.js` bind one local draft to one Session and open a preview, as traced above. OpenChamber has a separate real guest SDK; ZCode has the desired whole composer flow. | OV-027 chooses the ZCode direction; Cindy remains plugin evidence. Compare total integration cost for a finished work chain, including model route, project scoping and failure recovery. |
+| Every document should belong to a conversation | GenOffice `apps/shell/src/main/mcp/open-documents-bridge.ts:60,84,113` resolves user-opened tabs by id/path, operates on their live editor and delegates saving to each native writer. `tools/open-documents-tools.ts:42,169` includes unsaved content; its close operation explicitly writes over the file. | Prefer Project/document identity independent of chat. An Agent must see unsaved user edits, use the editor's operation path and preserve its undo. Do not copy GenOffice's overwrite semantics without Fleet's stale-file/permission checks. PDF save is explicitly unsupported by this bridge; no blanket Office/PDF fidelity claim. |
+| All plugin UI needs a new Fleet-only message protocol | Cowart `mcp/lib/widget-resource.mjs:1,25` uses `@modelcontextprotocol/ext-apps/server`; `mcp/server.mjs:1045,1079` links a UI resource to tools. Its bridge applies host theme variables; `:1220,1282` exposes project canvas read/save tools. The official [MCP Apps overview](https://modelcontextprotocol.io/extensions/apps/overview) defines UI resources and bidirectional host/tool messaging. | Compare MCP tools/resources + MCP Apps for portable interactive content, with the selected host's small adapter for persistent pages, right tools, settings and lifecycle. MCP Apps alone is not a package installer, native worker sandbox, Project policy or durable panel host; client support varies. No dependency/schema is admitted. |
+| A shared save tool makes concurrent editing correct | Cowart `mcp/lib/canvas-storage.mjs:480,661` atomically replaces individual files and blocks unacknowledged image loss, but the inspected save signature has no expected revision. | Atomic rename prevents partial bytes, not stale-snapshot overwrite. Reuse the bridge separately from persistence; prove concurrent human/Agent writes and recovery with the selected native editor. Do not claim a whole-application concurrency audit from this function. |
+| One authority forbids plugin databases and undo stacks | Dashi's versioned issue API and native editor operation/history paths own different entities from host Sessions. Penpot `frontend/src/app/main/data/workspace/undo.cljs` maintains editor transactions/history. | Retain mature domain stores and undo. Prevent two writers/stores for the **same** logical record; do not replace every imported database with Craft JSON or every editor history with conversation events. Old P11/D2 and product wording have been qualified accordingly. |
+| A manifest and subprocess make Agent-created plugins fully isolated | Cindy `packages/plugin-protocol/src/manifest.ts:258` explicitly states Node workers have OS-user privileges; `apps/desktop/src/main/cindy-brain/nodeRuntimeWorkerProcess.ts:19` confirms process isolation is not an OS sandbox. `nodeRuntimeBroker.ts:514` starts an Electron utility process. | Separate host API grants from local code execution. Preserve supported UI isolation, disclose native execution and verify platform boundaries before admission. Do not inherit unrestricted workers as a silent default, or invent a second sandbox platform without a concrete proof. |
+| Remote execution can be bolted on solely at the end | Orca `src/shared/protocol-version.ts:1` defines compatible client/server ranges and capabilities; `src/cli/runtime/remote-runtime-compat-gate.ts:38,74` performs a status preflight and rejects incompatible peers. Cindy's directory exclusions key paths without host identity. | Keep host identity in Project/file/execution scope from the first proof; remote UI can follow. Equal path strings on two machines are not one Project, and a local UI must not resolve a remote plugin's file on the client. Do not import Orca's full cloud/relay stack. |
+| The existing model correction already satisfies protocol selection | Fleet `app/apps/electron/src/renderer/components/apisetup/ApiKeyInput.tsx:577` offers a Select only for `custom`; native presets receive a read-only format. `submit-helpers.ts:60` only builds the selectable custom route for that flow. | This is a confirmed owner requirement gap, not a new design question. Supported native-vendor protocols must be represented consistently through setup, discovery, credentials and execution. “Every format on every vendor” is not the requirement. |
+| All automation work is a chat task DAG | Fleet `app/packages/server-core/src/tasks/TaskRunner.ts:1` executes task.yaml DAGs through Agent Sessions; domain export/render jobs have different cancellation, retry and output semantics. | Keep the host scheduler/Agent run and plugin domain jobs distinguishable. Invoke a domain operation through its declared adapter; do not start an LLM merely to run a deterministic export or import several scheduling authorities. Runtime proof remains open. |
+
+**Three development routes, with different costs:**
+
+1. **Adapt a complete host** (ZCode direction under OV-027): reuse working lifecycle,
+   then replace whole interactions and add domain packages. Recommended first test because a
+   working product exists to compare against. Reject if Fleet's central loop requires replacing
+   the candidate's Session, permission and extension core together.
+2. **Build on a framework** (DeepSeek Harness, or the official [Theia AI framework](https://theia-ide.org/docs/theia_ai/)):
+   broader contribution/Agent APIs, but Fleet must assemble and support more product behaviour.
+   Theia was documentation-screened only, not cloned/built; DeepSeek explicitly calls itself an
+   experimental developer preview. Neither is selected merely for architectural elegance.
+3. **Continue the current Craft reconstruction:** preserves present conversation/Pages mechanisms,
+   but still requires the central suite host and a broad shell replacement. Owner rejection and
+   those missing outcomes make this a recovery/comparison path, not the default next investment.
+
+**Recommendation:** retain one working host and native domain engines; keep portable tools/UI where
+they genuinely reduce coupling. This is not “copy the best screen from each app” and not a new
+universal kernel. A package's domain model, commands, serialization and recovery travel together;
+accounts, host navigation and duplicate Agent loops do not. A UI kit helps Agent authors produce
+consistent ordinary controls, but theme injection alone cannot guarantee complex editors comply.
+
+**Open product choices:** first daily-use work chain; acceptable first-release adaptation depth
+inside professional editors; optional-plugin defaults for folderless work. The first two were
+asked explicitly. These are distinct from unanswered engineering questions: exact native-editor
+fidelity, cross-platform packaging, plugin isolation, remote execution and vendor/cache behaviour
+must be established by inspection and execution, not questions asking the owner to design them.
+Do not interpret no answer as an approval or silently substitute a convenient Notes demo.
+
+### Keep, replace and prove
+
+**Current candidate deviation audit.** The owner rejects another visual-only pass:
+「你明明能看源码为什么总看前端」 and asks what the software actually needs, where the
+implementation diverges and which alternatives improve it. The following traces inspect the
+working `.fleet/zcode` candidate, not just its reference pin. They do not establish live acceptance.
+Cindy and Cherry evidence uses the refreshed checkouts recorded in the inventory below; earlier
+review locks elsewhere remain historical evidence.
+
+| Required outcome | Actual source path / deviation | Correction to evaluate as one complete interaction |
+|---|---|---|
+| One comprehensible connection lifecycle | Candidate `ModelProviderSection.tsx` now only coordinates saved connections and template creation. `ProviderTemplateSetup.tsx` and `InlineEditableProviderCard.tsx` share validation and explicitly commit through ProviderSettingsService; idle/blur/cleanup saves and commercial hooks are removed. New/edit rendering is still split. | Keep stable IDs and the working connection until an explicit replacement commits. Further consolidate the new/edit presentation where the same service supports it; prove live authorization and conversation execution separately from local save/reopen tests. |
+| Vendor, service, account and model mean different things | `providerTemplateCatalog.ts` groups templates by vendor, but saved navigation projects individual connection records as “custom providers”. Subscription creation persists a provider before mounting authorization; the resulting record is not proof of login. | Vendor is the navigation group; API/plan/native-subscription is the connection inside it; keys/accounts belong to that connection. Preserve separate endpoint and credential identities even when grouped visually. Inline connection choices must be driven by actually supported routes. No new secret store or silent account-to-API fallback. |
+| A model list reflects the connection and the supported operation | `modelDiscovery.ts` shares an OpenAI-shaped `/models` reader plus an Anthropic path and DeepSeek exception; it deliberately returns no inferred capability metadata. `ModelDiscoverySection.tsx` mixes saved rows and discovered rows with different add/enable actions. | Give provider adapters an explicit catalog operation, account/revision provenance and an honest unavailable/error state. One visible list and one meaning for enabling a model; preserve manual entries and last successful data. List membership, entitlement and successful inference stay distinct facts. |
+| Official execution quality, not just subscription tokens | `adapters/src/model/pi-subscription.ts` wraps Pi model providers below the `Model.generateText/streamText` contract; ZCode `core/src/runtime/agent-runtime.ts` still owns the tool loop. The adapter explicitly rejects provider-native tools and structured output. | Retain the proven host lifecycle while evaluating a complete executor boundary. An official native Agent runs as a whole executor; a direct model API runs under the general executor. Do not put an already-running native Agent beneath another tool loop or describe Pi transport as a completed Pi kernel migration. |
+| Installing an application plugin adds usable UI and Agent operations | Candidate `packages/shared/src/plugin-types.ts` only declares agent/command/skill/hook/MCP/LSP contributions; `workspaceSidePane.ts` models built-in panes. Cindy OpenDesign `ghost.json`, `main.js` and its worker demonstrate tools, revision-checked document updates and a preview opened in the owning Session. | Extend the existing package/host seam with the smallest page/right-tool contribution needed by a real suite. Human controls and Agent tools use the same domain operations. Preserve editor data/undo; replace the imported app's competing account, model and Session shell. Project exclusion must remove tools and UI together. Cindy's Session-owned preview is evidence, not the complete Fleet Project-suite contract. |
+| Craft-style contextual Agent configuration | Craft `EditPopover.tsx:122,684,957` supplies per-feature edit configuration, target file/context and the ordinary create/send path. Candidate `WorkspaceHelpMenuButton.tsx` and the packaged guide provide documentation; no equivalent feature-bound execution bridge was found in the inspected settings path. | Restore a page-local small conversation supplied with target, documentation, redacted current configuration and supported operations. Commit through the feature owner and refresh its original view. Documentation and a global conversation shortcut do not substitute for this path. |
+| Image/video/audio models can be used by a working Agent | Candidate's inspected model contract is text generation/streaming. Cindy `cindy-media/providerMediaRuntime.ts` and `invocationService.ts` separately resolve media capabilities, prepare requests, execute and persist results. | Reuse connection credentials/catalog facts, but expose generation as a governed domain operation/job. The conversation Agent invokes it; the real output is saved and previewed/edited by the enabled suite. Do not expose a discovered image-output ID as a chat model merely because it appears in `/models`. |
+| Failures have actionable product states | The inspected review host logged `write EPIPE` and exited; the remaining renderer showed an empty loading model panel. `useProviderSettingsServiceView` waits for `getView()` without a local terminal deadline. | Diagnose process/transport failure separately from layout. An unavailable host must produce a recoverable error, and remote catalog/allowance failure must not blank already-saved local settings. This observation is not a claim that the hook caused the host crash. |
+
+**Landing recommendation:** one ZCode workbench and durable Session/Project/permission owner;
+provider connection adapters, complete Agent executors and application plugins have different jobs.
+These are boundaries over existing owners, not three new registries or permission systems. Pi,
+CLIProxyAPI and HarnessRouter do not by themselves implement the application-plugin host. Keep the
+model adapter improvements that preserve credential scope, cancellation and replay, and remove
+superseded interaction paths only with a named replacement and a passing end-to-end path.
+
+For the model surface, the source-backed proposal is a stable vendor list and a single detail/editor
+slot: connection method inline → endpoint where applicable → credentials/accounts → connection
+validation → automatically maintained model list. New and existing connections use the same editor.
+Presets select their supported protocol; custom/advanced supported overrides expand inline. The
+same-provider/same-model recovery switch remains default-off and does not inherit NewMax's model
+priority/fallback policy. Subscription allowance belongs to the account, not the context ring.
+This proposal still requires implementation and owner acceptance; no catalog count is a success criterion.
+
+Keep the requirements, real user data and source provenance; retain Craft's contextual Agent help,
+conversation interactions, Board links and useful document/Pages capabilities. **Do not carry the accumulated Fleet
+patch wholesale to a new base.** Re-evaluate each valuable mechanism against the selected host's
+native facility. Replace redundant creation/navigation as one complete shell interaction. Import
+domain rendering/storage/commands through that host's extension seam, without an embedded second
+SessionManager. A right panel alone is not a native editor; a Skill bundle alone is not a suite.
+
+The next discriminating proof is [Engineering's common scenario](engineering.md#baseline-selection-and-development-method):
+local startup, two folders, an optional application plugin, human/Agent edits to the same data,
+permission refusal, project exclusion, disable/re-enable and restart. It must also expose the
+model/protocol path and actual context usage. **Do not select by screenshot similarity, number of
+checkouts, test count or hypothetical ease of changing fonts.** Stop a candidate when the proof
+requires rewriting its core; present that evidence and the next candidate, not another hybrid.
 
 ## Owner-controlled retention
 
@@ -85,6 +1130,8 @@ The reference root is `/Volumes/AIGC/天工参考/源码参考/` (workspace syml
 | `software/` — agent clients and workbenches | 24 | `AionCore`, `AionUi`, `browser-harness`, `cherry-studio`, `cindy`, `codex`, `craft-agents-oss`, `craft-agents-oss-v0.10.5`, `deepseek-harness`, `grok-build`, `herdr`, `hermes-agent`, `kimi-code`, `Kun`, `multica`, `omnigent`, `openchamber`, `openclaw`, `opencode`, `OpenHands`, `orca`, `pi-mono`, `waku`, `ZCode` |
 | `software/` — later official vendor harness intake | 3 | `MiMo-Code`, `gemini-cli`, `qwen-code` |
 | `software/` — provider configuration tools | 3 | `CLIProxyAPI`, `cc-switch`, `cockpit-tools` |
+| `software/` — quota and consumption accounting | 5 | `CodexBar`, `AIUsage`, `one-api`, `CPA-Manager-Plus`, `codeburn` |
+| `software/` — shared UI primitives | 1 | `shadcn-ui` |
 | `software/` — canvas, design and documents | 7 | `Cowart`, `genoffice`, `html-anything`, `open-design`, `openpencil`, `penpot`, `tldraw` |
 | `software/` — video and media | 6 | `OpenChatCut`, `OpenMontage`, `opencut`, `opencut-classic`, `openreel-video`, `palmier-pro` |
 | `software/` — browser, workflow, protocol and engineering | 6 | `browser-use`, `dashi-taskboard`, `flowgram.ai`, `mcp-registry`, `OpenSandbox`, `spec-kit` |
@@ -92,13 +1139,18 @@ The reference root is `/Volumes/AIGC/天工参考/源码参考/` (workspace syml
 | `plugins/` — browser, document and media utilities | 4 | `context7`, `hyperframes`, `markitdown`, `playwright-mcp` |
 | `plugins/` — skills, context, memory and agent tooling | 14 | `agentmemory`, `agentskills`, `caveman`, `claude-mem`, `claude-task-master`, `claude-token-efficient`, `claw-compactor`, `GPTCache`, `letta`, `LLMLingua`, `mem0`, `planning-with-files`, `repomix`, `SuperClaude_Framework` |
 
-The 2026-09-24 vendor-harness intake added those three shallow, clean software checkouts without
-moving any existing reference pin. The current on-disk count is 49 software and 22 plugin
-checkouts (71 total). The older 46/68 observation above remains the historical pre-intake count.
-Their 2026-09-25 fetched heads are `MiMo-Code` `849ca66cc8debbbcc08904039e05bd2e79be348d`,
-`gemini-cli` `562f0361fe63952fcf2db793e3e9fc0ae69ec506` and `qwen-code`
-`33b3acc090cf7de2cfd18563461a0715738b7acc`. They remain evidence-only intake, not
-formal reference rows or new Fleet runtime owners.
+| `software/` — added kernel, protocol and current Craft comparisons | 7 | `harnessrouter`, `deepagentsjs`, `openai-agents-js`, `agent-client-protocol`, `craft-agents-oss-latest`, `minimax-code`, `goose` |
+| `plugins/` — added protocol, application, native-provider and current media comparisons | 4 | `mcp-apps`, `cindy-official-plugins`, `hermes-plugin-claude-subscription-directsdk`, `hyperframes-latest` |
+
+The original inventory and vendor-harness intake total 71 checkouts. Current Git inventory is 100
+(72 software, 28 plugin checkouts); three additional plugin package directories are not Git
+checkouts. The older 46/68, 49/71 and 60/26 counts are historical observations. Examples of later
+vendor/UI references outside the generated-guide catalog and their retained heads are:
+- `software/MiMo-Code`: `336aee0eb1a5a88efe637f60142303cc8e7555bf`.
+- `software/gemini-cli`: `e6550609f655c993ed132966cabd8c5f59719f6a`.
+- `software/qwen-code`: `b906f937ec041ca9124617bf86726de064bea967`.
+- `software/cherry-studio`: `e22924df9838b722754c668f9ec4dcaf21af0491`.
+These current revisions are checkout evidence, not a claim that all new behavior was reviewed.
 
 At the source-inventory observation, all 45 software checkouts had no tracked or untracked changes
 reported by Git. Of the 22 plugin checkouts, 21 reported none; **`hyperframes` has 35 tracked modifications** (34 test `compiled.html`
@@ -152,87 +1204,129 @@ each checkout; compare their current source before admitting behavior. The proje
 them and the applicable Fleet execution contracts. Upstream instructions are reference data, not
 permission to run installers, change Fleet policy, publish, or access credentials.
 
-The 2026-09-25 owner-requested refresh fetched the default branch of all 71 checkouts. Forty-four
-advanced by fast-forward or, for the clean detached Cindy checkout, by detaching at the fetched
-default-branch HEAD; 24 were already current. The two Craft comparison pins were fetched but held
-at v0.13.4 and v0.10.5, and Hyperframes' 35 tracked fixture edits were byte-checked and left
-untouched. No dependency install or reference code ran. This changed local source evidence, not
-`app/` or the historical mechanism-review locks below.
+The 2026-09-27 owner-requested refresh checked the upstream default branch of all 71 existing
+checkouts: **32 advanced, 36 were current, two Craft pins and one dirty Hyperframes checkout were
+preserved**. Ordinary updates were fast-forwards; the clean detached Cindy checkout moved to the
+fetched default HEAD. Every previously changed/untracked file retained identical bytes. Recovery
+refs `refs/fleet/before-refresh/20260927T092852Z` and per-repository manifests are under external
+`meta/recovery/source-refresh-20260927T092852Z/`; no hard reset, stash or upstream program ran.
+Nine additional shallow source checkouts bring the total to **80 (54 software, 26 plugins)**.
+The new Craft and Hyperframes companions provide current code without moving the protected originals.
+Fresh Hyperframes reports 68 fixture modifications through Git's LFS filters; every reported file
+was compared directly and is byte-identical to its HEAD blob. No LFS payloads were downloaded.
+The seven new comparison projects and two companions are source references, not installed dependencies.
+Historical mechanism-review locks and `meta/REVIEWED-HEADS.tsv` are not advanced by this refresh.
 
 Keep three facts separate: current checkout SHA below; historical mechanism-review SHA in the
 next table; and explicit new source corroboration in [refresh mechanisms](#refresh-mechanisms-and-counter-evidence).
 Unchanged named source files do not prove unchanged callers, dependencies or behavior. New source
 needs comparison at the consuming capability before implementation. Fetching never promotes admission.
 
+The owner-requested 2026-09-29 refresh inventoried **97 Git checkouts** (70 software, 27 plugins).
+At the inspected upstream snapshot, 91 clean ordinary checkouts were aligned with their fetched
+default branch or latest companion; four proof baselines were deliberately retained: Craft v0.13.4,
+Craft's v0.10.5 look pin, ZCode's comparison pin, and the older Pi model-adapter review pin. The
+two older Hyperframes checkouts retained their tracked fixture changes; a clean
+`plugins/hyperframes-current` checkout now provides current source. Clean
+`craft-agents-oss-latest` and `pi-mono-latest` likewise provide current comparisons without moving
+their pins. OpenClaw and tldraw had stale lock files only after no live Git process was found;
+those locks were moved to `/tmp/fleet-stale-reference-locks-20260929`, not discarded. Hermes
+fetched successfully after a transient remote 429; a later remote recheck timed out, so its
+recorded SHA is the fetched snapshot, not a promise that the upstream will stop moving. No Fleet
+production package, database or runtime was updated by refreshing reference sources.
+The subsequently cloned official `MiniMax-AI/minimax-code` source brings the inventory to 98;
+the official `aaif-goose/goose` checkout brings it to 99. Their source reviews are bounded to
+the Host paths in the kernel comparison, not production imports.
+The subsequent `NVlabs/SoL-Pi` source-only efficiency intake brings the inventory to 100.
+
 | Checkout | Current SHA / refresh target | Previously inspected development docs | Fleet intake / limits |
 |---|---|---|---|
-| `plugins/GPTCache` | `a74ac654473f7bf4109118e8576945161616e17a` (main; advanced 2026-09-25) | `docs/contributing.md` | Contribution guide exposes cache/embedding/similarity seams. Reject automatic dependency installation and transparent caching of effectful turns; benchmark against Fleet originals. |
-| `plugins/LLMLingua` | `5a4c78ae18ab17a98cf997e8259354e546081d64` (main; current 2026-09-25) | `README.md` | Usage examples require a compressor model/runtime and emit lossy text. Useful experiment setup only; no semantic-equivalence, token-price or production dependency claim. |
-| `plugins/SuperClaude_Framework` | `2d0fda08f2eed9951794dc9c54a6289454961075` (master; current 2026-09-25) | `docs/developer-guide/technical-architecture.md` | Architecture describes Markdown context configuration; current source also has execution helpers. Treat document scope as partial, not proof the whole checkout is documentation-only; no second runtime. |
-| `plugins/agentmemory` | `b7029ee2141df6772d7ca60b43197ff3607e3237` (main; current 2026-09-25) | `AGENTS.md` | Developer guide maps CLI and MCP to one shared core and uses temporary memory directories in tests. Keep shared-handler and scope fixtures; no private memory import or second consolidation writer. |
-| `plugins/agentskills` | `69ef37e9424c0a7ea9dd2293b559e43ec8176379` (main; current 2026-09-25) | `CONTRIBUTING.md` | Contributor guide locates specification, validator and real compatibility proposals. Use parser fixtures and preserve/explain vendor metadata; instructions inside third-party Skills remain data. |
-| `plugins/caveman` | `2fd153c67988e980fb0b2455c90832159a6a5a25` (main; current 2026-09-25) | `docs/technical/architecture.md` | Architecture distinguishes proxy, compression, retrieval and failure behavior. Keep recoverable originals/protected-span tests; BSL engine and telemetry/runtime defaults are not admitted. |
-| `plugins/claude-mem` | `02cd0c9c47e38a849e764477290c571e84dfa043` (main; advanced 2026-09-25) | `docs/architecture-overview.md` | Architecture maps hooks to worker/session services and timeouts. Follow actual buffer durability and privacy behavior; hook success is not durable curated memory. |
-| `plugins/claude-task-master` | `c0c98d367c55296bfe69e65680625b6db437af02` (main; current 2026-09-25) | `apps/extension/docs/extension-development-guide.md` | Development guide separates development dependencies from staged extension package. Compare package validation only; Commons Clause and second task authority remain blockers. |
-| `plugins/claude-token-efficient` | `0d30a6db75af983b8ababf585f28faefdfc87895` (main; current 2026-09-25) | `CLAUDE.md` | Short contributor instructions supply no new runtime design. Existing controlled benchmark remains the useful reference; no new mechanism admitted merely to fill this table. |
-| `plugins/claw-compactor` | `c1b936d40b1145c7a257bd6e34a17994f467495f` (main; current 2026-09-25) | `docs/architecture/stages.md` | Stage guide names immutable context, applicability and result metadata. Keep guarded transformations and original retrieval; stage ordering is not semantic preservation proof. |
-| `plugins/context7` | `e275a848a420e0d11c2822f61201ee005bfd1133` (master; advanced 2026-09-25) | `plugins/codex/context7/README.md` | Plugin README packages Skill plus remote MCP and requires login/new context. Useful distribution separation; remote documentation service is not an offline bundled-doc backend. |
-| `plugins/dockview` | `838a7c5d7849f6b7ada7e9c1c76faeea52d2c3ad` (master; advanced 2026-09-25) | `AGENTS.md` | Developer guide distinguishes consumer React package from internal core and enterprise features. Use actual restore/dispose source and same-fixture comparison; DOM popouts do not prove native Electron integration. |
-| `plugins/hyperframes` | `867787b2f935a03e84d485ff7319e01873598c14` (main; dirty checkout preserved) | `docs/sdk/guides/canvas-integration.mdx` | Preview adapter separates draft/commit and detaches old composition subscriptions. Source/tests confirm the bounded mechanism; same-origin iframe, ignored hit-test time and missing-dispatch no-op are unsuitable Fleet defaults. |
-| `plugins/letta` | `5bcdd177d70fa2b31a754cfcd801e77b2e1ab16a` (main; current 2026-09-25) | `CONTRIBUTING.md` | Contributing confirms retired V1 repository and points to letta-code; archive branch is historical. Latest default branch has no runtime to adapt; no silent replacement clone. |
-| `plugins/markitdown` | `b8f79c57ebc0044be41323d89b2a45d3fda8460e` (main; current 2026-09-25) | `packages/markitdown-sample-plugin/README.md` | Sample converter declares interface version and explicit register_converters entry point. Useful extraction adapter example; latest Python/optional dependency bounds changed, and Markdown conversion is not Office editing. |
-| `plugins/mem0` | `94c3fe9f238f3dbf29c9ce98643bd71eb13077cd` (main; advanced 2026-09-25) | `integrations/agent-plugin-core/README.md` | Shared plugin core generates thin per-host adapters with contract/conformance tests. Keep one owner across host adapters; telemetry, hosted memory and independent writers are not imported. |
-| `plugins/planning-with-files` | `2bcc24bcc8362ed4ff47f2ee0fc8346bcc1b98e2` (main; current 2026-09-25) | `README.md` | Current package is Copilot Markdown agent/knowledge templates. No executable extension mechanism or license-file proof; do not copy its three-file planning workflow. |
-| `plugins/playwright-mcp` | `f1257a5a67aff872f947fae274759f7d54853862` (main; current 2026-09-25) | `src/README.md` | Source README points implementation to Playwright monorepo; local repo is a wrapper. Do not mistake wrapper documentation/tests for an inspected browser executor or grant. |
-| `plugins/react-resizable-panels` | `ffa22a1dae86779093bbf40179e4c22e038867cb` (main; advanced 2026-09-25) | `CONTRIBUTING.md` | Contribution guide locates pnpm development/tests; no new host architecture follows from it. Compare constrained resize callbacks against Craft, not a docking replacement. |
-| `plugins/react-rnd` | `fec7303134ab0f0bbe83fdf975ddc15c340f7e5d` (master; current 2026-09-25) | `README.md` | README provides controlled size/position and instance API plus isolated reproductions. Drag geometry alone does not supply docking, persistence, keyboard access or native-window lifecycle. |
-| `plugins/repomix` | `3fe3447785acc51a44cc07dc25d52f7c65e71192` (main; advanced 2026-09-25) | `website/client/src/en/guide/claude-code-plugins.md` | Plugin guide separates MCP packing, commands and repository exploration. Use bounded selected-source packaging; plugin install is not consent for remote processors or all repository data. |
-| `plugins/xyflow` | `3d35b57317576b0916c0bfeaaedd573aaacc2839` (main; advanced 2026-09-25) | `CONTRIBUTING.md` | Contribution map distinguishes React/Svelte/system and legacy v11. Use current ID-keyed graph change/observer mechanisms; no production-media renderer or workflow executor admission. |
-| `software/AionCore` | `153c6f5cd03d14b966f415c8497708ee22244b5f` (main; advanced 2026-09-25) | `ARCHITECTURE.md` | Use repository/error-boundary diagrams to locate adapters. Rust server, JWT and database remain external mechanisms; do not transplant a backend authority. |
-| `software/AionUi` | `6744099b279b991c17e31c243f0920477bd31cb6` (main; current 2026-09-25) | `docs/contributing/development.md`; `.claude/skills/architecture/references/process.md` | Development requires a separate AionCore binary; Electron source alone is not the complete runtime. Pure logic versus IO separation is useful; revalidate architecture notes against the current split. |
-| `software/CLIProxyAPI` | `9bdde54b59d1af70ae0534a0ef61b2c3361a1257` (main; advanced 2026-09-25) | `docs/sdk-usage.md` | SDK embeds routing/authentication as a Go service. Management requires a configured secret and separate remote-access setting; do not introduce an account-pool proxy to obtain quota. |
-| `software/Cowart` | `43fc8882daf2560c7e36fd34a95fe12c251493ac` (main; current 2026-09-25) | `README.en.md` | Portable plugin metadata and project-local canvas assets are useful handoff examples. Web login, GA4 and the tldraw editor license remain separate exclusions/conditions. |
-| `software/Kun` | `e67f656bca573d5e6a4970a5094a30f3afd09011` (master; current 2026-09-25) | `docs/extensions/architecture.en.md` | Host-derived identity, lifecycle nonce and broker rechecks are design evidence. Noncommercial terms block copying; extension-owned threads cannot become another Fleet Session store. |
-| `software/OpenChatCut` | `b49d5cff773570b732fe745e69ca0a0763974a87` (main; current 2026-09-25) | `src/agent/skills/openchatcut-plugin-basics/SKILL.md` | Skill separates project/timeline targeting from tool schemas. Its current tools are direct calls, not MCP; use editing concepts only within the AGPL boundary. |
-| `software/OpenHands` | `7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6` (main; advanced 2026-09-25) | `specs/canvas-extensions.md`; `docs/CANVAS_EXTENSIONS_TESTING.md` | Extension contract distinguishes unsupported, unreachable and empty inventory. Testing guide uses MSW memory state and explicitly excludes backend install/persistence/authentication; never report that demo as an end-to-end extension host. |
-| `software/OpenMontage` | `08e2151fa02de28a5d6a312b3d575692bf147ad7` (main; current 2026-09-25) | `docs/ARCHITECTURE.md` | Architecture documents agent-directed manifests and checkpointed tools, not a Python orchestrator. Keep offline deliverable checks; no imported pipeline authority or paid-provider defaults. |
-| `software/OpenSandbox` | `f3950db2499e8d572694bf9939e4bf985a2eab8a` (main; advanced 2026-09-25) | `docs/architecture/network/egress.md` | Egress document describes Linux DNS/network-namespace enforcement. Useful for diagnosing limits of browser URL checks; no second Fleet/macOS sandbox. |
-| `software/ZCode` | `29628c9acdb81b703bbd4080c207a0e7ce5e276e` (main; advanced 2026-09-25) | `.agents/skills/architecture-governance/SKILL.md` | Bounded module context plus explicit owner, idempotency and stale-result rules aid handoff. Use existing Fleet contracts; do not copy its per-change document-generation policy. |
-| `software/browser-harness` | `afbcc381b963040c19627d788e40c7e7663171ee` (main; current 2026-09-25) | `CONTRIBUTING.md` | Contributor guide distinguishes checkout launcher from installed command and locates domain skills. Keep private IPC evidence; no new browser ownership or automatic runtime installation. |
-| `software/browser-use` | `d8110c5ff87ccba887aaa726cdb780f2f84bef8d` (main; current 2026-09-25) | `BETA_AGENT_INTEGRATION_FEATURES.md` | Beta ledger describes an opt-in Rust SDK server while Python Agent stays separate. Protocol compatibility and claimed feature parity require their own proof; no wholesale agent runtime replacement. |
-| `software/cc-switch` | `854c9f5fbf38edcb1ec940446ccf99d751b953fb` (main; advanced 2026-09-25) | `src/components/providers/forms/PiProviderForm.tsx`; `src/components/providers/forms/ClaudeFormFields.tsx`; `src-tauri/src/services/model_fetch.rs`; `docs/user-manual/en/2-providers/2.5-usage-query.md` | The Pi form separates upstream API format from model IDs; model fetch uses format-specific authentication headers and accepts `data` or `models` list shapes. Fleet borrows that request distinction for bounded, same-origin candidate discovery, while keeping manual import because `/models` does not prove chat capability. Its Claude/Codex forms can select additional upstream formats because the local proxy translates requests; Fleet does not copy that proxy or subscription rewriting. Usage query modes are not proof of a supported public allowance API. |
-| `software/cindy` | `d4489b81a34cadee8842a356a2318fcc0c7a5404` (main; advanced 2026-09-25) | `docs/dev-rules/architecture-invariants.md`; `docs/dev-rules/electron-security-and-process-boundaries.md` | Read current panelKind/layout ownership and Electron sender validation. Preserve unknown panels and distinguish applied from persisted; reject its corrupt-layout overwrite, fixed conversation width and user-global layout policy as Fleet defaults. |
-| `software/cockpit-tools` | `ee13174927f04f76d975f59d20960fc4cf800ea9` (main; advanced 2026-09-25) | `CONTRIBUTING.md`; `docs/CODEX_API_SERVICE_HANDOFF.md` | Contributor guide identifies shared core/GUI/CLI and targeted checks. API Service handoff describes credential/config injection into a local gateway, not a supported quota API; keep the existing quota scheduler comparison and restricted-license boundary. |
-| `software/codex` | `8b78f4796605bda8e31329537f5fef036e405e66` (main; advanced 2026-09-25) | `codex-rs/app-server/README.md`; `codex-rs/ext/extension-api/notes.md` | App-server documents cancellation acknowledgement versus original completion and auth-generation fencing. Saved disabledPluginIds explicitly does not yet filter capabilities. Sparse quota updates are corroborated in protocol/v2/account.rs; extension notes alone are not an SDK contract. |
-| `software/craft-agents-oss` | `b2d6c8aabdfdc96416eea9debd6756ae6d3c0db9` (v0.13.4 stable; unchanged) | `CONTRIBUTING.md`; `apps/electron/README.md` | Use Electron build/transport/package entry guidance with current scripts as authority. Do not run upstream secret-sync, publishing or hosted-service setup; v0.13.4 remains the release comparison. |
-| `software/craft-agents-oss-v0.10.5` | `c9d9a26fbefa3a5165ee9aa50cb30c25466afd81` (v0.10.5 look pin; fixed) | `apps/electron/README.md` | Fixed visual comparison only. Keep this development guide with its original checkout; current implementation/build claims belong to the rolling release and app tree. |
-| `software/dashi-taskboard` | `1fbdedacf1b2185793daa358d24ec09e69e560eb` (main; advanced 2026-09-25) | `integrations/deepseek-harness/README.md` | Small host bundle locates an already-running runtime through launcher-owned metadata rather than a fixed port. No second Taskboard runtime or task store. |
-| `software/deepseek-harness` | `477b4f420553e8a52c2fbccc464d7561b239c443` (master; advanced 2026-09-25) | `packages/extensions/cordis-host-runner/README.md` | Host guide names scope/disposal and immutable versions; definitions are RAM-only, node:vm is not a security boundary, async work escapes vmTimeoutMs and UI load receipt precedes render. Do not adopt those limitations silently. |
-| `software/flowgram.ai` | `ba1a9630f80263a196d31993cd85fd1c873d9ddd` (main; current 2026-09-25) | `apps/docs/src/en/guide/advanced/custom-plugin.mdx` | Custom plugin guide gives lifecycle hooks and portable fixed/free-layout registration. Compare disposal concepts only; the IoC/editor container is not a small standalone executor. |
-| `software/genoffice` | `480548fd55f1be3593ee0d8e316a734751d58309` (main; advanced 2026-09-25) | `apps/sheets/docs/architecture.md`; `packages/html2docx/ARCHITECTURE.md` | Sheets guide declares partial PoC state and package-preserving edits; current sidecar already exposes newer archive/recalculation operations, so its production-gap list is not current feature proof. HTML-to-DOCX intentionally rasterizes some decoration; measure editability separately. |
-| `software/grok-build` | `f0e3be1100ef5252488e3be8bb0e91cf68d8c305` (main; advanced 2026-09-25) | `crates/codegen/xai-grok-pager/docs/hooks-and-plugins.md` | Hook/plugin guide makes scope, version and error feedback inspectable. Shell hooks are executable effects, not approval grants; keep Fleet permissions and shared UI. |
-| `software/herdr` | `21d0ce60267ad947c081d3d3fba401c859f06dd2` (master; advanced 2026-09-25) | `docs/next/website/src/content/docs/plugins.mdx` | Plugin guide explicitly treats commands as normal local code inheriting user environment and full CLI access. Context/logging are useful; this is not isolation or bounded Fleet authority. |
-| `software/hermes-agent` | `fae9e5677a3ef339ec582e967ee19cac13bf68af` (main; advanced 2026-09-25) | `website/docs/developer-guide/desktop-plugin-sdk.md` | Desktop SDK documents one contribution registry, native UI kit and scoped disposers. Its renderer plugins have full app authority and default activation; desktop implementation is not present in this checkout. Documentation evidence only, no security-boundary or code-import claim. |
-| `software/html-anything` | `553ed98c283f9c0f489902d035416a972d6a9699` (main; current 2026-09-25) | `CONTRIBUTING.md` | Contributor map separates Skills, argv/detection adapters and export adapters. Reuse a small adapter only after comparing Craft; examples do not justify another agent runner or UI language. |
-| `software/kimi-code` | `be7d5f5fea7800778e4660cd5f36780ba783bddd` (main; advanced 2026-09-25) | `docs/en/customization/plugins.md` | Plugin guide separates install/reload and describes macOS Accessibility/Screen Recording versus Windows foreground input. Useful platform acceptance cases; proprietary/distributed Computer Use helper implementation is not established by the guide. |
-| `software/mcp-registry` | `bf4e88cbe8d1a635c06144ccea1d24cb52fa6186` (main; advanced 2026-09-25) | `docs/reference/api/extensions.md` | Namespaced experimental endpoints keep registry core minimal. Namespace/version metadata is useful; no Fleet-hosted registry requirement or execution grant. |
-| `software/multica` | `12f8f3f31111564e5e1b9aac3f7f916e8bba4039` (main; advanced 2026-09-25) | `apps/docs/content/docs/developers/architecture.mdx` | Architecture separates server data from client drafts/layout and explains task versus Run terminology. Keep this separation; hosted database/daemon and scheduler remain outside Fleet ownership. |
-| `software/omnigent` | `ae8a850fb6147dd18a18faabb5d59af95ac9a20f` (main; advanced 2026-09-25) | `docs/extending/extension_manifest.md` | Immutable manifest declares independent API version, publisher-qualified IDs, collision rejection and verified bundle paths. Activation events/when/commands are reserved metadata in V1, not running features. |
-| `software/open-design` | `1b47e60bd46641469fcd8b69c496c4e3a548bc28` (main; advanced 2026-09-25) | `plugins/spec/AGENT-DEVELOPMENT.md` | Agent handoff separates portable SKILL.md from versioned host manifest and requires real preview output. A skipped/404 preview bake fails verification. Keep capability declaration and output fixtures, not another design authority. |
-| `software/openchamber` | `f9d212f38a900399765a53ce9d968dd13036096d` (main; advanced 2026-09-25) | `packages/extensions/DOCUMENTATION.md` | Built-in ownership guide uses ordinary public SDK, staged validation, host-bound provenance and disable-with-data-retention. Automatic built-in grants are rejected. Git PR source adds ancestry checking for reused branch names; see refresh mechanisms below. |
-| `software/openclaw` | `cac0c021273af695cb257492b3c2b4b20075b665` (main; advanced 2026-09-25) | `docs/plugins/architecture.md` | Architecture separates manifest discovery/diagnostics from activation and keeps metadata/provenance in one cache owner. Useful load sequencing; do not import the gateway, global runtime or trust defaults. |
-| `software/opencode` | `adee738d1e4597a2d0d317ca61a1625eff289efa` (dev; advanced 2026-09-25) | `packages/plugin/src/v2/promise/README.md` | V2 Promise API documents awaited hook registration/disposal and per-domain reload. Compare lifecycle semantics; in-process transforms may mutate catalogs and are not a Fleet permission boundary. |
-| `software/opencut` | `e668010778568641babef2cc40be4703ae6916d6` (main; advanced 2026-09-25) | `apps/desktop/README.md` | Desktop README explicitly says the GPUI app is an early window. Latest default branch still does not establish an editable/exportable timeline; retain classic as the mechanism candidate. |
-| `software/opencut-classic` | `cf5e79e919144200294fb9fed22a222592a0aeea` (main; current 2026-09-25) | `.github/CONTRIBUTING.md` | Contributor guide identifies actual web/editor development and targeted checks. Upstream collaboration policy and Docker services are not Fleet build requirements; compare the existing command/export source. |
-| `software/openpencil` | `3e55570d20bd4be891700789146e7c43c9c1c3b1` (main; advanced 2026-09-25) | `packages/op-web-sdk/README.md` | Web SDK is explicitly a read-only .op viewer with destroy cleanup. Full app editing is a different path; do not call viewer embedding native editing or Office/FIG fidelity. |
-| `software/openreel-video` | `5f3c85e5fc223c86060bf4b12e1b4dec58e9b8a9` (main; current 2026-09-25) | `CONTRIBUTING.md`; `creating-views/README.md` | Contributor guide locates core engines versus web bridges. creating-views is an exported design prototype, not a production runtime contract; use the reviewed clock/export paths, not prototype instructions. |
-| `software/orca` | `80099393810479ac06a6e01e79e73cd7a83c25ff` (main; advanced 2026-09-25) | `docs/audits/plugin-worker-output-retention/README.md` | Worker-output audit traces retained string backing buffers through real parser/log ring and supplies reproduction commands. Bound bytes as well as line counts; audit measurements are upstream evidence, not Fleet measurements. |
-| `software/palmier-pro` | `21f756e0a018fa670a38b2c8b02d5ab25515ec53` (main; advanced 2026-09-25) | `AGENTS.md` | Development notes distinguish packaged/test resource lookup and observable cancellation/failure. Reject its no-migration policy for Fleet data; Swift/macOS/binary license constraints remain. |
-| `software/penpot` | `9d08e26cb3d0ed003a5cf7df37adc778019bf75e` (develop; advanced 2026-09-25) | `docs/technical-guide/developer/architecture/index.md` | Architecture explains shared frontend/backend data models and exporter boundaries. Use native API/schema mechanisms, not the hosted SPA/JVM database stack; changed token schema requires migration review. |
-| `software/pi-mono` | `d6af72e1857cfb10b41d8ff8e69f0d72b4cf6d31` (main; advanced 2026-09-25) | `packages/coding-agent/docs/extensions.md` | Extension guide maps trust, lifecycle and session-entry persistence. Extensions execute with full system permissions; example stash checkpoints and arbitrary tool interception are not Fleet policy. |
-| `software/spec-kit` | `cb84d1bf2c93935df8a8bbf3aabd1f9dc55f8398` (main; advanced 2026-09-25) | `extensions/EXTENSION-DEVELOPMENT-GUIDE.md` | Extension guide separates schema version, package metadata, configuration and local tests. Keep requirement coverage ideas; no second planning/approval engine or extra per-task documents. |
-| `software/tldraw` | `e371088b1f59fc2ccef2fe13d821b4fc71c8d605` (main; advanced 2026-09-25) | `packages/state/ARCHITECTURE.md` | State architecture locates signals, atoms and transactions. Inspect leaf-package terms independently; state documentation does not license or select the editor SDK. |
-| `software/waku` | `5454cd4c47aba67e1082dd658ecf09afb23e4c45` (main; advanced 2026-09-25) | `CONTRIBUTING.md` | Contributor guide gives GPUI/platform/CLI prerequisites. No independently better extension mechanism established in this doc pass; keep the earlier driver-control evidence and GPL boundary. |
+| `plugins/GPTCache` | `a74ac654473f7bf4109118e8576945161616e17a` (main; current 2026-09-27) | `docs/contributing.md` | Contribution guide exposes cache/embedding/similarity seams. Reject automatic dependency installation and transparent caching of effectful turns; benchmark against Fleet originals. |
+| `plugins/LLMLingua` | `5a4c78ae18ab17a98cf997e8259354e546081d64` (main; current 2026-09-27) | `README.md` | Usage examples require a compressor model/runtime and emit lossy text. Useful experiment setup only; no semantic-equivalence, token-price or production dependency claim. |
+| `plugins/SuperClaude_Framework` | `fe68862c8ed9e2afb8120c2d9e27d0c3a7ce73a2` (detached; refreshed 2026-09-29) | `docs/developer-guide/technical-architecture.md` | Architecture describes Markdown context configuration; current source also has execution helpers. Treat document scope as partial, not proof the whole checkout is documentation-only; no second runtime. |
+| `plugins/agentmemory` | `a6c256bf3eb0ef63c6bab78f528136a882d45f10` (detached; refreshed 2026-09-29) | `AGENTS.md` | Developer guide maps CLI and MCP to one shared core and uses temporary memory directories in tests. Keep shared-handler and scope fixtures; no private memory import or second consolidation writer. |
+| `plugins/agentskills` | `69ef37e9424c0a7ea9dd2293b559e43ec8176379` (main; current 2026-09-27) | `CONTRIBUTING.md` | Contributor guide locates specification, validator and real compatibility proposals. Use parser fixtures and preserve/explain vendor metadata; instructions inside third-party Skills remain data. |
+| `plugins/caveman` | `2fd153c67988e980fb0b2455c90832159a6a5a25` (main; current 2026-09-27) | `docs/technical/architecture.md` | Architecture distinguishes proxy, compression, retrieval and failure behavior. Keep recoverable originals/protected-span tests; BSL engine and telemetry/runtime defaults are not admitted. |
+| `plugins/claude-mem` | `ade13f3067d3de486f41dbd8ed90ac5c854de718` (detached; refreshed 2026-09-29) | `docs/architecture-overview.md` | Architecture maps hooks to worker/session services and timeouts. Follow actual buffer durability and privacy behavior; hook success is not durable curated memory. |
+| `plugins/claude-task-master` | `c0c98d367c55296bfe69e65680625b6db437af02` (main; current 2026-09-27) | `apps/extension/docs/extension-development-guide.md` | Development guide separates development dependencies from staged extension package. Compare package validation only; Commons Clause and second task authority remain blockers. |
+| `plugins/claude-token-efficient` | `0d30a6db75af983b8ababf585f28faefdfc87895` (main; current 2026-09-27) | `CLAUDE.md` | Short contributor instructions supply no new runtime design. Existing controlled benchmark remains the useful reference; no new mechanism admitted merely to fill this table. |
+| `plugins/claw-compactor` | `c1b936d40b1145c7a257bd6e34a17994f467495f` (main; current 2026-09-27) | `docs/architecture/stages.md` | Stage guide names immutable context, applicability and result metadata. Keep guarded transformations and original retrieval; stage ordering is not semantic preservation proof. |
+| `plugins/context7` | `83e972e8b0fa2fb9dde78c451358d4209a9c0236` (detached; refreshed 2026-09-29) | `plugins/codex/context7/README.md` | Plugin README packages Skill plus remote MCP and requires login/new context. Useful distribution separation; remote documentation service is not an offline bundled-doc backend. |
+| `plugins/dockview` | `838a7c5d7849f6b7ada7e9c1c76faeea52d2c3ad` (master; current 2026-09-27) | `AGENTS.md` | Developer guide distinguishes consumer React package from internal core and enterprise features. Use actual restore/dispose source and same-fixture comparison; DOM popouts do not prove native Electron integration. |
+| `plugins/hyperframes` | `867787b2f935a03e84d485ff7319e01873598c14` (main; dirty checkout preserved 2026-09-27) | `docs/sdk/guides/canvas-integration.mdx` | Preview adapter separates draft/commit and detaches old composition subscriptions. Source/tests confirm the bounded mechanism; same-origin iframe, ignored hit-test time and missing-dispatch no-op are unsuitable Fleet defaults. |
+| `plugins/letta` | `5bcdd177d70fa2b31a754cfcd801e77b2e1ab16a` (main; current 2026-09-27) | `CONTRIBUTING.md` | Contributing confirms retired V1 repository and points to letta-code; archive branch is historical. Latest default branch has no runtime to adapt; no silent replacement clone. |
+| `plugins/markitdown` | `b8f79c57ebc0044be41323d89b2a45d3fda8460e` (main; current 2026-09-27) | `packages/markitdown-sample-plugin/README.md` | Sample converter declares interface version and explicit register_converters entry point. Useful extraction adapter example; latest Python/optional dependency bounds changed, and Markdown conversion is not Office editing. |
+| `plugins/mem0` | `94c3fe9f238f3dbf29c9ce98643bd71eb13077cd` (main; current 2026-09-27) | `integrations/agent-plugin-core/README.md` | Shared plugin core generates thin per-host adapters with contract/conformance tests. Keep one owner across host adapters; telemetry, hosted memory and independent writers are not imported. |
+| `plugins/planning-with-files` | `2bcc24bcc8362ed4ff47f2ee0fc8346bcc1b98e2` (main; current 2026-09-27) | `README.md` | Current package is Copilot Markdown agent/knowledge templates. No executable extension mechanism or license-file proof; do not copy its three-file planning workflow. |
+| `plugins/playwright-mcp` | `f183dad4a52965583e3cc1d59b88cdc279e2e57d` (detached; refreshed 2026-09-29) | `src/README.md` | Source README points implementation to Playwright monorepo; local repo is a wrapper. Do not mistake wrapper documentation/tests for an inspected browser executor or grant. |
+| `plugins/react-resizable-panels` | `8d30dadcf428b9c7aa8636e9a4b3820a75041cd7` (detached; refreshed 2026-09-29) | `CONTRIBUTING.md` | Contribution guide locates pnpm development/tests; no new host architecture follows from it. Compare constrained resize callbacks against Craft, not a docking replacement. |
+| `plugins/react-rnd` | `fec7303134ab0f0bbe83fdf975ddc15c340f7e5d` (master; current 2026-09-27) | `README.md` | README provides controlled size/position and instance API plus isolated reproductions. Drag geometry alone does not supply docking, persistence, keyboard access or native-window lifecycle. |
+| `plugins/repomix` | `0b3f82b401bbc520fd1aca67c06d24e40a868d3e` (detached; refreshed 2026-09-29) | `website/client/src/en/guide/claude-code-plugins.md` | Plugin guide separates MCP packing, commands and repository exploration. Use bounded selected-source packaging; plugin install is not consent for remote processors or all repository data. |
+| `plugins/xyflow` | `3d35b57317576b0916c0bfeaaedd573aaacc2839` (main; current 2026-09-27) | `CONTRIBUTING.md` | Contribution map distinguishes React/Svelte/system and legacy v11. Use current ID-keyed graph change/observer mechanisms; no production-media renderer or workflow executor admission. |
+| `software/AionCore` | `ea24f50af26977f38ebb3775816bbb1b7815a018` (detached; refreshed 2026-09-29) | `ARCHITECTURE.md` | Use repository/error-boundary diagrams to locate adapters. Rust server, JWT and database remain external mechanisms; do not transplant a backend authority. |
+| `software/AionUi` | `6744099b279b991c17e31c243f0920477bd31cb6` (main; current 2026-09-27) | `docs/contributing/development.md`; `.claude/skills/architecture/references/process.md` | Development requires a separate AionCore binary; Electron source alone is not the complete runtime. Pure logic versus IO separation is useful; revalidate architecture notes against the current split. |
+| `software/CLIProxyAPI` | `a270e7b9e57aaecd8f82555f44c2108518ad2330` (detached; refreshed 2026-09-29) | `docs/sdk-usage.md` | SDK embeds routing/authentication as a Go service. Management requires a configured secret and separate remote-access setting; do not introduce an account-pool proxy to obtain quota. |
+| `software/Cowart` | `43fc8882daf2560c7e36fd34a95fe12c251493ac` (main; current 2026-09-27) | `README.en.md` | Portable plugin metadata and project-local canvas assets are useful handoff examples. Web login, GA4 and the tldraw editor license remain separate exclusions/conditions. |
+| `software/Kun` | `ebce7f6cd94fc2882009fcf8169d7a59f5f5c289` (detached; refreshed 2026-09-29) | `docs/extensions/architecture.en.md` | Host-derived identity, lifecycle nonce and broker rechecks are design evidence. Noncommercial terms block copying; extension-owned threads cannot become another Fleet Session store. |
+| `software/OpenChatCut` | `d1af1ade45521e8ed9a5be09e3acad823f269453` (detached; refreshed 2026-09-29) | `src/agent/skills/openchatcut-plugin-basics/SKILL.md` | Skill separates project/timeline targeting from tool schemas. Its current tools are direct calls, not MCP; use editing concepts only within the AGPL boundary. |
+| `software/OpenHands` | `da8f701e0e8e9c25cf2a8065a0debd930107a765` (detached; refreshed 2026-09-29) | `specs/canvas-extensions.md`; `docs/CANVAS_EXTENSIONS_TESTING.md` | Extension contract distinguishes unsupported, unreachable and empty inventory. Testing guide uses MSW memory state and explicitly excludes backend install/persistence/authentication; never report that demo as an end-to-end extension host. |
+| `software/OpenMontage` | `08e2151fa02de28a5d6a312b3d575692bf147ad7` (main; current 2026-09-27) | `docs/ARCHITECTURE.md` | Architecture documents agent-directed manifests and checkpointed tools, not a Python orchestrator. Keep offline deliverable checks; no imported pipeline authority or paid-provider defaults. |
+| `software/OpenSandbox` | `3738975fc7b1da6875694f912b0422fe5d622064` (detached; refreshed 2026-09-29) | `docs/architecture/network/egress.md` | Egress document describes Linux DNS/network-namespace enforcement. Useful for diagnosing limits of browser URL checks; no second Fleet/macOS sandbox. |
+| `software/ZCode` | `29628c9acdb81b703bbd4080c207a0e7ce5e276e` (main; current 2026-09-27) | `.agents/skills/architecture-governance/SKILL.md` | Bounded module context plus explicit owner, idempotency and stale-result rules aid handoff. Use existing Fleet contracts; do not copy its per-change document-generation policy. |
+| `software/browser-harness` | `afbcc381b963040c19627d788e40c7e7663171ee` (main; current 2026-09-27) | `CONTRIBUTING.md` | Contributor guide distinguishes checkout launcher from installed command and locates domain skills. Keep private IPC evidence; no new browser ownership or automatic runtime installation. |
+| `software/browser-use` | `4cbe921673b48a488f5415d9159249afd12a625b` (main; advanced 2026-09-27) | `BETA_AGENT_INTEGRATION_FEATURES.md` | Beta ledger describes an opt-in Rust SDK server while Python Agent stays separate. Protocol compatibility and claimed feature parity require their own proof; no wholesale agent runtime replacement. |
+| `software/cc-switch` | `f678f7c539c90ed0e43872680b7f7162db5d0ef2` (detached; refreshed 2026-09-29) | `src/components/providers/forms/PiProviderForm.tsx`; `src/components/providers/forms/ClaudeFormFields.tsx`; `src-tauri/src/services/model_fetch.rs`; `docs/user-manual/en/2-providers/2.5-usage-query.md` | The Pi form separates upstream API format from model IDs; model fetch uses format-specific authentication headers and accepts `data` or `models` list shapes. Fleet borrows that request distinction for bounded, same-origin candidate discovery, while keeping manual import because `/models` does not prove chat capability. Its Claude/Codex forms can select additional upstream formats because the local proxy translates requests; Fleet does not copy that proxy or subscription rewriting. Usage query modes are not proof of a supported public allowance API. |
+| `software/cindy` | `a46bb58fc3263f1a3dde04cf9470ed9b0379c82c` (detached; refreshed 2026-09-29) | `docs/dev-rules/architecture-invariants.md`; `docs/dev-rules/electron-security-and-process-boundaries.md` | Read current panelKind/layout ownership and Electron sender validation. Preserve unknown panels and distinguish applied from persisted; reject its corrupt-layout overwrite, fixed conversation width and user-global layout policy as Fleet defaults. |
+| `software/cockpit-tools` | `4ea6a34df6aa3b2d494c3cca5983bd09a84a9e3a` (detached; refreshed 2026-09-29) | `CONTRIBUTING.md`; `docs/CODEX_API_SERVICE_HANDOFF.md` | Contributor guide identifies shared core/GUI/CLI and targeted checks. API Service handoff describes credential/config injection into a local gateway, not a supported quota API; keep the existing quota scheduler comparison and restricted-license boundary. |
+| `software/codex` | `94d642d8b40e45e2e544770f0d1f28df9a717f06` (detached; refreshed 2026-09-29) | `codex-rs/app-server/README.md`; `codex-rs/ext/extension-api/notes.md` | App-server documents cancellation acknowledgement versus original completion and auth-generation fencing. Saved disabledPluginIds explicitly does not yet filter capabilities. Sparse quota updates are corroborated in protocol/v2/account.rs; extension notes alone are not an SDK contract. |
+| `software/craft-agents-oss` | `b2d6c8aabdfdc96416eea9debd6756ae6d3c0db9` (detached; fixed baseline preserved 2026-09-27) | `CONTRIBUTING.md`; `apps/electron/README.md` | Use Electron build/transport/package entry guidance with current scripts as authority. Do not run upstream secret-sync, publishing or hosted-service setup; v0.13.4 remains the release comparison. |
+| `software/craft-agents-oss-v0.10.5` | `c9d9a26fbefa3a5165ee9aa50cb30c25466afd81` (detached; fixed baseline preserved 2026-09-27) | `apps/electron/README.md` | Fixed visual comparison only. Keep this development guide with its original checkout; current implementation/build claims belong to the rolling release and app tree. |
+| `software/dashi-taskboard` | `6a79ef522238ff11681cb85a9d803d19442a3d00` (detached; refreshed 2026-09-29) | `integrations/deepseek-harness/README.md` | Small host bundle locates an already-running runtime through launcher-owned metadata rather than a fixed port. No second Taskboard runtime or task store. |
+| `software/deepseek-harness` | `639ed015397290b3745d163aafe02ffee4aa3f84` (detached; refreshed 2026-09-29) | `packages/extensions/cordis-host-runner/README.md` | Host guide names scope/disposal and immutable versions; definitions are RAM-only, node:vm is not a security boundary, async work escapes vmTimeoutMs and UI load receipt precedes render. Do not adopt those limitations silently. |
+| `software/flowgram.ai` | `626818bfe123ee12429037001a2e295d6badc6f3` (detached; refreshed 2026-09-29) | `apps/docs/src/en/guide/advanced/custom-plugin.mdx` | Custom plugin guide gives lifecycle hooks and portable fixed/free-layout registration. Compare disposal concepts only; the IoC/editor container is not a small standalone executor. |
+| `software/genoffice` | `324b0477ed014c92f2abea12a847e12ff06e3c35` (detached; refreshed 2026-09-29) | `apps/sheets/docs/architecture.md`; `packages/html2docx/ARCHITECTURE.md` | Sheets guide declares partial PoC state and package-preserving edits; current sidecar already exposes newer archive/recalculation operations, so its production-gap list is not current feature proof. HTML-to-DOCX intentionally rasterizes some decoration; measure editability separately. |
+| `software/grok-build` | `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8` (detached; refreshed 2026-09-29) | `crates/codegen/xai-grok-pager/docs/hooks-and-plugins.md` | Hook/plugin guide makes scope, version and error feedback inspectable. Shell hooks are executable effects, not approval grants; keep Fleet permissions and shared UI. |
+| `software/Qwen-MM-Plugins` | `07736672525443c7f8a3f6405eed37d2236f023f` (main; owner-requested shallow clone) | `docs/en/local_development.md`; `docs/en/how_to_add_new_capability.md` | Capability guide separates Skill instructions, optional MCP tools and dependencies. Native image blocks require a vision-capable main model; text-only caption mode is a separate paid VL request, not a free conversion or host-level vision guarantee. |
+| `software/Qwen-Live-Harness` | `b6ce544ebbcd7417e37e0314ec946466c49c615c` (main; owner-requested shallow clone) | `packages/qwen-live-harness/README.md`; `docs/configuration.md` | The daemon/Host split, per-call realtime receipts and API-key region choice are source evidence. Its macOS desktop and independent background/Memory stores do not satisfy Fleet's three-platform, one-Session contract. |
+| `software/pi-multimodal-proxy` | `cdf53ccc21be534240e227a5fb85392cf42d774c` (main; owner-requested shallow clone) | `README.md`; `SECURITY-REVIEW.md` | Extension manifest and security review document Pi session/tool event hooks, scoped consent and bounded media access. Package-declared MIT lacks a root license text; the review is source evidence, not license or runtime admission. |
+| `software/pi-claude-bridge` | `a78a2a5525e96318f8dba7f9fd32ce2191be0136` (main; source comparison) | `README.md`; `src/index.ts`; `LICENSE` | Pi extension bridges Claude Agent SDK queries, Pi tools through an MCP server and a rewritten Claude session transcript. MIT source is inspectable, but its Pi extension host, second session and permission mapping are not Fleet's existing runtime contract. |
+| `software/pi-mono-latest` | `e792ba131ed0495f3ff58a0eb13f20540e344d5c` (detached; refreshed 2026-10-01) | `packages/durable/README.md`; `packages/chord/README.md`; `packages/coding-agent/src/experimental/client-tui.ts` | Durable Harness commits conversation/task/document changes; new ownership, compaction and overflow cases cover cancellation/restart. Chord hosts multi-environment facets. Durable remains experimental with no image reader; coding-agent presentation facets are under `experimental/`, not stable `ExtensionAPI`. The released Pi SDK is installed; experimental Durable/Chord do not replace Fleet ownership. |
+| `software/herdr` | `da5881eaff77486d9e94677990b6e81769502f13` (detached; refreshed 2026-09-29) | `docs/next/website/src/content/docs/plugins.mdx` | Plugin guide explicitly treats commands as normal local code inheriting user environment and full CLI access. Context/logging are useful; this is not isolation or bounded Fleet authority. |
+| `software/hermes-agent` | `7cadfaa668587a2be683c069373ca5ea3ca65fca` (detached; refreshed 2026-09-29) | `website/docs/developer-guide/desktop-plugin-sdk.md` | Desktop SDK documents one contribution registry, native UI kit and scoped disposers. Its renderer plugins have full app authority and default activation; desktop implementation is not present in this checkout. Documentation evidence only, no security-boundary or code-import claim. |
+| `software/html-anything` | `553ed98c283f9c0f489902d035416a972d6a9699` (main; current 2026-09-27) | `CONTRIBUTING.md` | Contributor map separates Skills, argv/detection adapters and export adapters. Reuse a small adapter only after comparing Craft; examples do not justify another agent runner or UI language. |
+| `software/kimi-code` | `f409caa21e71ce7beb158d29ffca1fed76216a64` (detached; refreshed 2026-09-29) | `docs/en/customization/plugins.md` | Plugin guide separates install/reload and describes macOS Accessibility/Screen Recording versus Windows foreground input. Useful platform acceptance cases; proprietary/distributed Computer Use helper implementation is not established by the guide. |
+| `software/mcp-registry` | `bf4e88cbe8d1a635c06144ccea1d24cb52fa6186` (main; current 2026-09-27) | `docs/reference/api/extensions.md` | Namespaced experimental endpoints keep registry core minimal. Namespace/version metadata is useful; no Fleet-hosted registry requirement or execution grant. |
+| `software/multica` | `e31da86c90794b5c488279a3ead13ac2f31ac269` (detached; refreshed 2026-09-29) | `apps/docs/content/docs/developers/architecture.mdx` | Architecture separates server data from client drafts/layout and explains task versus Run terminology. Keep this separation; hosted database/daemon and scheduler remain outside Fleet ownership. |
+| `software/omnigent` | `61d96f74b540f3b31a147b74b12abe4ad8ead3e6` (detached; refreshed 2026-09-29) | `docs/extending/extension_manifest.md` | Immutable manifest declares independent API version, publisher-qualified IDs, collision rejection and verified bundle paths. Activation events/when/commands are reserved metadata in V1, not running features. |
+| `software/open-design` | `5b19dfa4351b3eed33826ee72746a7c653c23a54` (detached; refreshed 2026-09-29) | `plugins/spec/AGENT-DEVELOPMENT.md` | Agent handoff separates portable SKILL.md from versioned host manifest and requires real preview output. A skipped/404 preview bake fails verification. Keep capability declaration and output fixtures, not another design authority. |
+| `software/openchamber` | `1a566db6c2921cc8eaebaf4ed5665859cc11da3e` (detached; refreshed 2026-09-29) | `packages/extensions/DOCUMENTATION.md` | Built-in ownership guide uses ordinary public SDK, staged validation, host-bound provenance and disable-with-data-retention. Automatic built-in grants are rejected. Git PR source adds ancestry checking for reused branch names; see refresh mechanisms below. |
+| `software/openclaw` | `4cd32ee5657b56fb54f1920040921b2532ab1c70` (detached; refreshed 2026-09-29) | `docs/plugins/architecture.md` | Architecture separates manifest discovery/diagnostics from activation and keeps metadata/provenance in one cache owner. Useful load sequencing; do not import the gateway, global runtime or trust defaults. |
+| `software/opencode` | `f66b86ceec1a497417f750b88a06cf6923c5c75f` (detached; refreshed 2026-09-29) | `packages/plugin/src/v2/promise/README.md` | V2 Promise API documents awaited hook registration/disposal and per-domain reload. Compare lifecycle semantics; in-process transforms may mutate catalogs and are not a Fleet permission boundary. |
+| `software/opencut` | `e668010778568641babef2cc40be4703ae6916d6` (main; current 2026-09-27) | `apps/desktop/README.md` | Desktop README explicitly says the GPUI app is an early window. Latest default branch still does not establish an editable/exportable timeline; retain classic as the mechanism candidate. |
+| `software/opencut-classic` | `cf5e79e919144200294fb9fed22a222592a0aeea` (main; current 2026-09-27) | `.github/CONTRIBUTING.md` | Contributor guide identifies actual web/editor development and targeted checks. Upstream collaboration policy and Docker services are not Fleet build requirements; compare the existing command/export source. |
+| `software/openpencil` | `3e55570d20bd4be891700789146e7c43c9c1c3b1` (main; current 2026-09-27) | `packages/op-web-sdk/README.md` | Web SDK is explicitly a read-only .op viewer with destroy cleanup. Full app editing is a different path; do not call viewer embedding native editing or Office/FIG fidelity. |
+| `software/openreel-video` | `5f3c85e5fc223c86060bf4b12e1b4dec58e9b8a9` (main; current 2026-09-27) | `CONTRIBUTING.md`; `creating-views/README.md` | Contributor guide locates core engines versus web bridges. creating-views is an exported design prototype, not a production runtime contract; use the reviewed clock/export paths, not prototype instructions. |
+| `software/orca` | `5c59a2dfec9c5f935a4a38e5fbb03324150f707c` (detached; refreshed 2026-09-29) | `docs/audits/plugin-worker-output-retention/README.md` | Worker-output audit traces retained string backing buffers through real parser/log ring and supplies reproduction commands. Bound bytes as well as line counts; audit measurements are upstream evidence, not Fleet measurements. |
+| `software/palmier-pro` | `eeafde20086b1dffb01ccb59da80e470abadeda8` (main; advanced 2026-09-27) | `AGENTS.md` | Development notes distinguish packaged/test resource lookup and observable cancellation/failure. Reject its no-migration policy for Fleet data; Swift/macOS/binary license constraints remain. |
+| `software/penpot` | `90ab142f003499afe383ebdd9e50ede6ac31843a` (detached; refreshed 2026-09-29) | `docs/technical-guide/developer/architecture/index.md` | Architecture explains shared frontend/backend data models and exporter boundaries. Use native API/schema mechanisms, not the hosted SPA/JVM database stack; changed token schema requires migration review. |
+| `software/pi-mono` | `2b0a123de98318c2ff8069661721ce0c3794c34e` (main; advanced 2026-09-27) | `packages/coding-agent/docs/extensions.md` | Extension guide maps trust, lifecycle and session-entry persistence. Extensions execute with full system permissions; example stash checkpoints and arbitrary tool interception are not Fleet policy. |
+| `software/spec-kit` | `2c0a57abe1e7383a864c7d5e4dfa2457d7537734` (detached; refreshed 2026-09-29) | `extensions/EXTENSION-DEVELOPMENT-GUIDE.md` | Extension guide separates schema version, package metadata, configuration and local tests. Keep requirement coverage ideas; no second planning/approval engine or extra per-task documents. |
+| `software/tldraw` | `171ad467fb9224fb476bcd78d83ce7218a29d8aa` (detached; refreshed 2026-09-29) | `packages/state/ARCHITECTURE.md` | State architecture locates signals, atoms and transactions. Inspect leaf-package terms independently; state documentation does not license or select the editor SDK. |
+| `software/waku` | `433ed580842e91d428e1759a2fc1e51f31ab3517` (detached; refreshed 2026-09-29) | `CONTRIBUTING.md` | Contributor guide gives GPUI/platform/CLI prerequisites. No independently better extension mechanism established in this doc pass; keep the earlier driver-control evidence and GPL boundary. |
+
+| `software/harnessrouter` | `7d0fa14bf70e81a2226d232bc519e729d32793d3` (detached; refreshed 2026-09-29) | `README.md` | Task/session/artifact API is an execution boundary, not a local permission implementation. CE and separately licensed Starter Kits must remain distinct. |
+| `software/deepagentsjs` | `9a64a1751ca4d5aba003e5c15f972b183202238f` (main; cloned 2026-09-27) | `README.md` | Compiled graph and caller checkpointer/backend seams are real; SDK peer dependencies and default tools introduce integration work, not an automatic better kernel. |
+| `software/openai-agents-js` | `fdaf0a66ca6e9d89498909ad7cf64745630e8afb` (main; cloned 2026-09-27) | `README.md` | Embeddable provider-agnostic executor with model extension; source inspection does not establish Fleet multi-provider fidelity, recovery or native-harness parity. |
+| `software/agent-client-protocol` | `9af0e9f748db9f4cc4c410a7b212ead4f98ae78c` (detached; refreshed 2026-09-29) | `docs/protocol/v1/tool-calls.mdx` | Protocol contracts do not ensure every CLI uses the permission callback or supports all optional methods. Keep Fleet host admission and durable identity. |
+| `plugins/mcp-apps` | `82221c0c8ce7661efa6771c9d461511b1650495f` (main; cloned 2026-09-27) | `specification/2026-01-26/apps.mdx` | Resource permissions and CSP require host enforcement. Host style variables enable visual integration; Fleet entry registration/shared operations still need implementation. |
+| `plugins/cindy-official-plugins` | `7f22c956b2dd4c29d03d44d4eba3953f94e15632` (detached; refreshed 2026-09-29) | `opendesign-trial/README.md` | Retained durable checkout replaces temporary-only evidence. Domain document operations and worker/preview lifecycle are useful; upstream and third-party licenses remain separate. |
+| `plugins/hermes-plugin-claude-subscription-directsdk` | `ef73726cfaf2fa0ee041e55572f406e2c24fed83` (main; cloned 2026-09-27) | `README.md` | Current plugin still qualifies specific native versions and admission/replay behavior. Its live measurements are upstream evidence only; no Fleet login or runtime verification performed. |
+| `software/craft-agents-oss-latest` | `73bd9c2a3573158bea880984eb8d5fdb41e0cac2` (detached; refreshed 2026-10-01) | `README.md` | Distinct Claude/Pi backends and branch-readiness contract corroborate earlier reference roles. No whole-product re-review or migration claim. |
+| `plugins/hyperframes-latest` | `4984a268f760eed2997974245b52a59b8a037efa` (main; cloned 2026-09-27) | `docs/sdk/guides/canvas-integration.mdx` | Fresh clone has 68 LFS-filter status entries whose file bytes equal HEAD blobs. This is not 68 authored changes or evidence that render fixtures ran. |
+| `plugins/hyperframes-current` | `3631ee3da0e7cd3ca7e3047dbb13a55c4f638276` (detached; refreshed 2026-09-29) | `docs/sdk/guides/canvas-integration.mdx` | A clean latest clone for comparison while both earlier Hyperframes directories retain tracked test artifacts. Its successful checkout does not establish that render tests or licensed codecs work. |
+| `software/minimax-code` | `d8a32b6bc3b4f3ec9bc66a03fda9634810b00389` (detached; cloned 2026-09-29) | `docs/architecture.md`; `docs/open-source-status.md` | Official terminal/headless/ACP source. V2 owns SQLite Session, queue and history above a vendored Pi loop; MiniApp publication includes a supervised process and client surface. Desktop source is not published here, and no Fleet dependency or MiniMax login was added. |
+| `software/goose` | `add40e76589bcb0bffd3a38c69a855d20806e568` (detached; cloned 2026-09-29) | `documentation/docs/goose-architecture/goose-architecture.md` | Official desktop/CLI/ACP source. Rust Agent owns the loop, SQLite stores Sessions, ACP delegates a complete external Agent and the desktop renders MCP Apps. A standalone App opens its own ACP Session; this is a UX/executor comparison, not Fleet's shared Project domain store. |
+| `plugins/SoL-Pi` | `1559b5cb12c72da4a485bc50fe326586b216fb19` (main; cloned 2026-09-29) | `README.md`; `docs/compatibility.md`; `docs/configuration.md` | Standalone MIT Pi coding-agent extension with four opt-in mechanisms. Tested upstream against 0.85.1/0.84.2; not compatible merely because Fleet uses pi-ai. Static cache economics and nested command policy need adaptation; no runtime installation or savings claim. |
 
 ### Refresh mechanisms and counter-evidence
 
@@ -290,6 +1384,24 @@ Before implementation, compare the exact mechanism with current Craft/Fleet, pro
 authority/caller and failure path, and complete the existing admission requirements below.
 Baseline R0/R1/R2 corrections remain first; read-only reference research opens no feature gate.
 
+### Added kernel and protocol source locks
+
+| Checkout / reviewed SHA / license | Source path or symbol read | Reuse boundary |
+|---|---|---|
+| [software/harnessrouter](https://github.com/HarnessRouter/harnessrouter.git) · `5f82db1d1f13` · Apache-2.0 CE; Starter Kits separate | `runner/server.py`; `protocol/versions/2026-09-12/tasks.md`; `gateway/media_plane.py` | **M** — Complete-executor and media-job reference; approval bypass and separate state prevent a drop-in host replacement. See [audit](#harnessrouter--executor-infrastructure-comparison). |
+| [software/deepagentsjs](https://github.com/langchain-ai/deepagentsjs.git) · `9a64a1751ca4` · MIT | `libs/deepagents/src/agent.ts:180,450,510,533`; `libs/deepagents/src/backends/state.ts:51` | **M** — Compare general executor, profiles and checkpointer integration on existing host fixtures; no LangGraph store or production dependency selected. |
+| [software/openai-agents-js](https://github.com/openai/openai-agents-js.git) · `fdaf0a66ca6e` · MIT | `packages/agents-core/src/memory/session.ts:27`; `packages/agents-core/src/runState.ts:3153,3203`; `packages/agents-core/src/run.ts:650` | **M** — Compare approvals, continuation and host Session adapter. Default tracing needs explicit local-first configuration. This is not a subscription or native Codex adapter. |
+| [software/agent-client-protocol](https://github.com/agentclientprotocol/agent-client-protocol.git) · `15219ed70b6c` · Apache-2.0 | `README.md`; `docs/protocol/v1/tool-calls.mdx:135,193` | **M** — Negotiate native executor capabilities and permission/cancel messages. Stable protocol 1 must not be confused with draft v2 or schema crate versions. |
+| [plugins/mcp-apps](https://github.com/modelcontextprotocol/ext-apps.git) · `82221c0c8ce7` · Apache-2.0/MIT transition; documentation CC-BY-4.0 | `src/app-bridge.ts:127,190,503`; `src/styles.ts:77`; `src/spec.types.ts:340` | **M** — Tool UI resources, theme and host bridge are reusable boundaries, not a complete Fleet page/plugin runtime or automatic sandbox. |
+| [plugins/cindy-official-plugins](https://github.com/makecindy/cindy-official-plugins.git) · `8cc054b938d0` · Apache-2.0 root; plugin and upstream notices separate | `opendesign-trial/ghost.json`; `opendesign-trial/source/build/card-preview.cjs`; `opendesign-trial/node/worker.cjs` | **C** — Actual OpenDesign application-plugin packaging reference at the previously inspected revision; do not import workers, native binaries or independent authorities wholesale. |
+| [plugins/hermes-plugin-claude-subscription-directsdk](https://github.com/NousResearch/hermes-plugin-claude-subscription-directsdk.git) · `ef73726cfaf2` · MIT | `directsdk.py`; `directsdk_setup.py`; `admission.py` | **M** — Experimental request-scoped native Claude client with native tools disabled. Not the preferred route for retaining the official complete tool loop. |
+| [software/craft-agents-oss-latest](https://github.com/craft-ai-agents/craft-agents-oss.git) · `53393340aa36` · Apache-2.0 | `packages/shared/src/agent/backend/index.ts`; `packages/shared/src/agent/backend/types.ts` | **M** — Latest upstream companion, preserving both fixed Craft pins and app changes. Inspect backend/Agent interaction mechanisms, not a new product baseline. |
+| [plugins/hyperframes-latest](https://github.com/heygen-com/hyperframes.git) · `4984a268f760` · Apache-2.0; binary/codec terms separate | `docs/sdk/guides/canvas-integration.mdx`; `LICENSE` | **M** — Latest source companion for the protected dirty checkout. Documentation intake only; current implementation not yet admitted. |
+| [plugins/hyperframes-current](https://github.com/heygen-com/hyperframes.git) · `2eeaefb3e5c9` · Apache-2.0; binary/codec terms separate | `docs/sdk/guides/canvas-integration.mdx`; `LICENSE` | **M** — Clean current-source companion; verify changed render/preview callers before extracting anything. Preserves both dirty historical checkouts and does not add a Fleet renderer dependency. |
+| [software/minimax-code](https://github.com/MiniMax-AI/minimax-code.git) · `d8a32b6bc3b4` · MIT; vendored dependencies retain their own licenses | `packages/local-runtime-v2/src/service/{turn-system/agent-host/native-production-dependencies.ts,session-system/owner.ts}`; `packages/agent-core/src/pi-turn-runner/pi-turn-runner.ts`; `packages/local-runtime-v2/src/service/plugin-system/plugin/runtime/miniapp/publication.ts` | **M** — Real V2 Host, queue/permission and supervised MiniApp comparison for [kernel choice](#kernel-choice-against-fleets-complete-product). Do not import MiniMax account state, desktop behavior that is absent from source, or its separate Session/queue store. |
+| [software/goose](https://github.com/aaif-goose/goose.git) · `add40e76589b` · Apache-2.0 | `crates/goose/src/{agents/agent.rs,session/session_manager.rs,agents/state_machine/session.rs,acp/provider.rs}`; `ui/desktop/src/{acp/mcp-apps.ts,components/apps/StandaloneAppView.tsx}` | **M** — Compare complete ACP executor routing, SQLite Session/permission effects and desktop MCP Apps. Standalone App creates another ACP Session; do not import that as Fleet's shared Project document/Job owner. |
+| [plugins/SoL-Pi](https://github.com/NVlabs/SoL-Pi.git) · `1559b5cb12c7` · MIT | `src/sol-pi/{index.ts,config.ts}`; `src/sol-pi/extensions/{observation-pack/index.ts,action-fusion/then-run.ts,evidence-preserving-reducer/receipt.ts,online-context-compact/economics.ts}` | **M** — [Efficiency evidence](#token-efficiency-evidence-and-pi-extension-boundary): preserve source observations and native policy, evaluate each mechanism separately, and account for auxiliary calls and cache rewrites. Full Pi hooks and Host context/policy mapping are required; OV-069 does not automatically enable this extension. |
+
 ### Product anchors
 
 | Checkout / reviewed SHA / license | Source path or symbol read | Reuse boundary |
@@ -306,9 +1418,14 @@ Baseline R0/R1/R2 corrections remain first; read-only reference research opens n
 |---|---|---|
 | [software/AionCore](https://github.com/iOfficeAI/AionCore.git) · `d4ce55eb7606` · Apache-2.0 | `crates/aionui-session/src/backend/mod.rs#SessionBackend`; `crates/aionui-session/src/capability.rs` | **M** — Separate command receipt from observed Session event; unsupported capabilities and external permissions fail closed. Rust actors and pending-approval recovery are not a Fleet runtime replacement. |
 | [software/AionUi](https://github.com/iOfficeAI/AionUi.git) · `6744099b279b` · Apache-2.0 | `packages/desktop/src/index.ts:1-95`; `packages/desktop/src/renderer/hooks/agent/useAcpConfigOptions.ts:60-110,345-415` | **C** — [Three traced flows](#aionui-and-aioncore): shared creation, configuration evidence and turn cancellation. `Observed` can be an optimistic host value; it does not universally prove CLI echo or preference persistence. |
-| [software/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI.git) · `a5ab69521f7b` · MIT | `cmd/server/main.go:1-125`; `sdk/cliproxy/auth/selector.go:1-175,614-671` | **M** — Stable credential identity and retry metadata. Go account-pool gateway is not a Fleet capability or second provider authority. |
+| [software/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI.git) · `a5ab69521f7b` · MIT | `cmd/server/main.go:1-125`; `sdk/cliproxy/auth/selector.go:1-175,614-671` | **M** — Stable credential identity and retry metadata. Extract mechanisms into existing owners; the complete Go gateway is not selected. See [current audit](#cliproxyapi--provider-gateway-comparison). |
 | [software/codex](https://github.com/openai/codex) · `ebc05da3bdb7` · Apache-2.0 | `codex-rs/cli/src/main.rs:1171-1235`; `codex-rs/core/src/agent/control.rs:1-205` | **M** — Shared delegation-root budget and permit release on drop. Rust runtime/store stays outside Fleet; cancellation and resumed-tree coverage are not proven here. |
 | [software/grok-build](https://github.com/xai-org/grok-build.git) · `4247f6616893` · Apache-2.0; vendored notices separate | `crates/codegen/xai-grok-pager-bin/src/main.rs:2025-2088`; `crates/codegen/xai-grok-workspace/src/permission/gate_preflight.rs:1-205` | **M** — Deny outranks ask, ask outranks allow; explicit ask cannot be waived by classification. Do not adopt another policy authority. |
+| [software/Qwen-MM-Plugins](https://github.com/QwenLM/Qwen-MM-Plugins.git) · `07736672525443c7f8a3f6405eed37d2236f023f` · Apache-2.0 root; optional and vendored dependencies separate | `src/capabilities/core/qwen_mm_plugins_core/readers/image.py`; `src/shared/native_mode.py`; `src/mcp_framework.py:190-240` | **M** — MCP image blocks serve image-capable main models; text-only mode calls a separately configured VL endpoint for captions. Adapt the media-result projection and evidence contract, not its global environment switch, hidden paid side call or separate plugin credential store. |
+| [software/Qwen-Live-Harness](https://github.com/QwenLM/Qwen-Live-Harness.git) · `b6ce544ebbcd7417e37e0314ec946466c49c615c` · Apache-2.0 root | `packages/qwen-live-harness/src/realtime/{realtime-session,tool-confirmation}.ts`; `src/tools/{dispatcher,handles}.ts` | **M** — Realtime audio/video uses a region-bound DashScope API key, call epochs, tool receipts and uncertain-timeout handling; ACP delegates optional background work. Reuse a bounded realtime adapter/receipt pattern, not its second Session, memory or permission authority. |
+| [software/pi-multimodal-proxy](https://github.com/pungggi/pi-multimodal-proxy.git) · `cdf53ccc21be534240e227a5fb85392cf42d774c` · MIT declared in package.json; no root LICENSE text | `extensions/vision-proxy.ts:1930-2525`; `extensions/internal.ts`; `package.json` | **M** — Provider-scoped image egress consent, turn caps, tool-result captions, durable Pi session entries and fail-closed media descriptions. It requires `pi-coding-agent` extension events/session/UI and needs Host context/UI/permission mapping even with the OV-069 SDK; borrow bounded mechanisms through Fleet's Session/permission/usage owners, not its second config/consent store. |
+| [software/pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge.git) · `a78a2a5525e96318f8dba7f9fd32ce2191be0136` · MIT | `src/index.ts:580,750-853,1943-2007`; `src/mcp-server.ts:59-85`; `package.json` | **M** — A Pi provider calls Claude Agent SDK with `tools: []`, remaps Pi tools through an MCP server and reconstructs/resumes Claude JSONL. Its package requires `pi-coding-agent`/TUI peers and would add a second Session/permission bridge to Fleet's ZCode host. Use its abort/resume/tool-result tests as comparison, not a direct installed provider or OAuth shortcut; prefer a separately scoped official CLI/ACP executor when that work is authorized. |
+| [software/pi-mono-latest](https://github.com/earendil-works/pi.git) · `2532a0bef7f72f45828f190b0be6c38227bbd34d` · MIT | `packages/durable/src/{session/transaction,harness/tool,harness/scheduler}.ts`; `packages/durable/test/harness-ownership.test.ts`; `packages/chord/src/facets/host.ts`; `packages/coding-agent/src/experimental/{client-tui,session-worker}.ts` | **M** — Atomic entries/tasks/documents, safe/unsafe tool replay, child ownership and cross-process facet lifecycle are a viable substrate for a Fleet-owned kernel. The API remains experimental and lacks Fleet permission, image reader and native page contract; an internal fork plus same-workflow acceptance is proposed, not a drop-in package or installed runtime. |
 | [software/herdr](https://github.com/herdrdev/herdr.git) · `5a6491422336` · Apache-2.0 | `src/main.rs:504-568`; `src/api/event_hub.rs:1-127` | **M** — Bounded sequence-numbered event ring reports lost/unavailable resume ranges. Rust supervisor and persistence are separate from Fleet Session state. |
 | [software/hermes-agent](https://github.com/NousResearch/hermes-agent) · `db1f3f4564eb` · MIT | `hermes_cli/main.py:1-60,3512-3552`; `agent/interrupt_scope.py:1-73` | **M** — [Three traced flows](#hermes): turn cleanup, final-argument authorization and evidence/curated-memory separation. Automatic approval paths exist; file locks do not establish a single consolidation writer. |
 | [software/kimi-code](https://github.com/MoonshotAI/kimi-code.git) · `6a214b85e53e` · MIT | `apps/kimi-code/src/main.ts:1-65`; `packages/acp-server/src/approval.ts:1-163` | **C** — Pure ACP approval mapping rejects unknown responses and distinguishes session scope. Current checkout is TypeScript, not the older Python tree; no second approval store. |
@@ -423,6 +1540,19 @@ owns the recommended behavior and acceptance; the seven-field promotion gate sti
 
 ### Codex, Claude and Cursor product evidence
 
+Additional browser-host source comparison for OV-076 uses disposable clones under
+`.fleet/reviews/browser-study`; retained reference pins are unchanged:
+
+| Source lock / license | Inspected implementation | Integration conclusion |
+|---|---|---|
+| Installed Codex desktop `26.928.31416` / build `12553`; `.vite/build/main-BbeJ4AAR.js` SHA-256 `1ff5a43bde26ea6c1b77dbcf782625c890e35a836d489163c19d5ba9942d68b4` | Local `app.asar` inspection: managed webview mount/adoption, a browser-native session mode, extension action/profile APIs, and scoped native-pipe Browser Use dispatch. Renderer `webview-89e4050745ef.js` SHA-256 `c91b29f09fcd8fc8163f99785920135bb6fedc84ae61e053356bd429a15ea62d`; inspection copies stay ignored. | Architecture evidence, not an admitted source dependency. [Exact trace and limits](modules/browser.md#installed-codex-desktop-comparison) distinguish custom Electron APIs, built-in browser extensions and the external Chrome connector. Native C++ source and arbitrary-extension execution are not established. |
+| [electron-browser-shell](https://github.com/samuelmaddock/electron-browser-shell/tree/354b0b8192e8c2d960e50cf108b5dbbb70448fec) | `packages/electron-chrome-extensions/src/browser/{index,api/tabs,api/browser-action,api/context-menus,api/runtime}.ts` implements missing host APIs and native messaging. That bridge is GPL-3.0/separately licensed; `electron-chrome-web-store` is MIT. Its `installer.ts` parses IDs/key proofs then extracts the ZIP; inspected code did not show complete CRX signature verification. | Reference, not an admitted dependency. Tab/window creation must use Fleet's current browser owner; native messaging cannot inherit the app bridge. Store download is insufficient evidence of package integrity or actual compatibility. |
+| [BrowserOS](https://github.com/browseros-ai/BrowserOS/tree/53c3799ce014e9fee05569802314a05d0bad3e40) · AGPL-3.0 | `packages/browseros/chromium_patches/chrome/browser/importer/{profile_writer,importer_list,in_process_importer_bridge}.cc` wires Chrome extension import through native ExtensionService/Registry and an active Chromium WebContents; `extensions/browser/crx_installer.cc` changes install task priority. ProfileWriter's helper uses a silent Store installer. | Native full-browser source comparison, not a drop-in Electron extension host. Separate distribution, profile, updater and control boundaries require explicit admission. Fleet must retain manifest/permission review instead of copying silent import. |
+
+The actual installed Electron 41.0.3/Chromium 146 guest fixture and its API limits are owned by
+[Browser](modules/browser.md#chrome-extension-compatibility). These temporary code locks supersede
+neither retained pins nor the above historical source observations.
+
 Official pages checked 2026-09-21. They describe supported behavior, not publicly inspectable
 desktop internals; neither CLI source nor a published tool interface proves the closed UI's backend.
 
@@ -468,6 +1598,9 @@ list. The current Fleet owner is still Craft's `LlmConnection` plus its backend 
 | Craft `v0.13.4` (`b2d6c8a`), `packages/shared/src/agent/backend/internal/drivers/{anthropic,pi}.ts`, `packages/server-core/src/model-fetchers/index.ts` | Preserve the live driver → persisted connection models → offline seed chain. Extend this chain, rather than adding a model store. |
 | Installed Pi `@earendil-works/pi-ai`, `dist/models.js:beginProviderRefresh/publishProviderModels/getSupportedThinkingLevels`, `dist/providers/xai.js` | Reuse the installed model/runtime catalog and its exact `thinkingLevelMap` semantics, last-good storage and generation-checked publication. Pi's xAI OAuth loader exists, but its embedded client/scope is not an official third-party registration grant and Craft currently converts most OAuth to API-key auth. |
 | Official Codex `639d2478cc2e`, `codex-rs/codex-api/src/endpoint/models.rs`, `codex-rs/model-provider/src/models_endpoint.rs`, `codex-rs/protocol/src/openai_models.rs:ModelInfo` | The ChatGPT backend's `/models?client_version=...` response is account-scoped and carries display text, context, input modalities and supported reasoning levels. Codex obtains `chatgpt-account-id` from the stored ID-token claims, bounds the response before decoding and publishes only the current auth identity. Fleet reuses the existing Pi adapter for the wire route and keeps allowance/rate-limit data separate; unknown slugs are unavailable until an adapter proves their output limit and transport. |
+| Codex `67a709665ac7`, `codex-rs/codex-api/src/endpoint/models.rs:360`, `core/src/session/turn_context.rs:640` | Native effort presets use the `effort` field; a nonempty list/default drives supported choices. Codex falls back to a model default when an old choice is invalid; an empty list by itself does not mean `off`. The isolated review profile held six old exact `off` snapshots over a newer account-discovered low→max catalog. A bounded repair removes only that exact legacy snapshot when its other observed fields match, preserving disabled/manual/edited rules. Account refresh then exposed the reported medium default in Settings, a new Composer choice and a reopened conversation without paid inference. |
+| Codex fetched `c248f6d48b97` without moving the retained `67a709665ac7` checkout; `458f7046a` in `codex-rs/{model-provider/src/models_endpoint.rs,models-manager/src/manager.rs}` | An explicit provider catalog is authoritative: reject duplicate/blank model slugs, match exact IDs, and never fill failed/empty results with bundled models. `3226512d4` also makes the server's effective provider win over an implicit client default on thread history and fork. The ZCode candidate now rejects duplicate IDs in API pages, each xAI capability catalog, and the account-scoped Codex catalog before persisting a refresh. It still retains saved manual/edited rows and last-good settings on a failed refresh; that is its existing Provider owner, not a claim that stale rows are currently executable. Queue-time account binding and default-provider behavior still need their own end-to-end proof. |
+| Same Codex fetch, `13f580ef0` in `codex-rs/ext/skills/src/{render_dedup.rs,render.rs}` | It deduplicates cloud/executor Skill listings before the description-token budget while retaining executor aliases. ZCode's current `adapters/src/skills/index.ts:71-91` deduplicates only by path, so same-named skills from separate roots can consume repeated prompt budget. Compare the final provider-visible request and accepted Skill resolution before adapting this mechanism; name-only dedup would erase legitimately distinct packages. |
 | OpenCode `fe3f3a41f`, `packages/opencode/src/provider/provider.ts:fromModelsDevModel` | Separate provider route, model identity, modalities, token limits and request variants. `models.dev` is a useful offline metadata fallback, not proof of account entitlement or a substitute for the provider's live capabilities. |
 | OpenClaw `b4f1fec13ae`, `src/gateway/server-methods/models.ts:models.list`, `src/agents/prepared-model-catalog-worker.ts` | Serve an auth-scoped, prepared catalog; reject superseded runtime generations. Do not import its gateway and account authorities into Craft. |
 | ZCode `872ad96`, `packages/provider/src/account-provider-service.ts:AccountProviderService`, `packages/ui/src/hooks/useModelSelectionView.ts` | Publish one revisioned provider snapshot; retain the last good view on refresh failure and discard late account results. Do not copy ZCode's provider store. |
@@ -480,6 +1613,7 @@ list. The current Fleet owner is still Craft's `LlmConnection` plus its backend 
 | DeepSeek Harness `ddefc45fbc7f`, `packages/llm/llm-deepseek/src/{common/model-info.ts,protocols/messages/serialize.ts,protocols/chat-completions/serialize.ts}`, `packages/llm/llm-pi-ai/src/{adapter,discovery}.ts`; installed Pi `dist/api/openai-completions.js:detectCompat/buildParams` | The first-party DeepSeek route handles Messages effort, image Files, replay and cache accounting that its generic Pi route does not; both routes share one harness LLM seam. Its Pi adapter freezes route configuration per call, and discovery distinguishes advisory SDK models from authenticated gateway results. The installed Pi Chat Completions route already sends DeepSeek `thinking` and `reasoning_effort` for supported levels; intercepted requests confirmed High, Max and Off, so no duplicate wire adapter is needed for those fields. Candidate provider-wire improvements only; Fleet retains Craft's Pi Session, credential and permission owners and will port a mechanism only after a failing fixture proves the installed Pi route lacks it. |
 | Grok Build `4247f6616893`, Apache-2.0, `crates/codegen/xai-grok-shell/src/agent/{mvp_agent/reasoning_effort.rs,remote_config/manager/mod.rs}`, `crates/codegen/xai-grok-pager/src/acp/model_state.rs` | A per-model server catalog provides effort options, defaults and sometimes a distinct wire model ID for each effort; unsupported values are rejected at model switch. Candidate for account-scoped effort metadata and wire mapping, not a second Grok agent or permission engine. The retained checkout was already present. |
 | Kimi Code `7ad0c46682ec`, MIT, `packages/oauth/src/refreshProviderModels.ts`, `packages/agent-core-v2/src/human/llm/thinking.ts`, `packages/kosong/src/providers/capability-registry.ts` | Credential conflicts fail closed during refresh; each model declares thinking levels and whether Off is valid. The legacy name-prefix capability registry still has an unknown result, so do not copy prefixes as entitlement or a complete modality classifier. Candidate for model-specific request validation within Pi, not Kimi's session/catalog authority. The retained checkout was already present. |
+| Official Codex `codex-rs/tui/src/chatwidget/service_tiers.rs`; [ChatGPT Speed](https://learn.chatgpt.com/docs/agent-configuration/speed), [OpenAI API Fast](https://developers.openai.com/api/docs/guides/fast-mode), [Claude Fast](https://platform.claude.com/docs/en/build-with-claude/fast-mode), [xAI Priority](https://docs.x.ai/developers/advanced-api-usage/priority-processing), [Kimi HighSpeed](https://www.kimi.com/code/docs/en/kimi-code/models.html) | Codex toggles a model-supported service tier independently from reasoning effort. ChatGPT Fast is 2.5× total credits for GPT-5.5/5.6/6 where offered (the owner's “extra 1.5×”); API Priority uses model rates. Claude API Fast is a model-limited beta at 2× with cache invalidation on speed changes; xAI Priority is 2× only when served; Kimi HighSpeed is a distinct model ID/quota, not a generic toggle. Fleet's composer action follows evidenced speedMode and leaves unknown prices unspecified. |
 | MiMo Code `37c3e1ef025c`, MIT, `packages/opencode/src/provider/{models-catalog.ts,capability-registry.ts}` | Its OpenCode-derived metadata cache has an authoritative entity set, last-good refresh and generation guard. Multimodal routing requires both the model's declared input capability and evidence that the selected adapter serializes that content; unknown fails closed. Candidate for media input checks and fixture design, not a second model catalog or agent loop. New owner-requested shallow checkout; no production import. |
 | Gemini CLI `87de0b6369f0`, Apache-2.0, `packages/core/src/{availability/modelAvailabilityService.ts,routing/modelRouterService.ts}` | Quota/capacity failures make a model temporarily unavailable while routing retains a reason and bounded retry state. This is runtime health evidence, not an account allowance meter or permission to change the user's selected model silently. New owner-requested shallow checkout; no production import. |
 | Qwen Code `d33cd4ddcb5c`, Apache-2.0, `packages/core/src/models/{modelRegistry.ts,image-generation-capability.ts}` | Provider protocol and model wire API are distinct; invalid combinations are rejected. Image generation is a declared capability, not inferred from every multimodal/chat model. The registry includes a separate base URL in identity to prevent same-name account collisions. Candidate for route-validation fixtures; do not copy its provider store. New owner-requested shallow checkout; no production import. |
@@ -530,7 +1664,7 @@ read; this is interface/source evidence, not a successful authenticated Fleet in
 | Cindy retained `software/cindy` | `packages/maker-core/src/agents/codex/index.ts:2783-2790` calls app-server `AccountRateLimitsRead`; `apps/desktop/src/main/usage/{codexAccountUsageRefresh,claudeSubscriptionUsage,xaiSubscriptionUsage,xaiSubscriptionUsageRefresh}.ts`; `apps/desktop/src/renderer/components/settings/useProviderSubscriptionCard.ts` | Cindy really reads Codex, Claude and xAI subscription allowance, with separate account-bound caches and provider cards. Codex also has a private WHAM fallback; Claude OAuth and xAI billing are private/undocumented. Its xAI cached-first read relies on credential-change invalidation, so Fleet must recheck identity on every publication rather than copy that cache path verbatim. Fleet's Pi Codex runtime has no app-server control method; the native Cindy call cannot simply be copied into it. |
 | Codex retained `software/codex` at `ebc05da3bdb76f25861e7cb418bd06d28cadc609`; Apache-2.0, plus [official app-server protocol](https://learn.chatgpt.com/docs/app-server) | `codex-rs/app-server-protocol/src/protocol/v2/account.rs`; `codex-rs/app-server/tests/suite/v2/rate_limits_identity_tests.rs:identity_is_rechecked_after_backend_response`. Per-limit buckets, optional values, account identity and revalidation after response. | Prefer the owning runtime's read/notification interface. User/workspace switch invalidates publication; token refresh for the same identity need not. Do not hardcode two windows or replace missing fields with zero. |
 | Orca `a91ca8b19e6b48b88f49c9bcf7e5941aedd2a1df`; MIT; retained | `src/main/rate-limits/{codex-rpc-rate-limit-probe,codex-rate-limit-window-mapper,claude-usage-refresh-plan,claude-oauth-usage-request}.ts`; `src/shared/usage-percentage-display.ts` | Useful timeout/cleanup, nullable parsing, source classification and consistent rounding. Its Codex probe reads the legacy bucket and its display helper maps nonfinite input to zero; do not copy those limits. Direct Claude OAuth usage calls/impersonated CLI user-agent are not Fleet's recommended acquisition path. |
-| [CodexBar](https://github.com/steipete/CodexBar/tree/ab22bbb443372c40c72d51350fe879ba5c7cf861) · MIT (`LICENSE`); online only | `Sources/CodexBarCore/UsageFetcher.swift`, `Providers/Codex/{CodexProviderDescriptor,CodexRateWindowNormalizer}.swift`, `Providers/Claude/ClaudeProviderDescriptor.swift`; `Sources/CodexBar/{LastKnownUsagePresentation,UsageStore+AccountRefreshPolicy}.swift` | Good source/identity/freshness and account-scope comparison; rejects some CLI fallbacks that cannot carry the selected workspace. Do not port all credential discovery or Swift UI. Its Codex visible-window projection can force short-window usage to 100 when weekly is exhausted; Fleet should show the blocking condition separately from reported percentages. |
+| [software/CodexBar](https://github.com/steipete/CodexBar/tree/78ba5a1e65e6859da59a21b799df95ab91bc0b89) · MIT (`LICENSE`); cloned 2026-09-27 | `Sources/CodexBarCore/UsageFetcher.swift`, `Providers/Codex/{CodexProviderDescriptor,CodexRateWindowNormalizer}.swift`, `Providers/Claude/ClaudeProviderDescriptor.swift`; `Sources/CodexBar/{LastKnownUsagePresentation,UsageStore+AccountRefreshPolicy}.swift` | Good source/identity/freshness and account-scope comparison; rejects some CLI fallbacks that cannot carry the selected workspace. `docs/codex-oauth.md` and `CodexProviderDescriptor.swift:456,460,811` keep native credential refresh with its CLI owner and reuse the same account snapshot for quota/reset inventory. `LastKnownUsagePresentation.swift:3` dates cached readings; Fleet retains its existing encrypted credential owner and never refreshes another application’s auth file. Do not port all credential discovery or Swift UI. Its Codex visible-window projection can force short-window usage to 100 when weekly is exhausted; Fleet should show the blocking condition separately from reported percentages. |
 | [Cursor usage](https://cursor.com/help/models-and-usage/usage-limits) and [Admin API](https://cursor.com/docs/account/teams/admin-api) | Dashboard reports plan pools, remaining allowance and overage; API is organization/admin scoped. | Show provider-native units and account scope. This review did not establish a supported personal-quota endpoint; an official dashboard link is the honest fallback. No private cookie/database scrape or automatic paid-overage activation. |
 
 #### Cockpit Tools and cc-switch acquisition-to-display review
@@ -548,6 +1682,7 @@ evidence, not an unrestricted code dependency. No production import or account q
 
 | Mechanism / exact source | Finding | Fleet consequence |
 |---|---|---|
+| Cockpit Tools `a24199f73505`, `src-tauri/src/modules/codex_quota.rs:578–855`; `src/types/codex.ts:1115–1136` | Account-check selects an entitlement expiry; `/subscriptions?account_id=…` uses bearer auth plus browser User-Agent/Referer/route headers and may expose a different renewal time. Both metadata calls pass no ChatGPT-Account-Id header (`:692–735,778–798`); workspace binding comes from the query or exact account-check response. Pro→20X is a fallback display rule, not proven native capacity. | Independent Fleet adapter requires the exact workspace match, falls back directly to the same account's subscription query when account-check is denied, keeps expiry/renewal semantics, shares one bounded deadline and never guesses a multiplier. Live inspection returned HTTP 200 on both metadata routes for each saved account after the header correction; the rebuilt desktop showed distinct matching terms after refresh. No Cockpit credentials/cookies were imported or resets consumed. |
 | Cockpit Tools `src-tauri/src/modules/codex_quota_refresh_scheduler.rs:115,200,302` and adjacent `_tests.rs` | Per-account request joining, bounded waiters/queues, separate manual/background lanes, generation checks, deadline/panic cleanup. Manual requests promote queued work; cancelling queued background work explicitly leaves already-running work alone. | Useful scheduler behavior to specify independently. Extend identity to connection/runtime/account/workspace/config revision; queue generations alone do not establish account-identity validation after a network response. Native input, token rotation and file writes are not undone by timing out a future. |
 | Cockpit Tools `src-tauri/src/modules/codex_quota.rs:173,1003`; `src/types/codex.ts:1400,1426,1482`; `src/components/codex/CodexQuotaMiniRows.tsx` | Backend rejects an existing window's missing/out-of-range percentage and records window-presence flags. Frontend nevertheless maps nonfinite values to zero, overwrites the short-window remainder when weekly remainder is zero, and falls back to one primary row when both presence flags are false. Absent backend windows carry placeholder 100 values. Additional model windows and credit data are also available in `raw_data`. | Keep validation, actual window presence, model attribution and compact/detail separation. Reject synthetic readings: `(short=75, weekly=0)` must keep 75 with a separate block reason; two absent windows must not become a 100% bar. A meter and an ability-to-run decision are different projections. |
 | Cockpit Tools `src-tauri/src/modules/cursor_account.rs:1187,1423,1642,1788`; `claude_account_desktop_auth.rs:3426,3463` | Cursor's path imports local client credentials and constructs a session Cookie for `/api/usage-summary`; Claude uses direct OAuth usage calls. Cursor preserves `usage_updated_at` on query failure while recording a separate error time; the inspected Claude OAuth branch updates `usage_updated_at` even on failure. | Technical acquisition exists, but this is not evidence of a supported public personal-quota API. Do not import client databases/cookies or independently rotate runtime tokens. Separate sample/attempt/error times consistently; the Cursor timestamp behavior is the better comparison here. |
@@ -828,6 +1963,17 @@ SSH/WSL internals and full remote-client permission admission remain outside the
 
 ### ZCode
 
+**Plugin source inventory:** the current CDN manifest contains 26 URL/ZIP entries; all 26 were
+downloaded to `源码参考/plugins/zcode-official-marketplace/` and matched their declared SHA-256.
+The owner's ZCode installation has 27 installed packages: 26 are byte-identical to those ZIPs,
+and the extra `example-plugin` is retained separately in `源码参考/plugins/zcode-installed-extra/`.
+The signed ZCode 3.14.3 app bundle supplies 14 plugin directories plus `bundled-skills`, copied
+with per-file hashes to `源码参考/plugins/zcode-bundled-3.14.3/`. The four document Skills exist there
+but not in the pinned public Git checkout. Their `skills/{docx,pdf,pptx,xlsx}/LICENSE.txt` files
+permit only personal, educational and non-commercial use; they are behavior references, not Fleet
+redistribution candidates. GenOffice's Apache-2.0 core and separately licensed `ee/` remain a
+different source boundary. No reference package was executed or installed for this inventory.
+
 - **Install and configure:** `packages/ui/src/settings/PluginStorePage.tsx` →
   `packages/ui/src/store/pluginManagementStore.ts:252` / `pluginManagementStoreLoading.ts:16` →
   `packages/services/src/plugins/pluginManagementService.ts:32` → CLI protocol server →
@@ -1040,7 +2186,7 @@ TypeScript compatibility alone does not admit code, and another language alone d
 | `software/OpenChamber` | MIT · TypeScript/React | `packages/ui/src/components/layout/{MainLayout,ContextPanel,ContextPanelRail}.tsx`; `packages/ui/src/components/session/sidebar/{SessionSidebar,sidebar/list/SessionProjectCollection,sidebar/projects/*}` | **Selective layout evidence.** `MainLayout` keeps chat as the primary surface and routes Git, files, terminal, browser and other context tools through one `ContextPanel` + draggable rail; the panel stays mounted while tabs switch, preserving local state. Its session sidebar still contains Recent/Chats and Project-grouped sections, so it is useful evidence for ownership-aware grouping, prefetch and bounded virtualization, but **not** a model to copy for Fleet's navigation: Fleet adopts one Conversation list and treats Project/label/status/archive as predicates, avoiding duplicate conversation homes. OpenChamber supplies Fleet's Git/PR and bounded browser seams; Craft remains the visual authority and Cindy/DeepSeek the component composition references |
 | `software/browser-harness` | MIT · Python | `README.md`; `browser-harness`; `agent-workspace/agent_helpers.py`; `docs/MCP.md`; `interaction-skills/` | **Module reference for the browser seam.** The harness exposes one editable CDP websocket, a stdio MCP server and a protected core while domain helpers are authored in the agent workspace; its Skills cover tabs, downloads, uploads, iframes and profiles. Fleet may learn the helper/skill separation and explicit connection failure path, but the built-in BrowserPane remains the user-facing browser authority and this browser seam does not become a universal Core controller. The optional specified-app Component is separately governed by SYS-02/EXEC-15. |
 | `software/CLIProxyAPI` | MIT · Go | `README.md`; `docs/sdk-usage.md`; `test/` compatibility and failover tests | **Do not combine into Fleet's core or provider registry.** It is a local Go proxy translating multiple CLI OAuth/account protocols into OpenAI/Gemini/Claude-compatible APIs, with round-robin accounts and a management surface. Fleet already owns provider connections and usage/permission semantics; importing this would create a second model gateway and a subscription-relay product. A user-run proxy can remain an explicit external endpoint through the existing connection adapter, with no Fleet account-token scraping or automatic OAuth reuse. |
-| `software/dashi-taskboard` | Apache-2.0 · TypeScript/Rust | `README.md`; `web/`; `src-tauri/`; `skills/manage-taskboard`; `inject/`; `test/` | **Evidence only, not a Fleet board.** It has a real local SQLite issue store, CLI, Skill, optimistic versions, branch/worktree binding and Codex CDP injection. Those are useful tests for agent-visible task transitions and optimistic conflict handling, but its SQLite task authority and implicit injection into another app violate Fleet's one Task authority and explicit selected-app authorization boundary. The R16 local-app Component does not authorize this taskboard to inject or own Sessions. Any retained idea must be implemented as a projection over Fleet Session/Task/Job and Fleet's own panel host. |
+| `software/dashi-taskboard` | Apache-2.0 · TypeScript/Rust | `README.md`; `web/`; `server/database.mjs`; `shared/task-records.mjs`; `integrations/deepseek-harness/`; `test/` | **OV-026: owner-requested Board plugin source, combined with Craft.** At `1fbdedacf1b2185793daa358d24ec09e69e560eb`, `server/database.mjs:1908,2856` implements versioned issue mutations; `web/src/api.ts` and the CLI use the domain API. A business issue can have its own owner distinct from a host Session/run. Exclude the separate `ai_chat_threads/runs/events` tables (`:407,432,451`), external launcher, CDP injection and DOM-scanning overlay; use Fleet's host and Session adapters. The [Board contract](modules/components.md#board-plugin--craft-and-dashi) supersedes the earlier blanket rejection; persistence/migration still requires a bounded implementation decision. |
 | `software/craft-agents-oss` | Apache-2.0 · TypeScript | v0.11.2 → v0.12.0, 97 files / +1751 −545 (bun.lock +560 of it) | **Historical v0.12 observations; these are not a current intake backlog after the v0.13.4 rebuild.** `session-tools-core/handlers/archive-session.ts` + `server-core/sessions/archive-guards.ts` make archive an agent-callable tool with guards rather than a UI-only action (R1 archive/labels). `shared/src/mcp/proxy-tool-name.ts` de-collides tool names across MCP servers — a prerequisite for any kit that projects a tool subset. `app-shell/inherited-filter-params.ts` supplied implicit creation context; current R1 rejects that behavior and uses explicit none/workspace_root context. Filtering existing Sessions must not assign a new Session. `server-core/bootstrap/lock-identity.ts` settles single-instance identity at bootstrap. Plus a startup migration in `shared/src/config/storage.ts`. No new authority in any of them |
 
 ## Owner-provided UI captures, 2026-09-10 (QoderWork CN · TRAE SOLO CN) — `EVIDENCE_ONLY`
@@ -1097,6 +2243,32 @@ references.
 | Remotion | candidate; license gate | fixed checkout and current license terms for target distribution |
 | Unabyss | `PRODUCT_REFERENCE` only | product behavior can inform source/structure/grant/freshness decomposition; no public source, no MCP-first internal architecture, and no hosted dependency admission |
 
+## Current upstream synchronization boundary
+
+The owner requests current Pi and other source updates. Twenty-five existing source mirrors have
+fetched upstream default HEAD; `refs/fleet/upstream-current` keeps that observation queryable.
+Original ZCode, Craft/app and look pins stay fixed. The two `*-latest` comparison checkouts move
+to the fetched source while `refs/fleet/source-baselines/<sha>` retains their previous commits.
+
+Pi 0.99.2 now serves both the full executor and Host transport/OAuth. The existing proxy/media
+patch applied cleanly to the released package; strict Anthropic schemas, overflow and retry fixes
+come from upstream. Host tools, credentials, canonical Session, permissions and accounting remain
+Fleet-owned; Pi's community resource discovery is not implicitly enabled by this version change.
+[Release](https://github.com/earendil-works/pi/releases/tag/v0.99.2).
+
+CLIProxyAPI `b467a83c` fixes Grok chat-proxy's version rejection even while `/models` still works.
+Fleet adopts its current version header through the single subscription identity helper; catalog,
+usage and inference readers share it. Offline header/transport tests do not prove live membership.
+[Source](https://github.com/router-for-me/CLIProxyAPI/commit/b467a83c0fe5bf6adb1ff158db0d9f8997802427).
+
+Craft 0.14.0 adds a decision model and guarded permissions, and fixes large-result processing,
+Stop, thinking changes and source activation. These are comparisons for the existing scoped
+contracts; this review does not transplant its permission owner or enable another paid model.
+Cindy's `b7cb47b56` native-session preservation and authorization checks, AionCore's CLI-version
+checks, Qwen recovery claims and OpenChamber 2.1.0 likewise feed the ongoing source audit.
+Source fetch/review is distinct from an admitted production feature; unresolved baseline work
+continues in [TODO](../TODO.md#delivery-order).
+
 ## Per-project adaptation routes
 
 This table is the canonical second-development routing map. The bounded source-review row above
@@ -1106,8 +2278,8 @@ documentation and new observations. The linked capability section owns Fleet cod
 implementation/proof order and acceptance. A route means **where to evaluate the evidence**, not
 that every named source must be copied or added as a dependency.
 
-Each retained Git checkout receives an owner-requested, generated `FLEET-ADAPTATION.md` at its
-root. It projects this route, the separate source revisions and documentation intake, linking upstream files and
+Each formal reference checkout receives an owner-requested, generated `FLEET-ADAPTATION.md` at its
+root (76 current guides; four evidence-only checkouts are listed separately above). It projects this route, the separate source revisions and documentation intake, linking upstream files and
 Fleet contract, and is not an independently maintained plan. Regenerate with
 `python3 scripts/reference-guides.py --write`; verify with `python3 scripts/reference-guides.py --check`.
 The generator refuses unrecorded HEADs, missing/escaping documentation, occupied non-generated paths
@@ -1123,30 +2295,48 @@ the linked owner; a requested independent product fork needs its own explicit sc
 
 | Checkout | Fleet execution contracts |
 |---|---|
+| `software/harnessrouter` | [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/deepagentsjs` | [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/openai-agents-js` | [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/agent-client-protocol` | [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `plugins/mcp-apps` | [CORE-11](modules/components.md#execution-core-11) |
+| `plugins/cindy-official-plugins` | [ORCH-11](modules/marketplace.md#execution-orch-11) |
+| `plugins/hermes-plugin-claude-subscription-directsdk` | [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/craft-agents-oss-latest` | [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `plugins/hyperframes-latest` | [CREATE-09](modules/media.md#execution-create-09) |
+| `plugins/hyperframes-current` | [CREATE-09](modules/media.md#execution-create-09), [ORCH-05](modules/media.md#execution-orch-05) |
+| `software/minimax-code` | [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-11](modules/marketplace.md#execution-orch-11), [CREATE-09](modules/media.md#execution-create-09) |
+| `software/goose` | [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-11](modules/marketplace.md#execution-orch-11), [CORE-11](modules/components.md#execution-core-11) |
+| `plugins/SoL-Pi` | [INTEL-01](modules/memory.md#execution-intel-01), [INTEL-02](modules/memory.md#execution-intel-02), [INTEL-07](modules/context.md#execution-intel-07) |
 | `software/craft-agents-oss` | [CORE-01](modules/agent-core.md#execution-core-01), [CORE-02](modules/agent-core.md#execution-core-02), [CORE-03](modules/agent-core.md#execution-core-03), [EXEC-01](modules/agent-core.md#execution-exec-01), [INFO-03](modules/browser.md#execution-info-03) |
 | `software/craft-agents-oss-v0.10.5` | [CORE-01](modules/agent-core.md#execution-core-01), [CORE-10](modules/agent-core.md#execution-core-10), [CORE-11](modules/components.md#execution-core-11) |
 | `software/cindy` | [CORE-11](modules/components.md#execution-core-11), [ORCH-03](modules/components.md#execution-orch-03), [ORCH-11](modules/marketplace.md#execution-orch-11), [INFO-03](modules/browser.md#execution-info-03), [EXEC-14](modules/context.md#execution-exec-14) |
 | `software/openchamber` | [EXEC-13](modules/remote.md#execution-exec-13), [EXEC-07](modules/remote.md#execution-exec-07), [INFO-03](modules/browser.md#execution-info-03), [INTEL-04](modules/context.md#execution-intel-04) |
 | `software/deepseek-harness` | [ORCH-03](modules/components.md#execution-orch-03), [ORCH-11](modules/marketplace.md#execution-orch-11), [CORE-11](modules/components.md#execution-core-11) |
-| `software/AionCore` | [CORE-03](modules/agent-core.md#execution-core-03), [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/agent-core.md#execution-orch-06) |
-| `software/AionUi` | [EXEC-14](modules/context.md#execution-exec-14), [INTEL-03](modules/context.md#execution-intel-03), [EXEC-05](modules/agent-core.md#execution-exec-05) |
-| `software/CLIProxyAPI` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-03](modules/context.md#execution-intel-03) |
+| `software/AionCore` | [CORE-03](modules/agent-core.md#execution-core-03), [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/orchestration.md#execution-orch-06) |
+| `software/AionUi` | [EXEC-14](modules/context.md#execution-exec-14), [INTEL-03](modules/models.md#execution-intel-03), [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/CLIProxyAPI` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-03](modules/models.md#execution-intel-03) |
 | `software/codex` | [EXEC-01](modules/agent-core.md#execution-exec-01), [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-04](modules/context.md#execution-intel-04) |
-| `software/grok-build` | [EXEC-14](modules/context.md#execution-exec-14), [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-03](modules/context.md#execution-intel-03) |
-| `software/herdr` | [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/agent-core.md#execution-orch-06) |
-| `software/hermes-agent` | [INTEL-05](modules/context.md#execution-intel-05), [EXEC-11](modules/remote.md#execution-exec-11), [EXEC-05](modules/agent-core.md#execution-exec-05) |
-| `software/kimi-code` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-01](modules/context.md#execution-intel-01) |
-| `software/Kun` | [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/agent-core.md#execution-orch-06) |
-| `software/multica` | [CORE-04](modules/agent-core.md#execution-core-04), [EXEC-04](modules/agent-core.md#execution-exec-04), [ORCH-06](modules/agent-core.md#execution-orch-06) |
+| `software/grok-build` | [EXEC-14](modules/context.md#execution-exec-14), [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-03](modules/models.md#execution-intel-03) |
+| `software/Qwen-MM-Plugins` | [CREATE-03](modules/media.md#execution-create-03), [INTEL-03](modules/models.md#execution-intel-03), [ORCH-11](modules/marketplace.md#execution-orch-11) |
+| `software/Qwen-Live-Harness` | [CREATE-04](modules/media.md#execution-create-04), [ORCH-05](modules/media.md#execution-orch-05), [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/pi-multimodal-proxy` | [CREATE-03](modules/media.md#execution-create-03), [INTEL-03](modules/models.md#execution-intel-03), [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/pi-claude-bridge` | [INTEL-03](modules/models.md#execution-intel-03), [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-11](modules/marketplace.md#execution-orch-11) |
+| `software/pi-mono-latest` | [EXEC-05](modules/agent-core.md#execution-exec-05), [CORE-03](modules/agent-core.md#execution-core-03), [ORCH-11](modules/marketplace.md#execution-orch-11) |
+| `software/herdr` | [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/orchestration.md#execution-orch-06) |
+| `software/hermes-agent` | [INTEL-05](modules/memory.md#execution-intel-05), [EXEC-11](modules/remote.md#execution-exec-11), [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/kimi-code` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-01](modules/memory.md#execution-intel-01) |
+| `software/Kun` | [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/orchestration.md#execution-orch-06) |
+| `software/multica` | [CORE-04](modules/agent-core.md#execution-core-04), [EXEC-04](modules/agent-core.md#execution-exec-04), [ORCH-06](modules/orchestration.md#execution-orch-06) |
 | `software/omnigent` | [EXEC-05](modules/agent-core.md#execution-exec-05), [EXEC-14](modules/context.md#execution-exec-14) |
-| `software/openclaw` | [INTEL-05](modules/context.md#execution-intel-05), [EXEC-11](modules/remote.md#execution-exec-11), [INTEL-01](modules/context.md#execution-intel-01) |
-| `software/opencode` | [EXEC-04](modules/agent-core.md#execution-exec-04), [EXEC-01](modules/agent-core.md#execution-exec-01), [INTEL-02](modules/context.md#execution-intel-02) |
+| `software/openclaw` | [INTEL-05](modules/memory.md#execution-intel-05), [EXEC-11](modules/remote.md#execution-exec-11), [INTEL-01](modules/memory.md#execution-intel-01) |
+| `software/opencode` | [EXEC-04](modules/agent-core.md#execution-exec-04), [EXEC-01](modules/agent-core.md#execution-exec-01), [INTEL-02](modules/memory.md#execution-intel-02) |
 | `software/OpenHands` | [CREATE-01](modules/canvas.md#execution-create-01), [ORCH-01](modules/workflow.md#execution-orch-01) |
 | `software/orca` | [EXEC-15](modules/remote.md#execution-exec-15), [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-04](modules/context.md#execution-intel-04) |
-| `software/pi-mono` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-01](modules/context.md#execution-intel-01), [INTEL-02](modules/context.md#execution-intel-02) |
+| `software/pi-mono` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-01](modules/memory.md#execution-intel-01), [INTEL-02](modules/memory.md#execution-intel-02) |
 | `software/waku` | [EXEC-05](modules/agent-core.md#execution-exec-05), [EXEC-03](modules/agent-core.md#execution-exec-03) |
 | `software/ZCode` | [CORE-05](modules/agent-core.md#execution-core-05), [ORCH-11](modules/marketplace.md#execution-orch-11), [EXEC-05](modules/agent-core.md#execution-exec-05) |
-| `software/cc-switch` | [INTEL-04](modules/context.md#execution-intel-04), [INTEL-03](modules/context.md#execution-intel-03) |
+| `software/cc-switch` | [INTEL-04](modules/context.md#execution-intel-04), [INTEL-03](modules/models.md#execution-intel-03) |
 | `software/cockpit-tools` | [INTEL-04](modules/context.md#execution-intel-04), [CORE-05](modules/agent-core.md#execution-core-05) |
 | `software/dashi-taskboard` | [CORE-04](modules/agent-core.md#execution-core-04), [EXEC-02](modules/agent-core.md#execution-exec-02) |
 | `software/OpenSandbox` | [EXEC-08](modules/agent-core.md#execution-exec-08) |
@@ -1174,22 +2364,22 @@ the linked owner; a requested independent product fork needs its own explicit sc
 | `software/browser-use` | [INFO-03](modules/browser.md#execution-info-03), [EXEC-01](modules/agent-core.md#execution-exec-01) |
 | `software/flowgram.ai` | [ORCH-01](modules/workflow.md#execution-orch-01), [CREATE-01](modules/canvas.md#execution-create-01) |
 | `software/mcp-registry` | [ORCH-12](modules/marketplace.md#execution-orch-12), [ORCH-04](modules/marketplace.md#execution-orch-04) |
-| `plugins/GPTCache` | [INTEL-02](modules/context.md#execution-intel-02) |
-| `plugins/LLMLingua` | [INTEL-02](modules/context.md#execution-intel-02) |
+| `plugins/GPTCache` | [INTEL-02](modules/memory.md#execution-intel-02) |
+| `plugins/LLMLingua` | [INTEL-02](modules/memory.md#execution-intel-02) |
 | `plugins/SuperClaude_Framework` | [INTEL-07](modules/context.md#execution-intel-07) |
-| `plugins/agentmemory` | [INTEL-05](modules/context.md#execution-intel-05) |
-| `plugins/agentskills` | [INTEL-06](modules/context.md#execution-intel-06), [ORCH-10](modules/marketplace.md#execution-orch-10) |
-| `plugins/caveman` | [INTEL-02](modules/context.md#execution-intel-02) |
-| `plugins/claude-mem` | [INTEL-05](modules/context.md#execution-intel-05) |
+| `plugins/agentmemory` | [INTEL-05](modules/memory.md#execution-intel-05) |
+| `plugins/agentskills` | [INTEL-06](modules/memory.md#execution-intel-06), [ORCH-10](modules/marketplace.md#execution-orch-10) |
+| `plugins/caveman` | [INTEL-02](modules/memory.md#execution-intel-02) |
+| `plugins/claude-mem` | [INTEL-05](modules/memory.md#execution-intel-05) |
 | `plugins/claude-task-master` | [CORE-04](modules/agent-core.md#execution-core-04), [EXEC-04](modules/agent-core.md#execution-exec-04) |
-| `plugins/claude-token-efficient` | [INTEL-02](modules/context.md#execution-intel-02) |
-| `plugins/claw-compactor` | [INTEL-01](modules/context.md#execution-intel-01), [INTEL-02](modules/context.md#execution-intel-02) |
+| `plugins/claude-token-efficient` | [INTEL-02](modules/memory.md#execution-intel-02) |
+| `plugins/claw-compactor` | [INTEL-01](modules/memory.md#execution-intel-01), [INTEL-02](modules/memory.md#execution-intel-02) |
 | `plugins/context7` | [INFO-06](modules/browser.md#execution-info-06), [ORCH-12](modules/marketplace.md#execution-orch-12) |
-| `plugins/letta` | [INTEL-05](modules/context.md#execution-intel-05) |
-| `plugins/mem0` | [INTEL-05](modules/context.md#execution-intel-05), [INTEL-07](modules/context.md#execution-intel-07) |
+| `plugins/letta` | [INTEL-05](modules/memory.md#execution-intel-05) |
+| `plugins/mem0` | [INTEL-05](modules/memory.md#execution-intel-05), [INTEL-07](modules/context.md#execution-intel-07) |
 | `plugins/planning-with-files` | [EXEC-14](modules/context.md#execution-exec-14) |
 | `plugins/playwright-mcp` | [INFO-03](modules/browser.md#execution-info-03), [ORCH-04](modules/marketplace.md#execution-orch-04) |
-| `plugins/repomix` | [INFO-06](modules/browser.md#execution-info-06), [INTEL-02](modules/context.md#execution-intel-02), [ORCH-10](modules/marketplace.md#execution-orch-10) |
+| `plugins/repomix` | [INFO-06](modules/browser.md#execution-info-06), [INTEL-02](modules/memory.md#execution-intel-02), [ORCH-10](modules/marketplace.md#execution-orch-10) |
 
 ## Required promotion record
 
@@ -1235,7 +2425,7 @@ these products and their integration boundaries, not a language prohibition unde
 |---|---|---|---|
 | [Niall-Young/Canvasight](https://github.com/Niall-Young/Canvasight) | MIT · TypeScript · Codex plugin | Task/asset DAG canvas (`Page → Group → Task/Asset`) that a person and Codex edit, then Run into the *current Codex task*. Concurrent merge + conflict-copy pages. Not a production image/video/web/PPT board. | **`EVIDENCE_ONLY` for Fleet's own canvas collab** (same-board edit, graph write, conflict copies, assets as first-class nodes). Do not install it, do not inject Codex, do not make the Fleet canvas a task DAG for an external agent. Production canvas stays Fleet's. |
 | [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | MIT · **Go** | Local proxy that turns CLI OAuth subscriptions (Claude Code, Codex, Gemini, Grok Build, …) into OpenAI/Claude/Gemini-shaped HTTP APIs, with multi-account round-robin. | **Do not combine as a built-in gateway.** Fleet already has provider OAuth. Building this in would be a second model gateway and a ToS-sensitive “subscription as API” product. A person may point Fleet at a proxy they already run; that is an optional remote connection, not a Fleet capability. |
-| [chuspeeism/dashi-taskboard](https://github.com/chuspeeism/dashi-taskboard) | Apache-2.0 · TS + Rust/Tauri | Local-first issue board with SQLite, `taskctl` CLI, a Skill so Codex can move issues, and **CDP injection into ChatGPT.app**. Optional Cloudflare share. | **Reject as a surface.** Second task/issue store (P10 / one Task authority). CDP inject is general external-app control. LAN mode has no auth. Keep only the *shape* of “agent moves an issue through a Skill on the existing store” — implement on Fleet Session/Task, never this board. |
+| [chuspeeism/dashi-taskboard](https://github.com/chuspeeism/dashi-taskboard) | Apache-2.0 · TS + Rust/Tauri | Local-first issue board with SQLite, CLI/Skill, optimistic edits and optional external-app/cloud integrations. | **Revised by OV-026:** adapt its domain/UI as the requested Craft+Dashi Board plugin. One issue owner shared by UI and Agent; host owns conversations, execution and permissions. Do not bring CDP injection, unauthenticated LAN/cloud defaults or a second Agent runner. See [Board contract](modules/components.md#board-plugin--craft-and-dashi); root licensing does not clear every dependency. |
 | [opensandbox-group/OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) | Apache-2.0 · Go+Python | Docker/K8s sandbox control plane + in-sandbox daemon. Already source-reviewed at `f8ed8734ce1f`. | **Second-sandbox integration remains excluded.** `product.md` forbids a second OS sandbox. A second sandbox stays excluded; EXEC-08 verifies inherited isolation under R0/R2. If isolation is ever reopened, the reference is omnigent's daemonless per-spawn seam, not this. |
 | [trailhq/Graft](https://github.com/trailhq/Graft) | MIT · TypeScript | Local markdown+tree-sitter codebase graph (`graft/`) so coding agents stop re-exploring. Wires Claude Code/Cursor/Codex via hooks/MCP. Opt-out telemetry. | **`EVIDENCE_ONLY` for SYS-03** (durable repo map, blast radius, “onboard once”). Do not take the other-agent hook wiring or telemetry. Do not stand up a second context authority. A later context-economy slice may port the *idea* (files on disk the agent greps) into Fleet's own routing, not install Graft. |
 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | MIT · TypeScript | “Everything is a plugin” Cordis microkernel. Already source-reviewed; Decision **E14**. | **Unchanged: do not rebuild Fleet on it.** Admitted only: service definition/provider/consumer vocabulary, per-session composition invariants, “enforce in the operation that decides”. Rejected: Cordis as root, 167-package split, live self-modification. Combining it as the runtime would be a second kernel. |
@@ -1247,3 +2437,667 @@ Historical observation: `源码参考/software/Cowart` @ `47206ab` (2026-09-09).
 | What it is | Verdict |
 |---|---|
 | Codex-native infinite-canvas **plugin**: tldraw widget + MCP + three skills. Persist under the *user project* `canvas/pages/<id>/`. AI 图片框 (prompt + refs → replace holder), annotation screenshot → clean image beside original, AI HTML 16:9 embed, AI Slides (pages + fullscreen). MCP: `get/save_cowart_canvas_state`, `get_cowart_selection`, `insert_cowart_image`, `insert_cowart_html_draft`, widget render. | **Bounded production-board interaction reference** (one board for image / HTML-site / deck). Closer to [`product.md`](product.md) than Canvasight (task DAG) or Craft Pages (mini-apps). **Do not install, do not weld to Codex, do not import tldraw, do not take GA4.** When R7 is built: compare the *holder → generate → replace*, *annotate → revise beside*, *HTML/Slides as canvas objects*, and *project-local canvas/ storage* into Fleet's pane — person and agent edit the same board. Not this slice. |
+
+## Shared UI library comparison
+
+Owner input: `/Users/lullwen/Documents/TraeWork.zip` (SHA-256 `ffc1f2b6022e4e4b4f4013984d7c8a73bc7d6a56bedf1c43fc01dcd252e4ebd9`). Inspected the archive directory, README, consumption manifest and button/form contracts without running its scripts or adopting its bundled instructions. It contains 671 SVGs, 14 component contracts and 24 static HTML previews/showcases; no React/TypeScript runtime, package manifest or license file was found. Its own manifest identifies Light-mode tokens and medium-confidence contracts derived from previews. Borrow its indexed tokens/components/states/examples organization; do not substitute its CSS/assets for the current theme and interaction owners.
+
+| Candidate | Inspected evidence | Decision for this existing app |
+|---|---|---|
+| [shadcn/ui](https://github.com/shadcn-ui/ui) + [Radix](https://github.com/radix-ui/primitives) | New sparse source reference `源码参考/software/shadcn-ui` at `98a1fe67b439324ddc857f47fbdce056600a4329` (MIT); `apps/v4/registry/bases/radix/ui/{button,context-menu}.tsx` compared with candidate equivalents. Candidate `packages/ui/components.json` already selects radix-mira/Lucide; 45 files exist under `components/ui`. | Retain and consolidate the existing wrappers. Upstream supplies primitive behavior/source distribution; Fleet tokens and business patterns still own the appearance. Do not rerun an initializer or replace local wrappers wholesale. |
+| [Base UI](https://github.com/mui/base-ui) / [React Aria](https://github.com/adobe/react-spectrum) | Official repositories identify unstyled accessible primitives; Base UI is MIT, React Spectrum/Aria is Apache-2.0. shadcn `skills/shadcn/rules/base-vs-radix.md` documents incompatible composition/selection APIs. | Useful behavioral references; no measured current defect warrants replacing all existing Radix overlays, focus and keyboard paths. This comparison is not a runtime acceptance test. |
+| [Mantine](https://github.com/mantinedev/mantine) / [Ant Design](https://github.com/ant-design/ant-design) | Official source repositories provide larger React component suites. Their breadth does not remove migration, token and interaction reconciliation. | No second general-purpose UI system. Revisit a specialized missing control on concrete evidence rather than mixing page-by-page libraries. |
+| [Lucide](https://github.com/lucide-icons/lucide) + [Lobe Icons](https://github.com/lobehub/lobe-icons) | Lucide is ISC and deliberately excludes brand logos; Lobe Icons is MIT and supplies AI/provider branding. Both are already pinned dependencies. `ProviderLogo.tsx` consumes local static SVG assets following the owner's Lobe guideline. | Lucide for actions/status; Lobe for provider brands; one icon slot/backplate treatment per surface. No remote icon loading or per-page replacement family. |
+
+The missing work is enforcement and reusable **business patterns**, not another download: settings rows, credential/model draft rows, provider cards, capability rows, empty/error/loading states and page-local Agent entry. Keep actual implementations as the source of truth and add rendered light/dark, locale, keyboard and narrow-window checks as each pattern lands. An inventory or visual showcase is not completion of subscription/media/Agent behavior.
+
+## Context meter and token attribution comparison
+
+Inspected source locks: ZCode `29628c9acdb81b703bbd4080c207a0e7ce5e276e`, Cindy
+`374923c219ba93c405c237647ea7f1a6ac5d604f`, OpenCode
+`b471c2b4495747353af768fbf2e0790c9d820ce2`. Paths below are relative to
+`源码参考/software/<project>/`. This is source evidence and bounded pure fixtures, not a new live
+inference, restart, cost benchmark or acceptance of another product's state system.
+Remote refs were refreshed: ZCode and OpenCode remain at these heads. Cindy's remote default is
+`2d4507f9c3ad893dc950f4270f0e7e52859327da`; the inspected token/runtime files and package versions
+are unchanged, and the two changed Session files only add Bot group-lane provenance. That diff was
+read directly; the retained reference checkout and its untracked adaptation note remain preserved.
+
+| Boundary | ZCode | Cindy | OpenCode |
+|---|---|---|---|
+| Ring numerator | V4 `product-projection.ts:4522` uses the latest **main** model call's normalized input + output; auxiliary/compaction calls do not replace it. This proxies the last request, not a fresh measurement of all retained context. | `packages/maker-core/src/agents/shared/usage-tracker.ts:450` uses the last API input + separate cache-read/cache-create, without current output. Native Claude can update input at message-start; Codex uses tokenUsage.last; Pi updates at message-end. | `packages/app/src/components/session/session-context-metrics.ts:28` sums the last assistant's uncached input, visible output, reasoning and separate caches. It does not exclude summary calls. |
+| Capacity | Current Registry config; generic fallback and user correction are not provider observations. | Runtime → verified catalog → catalog, with a 200K non-Codex fallback (`renderer/lib/contextWindow.ts:15`). Native Codex distinguishes total, usable and auto-compact threshold; Pi's working budget is separate. | Provider registry takes models.dev, configured limits and selected provider loaders (`provider/provider.ts:1284,1558`); unknown custom capacity is 0. UI coalesces unknown usage to 0%, which Fleet must not inherit. |
+| Detailed attribution | ContextBuilder system/meta/Skills/tool prompt and serialized tools/messages. Runtime has estimates, but renderer receives `{source,chars}` and percentages use characters (`core/runtime/methods/context-usage.ts:234,310`; UI `chat-input-toolbar/contextUsage.tsx:166`). Tool inventory contains some non-wire metadata; serialized media can skew character counts. | `/context` is an on-demand system card, separate from the ring (`CCAgentSessionView.tsx:3573`). Claude forwards SDK runtime categories; Pi returns Messages only; Codex does not support this card. SDK category precision is undocumented, so call it runtime-reported, not provider billing. | `session-context-breakdown.ts` estimates chars/4 across stored UI messages, approximates tool args by key count, and rescales categories to the last **uncached** input. This is not the actual final request. Its explanatory “Approximate” note is hidden in `session-context-tab.tsx:344`. |
+| Cache / cost | Normalized input already includes cache; do not add cache or reasoning again. Popup hides cache hit rates below 78% in production (`contextUsage.tsx:117`). Cost is 0/null placeholders, not a free-use receipt. | Per-runtime normalizers handle separate cache buckets and duplicate/cumulative frames. Last-context pressure differs from turn/session accounting. | V1 `session/session.ts:361` subtracts cache from SDK v6 input and reasoning from output before separate buckets; V2 `core/session/runner/publish-llm-event.ts:18` uses normalized nonCachedInput/visibleOutput. Session cost is separate from the latest request ring. |
+| Refresh / persistence | Finish usage → ModelComplete → V4 snapshot → composer. Assistant/step-finish usage persists; default eventStore is memory and breakdown has no equivalent cold-restart guarantee (`zcode-protocol/server.ts:239`, `session-mapper.ts:643,728`). | Host persists done-context snapshots; renderer does not own writes. Duplicated/late Codex accounting frames are rejected; native capacity reads bind model/account generation. Newest in-flight values need not survive a crash. | Step-finish usage is persisted/published, then `message.updated` reconciles the UI store. Text streaming alone does not establish new real token counts. The context panel derives its chart from current client history, not a durable per-request composition snapshot. |
+| Compression / model switch | `truePostCompactTokenCount` is a local estimate, while `postCompactTokenCount` is summary-call usage. Missing post-counts and capacity-only model updates can retain old used values without stale metadata (`product-projection.ts:4385,4598`; `compact-active.ts:545`). | Claude/Pi only replace occupancy when a valid post-compact count exists; no universal stale reset. Native-window queries have stronger identity binding, but non-Codex fallbacks/100%-clamped text remain unsuitable. | Last-assistant selection can choose a summary's token count and model capacity. History-based classification can include compacted history or the current assistant output. |
+
+Pure fixtures confirmed OpenCode input=100, cache-read=900, output=50, reasoning=50 produces ring
+1100; its attribution can rescale 400 user chars + 800 assistant chars to 33/66/1 against input=100.
+A last summary is selected even when its model capacity is absent. Cindy's tracker fixture kept
+1050 input-context tokens after a zero post-compact value and changed to 200 only when a positive
+count arrived; repeated usage frames did not double count. The Claude SDK 0.2.112 interface exposes
+categories and a separate apiUsage, but no category source/confidence flag; the process wrapper
+alone does not prove its internal counting algorithm.
+
+**Fleet recommendation:** keep the ZCode ring/hover-card and the existing V4 Session snapshot owner.
+Carry request/model/connection revision, observation time, scope and reported/estimated/unknown/stale
+semantics end to end. Preserve total capacity, usable/working budget and compaction threshold as
+separate facts. Use provider usage for normalized per-call consumption, native runtime context
+reports when available, and explicitly labelled final-request estimates otherwise. Classify the
+actual model-facing prompt/tools after projection; do not call inventory characters token accounting,
+count base64 as text tokens, or silently rescale categories to make a bill total fit. Preserve
+Cindy's separation between occupancy and native context analysis, and OpenCode's inspectable detail
+view, without importing their Session stores or hiding estimation. Persist count/provenance evidence
+with the existing call/step/Session records; raw prompt retention remains a separate user preference.
+Implementation and acceptance belong to the current INTEL-01/02/04 and model-foundation workflow.
+
+## Multi-account quota and conversation access
+
+Source locks: ZCode `29628c9acdb8`, Cockpit Tools `a24199f73505`, CC Switch `1ee2fdc3a791`,
+Cindy retained `374923c219ba` (latest fetched objects and relevant delta were checked above).
+No reference was repinned, no credential was read, and no allowance API was called for this audit.
+
+| Source | Verified mechanism | Transfer boundary |
+|---|---|---|
+| ZCode `packages/ui/src/lib/codingPlanQuotaPresentation.ts:67`, `chat-input-toolbar/StartPlanContextBalance.tsx:20` | Coding Plan remaining is clamped `100-used`; Start Plan is clamped `remaining/total`. Both cap at 100%. `bigmodelUsageQuotaProvider.ts:1294` preserves promotional buckets separately. | This pin does not establish a promotional >100% capacity formula. `WorkspaceSidebarFooterPlanBadgeHelpers.ts:44` takes plan names from quota/subscription data, not capacity multipliers. |
+| [OpenAI's Work and Codex usage guidance](https://help.openai.com/en/articles/20001516-managing-usage-with-gpt-6-astra-in-work-and-codex) | Pro 5x/20x examples are estimated model-specific five-hour message ranges, not fixed message limits. Five-hour windows start with each account's first request; weekly limits can independently bind usage. Task, model, reasoning, Fast and tools alter consumption. | A plan-name multiplier cannot transform two reported percentages into one exact, transferable allowance. Preserve each account/window identity and reset time. |
+| Cockpit `src/utils/codexQuotaPool.ts:32` and `:63` | Group by lowercased window label, sum remaining percentages, record account count; compute ALL and per-plan groups. `CodexAccountsOverviewPanel.tsx:2192` displays this pool. | This is a sum of account percentages, not combined native remaining capacity. No denominator, tier weighting or freshness check. Bare Pro→20X in `src/types/codex.ts:1114` is a display rule, not provider proof; PRO grouping merges variants. |
+| CC Switch `src/components/CodexOauthAccountQuota.tsx:12`, `src/lib/query/subscription.ts:35` | Per-account quota with shared account-keyed queries. Transient failures retain dated last-good for at most 10 minutes; identity/auth/parse changes clear it. | No cross-account percentage aggregate in the inspected path. Some USD limits exist for particular vendors, not all subscriptions. |
+| Cindy `renderer/hooks/useAccountUsage.ts:74`, `components/status/TodaySpendChip.tsx:1102` | Conversation chip opens a quota card on hover/focus; provider/model/remote identity changes dismiss stale content. Account, route and model choose the quota bucket. | `QuotaHoverCard.tsx:143` marks data older than five minutes; reset passage does not imply full replenishment. Credits and windows are separate. No mixed-account aggregation. |
+| Candidate `packages/services/src/model-provider/subscriptionUsage.ts:5`, `subscriptionUsageCache.ts:35`, `chat-input-toolbar/ConversationSubscriptionUsage.tsx` | Existing owner provides account-scoped percentages, plan, native bucket/window/reset/observation facts, isolated cache and stale-result guards. The conversation follows the selected model's persisted last-request account ID, including a successful failover, and provisionally labels the default before a receipt. A missing ID cannot borrow a sibling quota. | No absolute used/limit, verified multiplier or all-account reader. The popup does not claim an account switch before the next request receipt; the default before first use is provisional. |
+
+Landing contract: reuse the existing subscription owner/cache and original ZCode/Cindy quota-card
+interaction. The conversation shows the selected model's last served account and its native windows;
+before first use it labels the configured default as provisional. Account comparison stays in
+Model Settings, with no manual inspection choice in the Token ring.
+Do not derive total capacity from 20X/1X marketing names, sum short/week/model limits, double-count
+one identity across connections, or silently switch accounts while reading quota. A pooled native
+amount is only defensible with verified compatible units, limits, scope and periods; current
+percentage-only adapters do not satisfy this. Conversation receipt binding is implemented in the
+isolated candidate; all-account capacity projection is not. Cockpit pure-fixture execution
+was unavailable because its Tauri dependency was absent; the formula is source evidence only.
+
+## Usage accounting and quota-monitor comparison
+
+OV-041 requests CC Switch statistics plus five named monitoring/accounting projects. Retained
+sources were inspected read-only; no application/scanner ran, no personal CLI logs or credentials
+were read, and no proxy/service was installed. New shallow clones are retained under `software/`:
+`AIUsage`, `one-api`, `CPA-Manager-Plus` and `codeburn`. CodexBar and CC Switch already existed.
+
+| Source / inspected revision / license | Strongest implementation evidence | Limits not to transfer |
+|---|---|---|
+| [CodexBar](https://github.com/steipete/CodexBar) · retained `78ba5a1e65e6859da59a21b799df95ab91bc0b89`; fetched `12691b5cd0284760b68da6134e7981fb790a0b63` · MIT | `Sources/CodexBarCore/CostProvenance.swift:3` distinguishes list-price estimate, vendor-metered, mixed and unknown, explicitly not a billing receipt; priced/unpriced/unmetered/estimated coverage remains separate. `CostUsageModels.swift:226` preserves nullable totals and partial-history lower bounds. `Vendored/CostUsage/CostUsageScanner+Claude.swift:243` reconciles message/request identity; `CostUsageScanner+CacheHelpers.swift:874` retains cumulative watermark/interleaved/fork state across incremental scans. `Sources/CodexBar/UsageStore+TokenCost.swift:799` rejects stale scope/config/credential publication. | Local “This Mac” consumption is not necessarily the selected account's spend. Do not import broad credential discovery or Swift UI. The relevant accounting/scanner files were unchanged in the fetched revision; the retained checkout was not moved. |
+| [AIUsage](https://github.com/sylearn/AIUsage) · `5870b477d90cb7fb7709aa475efd9aa06da576cc` · Apache-2.0 | `AIUsage/ViewModels/ProxyViewModel+ProxyServer.swift:646` freezes estimated price from actual node ID and preserves requested/upstream models; `Models/ProxyConfiguration.swift:93` records price provenance/time. `ProxyViewModel+UsageArchive.swift:23` replaces a recomputed dirty-day bucket while preserving older archives. Codex `Providers/CodexCostProvider+Scanning.swift:27` recomputes related rollouts and parents. | `ProxyViewModel+LogManagement.swift:35` appends with fresh UUID; upstreamRequestId is not an idempotency key. Local Codex `CodexCostProvider+FileParsing.swift:119` deliberately assigns cost=0 and no reasoning bucket. Its previousTotals fallback can regress on out-of-order cumulative snapshots. Whole-day replacement is not request-event deduplication. |
+| [CodeBurn](https://github.com/getagentseal/codeburn) · `37f3ff4ed1392b154024579a1bb81b711e1d02ec` · MIT | `src/parser.ts:1572` merges repeated message IDs using latest usage/content; `providers/codex.ts:1190,1272` distinguishes last-request from cumulative counters and fork identity. `src/models.ts:1238,1579` separates rate tiers, cache TTLs, billing mode and API-equivalent estimates. `usage-aggregator.ts:38` retains incomplete per-provider cache coverage instead of claiming a complete sum. | Amounts may still be zero beneath an explicit unpriced marker; never treat that as a complete bill. `session-cache.ts:94` contains message/path/command content; `quota/zcode.ts:10` reads another app's OAuth storage. Those are not necessary permissions for Fleet's own usage ledger. No such scanner was run. |
+| [CC Switch](https://github.com/farion1231/cc-switch) · `1ee2fdc3a791f1e73476c631c7ab7ce8fac0638f` (fetched default unchanged) · MIT | `src-tauri/src/proxy/usage/logger.rs:67,130` preserves requested/actual/pricing model and merges proxy/import records in one ledger. `services/session_usage.rs:623` commits imported rows and cursor atomically. `services/sql_helpers.rs:23` declares cache-inclusive/fresh/legacy semantics; `usage_events.rs:1` coalesces events before query invalidation. UI `UsageDashboard.tsx:89` shares filters/date/refresh with hero/charts/logs; `UsageHero.tsx:80` rederives ratios from sums rather than averaging percentages. | `services/usage_stats.rs:309` heuristically matches app/model/token-vector within ten minutes without provider/account/session conditions, so independent accounts can be merged. `_session`/`_codex_session` provider placeholders are not actual billing identities. Missing-price totals remain incomplete; inference from positive tokens plus cost=0 is not a reliable free/unpriced distinction. |
+| [one-api](https://github.com/songquanpeng/one-api) · `8df4a2670b98266bd287c698243fff327d9748cf` · MIT | `relay/controller/text.go:36` binds original/resolved model/channel, then `helper.go:97` settles its own gateway credit ledger. `model/log.go:15` provides request/channel filtering. | `adaptor/openai/token.go:52` can substitute GPT-3.5 tokenization or byte×0.38 without preserved estimation provenance. Log schema lacks cache/reasoning breakdown and request-ID uniqueness. Its billing/subscription endpoint is gateway balance, not vendor membership. Stream errors can still return success; retries/rotation are not admitted Fleet policy. |
+| [CPA-Manager-Plus](https://github.com/seakee/CPA-Manager-Plus) · `29d676f8eebfbc11eedc96573f3a059360163a3e` · MIT | `internal/usage/event.go:19,258` separates raw/normalized usage and declares included/separate cache semantics. `repository/usageevent/repository.go:345,525` keeps normalization outside short insert/identity transactions. `collector/auth_snapshot.go:56` scopes account evidence and rejects ambiguity. `usagepricing/projection_read.go:55` joins covered rollups and uncovered tails without overlap; `usage/analytics_bucket.go:7` uses IANA zones/half-open intervals. `apps/web/src/features/monitoring/hooks/useMonitoringAnalytics.ts` uses cancellation/sequence guards and stale last-good presentation. | Data comes from CPA's observed events, not arbitrary native CLI history. Missing semantics may be guessed from model names; fallback output+reasoning can double-count inclusive SDK output. Event hash includes mutable token values, so corrected usage may become another identity. Historical Estimated Cost can use current prices; it is not a subscription bill. WHAM quota uses a separate authenticated evidence path with native resets/model scope. |
+
+**Fleet landing choice:** retain ZCode's Session/SQLite usage owner and the existing services/RPC;
+borrow CodexBar's provenance/coverage and quota identity/freshness, CodeBurn's snapshot/cumulative
+rules, CC Switch's consistent filter/detail workflow, and CPA's raw/normalized separation and
+nonoverlapping aggregates. AIUsage supplies a useful request-time price snapshot reference.
+No gateway, proxy, imported account store, broad credential discovery or second usage ledger is
+introduced by this comparison. Token context occupancy, cumulative request consumption,
+API-equivalent price estimates, actual vendor-reported spend and remaining subscription limits
+remain different facts even when reachable from one conversation control.
+
+For OV-057, the acquisition paths matter more than their UI names. CC Switch combines proxy request
+logs and selected CLI session imports, computes from token-class prices and offers models.dev
+updates; its heuristic cross-source merge is too weak for Fleet's per-account billing identity.
+AIUsage freezes proxy cost at request time, subtracts overlapping proxy rows from Codex local logs,
+and leaves non-proxy subscription/third-party use token-only. CodexBar reads local usage separately
+from authenticated quota, keeps a 24-hour models.dev price cache and explicit priced/unpriced
+coverage; neither history scan nor public list price is a receipt. CodeBurn parses tool sessions,
+uses a 24-hour LiteLLM catalog plus fallback/overrides, and labels subscription token costs as
+API-equivalent; its plan-pacing ratio divides that estimate by a configured flat budget, not by a
+vendor-reported invoice, and live provider quota is a separate source. Fleet does not copy that ratio.
+Cockpit
+Tools displays account-scoped native quota and tier, not an automatically discovered paid invoice.
+Fleet therefore keeps its unique request IDs, recorded account/provider/model and frozen price facts;
+unpriced complete facts may receive a current-rate read projection without rewriting history.
+Public plan list prices were inspected but the owner retired the account-card reference-price
+row; they are not actual invoices and are not shown beside quota.
+
+Current candidate evidence: `core/runtime/methods/usage-observability.ts:76` already records main,
+compact, title and auxiliary calls through UsageStorePort; `adapters/storage/session-store/repositories/usage.ts:20`
+upserts IDs. The same file writes missing numeric counters through `integer()` as zero and prunes
+all three usage tables after 30 days (`:335`), whereas the UI provides an all-time/lifetime view.
+`bootstrap/zcode-protocol/usage-stats-builder.ts:86` consumes normalized inclusive input correctly
+for cache rate, but carries no coverage/account/price provenance. `hooks/useUsageStats.ts:191`
+keeps a previous range/Host snapshot during refresh or failure without a scope/stale label. SQL
+uses one fixed current-zone offset for historical daily grouping. These are explicit acceptance
+gaps, not corrected by copying the reference screenshot. No statistics runtime changes or claims
+of live-provider coverage were made in this research pass.
+
+
+## Pi package intake and original-source correction (OV-046)
+
+This is source inspection, not package installation or runtime admission. Pins below are retained
+under `源码参考/software/`; catalog popularity does not prove compatibility or quality. The candidate
+now embeds a Pi AgentSession loop under OV-069, with explicit Host resources. Its existing MCP/Skills, credential, Session,
+permission and artifact owners remain the landing points.
+
+| Retained source / license | Inspected implementation | Decision for Fleet |
+|---|---|---|
+| [pi-better-openai](https://github.com/monotykamary/pi-better-openai) · `39171682343754366439b2c0890f5b0f4c3ed891` · MIT | `src/image.ts:19,274,391` submits native Codex Images generation/edit JSON and returns image bytes; `fast-controller.ts:9,38` uses a configured model allowlist and separate desired state. `config.ts:173` enables automatic reset redemption. | High-priority source for the missing subscription image execution path. Reuse Fleet auth/artifact/preview; do not import its settings/controller stores, static Fast eligibility, automatic card redemption or optional voice stack. No image request was submitted in this intake. |
+| [pi-codex-image-tool](https://github.com/ross-jill-ws/pi-codex-image-tool) · `ca7e6002a04226d82895e46e6ba6b32dc457336a` · MIT declared in manifest; no root license found | `extensions/index.ts` builds Responses-hosted image-generation calls and extracts streamed image results. | Alternative protocol comparison; standalone Images source above is the first candidate. Resolve full license provenance before copying; do not wrap a second chat executor around Fleet. |
+| [kling-ai-pi](https://github.com/klingai-dev/pi-plugin) · `8cfa106dd0868c3a51fe376d67fec175a60a5da5` · MIT; service/content excluded | `extensions/kling-ai.ts:112` creates `pi-mcp-adapter` and the region command; `mcp.global.json` declares lazy OAuth MCP with generation/read/credit scopes. `skills/kling-ai/references/mcp-contract.md` obtains live model arguments through `who_am_i`, preserves generation/task IDs, and queries the same job. Confirmation/no-blind-retry requirements are Skill instructions, not proven server enforcement. | Best bounded video/image workflow reference in this intake: adapt Skills and the remote MCP contract to Fleet's existing connector/permission path. No separate Pi MCP runtime, copied region preferences or assumed API-key entitlement. Actual authorization, generation and result preview remain unverified. |
+| [pi-web-access](https://github.com/nicobailon/pi-web-access) · `5217074850047543ba1f850741ce20698f79530f` · MIT | `index.ts:1837,2535` registers search/fetch; `video-extract.ts:165` checks video size and chooses Gemini API/Web; `extract.ts:769` gates hosted fetch destinations; `gemini-search.ts:597` bounds configured provider fallback. Nine runtime dependencies; optional ffmpeg/yt-dlp. | Useful extraction, timestamped frame and source-attribution patterns for media/browser gaps. Compare individual adapters against existing tools first. Do not import its broad fallback routing, browser-cookie reader, provider config or separate curator UI. Local video analysis is not video generation. |
+| [pi-usage-analytics](https://github.com/frostime/pi-usage-analytics) · `812dd26b80190b19de8243ca2728f20d2ad9b23d` · MIT | `pi/normalize.ts:15` requires attributed assistant usage; `storage/usage-database.ts:115,349,411` fixes reporting timezone, deduplicates and compacts days transactionally. `usage/identity.ts:17` hashes timestamps/model/counters, omitting account/session IDs. `usage/fact.ts:52` drops records with missing cost or required counters. | Borrow calendar/retention and atomic aggregate checks for the existing usage ledger. Do not add its database or copy its identity/missing-data assumptions: Fleet requires account/request attribution and honest unknown cost. Native subscription allowance is a separate fact. |
+| [pi-multimodal-proxy](https://github.com/pungggi/pi-multimodal-proxy) · `cdf53ccc21be534240e227a5fb85392cf42d774c` · MIT declared in package.json; no root LICENSE text | `extensions/vision-proxy.ts:1930-2525` hooks Pi's `before_agent_start`, `tool_result`, `context` and Session entries; `extensions/internal.ts` bounds image reads, recall and captions. Its package declares `pi-coding-agent` as a peer, and its own source review tracks scoped consent and per-turn call caps. | Use its explicit provider egress/unknown-result and tool-result ordering as acceptance cases for Fleet's existing vision bridge. Direct installation still needs Host context and egress/persistence mapping; OV-069 does not enable its independent config/consent store. Its implicit keyed-model fallback and all-provider consent wildcard are not Fleet defaults. No package was installed. |
+| [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) · `a78a2a5525e96318f8dba7f9fd32ce2191be0136` · MIT | `src/index.ts:1943-2007` starts a Claude Agent SDK query with `tools: []` and `permissionMode: "bypassPermissions"`; `src/mcp-server.ts` maps Pi tools back into the SDK; `src/index.ts:750-853` rewrites/resumes Claude session JSONL. Its peers require `pi-coding-agent` and `pi-tui`. | Strong abort/resume/tool-result comparison for later native Claude CLI work, but direct install would add a second session writer and permission mapping to the ZCode host, which currently embeds only `pi-ai`. Keep Fleet's existing Session and permission owners; no package was installed or Claude subscription invoked. |
+
+The installed `@earendil-works/pi-ai@0.87.1` already includes a `kimi-coding` OAuth driver and a
+separate image-model interface; its only bundled image executor here is OpenRouter Images. Neither
+fact supplies Fleet with a Pi extension host or all vendors' media endpoints. The
+[Kimi membership guide](https://www.kimi.com/en/help/kimi-code/membership-guide) reserves automatic
+OAuth for the official CLI/VS Code client and tells third-party/self-built applications to use a
+membership API key; Fleet keeps its supported key route and treats the built-in Pi OAuth driver as
+source evidence, not a new login. [`pi-xai-oauth` 1.6.0](https://pi.dev/packages/pi-xai-oauth)
+declares peer support below Pi 0.87, and [`pi-claude-auth`](https://pi.dev/packages/pi-claude-auth)
+reads another application's credentials. Neither is installed over the candidate's existing
+account/credential owner. Pi Skills and standalone MCP servers can be assessed independently of
+the full extension host.
+
+The bounded correction compared pinned ZCode `29628c9` with the actual candidate, plus Cindy's
+`FastModeToggle.tsx`, OpenCode's `session/message-v2.ts` and Codex's auth-generation request setup.
+
+| Examined candidate delta | Original behavior / observed defect | Disposition |
+|---|---|---|
+| Added Default models section and favorites group | Original picker and per-model enabled flags already own ordinary visibility; the owner rejected the extra selection workflow. | Removed the added page/sidebar/group/copy, retaining compatible stored preferences and the ordinary picker. |
+| Reasoning completion | Selecting a model could require a second choice or infer the highest level. | One shared provider-default resolver; missing default means native automatic effort, and valid explicit choices remain. Auto is omitted on the wire. |
+| `contextUsage.tsx` tabs / ledger-first popup | Original layout exposes capacity and composition before quota; the added tabs obscured them. Original runtime-only composition also disappears on cold restoration. | Restore original hierarchy; keep exact request counters in a disclosure. Persist existing estimated composition with its own assistant reply; never fabricate old samples. |
+| Subscription account lifecycle | A login-flow generation could cancel an existing account refresh; account-list revisions and native effort parsing could lose the visible current catalog. | Separate login cancellation from actual authorization revocation inside the existing owner. Preserve exact member/workspace identity and verify native catalog and request paths. |
+| Mid-conversation settings change | Original submission freezes model intent; subsequent auth reads could follow a changed global account default. | Extend active submission with an account reference, renew at admitted Guide boundaries, scope signed history and rebuild portable rejected-request replay. No additional Session store. |
+| Fast mode | Pi/Cindy demonstrate actual service-tier control, while some plugins call lower effort “Fast”. | Per-submission mode through existing ModelOptionMaps/native payload hook; only declared support is selectable, standard remains default, no premium live test. The owner rejected the compound control; a small lightning action in the effort-menu header now owns the independent toggle. API mapping tests are not proof every gateway supports that tier. |
+
+This does not certify all custom product deltas. Media execution, complete statistics, contextual
+Agent settings and marketplace activation/revocation still require their own end-to-end audit.
+
+
+### OV-047 official rates and accounting boundary
+
+[OpenAI API pricing](https://developers.openai.com/api/docs/pricing) and each admitted model page
+were checked for Standard/Fast and the >272K input threshold. [ChatGPT credit rates](https://learn.chatgpt.com/docs/pricing)
+and [speed](https://learn.chatgpt.com/docs/agent-configuration/speed) define an independent native
+credit basis: admitted GPT-6/5.6/5.5 Fast requests consume 2.5 times Standard credits; this is not
+the API's multiplier or proof of a plan's included allowance. Credit billing has no separate cache-write
+charge. [DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing) supplies cache read/miss,
+output, peak/off-peak and public-holiday rules; unknown calendars/models/modes stay unpriced.
+`packages/shared/src/usage-price.ts` freezes the checked 2026-09-27 source version with each request.
+It does not claim negotiated discounts, tax, regional premiums, tools/media fees or historical prices.
+A payment allocation is an observed-use estimate, never an official per-model subscription tariff.
+
+### OV-049 statistics and manual model UI comparison
+
+| Source lock / inspected files | Reusable behavior | Fleet landing |
+|---|---|---|
+| ZCode `29628c9acdb8`, `packages/ui/src/settings/usage-stats/AppUsagePanel.tsx`, `AppUsageModelUsagePieChart.tsx`, `CodingPlanUsageBarChart.tsx`, `usageStatsUiParts.tsx` | Summary → heatmap → trend → model donut; existing surface/spacing, chart colors, aligned legend, segmented ranges and tooltip details. | Keep that order; remove added `UsageAccountingPanel` table. Reuse donut/legend renderer for Tokens and cache. Place an API-only cost chart in the same original panel/range; payment allocation is no longer rendered (OV-057). OV-058 limits monetary bars to positive priced amounts, retains unknown/zero facts in coverage and model usage, and reuses the original segmented Progress colors with a lower source legend. Unknown/partial coverage is not converted to zero. |
+| CC Switch `1ee2fdc3a791`, `src/components/usage/UsageDashboard.tsx`, `UsageHero.tsx`, `UsageTrendChart.tsx`, `ModelStatsTable.tsx` | Shared filter scope, values before methodology, cache indicator and sourced cost, recomputed weighted cache rate, local chart details. | Preserve Fleet's existing query scope and weighted denominators; focus hints carry coverage and source links. Do not import its dashboard theme, request-log surface, foreign-log scanning or proxy owner. |
+| CC Switch `1ee2fdc3a791`, `src/components/providers/forms/shared/ModelInputWithFetch.tsx`; ZCode `ProviderCardSections.tsx`, `ProviderFormControls.tsx` | Known models can be selected; manual IDs supply absent entries. Upstream deletion is for non-builtin records, while discovery in Fleet creates such records too. | The owner retires model-row deletion in favor of enablement; no data deletion. Native subscription catalog refresh replaces meaningless manual entry. API manual drafts remain explicit and never run inference automatically. |
+
+The simplification audit rechecked original ZCode `AppUsagePanel.tsx` and its context popup against the candidate: neither original surface owns payment-period allocation. CC Switch `UsageDashboard.tsx` uses one filter scope for request-price estimates, while its subscription reader is independent. The candidate had retained a payment-aware `UsageCostReport` with no active payment caller and a personal purchase-preview hook with no mounted caller. The visible report is now API-only; the saved payment schema and standalone allocator remain for old records. Team source callers need subscribed organization/project IDs, so their former static purchase-SKU read and discount/price display mapping are retired; only the account pricing response is projected. The original unmounted footer plan-summary source also had no caller; its purchase/extra-reader code was removed while composer/account/Usage entries remain. This avoids creating another product/catalog authority and preserves the existing Team endpoint and Session usage owner.
+
+The pure accounting projection has weighted-cache/coverage/identity tests. Primary desktop checks
+cover live metric switching, API duplicate/cancel behavior, subscription list controls and the
+replacement API-only chart. Old payment allocation tests protect stored compatibility facts but no
+longer establish a visible accounting feature. Owner visual acceptance remains open.
+
+### OV-050 reusable price directories and DeepSeek live case
+
+CC Switch `1ee2fdc3a791` implements models.dev import in `src/lib/modelsDevPricing.ts` and a six-hour
+startup/manual synchronization policy in `src/lib/modelsDevAutoSync.ts`. It normalizes provider/model
+names and defaults some missing rate fields to zero. Fleet reuses the public dataset, not that zero
+fallback or broad suffix stripping. [models.dev](https://models.dev) documents provider-scoped data,
+context tiers and an offline snapshot; its [repository](https://github.com/anomalyco/models.dev)
+declares MIT. The retained API response hash is `9fe0b9615b0b0af9f188c117373bdc12e465cea38b93e25ccb284149de977fb8`.
+The 2026-09-28 raw response has 225 providers/8,255 entries; the validated text-output price subset
+has 215 providers/7,631 entries, including 576 context-tier schedules. These are provider/model
+entries, not 7,631 unique first-party models or individually verified official prices. Missing
+cache rates remain absent. Media-only prices require their actual generation units and executors.
+
+The candidate's maintainer command `pnpm sync:usage-prices` refreshes its bundled data atomically;
+`--input` and `--fetched-at` allow deterministic offline regeneration. No SDK dependency or runtime
+outbound service is added. Existing API presets are tested against price-provider attribution across OpenAI/Anthropic-compatible paths, retaining China/global scope; native subscription adapters keep their explicit provider identity. Official [OpenAI](https://developers.openai.com/api/docs/pricing),
+[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing),
+[Anthropic](https://platform.claude.com/docs/en/about-claude/pricing) and
+[Z.AI](https://docs.z.ai/guides/overview/pricing) schedules override known directory gaps.
+Anthropic's 1h cache-write count comes from the reported usage split, never an assumed TTL.
+Z.AI's free cache storage is not free cache-create inference: ordinary new-input pricing still
+applies. BigModel's China endpoint is not assigned Z.AI international official-override rates.
+
+A read-only GET using the review connection and existing proxy-aware transport returned HTTP 200
+and exactly `deepseek-flash` / `deepseek-v4-pro`, matching the
+[official model-list schema/example](https://api-docs.deepseek.com/api/list-models).
+[DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing) states that
+`deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` remain accepted but are served and billed as
+current Flash. The primary agent copied only the review Provider configuration into a temporary
+profile, added the documented vision-exp alias through the existing ProviderSettingsService,
+reopened the runtime and observed all three saved IDs. Byte comparison verified the original
+configuration stayed unchanged. No inference, payment, key disclosure or artificial fourth model
+was involved; this verifies manual save/reopen, not a separate live model or media capability.
+
+
+### OV-051 unified cost and actual-account projection
+
+Primary comparison reuses pinned ZCode's `AppUsagePanel.tsx` summary strip and
+`usageStatsUiParts.tsx` segmented tabs, with CC Switch's single shared-filter scope. OV-057 retires
+the visible payment form, paid-unit-cost chart and monthly ratio after comparing their acquisition
+paths: a plan price is not a paid invoice and neither shares the selected usage-statistics window.
+The compact API-rate chart derives only from Fleet's existing ledger, with missing-price coverage
+and exact model source links; plan list price and native quota stay on each account card. No new
+chart library or accounting owner is added.
+
+The earlier isolated fixture verified the payment allocator's arithmetic, but those values are no
+longer exposed as model/project prices. Old saved payment records remain in the settings owner for
+compatibility. The replacement desktop review shows a compact account price row and an API-only
+model/project chart in Chinese light; dark and narrow-window owner acceptance remain.
+A no-model startup exposed the inherited `getAppUsageStats` dependency on an active model runtime;
+reusing the existing local control-plane carrier made the same historical SQLite query work without
+creating a conversation or performing inference.
+
+Original context popup structure remains. Fleet's added quota selector previously preferred the
+configured default even after a different account served a request. Actual local account identity now
+flows from the existing `fleetAccounting` receipt through ModelComplete/V4 and cold usage reads;
+read-only inspection, default, last-used and automatic switching remain separately labelled.
+Synthetic failover/projection/restore tests cover the lineage; the restored review conversation displayed its recorded last-used account and corresponding native windows. No real account switch or reset-card
+redemption was performed for this change. A standalone project panel and cross-host billing
+aggregation remain future work.
+
+
+## Current modification audit
+
+The review inventories the candidate against ZCode `29628c9acdb81b703bbd4080c207a0e7ce5e276e`
+and the retained `app/` against Craft v0.13.4. The 0061 candidate tree has 454 changed files:
+348 runtime/UI files (+19,123/-12,967 lines), 68 test files (+15,300/-3), 15 catalog/config/lock
+files (+46,635/-30), 17 documentation/license files and six build tools. Counts are source volume,
+not a justification or an acceptance score. The ignored `.fleet/reviews/project-audit/` holds
+machine inventories and test output; capability status remains in the register.
+
+| Scope and original path | Current finding and disposition | Evidence and limits |
+|---|---|---|
+| ZCode `core/runtime/methods/turn-loop.ts` | Keep the existing Host owners and Pi loop. Remove the extra `piToolContent` conversion: the private SDK does not feed these payloads into the provider; Host context already does. | Actual Pi/Host/SQLite fixtures preserve full tool text/images, permission, queue, stop and restart. This proves neither token savings nor stronger model quality. Native vendor executors and complete application-kernel acceptance remain open. |
+| Provider/connection writers and `InlineEditableProviderCard` | Keep version-checked field writes and acknowledged receipts; they fix reproduced overwrites without another settings store. Narrow probe identity to the tested model. Remember subscription revision with the existing probe owner, so revisiting the same account does not erase health. | Existing Chinese/English draft fixtures plus the actual provider hook reject changed credentials/accounts and retain unrelated-model evidence. Native desktop loopback probe stays green when a different model is disabled. No live vendor health claim. |
+| Original `ProviderCardSections` and CC Switch conversion | Keep original editing controls, sparse capability evidence, protocol-specific discovery, grouped source identity and eligible-row default selection. Configuration readiness remains distinct from inference. | Source SQLite/reopen/dedup tests and synthetic native import. Known wire routes are covered by captured SDK requests. Subscription-token copying is excluded; comprehensive vendor/model/live coverage remains incomplete. |
+| Composer, thinking and Token ring | Keep observed defaults, independent effort/Fast, immutable admitted input and the original local context/allowance popup. The private Pi resource loader remains explicit rather than autoloading unrelated extensions. | Model/effort/queue/Guide/stop and media-input fixtures plus staged CLI receipts. New native levels/service tiers, full context-source history and owner visual acceptance are not established. |
+| Public prices and `usage-price.ts` | Fix the conflation of included Fast allowance (2.5x) with published purchased-credit billing (2x). The UI names both; new estimates carry a corrected version. Historical rows are not rewritten. | [Official speed guide](https://learn.chatgpt.com/docs/agent-configuration/speed), captured usage and SQLite reopen tests. Public API values are references, not invoices or automatic knowledge of a workspace's private agreement. |
+| Auxiliary requests and `model-execution.ts` | The unsourced-capacity omission rule had also removed explicitly requested probe/caption budgets. Keep ordinary unknown-capacity compatibility; auxiliary calls retain their existing Host operation identity and wire budget. | Real SDK with fake transport reproduces an absent limit, then verifies explicit limits across Chat, Responses and Messages. Live provider-specific minima/limits require their own acceptance. No new selector or persisted flag. |
+| `workspace-generate-text.ts` and statistics acquisition | Connectivity probes discard finish usage and do not enter the model ledger. The model table requires a real Session FK, so filling this gap must not invent a user conversation. | Native loopback probe completed while `model_usage` remained empty; source/DDL verified. A reviewed non-chat operation/ledger change is still needed before promising complete software-wide cost coverage. |
+| `AppUsagePanel` / cost-source view | Keep one filter scope, positive-only money bars, shared meter tones and model-focused tool/Skill facts. `recentProjects`/open tabs are not durable project membership. Request-source colors are not an exact tool/Skill context invoice. | Usage/timezone/cache/source/hover view-model tests. Historical project attribution, the project panel, retained context-source estimates and simple correctable plan-price comparison remain open. No billing-period form is justified. |
+| Media tool/Session artifacts | Fix image usage IDs with the existing Session/turn/assistant request identity. Reused upstream call IDs no longer overwrite charges; original files/IDs remain. | Three synthetic paid-result receipts and disk artifacts survive SQLite restart; late-return/save-failure fixtures remain. Actual xAI payment, subscription images, video, image editing and full Job reconciliation are not established. |
+| Plugin installer and application contributions | Reuse existing installer/digest/rollback/storage paths; extra catalogs are not a framework. UI uninstall currently omits `keepData`; active revocation, grants, native surfaces and default data-preserving removal remain unfinished. | `bootstrap/plugins.ts:769` and `zcode-protocol/plugins.ts:364`, existing storage-scope tests. Skill/MCP recognition does not establish Pi executable/TUI or native UI compatibility. No installed owner plugin was removed. |
+| Desktop/profile startup and `main/index.ts` | Original cold restore read `homedir()` while the Host respected the desktop-home override. Reuse that same override in Main; no data or preference migration. | Fresh built desktop initially warmed a real user's saved workspace, then correctly used the isolated conversation directory after the one-path fix. The existing draft window was preserved. |
+| Retained Craft shell, Project, review and GitHub controls | Preserve its declared data/route changes separately; they are not active-candidate capabilities. Native GH remains credential owner and historical edit review is not a Git snapshot. | Retained full typecheck and 66 focused tests pass; root delta/orphan gates pass. Combined retained-suite closure and owner visual acceptance remain incomplete. |
+| Documentation and release | Correct the paused Claude SDK-credit announcement. Separate source evidence, fixture proof, live provider behavior and visual acceptance. The 700-line contracts still contain oversized paragraphs; structural validation is not readability or feature delivery. | Cross-document joins/links and source pins pass. Native SDK/permission admission, complete notices (including proxy-agent-negotiate), signed platform builds, updater feed and actual page/office/canvas integrations remain open. |
+
+The bounded corrections repair specific failures and remove duplicate processing. They do not
+approve every changed hunk, prove all platforms/providers, or complete the remaining product.
+Priority remains kernel/native execution and shared page operations, followed by acquisition/project
+costs and data-preserving plugin/artifact lifecycle under the existing delivery order.
+
+### CC Switch route conversion and subscription import boundary (OV-052)
+
+CC Switch `1ee2fdc3a791` `src-tauri/src/proxy/providers/claude.rs:832` joins the source base with
+versioned endpoints, while `providers/codex.rs:1053` adds v1 only to a bare origin.
+`proxy/model_mapper.rs:147` removes Claude's local `[1M]` marker before forwarding; it is not a
+second upstream model ID. `ModelMapping::from_provider` also includes Fable and subagent mappings.
+Import now translates these semantics, reads explicit client catalogs, matches existing connections
+by key and route/service identity, and retries incomplete model writes after restart.
+
+The primary agent imported a consistent read-only-source SQLite backup into a temporary Provider
+runtime, reopened it and verified already-bound detection. OpenCode Go's corrected
+[model endpoint](https://opencode.ai/docs/go/#models) returned 30 IDs; the shared directory spans
+multiple wire protocols, so discovery uses existing route-specific catalog membership. The normal
+AI SDK request test asserts `/zen/go/v1/chat/completions` with `glm-5.2`, never the local marker.
+A reviewed exact duplicate had zero SQLite/config references; its missing models were retained in
+the original connection, a recovery copy was saved, and only the duplicate configuration was removed.
+Different-key connections remain separate. No paid inference or source mutation was performed.
+
+CC Switch `services/subscription.rs:109` reads Claude Code's own Keychain/credential file to display
+usage; those credentials are not a self-contained subscription row in its providers database.
+Membership API keys can be imported with endpoint-based plan classification. OAuth refresh tokens
+should stay with their authorization owner; prefer reauthorization or an explicit native-runtime
+binding over copying another application's mutable refresh state.
+
+Current Anthropic sources need to be read together: the
+[Agent SDK plan article](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
+now says the announced separate monthly SDK credit is paused. SDK, `claude -p` and third-party
+SDK usage still draw from subscription limits; the preserved June 15 announcement is not active
+policy. [Claude Code legal terms](https://code.claude.com/docs/en/legal-and-compliance) distinguish
+an end user signing into the unmodified official CLI from a third party collecting or proxying
+claude.ai tokens. Hosting that unmodified client also retains the commercial-agreement conditions:
+each user authenticates directly, the binary and its authentication methods remain intact, and the
+host does not collect or intermediate subscription tokens. The [SDK quickstart](https://code.claude.com/docs/en/agent-sdk/quickstart)
+separately requires prior approval for a third-party product offering claude.ai login. A technically
+working OAuth flow is not evidence of that approval. Keep login and credential refresh with the
+official client. The primary's installed Claude CLI/SDK model-directory read and loopback-inference
+Host-tool allow/deny/Stop probe verify local protocol and permission behavior only; they do not
+prove live subscription inference.
+
+Craft v0.14.0 `73bd9c2` uses `shared/src/auth/claude-oauth.ts:114,190` for its own browser PKCE/code
+exchange, `server-core/src/handlers/rpc/onboarding.ts:131` to save connection-scoped and legacy
+OAuth credentials, and `shared/src/auth/state.ts:202` for refresh. `config/llm-connections.ts:1073`
+projects the token into `CLAUDE_CODE_OAUTH_TOKEN`; `agent/claude-agent.ts:1210,1613,1720` runs the
+Claude Agent SDK query with native continuation and Host hooks. API-key authentication is a
+separate branch. `agent/options.ts:229` resolves the matching packaged SDK native binary, with an
+explicit executable override; this avoids requiring a separately installed global CLI. Its SDK
+pin is 0.3.280. These are source observations, not evidence of Craft's live account access or
+Anthropic authorization. Fleet's current native inspect/login/execution files instead default to
+`claude` on PATH; bundling/resolving the SDK's official binary consistently is a concrete integration
+gap. Native resume and governed-attempt limitations stay in the capability register and kernel contract.
+Antigravity's installed `agy models` and `/usage` command were read without inference. AionCore's
+`aionui-session/src/backend/antigravity/conn.rs` bounds approval before the native hook's fail-open
+timeout; its whole-agent protocol cannot be used as a model transport. The candidate still lacks
+the Antigravity native executor. Claude subsequently gained its official SDK lane under OV-071;
+its current execution and acceptance boundaries are in the [kernel contract](modules/agent-core.md#first-proof).
+The earlier probes remain separate protocol evidence.
+
+The primary billing audit got HTTP 200 for both saved ChatGPT accounts at the existing account-check
+and subscription metadata endpoints. Exact periods, currencies and discount fields were present;
+no paid-invoice amount was returned. Period/currency now prefill only from a validated single billing
+period, while discount amounts are never treated as money paid. Generic automatic fee acquisition
+and the contextual Agent editing bridge remain open requirements, not implied by this partial read.
+
+
+### OV-053 chart components and inherited activity facts
+
+| Source lock / component | Finding | Landing |
+|---|---|---|
+| EvilCharts `500ecd44c1fdcf319ba83ea68f3771bc76125974`, `src/registry/examples/recharts/ex-horizontal-layout-bar-chart.tsx`, `src/registry/charts/recharts-bar-chart.tsx` | MIT; React, shadcn, Recharts 3.8, with optional Motion effects and its own theme wrappers. | The first copied grouped-bar component was retired under OV-057. The current source bars use ZCode's existing segmented Progress; no EvilCharts component or runtime remains, so its former copied-component manifest entry was removed while the reference and license are retained. |
+| beUI `9f19813a3ea19ce167da9920fba5658b392e4e7f`, `components/charts/composition-chart/model.ts`, `legend.tsx`, `components/motion/tabs.tsx` | MIT; composition marks missing periods instead of interpolating them; interactive legends and reduced-motion handling. Its composition plot normalizes complete columns to 100%. | Missing values and keyboard discoverability are useful references. A composition chart is not appropriate for adding an API estimate to the actual payment for the same usage. No beUI package or theme is installed. |
+| Original ZCode `29628c9acdb8`, `repositories/usage.ts`, `usage-stats-builder.ts`, `AppUsagePanel.tsx` | The existing tool_usage table and stats payload already carry tool counts, errors and mean duration, while the UI does not render them. | Expose the original aggregate in Activity insights; no second counter or backend query endpoint. |
+| Same ZCode pin, `core/tool/handlers/skill.ts`, `core/tool/executor/events.ts`, `bootstrap/zcode-protocol-v4/conversation-telemetry-facts.ts` | Skill result/error events already carry qualified name, plugin ID and source; the local usage upsert discarded these fields. No version digest or accepted-task evaluation is present there. | Store only this existing identity metadata on tool_usage and derive skill counts under the same range. Old missing identity remains explicit; do not claim loaded skills are accepted outcomes or fabricate a historical version. |
+| Same ZCode pin, `chat-input-toolbar/contextUsage.tsx`, `components/ui/progress.tsx`, `ControlHintTooltip.tsx` | The original context popover sorts composition sources by share and renders a segmented Progress using one blue tone ladder; the tooltip has title and secondary copy. This is estimated context occupancy, not a provider charge. | Reuse the Progress tone ladder and title/secondary tooltip in aggregate usage and quota UI. Segment priced model requests by recorded source, not prompt-composition estimates or invented per-tool bills. |
+| Codex `67a709665ac7`, `codex-rs/backend-client/src/client/rate_limit_resets.rs`, `app-server/src/request_processors/account_processor/rate_limit_resets.rs` | GET lists credits, POST consumes a selected credit with a stable `redeem_request_id`; type/status/expiry and outcome codes are explicit. | Keep redemption inside the existing subscription owner and lock it to the displayed saved account and revision. Count itself opens details; zero count has no redundant action. Synthetic tests cover account separation and idempotent retry; real cards are not spent in acceptance. |
+
+The source directories are retained under `software/evilcharts` and `software/ui-components-starc007`
+on the reference volume. They were cloned for inspection, not executed or installed as production
+libraries. Existing telemetry remains disabled; local accounting does not enable vendor reporting.
+
+### OV-054 connection failure evidence
+
+Original ZCode `29628c9acdb8` keeps explicit probe failures in
+`ProviderFormControls.tsx::handleTest`; the candidate regression opened the metadata editor instead.
+Its `ProviderStatusIndicator.tsx` uses configuration executability, which does not prove upstream
+access. Preserve the original inline feedback and annotate actual probe observations separately.
+The real Kimi `k3-256k` test returned HTTP 403, `error.type=access_terminated_error`, and an explicit
+message that the current subscription lacks Kimi Code access. A read-only catalog query returned
+HTTP 200 with `kimi-for-coding`, `kimi-for-coding-highspeed`, `k3`, `k3-256k`; catalog access is not
+inference entitlement. No response established a specific expiry date. A local loopback fixture
+replayed that error through the built desktop/Host/CLI/AI SDK path: localized inline failure, amber
+status, no metadata dialog; a streamed success changed the tested-model marker to green. Both
+Chinese and English were checked. No production credential or paid request was used in replay.
+
+### OV-055 product identities and Grok tier source
+
+ZCode 29628c9acdb8 `ProviderDetailFeedback.tsx` and `SectionLayout.tsx` have zero candidate diff:
+same detail-panel bottom overlay, styles, spacing and close control. `ProviderFormControls.tsx`
+intentionally retains classified failures until dismissal instead of the original eight seconds.
+
+Grok Build f0e3be1100ef5252488e3be8bb0e91cf68d8c305
+`xai-grok-shell/src/extensions/billing.rs:251` enriches credits from
+`RemoteSettings.subscription_tier_display`, falling back to `subscription_tier`; it does not get
+the tier from credits alone. `remote/client.rs:576` reads `/settings` with the same account headers.
+`xai-grok-config-types/src/lib.rs:811,832` separates tier display from `allow_access`.
+`xai-grok-telemetry/src/client.rs:563` records distinct Free, SuperGrok Lite, SuperGrok, Plus, Heavy
+and X membership labels. Adopt only reported identity/display fields, never its remote controls or
+unknown-tier access policy. Existing account scope/revision/credential cache remains the owner.
+
+[Official pricing](https://x.ai/pricing) lists multiple consumer and business tiers separately from
+API pricing. [Official FAQ](https://docs.x.ai/grok/faq) describes a shared usage pool and separately
+manages X-linked subscriptions. Neither a marketing plan name nor a quota reset proves paid term
+expiry or that every Grok product is implemented in Fleet. The existing Lobe static Grok and xAI
+assets supply separate marks without another dependency or a copied theme.
+
+### Provider format correction
+
+The 41 preset routes are scoped by service, region and authentication in
+`config/provider/zcode-builtin.json`; format choices for a saved route now also require the same
+model list. [OpenCode Go](https://opencode.ai/docs/go/) and
+[Zen](https://opencode.ai/docs/zen) list each model's Chat/Messages/Responses endpoint, proving
+that a common provider host does not make all its models interchangeable across wire formats.
+New connections select the matching sibling template/model list; saved format changes require
+identical model membership. The pinned ZCode detail kept the old list while swapping formats.
+[Alibaba Coding Plan FAQ](https://help.aliyun.com/en/model-studio/coding-plan-faq) explicitly
+excludes Responses and distinguishes its plan key/URL from ordinary API keys.
+[DeepSeek's Responses guide](https://api-docs.deepseek.com/guides/responses_api/) and
+[xAI Responses reference](https://docs.x.ai/developers/rest-api-reference/inference/responses)
+confirm their own endpoints; they do not establish a different vendor's support.
+[Kimi Code's model guide](https://www.kimi.com/code/docs/en/kimi-code/models.html) declares
+Chat and Messages, while [Claude's API overview](https://platform.claude.com/docs/en/api/overview)
+declares Messages separately from Claude Code subscription login.
+[Anthropic's legal guidance](https://code.claude.com/docs/en/legal-and-compliance) permits an end
+user to sign in to the unmodified official Claude Code binary but prohibits a third-party Claude.ai
+login/token relay. A native Claude executor would need Fleet Session, permission and usage mapping;
+no API-key or imported CC Switch row can masquerade as that native subscription.
+
+## Tool capability, vision bridge and busy input comparison
+
+| Source / revision | Mechanism verified | Fleet decision |
+|---|---|---|
+| Cindy `374923c21`, `maker-core/src/session.ts:865,1071,1115`, `desktop/src/main/vision-bridge/{vision-bridge,vision-channel}.ts` | A reserved send or steer invokes the optional image-description hook before the main model; cancellation fences late results. The host selects a configured primary/fallback vision backend, caches by image/prompt/backend and reports an unavailable image rather than guessing. Proxy and Pi-tool layers cover other entry paths. | Start with one Session pre-dispatch adapter for current user attachments, preserving original bytes and a derived-text receipt. Do not copy three parallel paths or auto-scan credentials. Tool-result images and history need separate proofs. |
+| OpenChamber `60d836c48`, `stores/messageQueueStore.ts:16,66`, `web/server/lib/message-queue/DOCUMENTATION.md`, `hooks/useQueuedMessageAutoSend.ts:207` | The composer captures text, mentions, attachments, context and model configuration when queued. Its server owns desktop/web delivery when the full turn is idle; VS Code uses a foreground auto-send hook. `steer` and `queue` are distinct. | Preserve captured request intent and idle/subagent gates, but reuse ZCode's existing Session admission and command ledger rather than importing another persisted queue. |
+| [Pi Agent core](https://github.com/earendil-works/pi/blob/main/packages/agent/README.md) | Steering is polled after current tool execution; follow-up is delivered when the Agent would otherwise stop. Queues and clear methods are runtime primitives. | Evidence for delivery semantics, not permission to replace ZCode's Session/queue authority or promise that unsent draft text was delivered. |
+| ZCode `29628c9` candidate, `adapters/src/model/model.ts:167`, `ui/src/v4/ConversationComposer.tsx:1126`, `shared/src/zcode-protocol-v4/command.ts:78`, `bootstrap/src/zcode-protocol/v4-bridge.ts:771` | Runtime rejects tool requests when `supportsToolCall` is false. Discovery may report the field, but the model editor previously did not allow correcting it. The composer accepts text while busy; submission records `queue` or `guide` before execution. | The existing Provider overlay now edits an explicit true/false/unknown tool fact. Tool quality needs model-attributed argument validation and outcomes, not a synthetic score from call count. Busy-input desktop/restart/remote acceptance remains. |
+
+
+### Composer attachment preview and document reader reuse
+
+Compared ZCode `29628c9` `packages/ui/src/v4/ConversationComposer.tsx`,
+`components/ai-elements/attachments.tsx`, `PreviewPane` and its format viewers. Original ordinary
+attachments expose a type icon/name; images/video/PDF have separate preview paths. Craft v0.13.4
+`apps/electron/src/renderer/components/app-shell/AttachmentPreview.tsx` and `input/FreeFormInput.tsx`
+add optional native thumbnails but read full base64 on intake. Its
+`packages/ui/src/components/overlay/DocumentFormattedMarkdownOverlay.tsx` renders a centered,
+width-limited article through its shared Markdown component, distinct from source and editing.
+
+Read-only LobeHub source snapshot `3d3439c7d9236e497c3d97ec568185a818a7911a` is retained in
+`.fleet/research/lobehub-preview`. `src/features/AgentDocumentReader/index.tsx` has an 840px
+article column and a compact fixed header. `DocumentModal/{index,Header}.tsx` and
+`PageEditor/EditorCanvas/index.tsx` share an editor with document identity, autosave, collaboration
+locks, unsaved-change guards and selection comments. These are durable editing owners, not an
+attachment renderer. Fleet reuses its existing ZCode Markdown/Office/PDF/PPTX readers and common
+Dialog; no Lobe/Craft editor code or production dependency is imported.
+
+[OpenAI's document guide](https://help.openai.com/en/articles/20001278-creating-and-editing-documents-spreadsheets-and-presentations-with-chatgpt-work)
+confirms rich desktop previews for documents, spreadsheets, presentations and PDFs. The installed
+Codex app's `artifact-preview-loaders.electron` / `library-file-preview-kind` modules additionally
+recognize DOCX, XLSX, PPTX, CSV, TSV, IPYNB, PDF, Markdown, text and images. This is format-routing
+inspection, not proof of identical thumbnails on every surface; no proprietary code was copied.
+
+Candidate 0068 uses original 96px grid cards in one scrolling row. Text is bounded to 64 KiB;
+Office/PPTX use the existing binary boundary, PDF uses Blob or the existing range service, and
+external Markdown images are not requested. Actual Electron fixtures cover bounded File/path
+reads, empty/binary/unavailable content, progress caching, late removal/scope replies, nested keys,
+base-Host reads beneath a remote context, CSV quoting, PDF ranges and unadmitted media URLs. Native desktop self-check
+uses synthetic format files; evidence distinguishes each verified viewer from adapter-only legacy
+formats, remote transport, editing and owner acceptance.
+
+
+### Candidate model-facing context correction
+
+Additional bounded comparisons: original `29628c9` `core/runtime/methods/plugin-reference.ts`
+collected every plugin Skill/profile regardless of dispatch visibility, and `context.ts` passed
+the Skill catalog to child contexts without the main builder's tool check. Pi source
+`e792ba131ed0` `packages/coding-agent/src/core/skills.ts:355` confirms the manual-only discovery
+filter. Fleet applies those checks to its existing projection; explicit human invocation survives.
+Original `steering.ts` published Guide in memory before `appendEvent`, while `events.ts` swallowed
+the durable admission error. Pi `agent-session.ts:2165` supplies an in-memory steering queue, not
+a replacement Host durability barrier. The candidate fixes ordering within those same owners and
+tests failed/slow saves, Stop, replacement turns and cold SQLite reopen with scripted Pi requests.
+
+Plugin data preservation also needed a source-backed distinction. Original ZCode's desktop
+uninstall omitted the bootstrap `keepData` option; Cindy `a46bb58fc3263f1a3dde04cf9470ed9b0379c82c`
+`plugin-market/service.ts:1299` and `cindy-brain/index.ts:6480–6556` separate package removal from
+Library data. Fleet reuses its own existing data directory and suppression writer. Independent
+review reproduced stale commands after a v1→uninstall→v2 reinstall: original
+`adapters/plugins/index.ts:materializeCommandMetadataRoot` only appended generated Markdown.
+The bounded correction replaces only that derived snapshot, preserving siblings and rollback;
+no Cindy account/library machinery is introduced.
+
+ZCode `29628c9`, `core/context/sections/skills.ts` already lists metadata and loads bodies on
+invocation; its names-only fallback is a description budget, not a hard catalogue-size cap.
+`core/context/builder.ts` already avoids mirroring tool descriptions into the system prompt.
+Preserve both mechanisms. Pi's `coding-agent/src/core/skills.ts:formatSkillsForPrompt` filters
+manual-only skills; [Claude's official invocation contract](https://code.claude.com/docs/en/skills#control-who-invokes-a-skill)
+likewise keeps their descriptions out of context and blocks model invocation while retaining `/name`.
+
+The candidate's NodeSkillAdapter previously forced `allowImplicitInvocation: true` for every skill.
+It now maps that existing policy from `disable-model-invocation`, omits manual-only metadata from
+main/child discovery and rejects unrequested model-facing Skill loads. Original composer `$name`/linked mentions and CLI `/name` are recognized only from the current admitted human input; that intent does not carry into a later input or another run. Direct SkillPort loading remains.
+The existing command argument expander now also serves Skill, with one-pass literal substitution;
+no shell expansion, grant inference or new loader was introduced. Context estimates count visible
+catalogue lines and model-facing tool name/description/input schemas, excluding local permissions,
+output schemas and result budgets. They remain Host estimates, not provider tokenization.
+
+`core/test/context-footprint.test.ts` reproduces prior failures and verifies these boundaries in
+real AgentRuntime/Pi with scripted inference. `scripts/test-pi-bundle.mjs` verifies the staged
+CLI's actual loopback request, denial and process reopen. Desktop identity/rendering guidance
+is checked separately from the unchanged terminal control. These are local protocol/behavior
+proofs; they establish no live-provider savings percentage or accepted-task quality improvement.
+
+### Public ChatGPT and bundled Claude correction
+
+For Claude allowance, the installed official SDK 0.3.286 `sdk.d.ts:3040,4219` and `sdk.mjs`
+define `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({skipBehaviors:true})` as a
+`get_usage` control request. Its query percentages are explicitly 0–100; nullable resets, model
+windows and extra-usage money are separate fields. The native reader sends no prompt, keeps SDK
+authentication, and skips transcript analysis. A real SDK/fake executable protocol fixture confirms
+initialize→get_usage only and refuses another account before the usage call. The method remains
+experimental; its [official pinned release](https://github.com/anthropics/claude-agent-sdk-typescript/releases/tag/v0.3.286)
+also changes omitted permission-mode behavior, so this control process explicitly uses `default`,
+empty tools/settings sources and disabled hooks. No CLI credential import or paid inference is used.
+
+Pi 0.99.2 `dist/auth/oauth/openai-chatgpt.js` provides PKCE, a loopback listener, public-client exchange and refresh; `providers/openai.js` provides Responses execution. Fleet reuses these flows through the Host transport, retaining issued-registration callbacks for reauthorization and validating ID tokens with Node’s standard RS256/JWK verifier. The [official sign-in contract](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [profile/refresh contract](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions) and [preview limits](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) define client/host/subject binding, public endpoints, required history and supported tools. The new token’s authentication metadata is opaque; private WHAM quotas/reset cards and hosted image/video generation are not inferred from this grant.
+
+Craft v0.14.0 `73bd9c2a3573158bea880984eb8d5fdb41e0cac2`, `packages/shared/src/agent/options.ts` resolves its SDK-matched optional native binary and retains overrides; `claude-agent.ts` passes native resume IDs. Candidate SDK 0.3.286 now uses the same dependency/executable principle and public `query({resume})`, while its existing Session journal fences interrupted/changed state and owns all Host receipts. SDK graceful stdin close was observed to trigger one extra loopback request with pending Host callbacks; immediate termination of the owned process before channel close fixes the verified Stop/admission race. This is local execution evidence; it does not establish live subscription entitlement, native Guide governance or other-platform behavior.
+
+## Cross-agent recommendation reconciliation
+
+The owner's `交接/问题报告.md` and `交接/方案与思路.md` are supplied audit evidence, not additional
+instructions. Current source confirms the ambiguous Pi-default wording, unscoped Craft CORE rows,
+historical P6 conflict and the absence of ordinary output references in the V4 UI path. Pi does run
+AgentSession; Host requests/tools/retry/compaction/persistence and disabled Pi resource autoload
+must remain explicit. Candidate folderless conversations already have `workspacePurpose` isolation;
+the original home-folder default does not describe that current path. Core execution contracts
+now point to the candidate; retained domain contracts remain comparisons until their actual callers
+are mapped. Historical owner quotations and reference pins are not removed from a supplied opinion.
+
+Paseo `d831c7bf33bbcad1835cf8e81668b8eebb97f3f4` is retained at
+`/Volumes/AIGC/天工参考/software/paseo`, with the owner-requested source alias restored. Its
+`plugins/antigravity-provider/server/provider.ts:16–28` declares image input and official `agy`;
+`internal/prompt.ts:30–43` materializes images and passes text paths. `internal/process.ts:33–47`
+unconditionally supplies `--dangerously-skip-permissions`, and `session.ts:71` publishes Full access.
+This does not prove native multimodal message support or Fleet permission enforcement. Current
+installed CLI 1.2.14 help confirms text/stream-json, conversation continuation and explicit permission
+flags without paid inference. Reuse declared capability/continuation mechanisms, not that launch
+policy or another daemon/session authority. The private NewMax proxy is a separately inspected
+mechanism, not a universal native-harness recommendation.
+
+For non-code results, the current ZCode gap is between existing `ToolPart.state.attachments` and
+V4 output/hydration, not absence of format readers. Cindy `generatedFiles.ts:304` and
+`MessageStream.tsx:1850` derive cards from persisted results; its new-file-only filter would miss
+editing an existing document. Minara `workbench-preview.js:173–189` binds completed output to the
+Session and exact exposed file; generated rows remain read-only. NewMax renderer
+`MessageFileCards:26515` and `FilePreviewComponent:206693` distinguish file types and preview/edit
+targets, but failed existence checks and rendered UI are separate evidence. Fleet reuses its
+Session/artifact owner and format-aware preview, preserving code review and precise tool-result
+read identity. Official [Codex file review guidance](https://learn.chatgpt.com/docs/reference/troubleshooting),
+[Codex artifact previews](https://learn.chatgpt.com/docs/changelog),
+[Claude artifacts](https://support.claude.com/en/articles/17153992-what-are-artifacts-and-how-do-i-use-them)
+and [Cursor generation](https://prod.cursor.com/help/ai-features/agent) corroborate distinct review,
+preview and result surfaces; none establishes native Office editing or media entitlement in Fleet.
+
+The reproducible candidate `scripts/measure-context-projection.mts` captures a fixed fresh
+AgentRuntime/Pi/SQLite fixture with scripted inference, excluding synthetic Probe and local-only
+tool contracts. It currently reports 16 tools, 6,542 system-content characters, 27,322 projected
+tool-array JSON characters and 34,235 `{messages,tools}` characters. The same fixture restricted
+to Read/Glob/Grep reports 3 tools and 12,288 envelope characters. This is not a token count,
+final vendor wire, accepted-outcome test or a like-for-like reduction from the older fixture.
+The fixture disables optional memory/title/workflow; model-side lightness is still an open measured
+delivery requirement, not established by the SDK choice or this read-only profile.
+
+The owner-supplied audits are hypotheses; the following source comparisons resolve their material
+claims without importing another Agent's instructions or declaring complete-product delivery.
+
+| Recommendation | Verified implementation and decision |
+|---|---|
+| Remove the old ZCode execution alternative | Candidate `core/runtime/methods/turn-loop.ts` now dispatches to Pi or an explicitly admitted native executor. The production legacy `agentExecutor`/environment selector is retired. The Host still owns canonical admission, permissions, history and receipts; one turn has one executor. |
+| Replace Host preparation with Pi defaults to make models lighter | Actual desktop AgentRuntime/Pi scripted inference measured 7,563 system-prompt characters and 28,281 tool-schema characters across 18 tools, including a synthetic test Probe. The audit's 38 KB figure was source-file size, not a request. The context tax is real and still needs task-specific outcome measurement; Craft v0.14.0 `pi-agent-server/src/index.ts` also overrides Pi's prompt and wraps Host tools. Retain the proven Host boundaries while removing unavailable tools and developing scoped capability loading, rather than claiming the SDK name makes a model smarter. |
+| Add subscription failover | Already implemented in `packages/services/src/model-provider/subscriptionRecovery.ts`, alongside API-key `credential-failover.ts`: identity/model-scoped health, bounded attempts, cooldown/reset facts and no uncertain-success replay. Improve a reproduced gap; do not introduce CLIProxyAPI as a duplicate owner. |
+| Pi images can replace every generator | Released Pi 0.99.2 `providers/images/register-builtins.js` registers only OpenRouter Images; `images-api-registry` is an extension seam. Codex `ext/image-generation/src/{tool,backend}.rs` separates the Skill workflow from authorized backend execution. This supports retaining Fleet's shared media port rather than replacing every generator with that registry. Current API image/edit/video receipt coverage and remaining subscription/general-Job boundaries are owned by [Media](modules/media.md#candidate-generation-and-recovery-contract). |
+| Claude should first use direct Pi OAuth | Current official-native SDK route owns login credentials and private continuation, with Host tool permissions and durable receipts. Its matching bundled binary, resume/stop and rejected Console/API authentication have local integration proof. Returning to third-party Claude token handling would discard that verified boundary; no demonstrated improvement supports it. |
+| Runtime pricing sync is better than a frozen catalog | cc-switch `src/lib/modelsDevAutoSync.ts` and CodeBurn acquisition/cache paths informed the implemented bounded runtime refresh and offline last-good/bundled fallback. Public prices remain estimates and cannot establish actual invoices. [Context](modules/context.md#subscription-allowance-acquisition-and-display) owns the current acquisition, coverage and remaining subscription-value comparison boundary. |
+| Add page assistance, UI plugins and project suites | Craft `EditPopover.tsx`, Cindy `plugin-protocol/src/manifest.ts` and its registered right-side panels supply mechanisms. The candidate's first Model Settings assistant uses the version-checked non-secret Provider operation and normal Session/permission path; other pages and the full native UI/plugin lifecycle remain separate delivery gaps. [Agent core](modules/agent-core.md#context-menu-assistance-source-backed-landing-boundary) and [Components](modules/components.md) own those boundaries. |
+| Replace all storage with experimental Pi durable/Chord | The earlier [whole-product comparison](#kernel-choice-against-fleets-complete-product) already tested their commit/queue boundaries. Their shared-document mechanisms remain valuable, but replacement requires equivalent account/input binding, permission, recovery and native-editor proofs. Difficulty or workload is not the rejection criterion. |
+
+The project-membership correction now queries the existing local TaskIndexRepo, so old Projects no
+longer disappear from cost attribution after the recent-ten preference rotates. No usage rows or
+user Project records were migrated. Native Claude catalog projection now preserves the SDK's
+reported Fast support instead of dropping it. Source reconstruction gates cover the actual active
+candidate, and independent archive restoration checks supplement the patch replay.
+
+
+## Combined composer and first page operation proof
+
+The current correction additionally compares native Grok Build `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`:
+`crates/codegen/xai-grok-shell/src/remote/client.rs` reads scalar/default and explicit window menus;
+`agent/config.rs::context_window_choices` retains/prepends the default and deduplicates choices;
+`session/acp_session_impl/model_switch.rs` persists selection and changes sampling/compaction budgets.
+Its sampler does not send a guessed context-window parameter. Fleet reuses those semantics in its
+existing Provider/ModelSelection owners. Local catalog, write-failure, SQLite restart, backup-account
+and actual styled-renderer cases verify the path; the built review's synthetic 256K/500K choice
+updates the original ring before inference. Real Grok entitlement is separate evidence.
+
+For automatic public pricing, cc-switch `f678f7c539c90ed0e43872680b7f7162db5d0ef2`
+`src/lib/modelsDevAutoSync.ts` coalesces startup sync and uses a six-hour interval. CodeBurn
+`986d72ce1efbfaf40b3c9d4050d9ecdbc24be986` `src/models.ts` keeps a dated disk cache, bundled fallback,
+long-context rates and pricing-generation identity. Fleet admits bounded refresh/cache into its
+existing ledger read, preserving frozen request amounts instead of importing another usage store.
+The real anonymous models.dev read returned 215 providers/7,722 prices with source hash
+`902fd888080a` on 2026-10-01; this is public-directory acquisition, not paid inference. Fixtures
+prove coalescing, backoff, corruption/write failures, restart, read-only repricing and duplicate receipts.
+[Official GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) supplies its API
+rates and >272K threshold; [ChatGPT pricing](https://learn.chatgpt.com/docs/pricing) separately supplies
+purchased-credit rates. [Speed](https://learn.chatgpt.com/docs/agent-configuration/speed) distinguishes
+1.5x generation speed for older models from 2.5x included allowance and 2x purchased-credit billing.
+These do not establish a universal Fast multiplier or an actual subscription invoice.
+
+
+OV-074 uses the owner's Codex desktop screenshots as the interaction reference: one model/effort
+entry, independent Fast, and Brain-only collapse at insufficient width. The public Codex checkout
+`94d642d8b40e45e2e544770f0d1f28df9a717f06` supplies native effort ordering/advanced-option and
+request semantics, not the proprietary desktop component. Desktop automation of Codex was refused
+by the available UI tool; no private component source is claimed. Candidate `ModelConfigSelect`
+retains its original provider/account submenus, locks, footer actions and focus restoration;
+`ComposerModelControl` contributes exact effort rows and a small provider-specific Fast action to
+that menu. `useComposerToolbarFit` remains the only fit owner. Standalone automation controls are
+preserved. OV-075 supersedes the expanded root effort list with the owner's compact four-row
+reference: Fast uses the existing Switch and Effort/Model open the original menu primitives. The
+owner’s follow-up hides Context for fixed-capacity models; only the explicit Grok menu and its
+executable Host budget now establish context choices. Confirmed model capacity is available before first inference in the
+original Token ring, with explicitly unmeasured occupancy. The composer has no Settings footer; one provider's Model row
+opens its model list directly. Closed menus do not materialize the model rows. Updated fixtures
+exercise keyboard submenu entry, exact model/effort/Fast callbacks, the visible switch thumb,
+hidden fixed-capacity selectors, removed navigation and Brain collapse in both languages/themes.
+Separate actual renderer cases cover capacity before first inference, unknown usage and changed
+model capacity without leaking the previous reading. Renderer fixtures verify 560/150px, both languages/themes, one trigger, compact Brain,
+no mount/resize writes and separate effort/Fast callbacks. The actual built composer also verified
+independent selection and focus return; the owner still judges the interaction/look.
+
+The page assistant reuses Craft's centralized contextual entry and normal Session path, with the
+existing ZCode Popover/SessionPane and Provider writer. Built local loopback checks exercised exact
+model right-click, retained target Session after restart, read-only context, one-change permission,
+and a committed toggle updating the original page. The observed permission receipt records allowed
+versus denied outcomes; the first overly permissive capability declaration was replaced by the
+existing always-ask/no-always-allow policy. Its new localized tool summary replaces the generic raw
+JSON fallback, using the same timeline/permission rendering path. Pi/SQLite tests additionally reject
+invented registered tools outside the page scope, stale human writes and deleted targets. No live
+provider content or credential was sent; synthetic inference is distinct from live model quality.
+
+The first implementation exposes only model-enabled state. It does not implement every page's
+operations, price-correction tools, secure conversational credential entry or plugin/UI lifecycle.
+Those requirements retain their owning contracts and execution order rather than being counted as
+complete by this single proof.

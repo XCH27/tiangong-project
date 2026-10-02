@@ -1,0 +1,3551 @@
+diff --git a/apps/zcode-cli/docs/fleet-local-startup.md b/apps/zcode-cli/docs/fleet-local-startup.md
+index 81eac7d..287e982 100644
+--- a/apps/zcode-cli/docs/fleet-local-startup.md
++++ b/apps/zcode-cli/docs/fleet-local-startup.md
+@@ -1,4 +1,4 @@
+-# Fleet local startup and optional GitHub identity
++# Fleet local startup and local profile
+ 
+ Owner-directed correction: the workbench starts without a ZCode account, occupation questionnaire,
+ subscription purchase or cloud configuration gate. The manual preference guide keeps useful local
+@@ -11,39 +11,72 @@ separate: a user-configured Z.ai/BigModel API key remains a normal optional prov
+ ZCode cloud catalog replaces the bundled Fleet templates. Cloud-only functions without a local
+ replacement are unavailable, not mocked as successful.
+ 
+-GitHub identity uses the existing Git service and GitHub CLI credential owner (OpenChamber's CLI
+-integration is the reference). The footer opens an account menu; explicit login starts `gh auth
+-login --web`, presents its device code and reports completion. Account switching/logout operates
+-on the selected github.com CLI account, clearly labelled. No copied third-party OAuth client ID,
+-new token database, or GitHub requirement for offline work. GitHub repository identity does not
+-activate a Copilot subscription; that is a separate model connection.
+-
+-```mermaid
+-sequenceDiagram
+-  participant UI as Account menu
+-  participant Host as Existing Git service
+-  participant GH as GitHub CLI / OS credential store
+-  UI->>Host: user opens menu / requests login
+-  Host->>GH: status / auth login --web
+-  GH-->>UI: verification code and status through Host
+-  UI->>Host: switch, cancel or disconnect selected account
+-  Host->>GH: matching CLI operation only
+-```
+-
+-Acceptance: fresh isolated startup reaches the workbench with no questionnaire or vendor login;
+-retired services make zero transport calls (including configured telemetry environments); existing
+-API model requests still work under injected fixtures; account operations use argument arrays,
+-never return credentials and handle missing CLI/cancel/failure. Actual GitHub authorization is an
+-owner action. Visual acceptance covers the original menu/settings patterns in both locales/themes.
+-
+-GitHub plugin boundary: the footer is optional repository identity, not a complete GitHub plugin.
+-OpenAI's public `openai/plugins` repository supplies plugin packaging examples; the installed Codex
+-GitHub bundle references an OpenAI-hosted connector plus CLI workflows, whose connector ID is not a
+-portable backend. `github/github-mcp-server` and `cli/cli` are the official reusable implementations.
+-A future Fleet GitHub package should expose selected tools and native UI contributions through the
+-existing plugin/permission host. Do not duplicate tools, copy connector IDs, or equate repository
+-authorization with Copilot model access. No GitHub MCP service was installed or activated here.
+-
+-Offline verification: `pnpm test:fleet-local` covers product-endpoint rejection, no telemetry identity
+-or state collection, local help configuration, account projection, missing CLI, cancellation and
+-late events, completion/failure and validated account arguments. It does not authorize a real account.
++## Local profile
++
++Use the owner's grey-circle/white-portrait default-avatar reference, packaged as a local SVG.
++The line-art Lucide `User` fallback does not match that reference. Keep the original ZCode
++32px sidebar Avatar and typography; both editor and sidebar use the same default asset.
++Settings logs record field names only, never the name or encoded avatar.
++
++The owner replaces the lower-left account entry with Cherry Studio's local-profile interaction.
++Click the existing avatar/name row to open a compact dialog with a name input and editable avatar.
++Changes save locally; there is no account, login, authorization status or developer configuration.
++Use ZCode's Avatar, Dialog, Input and menu primitives and retain its footer size/alignment.
++Cherry reference: `src/renderer/components/UserPopup.tsx` at `09d4ea5e`; omit its optional cloud
++account and emoji picker. Upload or reset is sufficient for the requested image replacement.
++
++The existing local/base Host `ISettingService` owns `localProfileName` and `localProfileAvatar`.
++The normal Settings write queue, schema, atomic persistence and UI notification remain the only
++write path. It must not select a remote Project's settings owner. Do not use authenticated `user`
++state, create another credential store or migrate/delete existing account credentials.
++
++Name edits retain raw input while typing; persist trimmed text up to 30 characters, including an
++empty name (localized User fallback). Decode a selected PNG/JPEG/WebP locally, center-crop and
++resize to 128 square pixels, persist a bounded PNG data URL; never fetch a URL or upload a photo.
++A failed read/decode/write leaves committed settings intact and reports an actionable error.
++Closing the editor invalidates unfinished image processing; an old image cannot replace a newer
++selection or a reset. Settings mutations already admitted to the owner complete normally.
++
++Language/interface mode remain in General settings, theme in Appearance, zoom in the native View
++menu and its existing shortcuts. Settings and remote-control footer buttons keep their owners.
++Remove the superseded, unconfigured native GitHub identity service/hook/menu, not just its text.
++Repository tools and Copilot authorization are independent and stay intact.
++
++ZCode's existing official GitHub plugin (github 0.1.2, verified archive SHA-256
++`7320f15886d83625ed8eec944a7a2ab09fe99d64a42131ccec427eeecfd769b6`) is a set of
++GitHub CLI workflow skills, not an OAuth account provider or MCP server. Preserve its existing
++marketplace/lifecycle; do not install a second tool provider for the same tasks. Its CLI authorization
++belongs to that plugin; the local profile does not grant repository access.
++
++Help opens packaged Markdown through the existing document preview. The same Markdown ships with
++the existing guide plugin lifecycle; the guide is reference material, not permission to make changes.
++Help is a reader, not a generic configuration-chat launcher. The rejected global Agent shortcut
++and its event intent are removed. Contextual assistance belongs to each feature page, with the
++exact target, scope, relevant documentation and committed-state refresh. Its conversation container
++is the owner-confirmed Craft-style small conversation; do not substitute a guide mention for that behavior. Vendor
++community/feedback links have no Fleet equivalent and are removed. Help contains exactly Help
++documentation, Resource Manager and Check for Updates. Export logs/About remain native menu
++actions. The update command reports unavailable before network access until a Fleet feed exists.
++
++## Preserve new-task controls without hosted services
++
++Do not conflate removing a vendor service with removing its useful feature. Keep the original
++suggestion-chip components and handlers. Replace the empty Client Scenes stub with a bundled
++`draft-suggestion` scene: weekly summary, error fixing, presentation creation and scheduled tasks. Keep the first three upstream labels/icons/order;
++replace the vendor-only idle-compute offer with the existing scheduled-task entry. Prompts remain editable drafts, never auto-send. Presentation creation
++resolves the existing bundled presentations plugin through normal install/enable confirmation;
++Scheduled tasks use the existing Automations navigation action. Original idle tasks require
++vendor Coding Plan eligibility, rollout and take-number quota (`AutomationsSection`); do not
++mislabel a navigation fallback to scheduled tasks as working idle computation. Source comparison: original
++`draftSuggestedPromptItems.ts`, `ConversationDraftSuggestedPromptsContainer.tsx` and the public
++Client Scenes response; adapt promotional/sample prompts to neutral local task starters.
++
++Keep the original context ring and hover-card even when provider quota is absent. A new conversation
++has no measured usage: show an explicit unmeasured state, not a fabricated token count or percentage.
++Measured Session snapshot context size/usage/cache/breakdown retain their existing display path.
++This does not estimate prompts, infer model capacity, or restore vendor purchase/quota endpoints.
++
++Acceptance: `pnpm test:fleet-local` verifies retired-service isolation, bounded local-profile
++validation/persistence and guide packaging. Exercise edit/close/reopen/restart, upload/reset,
++invalid image, Chinese input, offline use and unchanged settings/navigation. Owner visual acceptance
++is pending. This does not complete contextual Agent assistance or marketplace independence.
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index a267361..6db9655 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -20,6 +20,21 @@ the pinned Pi adapter catalog, not a live account entitlement response. Catalog
+ not proof of successful inference or entitlement; a model's connection test is a separate action.
+ 
+ UI retains upstream ZCode provider picker, inline editor, model list and feedback patterns.
++Model discovery sits beside Add Model in the existing model-list header. Its selection dialog
++uses ZCode's existing Dialog/Input/Checkbox/Button primitives; Cherry Studio's
++`ProviderModelPullReconcile`, `ModelListSyncDrawer` and `ModelListSyncContent` supply the
++fetch → search → select missing models → add interaction. It does not delete missing models,
++overwrite overrides or introduce another provider store. The address and API format remain above
++credentials, as the owner requested.
++
++Discovery first awaits the inline editor's current save, including an already in-flight blur
++save. A failed save prevents the request. Editing endpoint, format or credentials, switching
++providers or closing the dialog invalidates the operation's result. Imports re-read the existing
++provider snapshot, skip existing IDs, preserve completed additions on partial failure and leave
++remaining selections available for retry. No model request is made by opening this dialog.
++Official catalog display names are shown alongside exact IDs; the existing model identity remains
++the ID. Unknown capabilities stay unknown and use the existing metadata editor.
++
+ Subscription login occupies the API-key section; no extra settings route or app login. The services and adapter packages pin `@earendil-works/pi-ai@0.87.1`; this adds only model transport
+ and OAuth drivers, not the Pi Agent execution loop, tools, Session or permission storage. Native Pi
+ stream events are converted at the existing model seam. Text, images, tools, reasoning replay and
+@@ -28,3 +43,29 @@ fail explicitly. Inference uses the existing proxy fetch; OAuth driver networkin
+ Live paid inference, actual subscription authorization and owner acceptance remain separate checks.
+ 
+ Kimi Code membership uses its official third-party API-key endpoint, not a copied official-client OAuth identity.
++
++## Multiple credentials — requested extension, not implemented
++
++The owner confirmed automatic switching only within the same service and exact model. Keep the
++address/protocol first, with multiple key or subscription-account rows below and an opt-in switch
++(default off, requires two eligible credentials). NewMax 1.1.18 supplies the account-list and
++failure-recovery comparison; its separate model-priority fallback is not part of this request.
++
++Extend the existing Provider facade, SubscriptionConnection owner, CredentialService and runtime
++request-auth seam. Today API access has one key and a subscription connection has one OAuth
++credential. A button alone cannot change that contract. Preserve old records and do not migrate
++user secrets as part of a catalog/UI correction. Credentials, pending authorization flows and
++refresh locks stay host-owned; UI receives account metadata, not refresh/access tokens.
++
++Every admitted attempt must retain provider, endpoint, protocol and model; only its eligible
++credential can change. Distinguish authentication failure from model entitlement, rate limiting,
++policy rejection and transport uncertainty. Never turn a generic 403 into unconditional rotation.
++Respect cancellation and Retry-After, cap total attempts, and do not rotate/replay after output or
++an external tool action. Account switching/removal invalidates pending catalogs and refreshes;
++concurrent windows cannot resurrect deleted accounts. API billing and subscription allowance are
++separate connection modes, not automatic fallbacks for each other.
++
++NewMax's Antigravity path has its own OAuth/account/catalog and request-conversion adapter. Its
++presence is not evidence of supported third-party consumer access: Google's current Antigravity
++terms explicitly restrict that OAuth usage. The documented API-key/enterprise SDK is a distinct
++Agent harness. Neither an Antigravity subscription preset nor an additional executor is added here.
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/official-plugin-definitions.ts b/apps/zcode-cli/packages/bootstrap/src/app/official-plugin-definitions.ts
+index 7daefa3..72b0b07 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/official-plugin-definitions.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/official-plugin-definitions.ts
+@@ -77,13 +77,11 @@ const OFFICIAL_CUA_REQUIRED_SEED_PATHS = [
+   "skills/computer-use/SKILL.md",
+ ] as const;
+ 
+-// zcode-guide 原本没有 requiredSeedPaths，seed 丢文件时会静默装出一个
+-// 没有 /workflow 命令的插件——症状是命令不存在，没有任何诊断。commands/ 与技能正文都钉住。
++// UI 与 Agent 使用同一份打包指南，缺少任一语言或技能入口都不能 seed。
+ const OFFICIAL_ZCODE_GUIDE_REQUIRED_SEED_PATHS = [
+-  "commands/workflow.md",
+-  "skills/dynamic-workflows/SKILL.md",
+-  "skills/dynamic-workflows/examples.md",
+-  "skills/dynamic-workflows/patterns.md",
++  "docs/guide.en.md",
++  "docs/guide.zh-CN.md",
++  "skills/fleet-configuration-guide/SKILL.md",
+ ] as const;
+ 
+ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = [
+@@ -293,35 +291,24 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] =
+     version: "0.1.0",
+   },
+   {
+-    // 纯内容型插件（只有 commands + skills，无 MCP / 无系统依赖），默认启用，
+-    // 让用户/agent 开箱即用地拿到 ZCode 配置指南、自诊断技能与 dynamic workflow 编写指南。
+     defaultEnabled: true,
+     listing: {
+-      author: ZAI_AUTHOR,
++      author: { name: "Fleet" },
+       category: "utilities",
+-      displayName: "ZCode Guide",
+-      displayName_i18n: { "zh-CN": "ZCode 使用指南" },
+-      icon: `${OFFICIAL_PLUGIN_ASSETS_BASE_URL}/zcode-guide/icon.png`,
+-      description_i18n: {
+-        "zh-CN": "提供 ZCode 配置指南与插件、技能、MCP、命令和钩子诊断。",
+-      },
+-      examplePrompts: [
+-        "How do I configure MCP servers in ZCode?",
+-        "Diagnose my current ZCode setup",
+-      ],
+-      examplePrompts_i18n: {
+-        "zh-CN": ["ZCode 里怎么配置 MCP 服务器？", "帮我诊断当前的 ZCode 配置"],
+-      },
++      displayName: "Fleet Guide",
++      displayName_i18n: { "zh-CN": "Fleet 使用指南" },
++      description_i18n: { "zh-CN": "离线使用指南，与 Agent 共用模型、权限、插件和 GitHub 配置说明。" },
++      examplePrompts: ["Help me configure Fleet"],
++      examplePrompts_i18n: { "zh-CN": ["帮我检查 Fleet 配置"] },
+     },
++    // 保留原有插件 identity、禁用和卸载记录。
+     name: "zcode-guide",
+     requiredSeedPaths: OFFICIAL_ZCODE_GUIDE_REQUIRED_SEED_PATHS,
+     rootCandidates: [
+-      "packages/zcode-guide-plugin",
+-      "../zcode-guide-plugin",
+-      "../../zcode-guide-plugin",
+-      "../../../zcode-guide-plugin",
++      "packages/zcode-guide-plugin", "../zcode-guide-plugin",
++      "../../zcode-guide-plugin", "../../../zcode-guide-plugin",
+     ],
+-    version: "0.2.0",
++    version: "0.4.3",
+   },
+   {
+     // 产品决策：电脑控制回退为默认关闭，需用户在设置页显式开启。
+diff --git a/apps/zcode-cli/packages/cli/scripts/sea-official-plugin-assets.mjs b/apps/zcode-cli/packages/cli/scripts/sea-official-plugin-assets.mjs
+index 8669eea..e2b1492 100644
+--- a/apps/zcode-cli/packages/cli/scripts/sea-official-plugin-assets.mjs
++++ b/apps/zcode-cli/packages/cli/scripts/sea-official-plugin-assets.mjs
+@@ -18,6 +18,12 @@ const browserUseRequiredRuntimePaths = [
+ ];
+ 
+ export const officialSeaPlugins = [
++  {
++    marketplace: "zcode-plugins-official", name: "zcode-guide",
++    requiresRuntime: false,
++    rootPath: join("packages", "zcode-guide-plugin"), version: "0.4.3",
++    requiredSeedPaths: ["docs/guide.en.md", "docs/guide.zh-CN.md", "skills/fleet-configuration-guide/SKILL.md"],
++  },
+   {
+     // node_repl 宿主：Browser Use 与 Computer Use 共用的运行时产物，自己不是面向用户的插件
+     // （无 skill、无市场 listing）。它必须始终随发布物嵌入，否则任一能力启用时都没有宿主可跑。
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/.zcode-plugin/plugin.json b/apps/zcode-cli/packages/zcode-guide-plugin/.zcode-plugin/plugin.json
+new file mode 100644
+index 0000000..954f708
+--- /dev/null
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/.zcode-plugin/plugin.json
+@@ -0,0 +1,8 @@
++{
++  "name": "zcode-guide",
++  "version": "0.4.3",
++  "description": "Fleet local configuration guide for users and agents.",
++  "author": { "name": "Fleet" },
++  "license": "Apache-2.0",
++  "skills": "skills"
++}
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/README.md b/apps/zcode-cli/packages/zcode-guide-plugin/README.md
+new file mode 100644
+index 0000000..350ca66
+--- /dev/null
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/README.md
+@@ -0,0 +1,10 @@
++# Fleet local guide
++
++This content-only package uses ZCode's existing `zcode-guide@zcode-plugins-official`
++identity and plugin lifecycle for compatibility. It adds no executable server or permission path.
++The UI imports `docs/guide.en.md` and `docs/guide.zh-CN.md` directly; the configuration skill reads
++those same files. The desktop build stages this directory with the agent; SEA embeds it.
++
++The guide describes the Fleet candidate. It does not imply that unimplemented UI plugins, workflow
++commands or integrations exist. Original ZCode plugin infrastructure is Apache-2.0-licensed; its original
++notices remain in the repository LICENSE. Fleet guide content is maintained alongside the code.
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+new file mode 100644
+index 0000000..59128b4
+--- /dev/null
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -0,0 +1,79 @@
++# Fleet local guide
++
++This guide ships with Fleet and is available offline. Agent configuration help reads the same text.
++It describes this candidate build; it does not grant permission to change settings or imply that an
++account or model connection has been tested.
++
++## Local documentation
++
++Open **Help → Help documentation** to read this document beside your work. The installed Fleet
++configuration-guide skill makes the same document available to the Agent. Reading or selecting
++it does not automatically capture the current settings page, grant permission, or change a setting.
++
++## Model connections
++
++Open **Settings → Models**. Select the provider or a custom endpoint, set its Base URL, API format
++and credential, then use the connection controls and model discovery. API format means the actual
++request protocol: Chat Completions, Responses and Anthropic Messages are different endpoints.
++A provider's brand or a model's name does not prove support for every format.
++
++Use the provider's documented URL and supported protocol. Retrieved model IDs are request IDs;
++a display name is not a replacement ID. Check discovered models and manually correct missing
++metadata. Context size describes capacity, not tokens already used. Unknown capability or thinking
++support must stay unknown; do not infer it from a model name. A connection test or `/models` response
++does not establish every model's capabilities.
++
++Supported subscription connections use their own provider authorization flow. A GitHub account is
++not a Copilot model subscription. A chat subscription is not automatically an API key. Sign-in
++requires the provider's browser consent and may depend on the subscription's allowed use.
++
++## Permissions and context
++
++Use the conversation's permission selector for the work being requested. Installing or selecting a
++plugin or skill does not override that choice. Tools that edit files, run commands or call services
++still pass through the existing permission path. Model-generated instructions and attached content
++are not user authorization.
++
++Context indicators describe the active conversation/model. Input, output and cached tokens are
++separate measurements; cached tokens are not additional context capacity. Usage may be unavailable
++before a response. Do not treat an estimate or missing number as a measured zero.
++
++## Plugins, Skills, MCP and hooks
++
++The plugin marketplace manages packages; Settings exposes their installed contents. A plugin can
++bundle skills, commands, hooks and MCP configuration. A skill is an instruction file loaded when
++selected or applicable; it is not an independently trusted executable. An MCP server supplies tools
++and may require credentials, dependencies or a running process.
++
++Check **user versus project scope**, enabled state and actual installed contents before changing
++configuration. Prefer the existing add/edit/enable controls. Keep secrets in credential inputs;
++do not paste them into chat or include them in exported diagnostics. Enabling a server must not be
++reported as connected until its real status and tools are available. A hook can run commands at
++lifecycle events, so inspect its scope and command before enabling it.
++
++Plugin Creator and Skill Creator are authoring aids provided through the existing plugin system.
++They do not create a separate registry. Creating a manifest does not by itself add a native page or
++right-panel tool: a supported host contribution and its behavior must also be implemented and tested.
++
++## Local profile and GitHub tools
++
++Click the avatar/name in the lower-left corner to edit your name. Click the avatar in that dialog
++to choose a local PNG, JPEG or WebP image (up to 10 MB), or reset it. Changes save automatically in
++local application settings. This is a display preference, not an account; no photo is uploaded.
++Language/interface mode remain in General settings, theme in Appearance, zoom in View/shortcuts.
++
++ZCode's existing GitHub marketplace plugin is a GitHub CLI workflow skill package. Its repository,
++PR, issue and release operations need that plugin's `gh` authorization. The local profile grants no
++repository or Copilot access. Do not duplicate these tools with a second MCP installation merely
++for account display. Publishing, pushing and secrets changes require normal user authorization.
++
++## Local diagnostics
++
++Help contains documentation, Resource Manager and Check for Updates. Until a Fleet update feed
++is configured, checking reports unavailable without requesting a ZCode update. Log export and About
++remain native menu actions. Review logs before sharing; export does not submit them.
++Fleet does not use the retired ZCode account, survey, commercial upgrade or telemetry flows.
++
++If something fails, include the action, scope, visible error and version. Do not include API keys,
++OAuth tokens or unrelated conversation data. The Agent should distinguish a missing configuration,
++a denied permission, unavailable network and unsupported functionality instead of claiming success.
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+new file mode 100644
+index 0000000..4bfbc2e
+--- /dev/null
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -0,0 +1,65 @@
++# Fleet 本地使用指南
++
++本指南随软件打包，可离线阅读。Agent 帮助设置时读取同一份内容。本文描述当前候选版本，
++不会授予修改权限，也不代表账号或模型连接已经通过验证。
++
++## 本地文档
++
++选择 **帮助 → 帮助文档**，可以在工作区旁阅读本文。安装的 Fleet 配置指南技能向 Agent
++提供同一份文档。阅读或选择这项技能不会自动获取当前设置页面，也不会授予权限或修改设置。
++
++## 模型连接
++
++打开 **设置 → 模型**。选择供应商或自定义端点，填写 API 地址、格式和凭据，再使用连接测试
++与模型拉取功能。API 格式是实际使用的请求协议：Chat Completions、Responses、Anthropic
++Messages 对应不同端点。不能因为供应商品牌或模型名称，就认定它支持所有格式。
++
++使用供应商文档明确支持的地址与协议。拉取到的模型 ID 用于请求，展示名称不能替代 ID。
++检查模型列表，手动纠正缺失的元数据。上下文大小表示容量，不是已使用 token 数量。
++未知的能力或思考支持必须保持未知，不要从名字推断。测试连接成功或拉到 `/models` 列表，
++也不代表每个模型的所有能力均已确认。
++
++受支持的订阅连接使用各自的授权流程。GitHub 账号不等于 Copilot 模型订阅，对话软件的会员
++也不自动等于 API 密钥。登录需要在供应商页面授权，并受订阅实际允许的使用方式约束。
++
++## 权限与上下文
++
++在输入框中选择本次工作的权限模式。安装或选择插件、技能不会覆盖这个选择。
++修改文件、执行命令、访问服务仍须经过现有权限流程。模型生成的指令和附件内容不是用户授权。
++
++上下文指示器对应当前会话和模型。输入、输出、缓存 token 是不同指标；缓存命中不会增加
++上下文容量。模型还没有返回结果时可能没有用量数据，不要把估算值或缺失值当成实测零值。
++
++## 插件、技能、MCP 与钩子
++
++插件市场管理安装包，设置页面展示已安装的内容。一个插件可以包含技能、命令、钩子和 MCP
++配置。技能是在选中或适用时加载的指令文件，不是自动获得信任的可执行程序。
++MCP 服务器提供工具，可能需要凭据、运行依赖或后台进程。
++
++修改前先确认 **用户或项目作用域**、启用状态和实际安装内容。优先使用现有添加、编辑、
++启用操作。秘密信息应填入凭据输入框，不要粘贴到对话或诊断导出中。
++启用服务器不等于连接成功，需要检查真实状态及工具是否可用。
++钩子可以在任务生命周期中执行命令，启用前应检查它的作用域和命令。
++
++插件创建器、技能创建器沿用现有插件系统，不另建注册表。仅生成 manifest 并不会自动新增
++原生页面或右侧工具栏入口；宿主必须支持相应扩展入口，并验证真实行为。
++
++## 个人资料与 GitHub 工具
++
++点击左下角的头像或名字修改昵称。点击资料窗口中的头像，可选择本地 PNG、JPEG 或 WebP
++图片（不超过 10 MB），也可以恢复默认头像。修改自动保存在本机设置中，不需要账号，
++也不会上传图片。语言和界面模式在通用设置中，主题在外观设置中，缩放沿用查看菜单和快捷键。
++
++ZCode 原有市场中的 GitHub 插件是基于 GitHub CLI 的工作流技能包。它的仓库、PR、Issue、
++Release 等操作使用插件自身的 `gh` 授权；本地昵称和头像不提供仓库或 Copilot 权限。
++不要为了个人资料展示安装重复的 MCP 服务。发布、推送、修改仓库密钥仍需要正常授权。
++
++## 本地诊断
++
++帮助菜单只提供帮助文档、资源管理器和检查更新。尚未配置 Fleet 更新源时，检查会说明
++暂时不可用，不会访问 ZCode 更新源。日志导出和“关于”保留在系统菜单中。分享前检查日志；
++导出不会自动上报。Fleet 不使用旧 ZCode 账号、问卷、
++商业升级套餐或遥测流程。
++
++出现问题时，记录具体操作、作用域、可见错误和版本，不要包含 API 密钥、OAuth 令牌或
++无关对话数据。Agent 应区分配置缺失、权限拒绝、网络不可用和功能不支持，不应假报成功。
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/skills/fleet-configuration-guide/SKILL.md b/apps/zcode-cli/packages/zcode-guide-plugin/skills/fleet-configuration-guide/SKILL.md
+new file mode 100644
+index 0000000..7977e44
+--- /dev/null
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/skills/fleet-configuration-guide/SKILL.md
+@@ -0,0 +1,28 @@
++---
++name: fleet-configuration-guide
++description: Read the packaged Fleet guide to explain or help configure model connections, permissions, plugins, Skills, MCP and GitHub. Use only when the user requests help with Fleet.
++---
++
++# Fleet configuration guide
++
++Read `../../docs/guide.en.md` (or `../../docs/guide.zh-CN.md` for Chinese). These are the same
++local documents the user sees in Help. Do not use a hosted ZCode guide as Fleet's authority.
++
++1. Establish the user's goal and the current user/project scope. Inspect the installed version,
++   existing settings and available configuration tools before proposing a change.
++2. Never guess a config path from a screenshot or from the old product name. Resolve the current
++   profile and the existing service/config schema. Preserve unknown keys and unrelated settings.
++3. Explain relevant choices in the user's language. A question is not permission to edit.
++   For an authorized edit, use the existing setting/plugin/MCP operation where available.
++   Do not create another credential store, Session database, plugin registry or permission route.
++4. Never request tokens in chat, print credentials, read the encrypted credential store directly,
++   copy another product's OAuth Client ID or bypass provider login consent.
++5. Follow the user's permission mode. Plugins and this guide grant no additional permission.
++   Do not enable a plugin, install dependencies, start external services, make paid model requests
++   or contact a remote service merely to explain a setting.
++6. Validate the resulting config and read back the affected public settings. Report unsupported
++   actions honestly. If an operation is not exposed, explain the limitation before suggesting a
++   scoped file edit. Do not invent tool names or successful connections.
++
++This skill is loaded through the ordinary plugin/skill mechanism. Disabling or uninstalling the
++plugin must remain effective. Help may still display packaged reference documents offline.
+diff --git a/packages/desktop/scripts/stage-agent-bundle.mjs b/packages/desktop/scripts/stage-agent-bundle.mjs
+index 77f5b53..841113f 100644
+--- a/packages/desktop/scripts/stage-agent-bundle.mjs
++++ b/packages/desktop/scripts/stage-agent-bundle.mjs
+@@ -8,7 +8,7 @@
+ // bundled-agents/，没有 cli/dist/。于是 dev 一直跑着上一次打包时留下的那份 ——
+ // 实测陈旧 3 天，任何 agent CLI 侧改动在 dev 里静默不生效，排查时会把「改动没生效」
+ // 误判成「代码没起作用」。两边共用这一份，dev 与打包不可能再各自漂移。
+-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
++import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+ import { resolve } from "node:path";
+ 
+ export const AGENT_BUNDLE_SOURCE_RELATIVE = "apps/zcode-cli/packages/cli/dist/zcode.cjs";
+@@ -39,6 +39,9 @@ export function stageAgentBundle({ repoRoot, platformKey, log = console.log }) {
+   rmSync(glmDir, { recursive: true, force: true });
+   mkdirSync(glmDir, { recursive: true });
+   copyFileSync(cliBundlePath, stagedBundlePath);
++  // 与 CLI filesystem seed 的 packages/<plugin> 路径一致；dev 与发行共用。
++  cpSync(resolve(repoRoot, "apps/zcode-cli/packages/zcode-guide-plugin"),
++    resolve(glmDir, "packages/zcode-guide-plugin"), { recursive: true });
+   const meta = {
+     runtime: "electron-node",
+     entry: "zcode.cjs",
+diff --git a/packages/desktop/src/main/about.ts b/packages/desktop/src/main/about.ts
+index 8553c5f..545c8ee 100644
+--- a/packages/desktop/src/main/about.ts
++++ b/packages/desktop/src/main/about.ts
+@@ -52,7 +52,7 @@ interface AboutSnapshotOptions {
+   };
+ }
+ 
+-const ABOUT_APPLICATION_NAME = "ZCode Desktop App";
++const ABOUT_APPLICATION_NAME = "Fleet";
+ // 自定义 About 内容本体是 256x280；原生窗口如果同尺寸会让内容贴满透明窗口边界。
+ // 这里给 BrowserWindow 额外留出背景呼吸空间，避免正式 About 看起来比 demo 更局促。
+ const ABOUT_WINDOW_WIDTH = 256;
+@@ -68,14 +68,14 @@ const ABOUT_MESSAGES: Record<
+   }
+ > = {
+   "zh-CN": {
+-    aboutTitle: "关于 ZCode",
++    aboutTitle: "关于 Fleet",
+     versionLabel: "版本",
+     okButtonLabel: "确定",
+     optimizedForAppleSilicon: "已针对 Apple Silicon 优化。",
+     copyright: (year) => `版权所有 © ${year} ZCode。`,
+   },
+   "en-US": {
+-    aboutTitle: "About ZCode",
++    aboutTitle: "About Fleet",
+     versionLabel: "version",
+     okButtonLabel: "OK",
+     optimizedForAppleSilicon: "Optimized for Apple Silicon.",
+diff --git a/packages/desktop/src/main/aboutWindow.ts b/packages/desktop/src/main/aboutWindow.ts
+index 2098593..14ab464 100644
+--- a/packages/desktop/src/main/aboutWindow.ts
++++ b/packages/desktop/src/main/aboutWindow.ts
+@@ -170,27 +170,6 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput):
+     <main class="about-window" aria-label="${escapeHtml(input.applicationName)} About Window">
+       <section class="about-card" role="dialog" aria-modal="true" aria-labelledby="about-title">
+         <div class="content">
+-          <div class="app-icon" aria-hidden="true">
+-            <svg
+-              xmlns="http://www.w3.org/2000/svg"
+-              width="118"
+-              height="100"
+-              fill="none"
+-              viewBox="0 0 256 218"
+-              class="app-logo"
+-              focusable="false"
+-            >
+-              <path
+-                fill="currentColor"
+-                d="M134.4 0.130152L116.48 25.6022C113.665 29.5699 109.054 32.0019 104.064 32.0019H6.3999V0C6.3999 0.130149 134.4 0.130152 134.4 0.130152Z"
+-              />
+-              <path fill="currentColor" d="M256 0.130127L102.401 217.732H0L153.599 0.130127H256Z" />
+-              <path
+-                fill="currentColor"
+-                d="M121.601 217.732L139.65 192.134C142.465 188.166 147.076 185.734 152.067 185.734H249.604V217.736H121.601V217.732Z"
+-              />
+-            </svg>
+-          </div>
+           <h1 id="about-title" class="title">
+             ${escapeHtml(input.applicationName)}<br />
+             ${escapeHtml(input.versionLabel)} ${escapeHtml(input.appVersion)}
+diff --git a/packages/desktop/src/main/autoUpdater.ts b/packages/desktop/src/main/autoUpdater.ts
+index f7b8078..4770d56 100644
+--- a/packages/desktop/src/main/autoUpdater.ts
++++ b/packages/desktop/src/main/autoUpdater.ts
+@@ -59,7 +59,7 @@ let autoUpdaterSettingService: SettingServiceLike | undefined;
+ // initAutoUpdater({ enabled: false }) 只清轮询并 return，electron-updater 实例保持未配置
+ // （占位 feed、autoDownload 默认值）。任何漏改成按身份判断的入口若仍调用手动检查，
+ // 都会对占位 feed 发真实请求。这里记住“本 flavor 已禁用”，让手动检查在模块内部 fail-closed。
+-let autoUpdaterDisabledForProductFlavor = false;
++let autoUpdaterDisabledForProductFlavor = true;
+ 
+ type SettingServiceLike = Pick<ISettingService, "get" | "update">;
+ 
+@@ -1849,17 +1849,17 @@ export function checkForUpdateMenuClick(originWindow?: BrowserWindow | null) {
+     return;
+   }
+ 
+-  if (!canUseAutoUpdaterInCurrentRuntime()) {
+-    logger.info("[auto-update] skip manual check: not packaged");
++  // 未配置更新器时先报告不可用，不能触发旧官方 feed，也不能冒充“已是最新”。
++  if (autoUpdaterDisabledForProductFlavor) {
++    logger.info("[auto-update] skip manual check: updater disabled");
+     targetWindow.webContents.send(PlatformChannels.UpdateCheckResult, {
+-      kind: "dev-skipped",
++      kind: "unavailable",
+     } satisfies UpdateCheckResultPayload);
+     return;
+   }
+ 
+-  if (autoUpdaterDisabledForProductFlavor) {
+-    // 入口本应已按产品身份隐藏；这里是最后一道闸，不让未初始化的 updater 实例向占位 feed 发请求。
+-    logger.info("[auto-update] skip manual check: updater disabled for this product flavor");
++  if (!canUseAutoUpdaterInCurrentRuntime()) {
++    logger.info("[auto-update] skip manual check: not packaged");
+     targetWindow.webContents.send(PlatformChannels.UpdateCheckResult, {
+       kind: "dev-skipped",
+     } satisfies UpdateCheckResultPayload);
+diff --git a/packages/desktop/src/main/desktopApplicationMenu.ts b/packages/desktop/src/main/desktopApplicationMenu.ts
+index df3efd5..ed62736 100644
+--- a/packages/desktop/src/main/desktopApplicationMenu.ts
++++ b/packages/desktop/src/main/desktopApplicationMenu.ts
+@@ -333,10 +333,6 @@ function buildApplicationMenuTemplate(options: {
+           click: () => void options.executeDesktopCommand(DesktopCommandIds.OpenResourceManager),
+         },
+         { type: "separator" as const },
+-        {
+-          label: getLabel(desktopMenuMessageIds.helpFeedback),
+-          click: () => void options.executeDesktopCommand(DesktopCommandIds.OpenFeedback),
+-        },
+         {
+           label: getLabel(desktopMenuMessageIds.helpExportLogs),
+           click: () => void options.executeDesktopCommand(DesktopCommandIds.ExportLogs),
+diff --git a/packages/desktop/src/main/desktopCommandHandlers.ts b/packages/desktop/src/main/desktopCommandHandlers.ts
+index e9c182a..b58c44c 100644
+--- a/packages/desktop/src/main/desktopCommandHandlers.ts
++++ b/packages/desktop/src/main/desktopCommandHandlers.ts
+@@ -12,7 +12,6 @@ import {
+   type Locale,
+   resolveRuntimeZCodeEndpointOrigin,
+   ZCODE_ENV,
+-  ZCODE_PRODUCT_FLAVOR,
+   buildZCodeEndpointUrls,
+   getCommunityUrlFromConfigs,
+   getFeedbackUrlFromConfig,
+@@ -589,12 +588,7 @@ export async function executeDesktopCommand(options: {
+       );
+       return;
+     case DesktopCommandIds.CheckForUpdates:
+-      // 按产品身份而不是后端环境放行：生产后端的 Preview 同样没有更新器。
+-      if (ZCODE_PRODUCT_FLAVOR === "production") {
+-        checkForUpdateMenuClick(targetWindow);
+-      } else {
+-        options.logger.info("[auto-update] Preview 已禁用手动更新检查");
+-      }
++      checkForUpdateMenuClick(targetWindow);
+       return;
+     case DesktopCommandIds.RelaunchApp:
+       await options.onRelaunchApp();
+diff --git a/packages/services/src/client-scenes/clientScenesService.ts b/packages/services/src/client-scenes/clientScenesService.ts
+index c5b3e5e..47d34c5 100644
+--- a/packages/services/src/client-scenes/clientScenesService.ts
++++ b/packages/services/src/client-scenes/clientScenesService.ts
+@@ -1,9 +1,84 @@
+ import type { ApiClient } from "@zcode/shared";
+-import type { IClientScenesService } from "./clientScenes.js";
++import type { ClientSceneConfig, IClientScenesService } from "./clientScenes.js";
++
++// 推荐入口属于本地草稿功能；退役云端接口不应同时删除原有入口。
++const LOCAL_DRAFT_SCENE: ClientSceneConfig = {
++  namespace: "fleet",
++  scene: "draft-suggestion",
++  options: {
++    plugins: {
++      id: "plugins",
++      type: "plugins",
++      contents: {},
++      items: [
++        {
++          id: "presentations",
++          type: "plugins",
++          contents: {
++            cn: "presentations@zcode-plugins-official",
++            en: "presentations@zcode-plugins-official",
++          },
++          labels: { cn: "演示文稿", en: "Presentations" },
++        },
++      ],
++    },
++    prompts: {
++      id: "prompts",
++      type: "prompts",
++      contents: {},
++      items: [
++        {
++          id: "weekly-summary",
++          type: "prompt",
++          img: "alarm-clock-check",
++          labels: { cn: "周报总结", en: "Weekly Summary" },
++          contents: {
++            cn: "帮我整理本周的工作进展、问题和下周计划。先确认需要参考哪些资料。",
++            en: "Help me summarize this week's progress, issues and next steps. First confirm which materials to use.",
++          },
++        },
++        {
++          id: "error-fix",
++          type: "prompt",
++          img: "bug",
++          labels: { cn: "报错修复", en: "Error Fix" },
++          contents: {
++            cn: "帮我分析报错原因并修复。先确认相关日志和复现步骤。",
++            en: "Help me diagnose and fix an error. First confirm the relevant logs and reproduction steps.",
++          },
++        },
++        {
++          id: "presentation",
++          type: "prompt",
++          img: "presentation",
++          defaults: { plugins: ["presentations"] },
++          labels: { cn: "PPT 制作", en: "PPT Creation" },
++          contents: {
++            cn: "帮我制作一份演示文稿。先确认主题、受众和需要参考的资料。",
++            en: "Help me create a presentation. First confirm the topic, audience and source materials.",
++          },
++        },
++        {
++          id: "scheduled-task",
++          type: "prompt",
++          img: "calendar-clock",
++          on_finish: "NAVIGATE:AUTOMATIONS",
++          labels: { cn: "定时任务", en: "Scheduled task" },
++          contents: { cn: "创建定时任务", en: "Create a scheduled task" },
++        },
++      ],
++    },
++  },
++};
+ 
+ export function createClientScenesService(_dependencies: {
+   apiClient: ApiClient;
+ }): IClientScenesService {
+-  // 云端推荐场景已退役；空本地目录不会触发后台轮询或发送用户信息。
+-  return { list: async () => ({ code: 0, msg: "No local scene templates configured", data: [] }) };
++  return {
++    list: async () => ({
++      code: 0,
++      msg: "Local templates",
++      data: [structuredClone(LOCAL_DRAFT_SCENE)],
++    }),
++  };
+ }
+diff --git a/packages/services/src/git/git.ts b/packages/services/src/git/git.ts
+index 957a669..417f21f 100644
+--- a/packages/services/src/git/git.ts
++++ b/packages/services/src/git/git.ts
+@@ -1,4 +1,3 @@
+-import type { GitHubAccountOperations } from "./githubAccount.js";
+ import type {
+   GitBranchMutationResult,
+   GitBranchComparison,
+@@ -30,7 +29,7 @@ import type {
+ import { ServiceChannels } from "@zcode/shared";
+ import { createServiceDescriptor } from "../descriptors.js";
+ 
+-export interface IGitService extends GitHubAccountOperations {
++export interface IGitService {
+   getRepositorySummary(params: GitRepositoryRequest): Promise<GitRepositorySummary>;
+   getWorkspaceRepositoryInfo(params: GitRepositoryRequest): Promise<GitWorkspaceRepositoryInfo>;
+   getLocalBranches(params: GitRepositoryRequest): Promise<GitLocalBranchListResult>;
+diff --git a/packages/services/src/git/gitService.ts b/packages/services/src/git/gitService.ts
+index e4f73fa..df3426c 100644
+--- a/packages/services/src/git/gitService.ts
++++ b/packages/services/src/git/gitService.ts
+@@ -1,4 +1,3 @@
+-import { createGitHubAccountOperations } from "./githubAccount.js";
+ import { resolve } from "node:path";
+ import type { GitBranchComparison, GitFileChange, GitChangeSectionId } from "@zcode/shared";
+ import { isPathInWorkspaceScope, normalizeGitPath, toWorkspaceRelativeGitPath } from "./config.js";
+@@ -173,10 +172,8 @@ export function createGitService(options?: {
+   commitMessageGenerator?: GitCommitMessageGenerator;
+ }): IGitService {
+   const repo = options?.repo ?? createGitCliRepo();
+-  const github = createGitHubAccountOperations();
+ 
+   return {
+-    ...github,
+     async getRepositorySummary(params) {
+       const status = await repo.getStatus(params.workspacePath);
+       return status.summary;
+diff --git a/packages/services/src/git/githubAccount.ts b/packages/services/src/git/githubAccount.ts
+deleted file mode 100644
+index d4993fc..0000000
+--- a/packages/services/src/git/githubAccount.ts
++++ /dev/null
+@@ -1,148 +0,0 @@
+-import { execFile, spawn, type ChildProcess } from "node:child_process";
+-import { randomUUID } from "node:crypto";
+-import { promisify } from "node:util";
+-
+-export interface GitHubAccountStatus {
+-  installed: boolean;
+-  accounts: Array<{ login: string; active: boolean }>;
+-}
+-export interface GitHubLoginState {
+-  id: string;
+-  state: "pending" | "complete" | "failed" | "cancelled";
+-  code?: string;
+-  verificationUrl: string;
+-}
+-export interface GitHubAccountOperations {
+-  githubAccountStatus(): Promise<GitHubAccountStatus>;
+-  githubBeginLogin(): Promise<GitHubLoginState>;
+-  githubLoginState(id: string): Promise<GitHubLoginState>;
+-  githubCancelLogin(id: string): Promise<void>;
+-  githubSwitchAccount(login: string): Promise<GitHubAccountStatus>;
+-  githubLogout(login: string): Promise<GitHubAccountStatus>;
+-}
+-
+-const exec = promisify(execFile);
+-// 凭据留在 gh/系统钥匙串；Host 只向界面返回账号名、验证码和流程状态。
+-export function createGitHubAccountOperations(
+-  deps: {
+-    run?: (args: string[]) => Promise<string>;
+-    start?: () => ChildProcess;
+-  } = {},
+-): GitHubAccountOperations {
+-  const run =
+-    deps.run ??
+-    (async (args) => {
+-      try {
+-        return (
+-          await exec("gh", args, {
+-            encoding: "utf8",
+-            timeout: 20_000,
+-            windowsHide: true,
+-            maxBuffer: 256_000,
+-          })
+-        ).stdout;
+-      } catch (error) {
+-        const failure = error as NodeJS.ErrnoException & { stdout?: string };
+-        if (args[1] === "status" && failure.stdout?.trim().startsWith("{")) return failure.stdout;
+-        if (failure.code === "ENOENT") throw new Error("GITHUB_CLI_MISSING");
+-        throw new Error("GITHUB_CLI_AUTH_FAILED");
+-      }
+-    });
+-  let flow:
+-    | { public: GitHubLoginState; child: ChildProcess; timeout: ReturnType<typeof setTimeout> }
+-    | undefined;
+-  async function status(): Promise<GitHubAccountStatus> {
+-    try {
+-      const raw = JSON.parse(
+-        await run(["auth", "status", "--hostname", "github.com", "--json", "hosts"]),
+-      ) as { hosts?: Record<string, Array<{ login?: unknown; active?: unknown }>> };
+-      return {
+-        installed: true,
+-        accounts: (raw.hosts?.["github.com"] ?? []).flatMap((account) =>
+-          typeof account.login === "string"
+-            ? [{ login: account.login, active: account.active === true }]
+-            : [],
+-        ),
+-      };
+-    } catch (error) {
+-      if (error instanceof Error && error.message === "GITHUB_CLI_MISSING")
+-        return { installed: false, accounts: [] };
+-      throw error;
+-    }
+-  }
+-  function cancel(id: string) {
+-    if (flow?.public.id !== id || flow.public.state !== "pending") return;
+-    flow.public.state = "cancelled";
+-    clearTimeout(flow.timeout);
+-    flow.child.kill();
+-  }
+-  function loginArgument(login: string) {
+-    if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(login)) throw new Error("Invalid GitHub login");
+-    return login;
+-  }
+-  return {
+-    githubAccountStatus: status,
+-    async githubBeginLogin() {
+-      if (flow?.public.state === "pending") return { ...flow.public };
+-      const child =
+-        deps.start?.() ??
+-        spawn(
+-          "gh",
+-          ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"],
+-          { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
+-        );
+-      const state: GitHubLoginState = {
+-        id: randomUUID(),
+-        state: "pending",
+-        verificationUrl: "https://github.com/login/device",
+-      };
+-      const timeout = setTimeout(() => cancel(state.id), 15 * 60_000);
+-      timeout.unref();
+-      flow = { public: state, child, timeout };
+-      let output = "";
+-      const onHostExit = () => cancel(state.id);
+-      process.once("exit", onHostExit);
+-      const finish = () => {
+-        clearTimeout(timeout);
+-        process.removeListener("exit", onHostExit);
+-        output = "";
+-      };
+-      const receive = (chunk: Buffer) => {
+-        if (state.state !== "pending") return;
+-        output = (output + chunk.toString("utf8")).slice(-8192);
+-        const match = output.match(/\b[A-Z0-9]{4}-[A-Z0-9]{4}\b/);
+-        if (match) state.code = match[0];
+-      };
+-      child.stdout?.on("data", receive);
+-      child.stderr?.on("data", receive);
+-      child.on("error", () => {
+-        // 取消后的迟到事件不能把已取消的流程重新改为失败。
+-        if (state.state === "pending") state.state = "failed";
+-        finish();
+-      });
+-      child.on("close", (code) => {
+-        if (state.state === "pending") state.state = code === 0 ? "complete" : "failed";
+-        finish();
+-      });
+-      // gh 的 web flow 会等一次回车后打开系统浏览器；只在用户点击登录后启动。
+-      child.stdin?.on("error", () => {});
+-      child.stdin?.end("\n");
+-      return { ...state };
+-    },
+-    async githubLoginState(id) {
+-      if (flow?.public.id !== id) throw new Error("GitHub login expired");
+-      return { ...flow.public };
+-    },
+-    async githubCancelLogin(id) {
+-      cancel(id);
+-    },
+-    async githubSwitchAccount(login) {
+-      await run(["auth", "switch", "--hostname", "github.com", "--user", loginArgument(login)]);
+-      return status();
+-    },
+-    async githubLogout(login) {
+-      await run(["auth", "logout", "--hostname", "github.com", "--user", loginArgument(login)]);
+-      return status();
+-    },
+-  };
+-}
+diff --git a/packages/services/src/setting/settingService.ts b/packages/services/src/setting/settingService.ts
+index afa9f5d..f252025 100644
+--- a/packages/services/src/setting/settingService.ts
++++ b/packages/services/src/setting/settingService.ts
+@@ -155,7 +155,8 @@ async function readSettingsWithMeta(): Promise<ReadSettingsResult> {
+         needsMigrationPersist: false,
+       };
+     }
+-    debugLog("read result:", JSON.stringify(result.data));
++    // 设置包含本地头像和昵称；日志只记录字段，不复制用户资料内容。
++    debugLog("read settings keys:", Object.keys(result.data));
+     return {
+       settings: result.data,
+       needsMigrationPersist: shouldPersistSettingsMigrations(rawValue),
+@@ -198,7 +199,7 @@ async function writeSettings(
+   const settingsFile = getSettingsFile();
+   // Windows 下测试只改了 HOME，模块顶层常量如果在导入时就把 homedir() 固化，
+   // 后续读写仍会串到真实用户目录。这里改成每次按当前环境解析配置路径，保证本地和测试都稳定。
+-  log("writing settings to:", settingsFile, JSON.stringify(settings));
++  log("writing settings to:", settingsFile, "keys:", Object.keys(settings));
+   maybeThrowInjectedFsFault({ operation: "mkdir", path: settingsDir });
+   await mkdir(settingsDir, { recursive: true });
+   if (!shouldCommit()) return;
+diff --git a/packages/services/test/fleet-local-startup.test.ts b/packages/services/test/fleet-local-startup.test.ts
+index f0531a5..1edca0a 100644
+--- a/packages/services/test/fleet-local-startup.test.ts
++++ b/packages/services/test/fleet-local-startup.test.ts
+@@ -1,17 +1,70 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { EventEmitter } from "node:events";
+-import { PassThrough } from "node:stream";
+-import type { ChildProcess } from "node:child_process";
+-import { mkdtemp, readdir, rm } from "node:fs/promises";
++import { mkdtemp, readdir, rm, readFile, writeFile, mkdir, cp } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+-import { join } from "node:path";
++import { join, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
+ import { DEFAULT_ZCODE_ENDPOINT_ORIGIN, type TelemetryRendererContext } from "@zcode/shared";
+ import { NodeApiClient } from "../src/providers/api/nodeApiClient.js";
+ import { createTelemetryCore } from "../src/telemetry/telemetryCore.js";
+ import { createClientScenesService } from "../src/client-scenes/clientScenesService.js";
+-import { createGitHubAccountOperations } from "../src/git/githubAccount.js";
+ import { createDesktopHelpConfigReader } from "../../desktop/src/main/desktopHelpConfig.js";
++import { appSettingsPatchSchema } from "@zcode/shared";
++import { createSettingService } from "../src/setting/settingService.js";
++import { mapClientScenesToDraftSuggestedPromptItems } from "../../ui/src/v4/draftSuggestedPromptItems.js";
++
++test("local profile persists through the existing settings queue without losing concurrent preferences", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-profile-"));
++  const previousHome = process.env.ZCODE_DESKTOP_HOME_DIR;
++  process.env.ZCODE_DESKTOP_HOME_DIR = root;
++  const avatar =
++    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=";
++  try {
++    const service = createSettingService();
++    await service.update({ recentProjects: ["/fixture/project"], locale: "en-US" });
++    await Promise.all([
++      service.update({ localProfileName: "  测试用户  " }),
++      service.update({ localProfileAvatar: avatar }),
++      service.update({ localProfileName: "新名字" }),
++    ]);
++    const restarted = createSettingService();
++    const saved = await restarted.get();
++    assert.equal(saved.localProfileName, "新名字");
++    assert.equal(saved.localProfileAvatar, avatar);
++    assert.deepEqual(saved.recentProjects, ["/fixture/project"]);
++    assert.equal(saved.locale, "en-US");
++    await assert.rejects(
++      restarted.update({ localProfileAvatar: "https://example.com/avatar.png" }),
++    );
++    assert.equal((await restarted.get()).localProfileAvatar, avatar);
++    await restarted.update({ localProfileAvatar: "", localProfileName: "" });
++    const reset = await createSettingService().get();
++    assert.equal(reset.localProfileAvatar, "");
++    assert.equal(reset.localProfileName, "");
++  } finally {
++    if (previousHome === undefined) delete process.env.ZCODE_DESKTOP_HOME_DIR;
++    else process.env.ZCODE_DESKTOP_HOME_DIR = previousHome;
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("profile validation excludes external images, unbounded data and oversized names", () => {
++  for (const localProfileAvatar of [
++    "file:///private/avatar.png",
++    "data:image/svg+xml;base64,PHN2Zz4=",
++    "data:image/png;base64," + "A".repeat(100_000),
++  ]) {
++    assert.equal(appSettingsPatchSchema.safeParse({ localProfileAvatar }).success, false);
++  }
++  assert.equal(
++    appSettingsPatchSchema.safeParse({ localProfileName: "x".repeat(31) }).success,
++    false,
++  );
++  assert.equal(
++    appSettingsPatchSchema.parse({ localProfileName: " 用户 " }).localProfileName,
++    "用户",
++  );
++});
+ 
+ test("retired default and overridden product endpoints fail before transport", async () => {
+   const seen: string[] = [];
+@@ -76,114 +129,88 @@ test("disabled telemetry does not read identity, collect identifiers, write stat
+     assert.equal(calls, 0);
+     assert.deepEqual(await readdir(home), []);
+     assert.deepEqual(await createDesktopHelpConfigReader()(), {});
+-    const scenes = createClientScenesService({
+-      apiClient: {
+-        request: async () => {
+-          throw new Error("No hosted template requests");
+-        },
+-      },
+-    });
+-    assert.deepEqual((await scenes.list()).data, []);
+   } finally {
+     await rm(home, { recursive: true, force: true });
+   }
+ });
+ 
+-function fakeChild() {
+-  const child = Object.assign(new EventEmitter(), {
+-    stdout: new PassThrough(),
+-    stderr: new PassThrough(),
+-    stdin: new PassThrough(),
+-    killed: false,
+-    kill() {
+-      this.killed = true;
+-      return true;
+-    },
+-  });
+-  return child;
+-}
+-
+-test("GitHub status returns only account identity and active state", async () => {
+-  const ops = createGitHubAccountOperations({
+-    run: async (args) => {
+-      assert.deepEqual(args, ["auth", "status", "--hostname", "github.com", "--json", "hosts"]);
+-      return JSON.stringify({
+-        hosts: {
+-          "github.com": [
+-            { login: "fixture", active: true, token: "must-not-leak" },
+-            { login: null },
+-          ],
+-        },
+-      });
+-    },
+-  });
+-  assert.deepEqual(await ops.githubAccountStatus(), {
+-    installed: true,
+-    accounts: [{ login: "fixture", active: true }],
+-  });
+-});
+-
+-test("missing GitHub CLI is a distinct unavailable state", async () => {
+-  const ops = createGitHubAccountOperations({
+-    run: async () => {
+-      throw new Error("GITHUB_CLI_MISSING");
+-    },
+-  });
+-  assert.deepEqual(await ops.githubAccountStatus(), { installed: false, accounts: [] });
+-});
+-
+-test("GitHub login is single-flight, exposes the code, and cancellation wins late events", async () => {
+-  const child = fakeChild();
+-  let starts = 0;
+-  const listeners = process.listenerCount("exit");
+-  const ops = createGitHubAccountOperations({
+-    start: () => {
+-      starts++;
+-      return child as unknown as ChildProcess;
++test("bundled quick tasks resolve through the original UI mapper without a hosted request", async () => {
++  const scenes = createClientScenesService({
++    apiClient: {
++      request: async () => {
++        throw new Error("No hosted template requests");
++      },
+     },
+   });
+-  const first = await ops.githubBeginLogin();
+-  assert.equal((await ops.githubBeginLogin()).id, first.id);
+-  assert.equal(starts, 1);
+-  child.stderr.write("First copy your one-time code: ABCD-1234\n");
+-  assert.equal((await ops.githubLoginState(first.id)).code, "ABCD-1234");
+-  await ops.githubCancelLogin(first.id);
+-  assert.equal(child.killed, true);
+-  child.emit("error", new Error("late event"));
+-  child.emit("close", 0);
+-  assert.equal((await ops.githubLoginState(first.id)).state, "cancelled");
+-  assert.equal(process.listenerCount("exit"), listeners);
++  const response = await scenes.list();
++  const items = mapClientScenesToDraftSuggestedPromptItems(response.data);
++  assert.deepEqual(
++    items.map((item) => item.label.cn),
++    ["周报总结", "报错修复", "PPT 制作", "定时任务"],
++  );
++  assert.deepEqual(
++    items.map((item) => item.iconName),
++    ["alarm-clock-check", "bug", "presentation", "calendar-clock"],
++  );
++  assert.equal(items[2]?.plugin?.stableId, "presentations@zcode-plugins-official");
++  assert.deepEqual(items[3]?.actions, ["NAVIGATE:AUTOMATIONS"]);
++  assert.ok(items[0]?.prompt.en);
++  assert.equal(items[0]?.actions, undefined);
++  response.data[0]!.options = {};
++  assert.equal(mapClientScenesToDraftSuggestedPromptItems((await scenes.list()).data).length, 4);
+ });
+ 
+-test("GitHub login completion/failure is driven by the child process", async () => {
+-  for (const code of [0, 1]) {
+-    const child = fakeChild();
+-    const ops = createGitHubAccountOperations({ start: () => child as unknown as ChildProcess });
+-    const first = await ops.githubBeginLogin();
+-    child.emit("close", code);
+-    assert.equal((await ops.githubLoginState(first.id)).state, code === 0 ? "complete" : "failed");
+-    await assert.rejects(ops.githubLoginState("stale"), /expired/);
++test("desktop staging carries the exact human/Agent guide bytes", async () => {
++  const { stageAgentBundle } = await import("../../desktop/scripts/stage-agent-bundle.mjs");
++  const root = await mkdtemp(join(tmpdir(), "fleet-guide-stage-"));
++  const repo = fileURLToPath(new URL("../../../", import.meta.url));
++  const plugin = "apps/zcode-cli/packages/zcode-guide-plugin";
++  try {
++    const cli = join(root, "apps/zcode-cli/packages/cli/dist");
++    await mkdir(cli, { recursive: true });
++    await writeFile(join(cli, "zcode.cjs"), "// staging fixture, never executed");
++    await cp(join(repo, plugin), join(root, plugin), { recursive: true });
++    const { stagedBundlePath } = stageAgentBundle({
++      repoRoot: root,
++      platformKey: "fixture",
++      log: () => {},
++    });
++    const staged = resolve(stagedBundlePath, "../packages/zcode-guide-plugin");
++    for (const file of [
++      "docs/guide.en.md",
++      "docs/guide.zh-CN.md",
++      "skills/fleet-configuration-guide/SKILL.md",
++    ]) {
++      assert.equal(
++        await readFile(join(staged, file), "utf8"),
++        await readFile(join(repo, plugin, file), "utf8"),
++      );
++    }
++  } finally {
++    await rm(root, { recursive: true, force: true });
+   }
+ });
+ 
+-test("account mutations validate the login and use a single explicit account argument", async () => {
+-  const calls: string[][] = [];
+-  const ops = createGitHubAccountOperations({
+-    run: async (args) => {
+-      calls.push(args);
+-      return '{"hosts":{}}';
+-    },
+-  });
+-  await assert.rejects(ops.githubSwitchAccount("--help"), /Invalid/);
+-  await assert.rejects(ops.githubLogout("user; command"), /Invalid/);
+-  assert.deepEqual(calls, []);
+-  await ops.githubSwitchAccount("fixture");
+-  await ops.githubLogout("fixture");
+-  assert.deepEqual(
+-    calls.filter((args) => args[1] !== "status"),
+-    [
+-      ["auth", "switch", "--hostname", "github.com", "--user", "fixture"],
+-      ["auth", "logout", "--hostname", "github.com", "--user", "fixture"],
+-    ],
+-  );
++test("existing plugin seed exposes the packaged guide with no hosted document fetch", async () => {
++  const { resolveOfficialPluginRoots } =
++    await import("../../../apps/zcode-cli/packages/bootstrap/src/app/bundled-plugins.js");
++  const root = await mkdtemp(join(tmpdir(), "fleet-guide-seed-"));
++  const original = process.argv[1];
++  const repo = fileURLToPath(new URL("../../../", import.meta.url));
++  process.argv[1] = join(repo, "apps/zcode-cli/fleet-test-entry.cjs");
++  try {
++    resolveOfficialPluginRoots({ storageRoot: root });
++    const guide = join(root, "cache/zcode-plugins-official/zcode-guide/0.4.3");
++    const manifest = JSON.parse(await readFile(join(guide, ".zcode-plugin/plugin.json"), "utf8"));
++    assert.equal(manifest.name, "zcode-guide");
++    for (const file of ["docs/guide.en.md", "docs/guide.zh-CN.md"]) {
++      assert.equal(
++        await readFile(join(guide, file), "utf8"),
++        await readFile(join(repo, "apps/zcode-cli/packages/zcode-guide-plugin", file), "utf8"),
++      );
++    }
++  } finally {
++    process.argv[1] = original;
++    await rm(root, { recursive: true, force: true });
++  }
+ });
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index 640493c..4c8562a 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -238,3 +238,116 @@ test("DeepSeek Anthropic discovery uses the documented shared bearer catalog", a
+     return Response.json({ data: [{ id: "exact-provider-id" }] });
+   });
+ });
++
++test("discovery waits for a saved draft and drops an obsolete endpoint response", async () => {
++  const { fetchSavedModelCatalog } =
++    await import("../../ui/src/settings/model-provider-section/modelDiscoveryActions.js");
++  const save = Promise.withResolvers<void>();
++  const response = Promise.withResolvers<any>();
++  let current = true;
++  let calls = 0;
++  const result = fetchSavedModelCatalog({
++    providerId: "one",
++    saveDraft: () => save.promise,
++    isCurrent: () => current,
++    service: {
++      async discoverModels() {
++        calls++;
++        return response.promise;
++      },
++    },
++  });
++  await Promise.resolve();
++  assert.equal(calls, 0);
++  save.resolve();
++  await Promise.resolve();
++  assert.equal(calls, 1);
++  current = false;
++  response.resolve({ source: "provider", models: [{ id: "old-server", name: "Old", config: {} }] });
++  assert.equal(await result, undefined);
++  await assert.rejects(
++    fetchSavedModelCatalog({
++      providerId: "one",
++      isCurrent: () => true,
++      saveDraft: async () => {
++        throw new Error("save failed");
++      },
++      service: {
++        async discoverModels() {
++          throw new Error("must not request");
++        },
++      },
++    }),
++    /save failed/,
++  );
++});
++
++test("partial model import retries preserve existing manual configuration and completed additions", async () => {
++  const { addDiscoveredModels } =
++    await import("../../ui/src/settings/model-provider-section/modelDiscoveryActions.js");
++  const records = new Map<string, object>([
++    ["existing", { enabled: false, properties: { contextWindow: 12345 } }],
++  ]);
++  const writes: string[] = [];
++  const selected = new Set(["existing", "first", "second"]);
++  let failSecond = true;
++  const service = {
++    async getView() {
++      return {
++        providers: [{ providerId: "one", models: [...records].map(([modelId]) => ({ modelId })) }],
++      } as any;
++    },
++    async addPersonalModel(_providerId: string, id: string, config: object) {
++      if (id === "second" && failSecond) throw new Error("disk unavailable");
++      assert.equal(records.has(id), false);
++      records.set(id, config);
++      writes.push(id);
++      return this.getView();
++    },
++  };
++  const input = {
++    providerId: "one",
++    service,
++    selected,
++    isCurrent: () => true,
++    catalog: {
++      source: "provider" as const,
++      models: [...selected].map((id) => ({ id, name: id, config: {} })),
++    },
++    onAdded: (id: string) => {
++      selected.delete(id);
++    },
++  };
++  await assert.rejects(addDiscoveredModels(input), /disk unavailable/);
++  assert.deepEqual([...selected], ["second"]);
++  failSecond = false;
++  await addDiscoveredModels(input);
++  assert.deepEqual(writes, ["first", "second"]);
++  assert.deepEqual(records.get("existing"), {
++    enabled: false,
++    properties: { contextWindow: 12345 },
++  });
++});
++
++test("closing discovery before the snapshot returns admits no import mutation", async () => {
++  const { addDiscoveredModels } =
++    await import("../../ui/src/settings/model-provider-section/modelDiscoveryActions.js");
++  let current = true;
++  const read = Promise.withResolvers<any>();
++  const pending = addDiscoveredModels({
++    providerId: "one",
++    selected: new Set(["model"]),
++    catalog: { source: "provider", models: [{ id: "model", name: "Model", config: {} }] },
++    isCurrent: () => current,
++    onAdded: () => assert.fail("stale completion"),
++    service: {
++      getView: () => read.promise,
++      addPersonalModel: async () => {
++        throw new Error("must not write");
++      },
++    },
++  });
++  current = false;
++  read.resolve({ providers: [{ providerId: "one", models: [] }] });
++  await pending;
++});
+diff --git a/packages/shared/src/protocol.ts b/packages/shared/src/protocol.ts
+index 395c436..734c0ac 100644
+--- a/packages/shared/src/protocol.ts
++++ b/packages/shared/src/protocol.ts
+@@ -235,6 +235,9 @@ export interface ResourceUsageSnapshot {
+ }
+ 
+ export interface AppSettings {
++  /** Local display preferences; never an authenticated account or Agent permission. */
++  localProfileName?: string;
++  localProfileAvatar?: string;
+   /** 当前 App/Host 不再显示提交前体验套餐推荐；不改变任何入口的模型选择。 */
+   startPlanRecommendationDismissed?: boolean;
+   recentProjects: string[]; // 最近项目列表，最多保留 10 个
+diff --git a/packages/shared/src/update.ts b/packages/shared/src/update.ts
+index 652f255..852e48d 100644
+--- a/packages/shared/src/update.ts
++++ b/packages/shared/src/update.ts
+@@ -24,6 +24,7 @@ export type UpdateCheckResultPayload =
+   | { kind: "already-downloading"; version: string; progress: string }
+   | { kind: "ready"; version: string }
+   | { kind: "dev-skipped" }
++  | { kind: "unavailable" }
+   | { kind: "error"; message: string };
+ 
+ /**
+diff --git a/packages/shared/src/validationAppSettings.ts b/packages/shared/src/validationAppSettings.ts
+index 3cb58a1..5ec2f73 100644
+--- a/packages/shared/src/validationAppSettings.ts
++++ b/packages/shared/src/validationAppSettings.ts
+@@ -417,7 +417,18 @@ function migrateLegacyWorkspaceSession(value: unknown): unknown {
+   return migrated;
+ }
+ 
++const localProfileNameSchema = z.string().trim().max(30);
++const localProfileAvatarSchema = z.union([
++  z.literal(""),
++  z
++    .string()
++    .max(100_000)
++    .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/),
++]);
++
+ const appSettingsObjectSchema = z.object({
++  localProfileName: localProfileNameSchema.optional(),
++  localProfileAvatar: localProfileAvatarSchema.optional(),
+   recentProjects: z.array(z.string()).default([]),
+   locale: localeSchema.default("zh-CN"),
+   // 快捷键用户覆盖（语义校验在 ui/src/shortcuts 生效表阶段容错，schema 只管形状）
+@@ -491,6 +502,8 @@ export const appSettingsSchema = z.preprocess(
+ );
+ 
+ export const appSettingsPatchSchema = z.object({
++  localProfileName: localProfileNameSchema.optional(),
++  localProfileAvatar: localProfileAvatarSchema.optional(),
+   recentProjects: z.array(z.string()).optional(),
+   locale: localeSchema.optional(),
+   shortcutBindings: z.record(z.string(), z.array(z.string())).optional(),
+diff --git a/packages/ui/src/App.tsx b/packages/ui/src/App.tsx
+index 4aabfb2..ca4c0b9 100644
+--- a/packages/ui/src/App.tsx
++++ b/packages/ui/src/App.tsx
+@@ -46,7 +46,7 @@ import {
+   type SettingsSectionId,
+ } from "@/lib/settingsNavigation.js";
+ import { runWorkspaceVisibleCommand } from "@/lib/workspaceVisibleCommand.js";
+-import { ZCODE_PRODUCT_DOCS_URL } from "@/lib/productDocs.js";
++import { LOCAL_HELP_REQUEST, localHelpSource } from "@/lib/productDocs.js";
+ import appLogoUrl from "@/assets/provider-icons/logo-zai.svg";
+ import { resolveTheme } from "@/useTheme.js";
+ import { WorkspaceShellLayout } from "@/app-shell/WorkspaceShellLayout.js";
+@@ -681,8 +681,12 @@ export function App({
+   }, [openFeedbackSubmit, openFeedbackTickets, platform]);
+   const handleOpenCommunity = useCallback(() => platform.openCommunity(), [platform]);
+   const handleOpenProductDocs = useCallback(() => {
+-    platform.openExternal(ZCODE_PRODUCT_DOCS_URL);
+-  }, [platform]);
++    runVisibleWorkspaceCommand(() => handleOpenCodeViewer(localHelpSource(locale)));
++  }, [handleOpenCodeViewer, locale, runVisibleWorkspaceCommand]);
++  useEffect(() => {
++    window.addEventListener(LOCAL_HELP_REQUEST, handleOpenProductDocs);
++    return () => window.removeEventListener(LOCAL_HELP_REQUEST, handleOpenProductDocs);
++  }, [handleOpenProductDocs]);
+   const themeTarget = resolveTheme(theme) === "dark" ? "light" : "dark";
+   const handleSwitchTheme = useCallback(() => {
+     setTheme(themeTarget);
+diff --git a/packages/ui/src/LocalProfileControl.tsx b/packages/ui/src/LocalProfileControl.tsx
+new file mode 100644
+index 0000000..a6325b2
+--- /dev/null
++++ b/packages/ui/src/LocalProfileControl.tsx
+@@ -0,0 +1,161 @@
++import { useEffect, useRef, useState } from "react";
++import defaultProfileAvatar from "@/assets/default-profile-avatar.svg";
++import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar.js";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog.js";
++import {
++  DropdownMenu,
++  DropdownMenuContent,
++  DropdownMenuItem,
++  DropdownMenuTrigger,
++} from "@/components/ui/dropdown-menu.js";
++import { Input } from "@/components/ui/input.js";
++import { useSettings } from "@/hooks/useSettingService.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { prepareLocalProfileAvatar } from "@/lib/localProfileAvatar.js";
++
++/** Cherry's avatar/name editor, backed by the existing local Host settings owner. */
++export function LocalProfileControl() {
++  const { intl } = useZCodeIntl();
++  const { settings, error: readError, refresh, update } = useSettings();
++  const [open, setOpen] = useState(false);
++  const [draftName, setDraftName] = useState<string>();
++  const [error, setError] = useState<string>();
++  const imageRequest = useRef(0);
++  const nameRequest = useRef(0);
++  const fileInput = useRef<HTMLInputElement>(null);
++  useEffect(
++    () => () => {
++      imageRequest.current++;
++      nameRequest.current++;
++    },
++    [],
++  );
++  const name = settings?.localProfileName || intl.formatMessage({ id: "profile.defaultName" });
++  const avatar = settings?.localProfileAvatar;
++  const changeOpen = (value: boolean) => {
++    imageRequest.current++;
++    setOpen(value);
++    if (value) {
++      setDraftName(undefined);
++      setError(undefined);
++      void refresh();
++    }
++  };
++  const saveName = async (value: string) => {
++    const request = ++nameRequest.current;
++    setDraftName(value);
++    setError(undefined);
++    try {
++      await update({ localProfileName: value.trim() });
++    } catch {
++      if (request === nameRequest.current) setError("profile.saveError");
++    }
++  };
++  const saveAvatar = async (file?: File) => {
++    const request = ++imageRequest.current;
++    setError(undefined);
++    let data = "";
++    try {
++      if (file) data = await prepareLocalProfileAvatar(file);
++    } catch {
++      if (request === imageRequest.current) setError("profile.imageError");
++      return;
++    }
++    // 关闭、重选或恢复默认后，旧图片的异步解码不得覆盖新的选择。
++    if (request !== imageRequest.current) return;
++    try {
++      await update({ localProfileAvatar: data });
++    } catch {
++      if (request === imageRequest.current) setError("profile.saveError");
++    }
++  };
++  const image = (large = false) => (
++    <Avatar size="default" className={large ? "size-20" : undefined}>
++      {avatar ? <AvatarImage src={avatar} alt="" /> : null}
++      <AvatarFallback>
++        <img src={defaultProfileAvatar} alt="" className="size-full rounded-full" />
++      </AvatarFallback>
++    </Avatar>
++  );
++  return (
++    <>
++      <Button
++        type="button"
++        variant="ghost"
++        size="lg"
++        className="min-w-0 flex-1 justify-start gap-2 overflow-hidden rounded-tl-2xl rounded-bl-2xl border-0 pl-0"
++        aria-label={intl.formatMessage({ id: "profile.edit" })}
++        onClick={() => changeOpen(true)}
++      >
++        {image()}
++        <div className="min-w-0 flex-1 overflow-hidden text-left">
++          <div className="flex min-w-0 items-center gap-1.5">
++            <span className="min-w-0 truncate text-ui-base font-semibold text-foreground">
++              {name}
++            </span>
++          </div>
++        </div>
++      </Button>
++      <Dialog open={open} onOpenChange={changeOpen}>
++        <DialogContent className="max-w-xs gap-5 p-5" aria-describedby={undefined}>
++          <DialogTitle className="sr-only">
++            {intl.formatMessage({ id: "profile.edit" })}
++          </DialogTitle>
++          <div className="flex justify-center pt-3">
++            <DropdownMenu>
++              <DropdownMenuTrigger asChild>
++                <Button
++                  variant="ghost"
++                  className="size-20 rounded-full p-0"
++                  disabled={!settings}
++                  aria-label={intl.formatMessage({ id: "profile.avatar" })}
++                >
++                  {image(true)}
++                </Button>
++              </DropdownMenuTrigger>
++              <DropdownMenuContent align="center">
++                <DropdownMenuItem onSelect={() => fileInput.current?.click()}>
++                  {intl.formatMessage({ id: "profile.upload" })}
++                </DropdownMenuItem>
++                <DropdownMenuItem onSelect={() => void saveAvatar()}>
++                  {intl.formatMessage({ id: "profile.resetAvatar" })}
++                </DropdownMenuItem>
++              </DropdownMenuContent>
++            </DropdownMenu>
++          </div>
++          <input
++            ref={fileInput}
++            type="file"
++            accept="image/png,image/jpeg,image/webp"
++            className="hidden"
++            onChange={(event) => {
++              const file = event.target.files?.[0];
++              event.target.value = "";
++              if (file) void saveAvatar(file);
++            }}
++          />
++          <Input
++            className="text-center"
++            maxLength={30}
++            disabled={!settings}
++            aria-label={intl.formatMessage({ id: "profile.name" })}
++            placeholder={intl.formatMessage({ id: "profile.namePlaceholder" })}
++            value={draftName ?? settings?.localProfileName ?? ""}
++            onChange={(event) => void saveName(event.target.value)}
++          />
++          {error || readError ? (
++            <div role="alert" className="text-ui-base text-destructive">
++              {intl.formatMessage({ id: error ?? "profile.readError" })}
++              {readError ? (
++                <Button variant="ghost" onClick={() => void refresh()}>
++                  {intl.formatMessage({ id: "common.retry" })}
++                </Button>
++              ) : null}
++            </div>
++          ) : null}
++        </DialogContent>
++      </Dialog>
++    </>
++  );
++}
+diff --git a/packages/ui/src/SettingsPage.tsx b/packages/ui/src/SettingsPage.tsx
+index 4b6b67a..3d5a8d9 100644
+--- a/packages/ui/src/SettingsPage.tsx
++++ b/packages/ui/src/SettingsPage.tsx
+@@ -1517,18 +1517,8 @@ export function SettingsPage({
+ 
+               <div className="max-lg:hidden">
+                 <WorkspaceSidebarFooter
+-                  theme={theme}
+-                  localeMenuValue={localePreference}
+-                  onLocaleChange={handleFooterLocaleChange}
+-                  onThemeChange={handleFooterThemeChange}
+                   onSettingsButtonClick={onBack}
+-                  onUsageClick={handleOpenUsageSettings}
+-                  onLogin={onLogin}
+-                  onLogout={onLogout}
+                   settingsButtonMode="back"
+-                  user={user}
+-                  // 头像菜单是 WorkspaceSidebarFooter 的共享菜单，Settings 场景不能丢失桌面平台能力。
+-                  // 之前这里没透传 isDesktop，导致同一个头像菜单在设置页缺少界面缩放入口。
+                   isDesktop={isDesktop}
+                 />
+               </div>
+diff --git a/packages/ui/src/WorkspaceHelpMenuButton.tsx b/packages/ui/src/WorkspaceHelpMenuButton.tsx
+index c0bd6dd..2b259d1 100644
+--- a/packages/ui/src/WorkspaceHelpMenuButton.tsx
++++ b/packages/ui/src/WorkspaceHelpMenuButton.tsx
+@@ -7,10 +7,6 @@ import {
+   ActivityIcon,
+   BookOpenIcon,
+   CircleHelpIcon,
+-  LightbulbIcon,
+-  InfoIcon,
+-  MessageSquareIcon,
+-  UsersIcon,
+   RefreshCwIcon,
+ } from "lucide-react";
+ import { Badge } from "@/components/ui/badge.js";
+@@ -19,14 +15,12 @@ import {
+   DropdownMenu,
+   DropdownMenuContent,
+   DropdownMenuItem,
+-  DropdownMenuSeparator,
+   DropdownMenuTrigger,
+ } from "@/components/ui/dropdown-menu.js";
+ import { cn } from "@/components/lib/utils.js";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+-import { useFeedbackStore } from "@/feedback/feedbackStore.js";
+-import { useDesktopUpdateMenu } from "@/hooks/useDesktopUpdateMenu.js";
+ import { usePlatform } from "@/hooks/usePlatform.js";
++import { useDesktopUpdateMenu } from "@/hooks/useDesktopUpdateMenu.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { createHelpMenuActionHandlers } from "@/lib/helpMenuActions.js";
+ 
+@@ -44,25 +38,12 @@ export function WorkspaceHelpMenuButton({
+   const { intl } = useZCodeIntl();
+   const platform = usePlatform();
+   const updateMenu = useDesktopUpdateMenu(isDesktop);
+-  const openFeedbackSubmit = useFeedbackStore((state) => state.openSubmit);
+-  const openFeatureRequest = useFeedbackStore((state) => state.openFeatureRequest);
+   const helpMenuLabel = intl.formatMessage({ id: "workspaceHeader.help.menu" });
+-  const helpMenuActions = createHelpMenuActionHandlers({
+-    platform,
+-    intl,
+-    openSubmit: openFeedbackSubmit,
+-  });
+-  const handleOpenCommunity = () => {
+-    void platform.openCommunity();
+-  };
++  const helpMenuActions = createHelpMenuActionHandlers({ platform, intl });
+   const handleOpenResourceManager = () => {
+     void platform.executeDesktopCommand(DesktopCommandIds.OpenResourceManager);
+   };
+ 
+-  const handleShowAbout = () => {
+-    void platform.executeDesktopCommand(DesktopCommandIds.ShowAbout);
+-  };
+-
+   return (
+     <DropdownMenu>
+       <ControlHintTooltip title={helpMenuLabel} side="bottom">
+@@ -92,23 +73,10 @@ export function WorkspaceHelpMenuButton({
+           <BookOpenIcon className="size-4" />
+           {intl.formatMessage({ id: "workspaceHeader.help.docs" })}
+         </DropdownMenuItem>
+-        <DropdownMenuItem onSelect={handleOpenCommunity}>
+-          <UsersIcon className="size-4" />
+-          {intl.formatMessage({ id: "workspaceHeader.help.community" })}
+-        </DropdownMenuItem>
+-        <DropdownMenuItem onSelect={helpMenuActions.openIssueReport}>
+-          <MessageSquareIcon className="size-4" />
+-          {intl.formatMessage({ id: "workspaceHeader.help.issueReport" })}
+-        </DropdownMenuItem>
+-        <DropdownMenuItem onSelect={openFeatureRequest}>
+-          <LightbulbIcon className="size-4" />
+-          {intl.formatMessage({ id: "workspaceHeader.help.productRequest" })}
+-        </DropdownMenuItem>
+         {/* Windows/Linux 没有原生菜单栏，自绘标题栏箭头菜单也已下线，
+             资源管理器只能从这里进；Web 端没有该窗口，不渲染。 */}
+         {isDesktop ? (
+           <>
+-            <DropdownMenuSeparator />
+             <DropdownMenuItem
+               data-testid={TID_WORKSPACE_HELP_MENU_RESOURCE_MANAGER}
+               onSelect={handleOpenResourceManager}
+@@ -116,32 +84,18 @@ export function WorkspaceHelpMenuButton({
+               <ActivityIcon className="size-4" />
+               {intl.formatMessage({ id: "titleBar.menu.help.resourceManager" })}
+             </DropdownMenuItem>
+-            {updateMenu.visible ? (
+-              <DropdownMenuItem
+-                disabled={updateMenu.disabled}
+-                onSelect={updateMenu.checkForUpdates}
+-              >
+-                <RefreshCwIcon className="size-4" />
+-                {updateMenu.labelId === "desktopMenu.help.restartToUpdate" ? (
+-                  <>
+-                    <span className="whitespace-nowrap">
+-                      {intl.formatMessage({ id: "desktopMenu.help.restartUpdateAction" })}
+-                    </span>
+-                    <Badge
+-                      variant="secondary"
+-                      className="h-4 px-1.5 py-0 bg-success/10 text-success"
+-                    >
+-                      {updateMenu.labelValues?.version}
+-                    </Badge>
+-                  </>
+-                ) : (
+-                  intl.formatMessage({ id: updateMenu.labelId }, updateMenu.labelValues)
+-                )}
+-              </DropdownMenuItem>
+-            ) : null}
+-            <DropdownMenuItem onSelect={handleShowAbout}>
+-              <InfoIcon className="size-4" />
+-              {intl.formatMessage({ id: "titleBar.menu.help.about" })}
++            <DropdownMenuItem disabled={updateMenu.disabled} onSelect={updateMenu.checkForUpdates}>
++              <RefreshCwIcon className="size-4" />
++              {updateMenu.labelId === "desktopMenu.help.restartToUpdate" ? (
++                <>
++                  <span className="whitespace-nowrap">
++                    {intl.formatMessage({ id: "desktopMenu.help.restartUpdateAction" })}
++                  </span>
++                  <Badge variant="secondary" className="h-4 px-1.5 py-0 bg-success/10 text-success">
++                    {updateMenu.labelValues?.version}
++                  </Badge>
++                </>
++              ) : intl.formatMessage({ id: updateMenu.labelId }, updateMenu.labelValues)}
+             </DropdownMenuItem>
+           </>
+         ) : null}
+diff --git a/packages/ui/src/WorkspaceSidebar.tsx b/packages/ui/src/WorkspaceSidebar.tsx
+index f71e745..f8fcae3 100644
+--- a/packages/ui/src/WorkspaceSidebar.tsx
++++ b/packages/ui/src/WorkspaceSidebar.tsx
+@@ -46,7 +46,7 @@ import {
+   sortableKeyboardCoordinates,
+   verticalListSortingStrategy,
+ } from "@dnd-kit/sortable";
+-import type { Locale, RemoteTarget, UserInfo, ZCodeTaskMeta } from "@zcode/shared";
++import type { RemoteTarget, UserInfo, ZCodeTaskMeta } from "@zcode/shared";
+ import {
+   TID_CONVERSATION_NEW_TASK,
+   TID_CONVERSATION_SECTION,
+@@ -73,7 +73,6 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { logger } from "@/logger.js";
+ import { NewTaskButtonGroup } from "@/NewTaskButtonGroup.js";
+ import { selectWorkspaceZCodeState, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
+-import { useZCodeStore } from "@/store/StoreProvider.js";
+ import { useTabStore } from "@/store/TabStoreProvider.js";
+ import { isWorkspaceReadOnly, isWorkspaceTab, type WorkspaceTabState } from "@/store/tabStore.js";
+ import { useWorkspaceTaskLists } from "@/hooks/useWorkspaceTaskLists.js";
+@@ -219,7 +218,6 @@ function resolveSidebarTaskViewMode(params: {
+ 
+ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+   workspacePath,
+-  workspaceRemoteSessionId,
+   activePreviewPath,
+   onSelectTask,
+   onStartDraftInWorkspace,
+@@ -230,14 +228,10 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+   onCreateConversationTask,
+   onOpenFolderFromWorkspaceMenu,
+   onOpenRemoteWorkspace,
+-  theme,
+   onConnectRemote: _onConnectRemote,
+   onSelectRemoteProject: _onSelectRemoteProject,
+   onCancelRemoteProject: _onCancelRemoteProject,
+   onReconnectRemoteWorkspace,
+-  onLogout,
+-  onLogin,
+-  user,
+   reconnectingRemoteWorkspaceKeys,
+   remoteWorkspaceErrorByWorkspaceKey,
+   reconnectingRemoteWorkspaceLogsByWorkspaceKey = EMPTY_RECONNECTING_REMOTE_WORKSPACE_LOGS_BY_WORKSPACE_KEY,
+@@ -312,7 +306,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+   pluginStoreActive?: boolean;
+   onFileTreeOpenChange?: (open: boolean) => void;
+ }) {
+-  const { intl, localePreference, setLocalePreference } = useZCodeIntl();
++  const { intl } = useZCodeIntl();
+   const handleTaskRowSelect = useCallback(
+     (
+       targetWorkspacePath: string,
+@@ -332,7 +326,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+     },
+     [onSelectTask],
+   );
+-  const bumpTaskListVersion = useZCodeSessionStore((state) => state.bumpTaskListVersion);
+   const workspaceIdentity = useTabStore((state) => {
+     if (!state.activeTabId) {
+       return undefined;
+@@ -353,7 +346,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+         id: "workspaceSidebar.unavailableLocalDirectory",
+       })
+     : undefined;
+-  const setTheme = useZCodeStore((state) => state.setTheme);
+   const commandCenterShortcutLabel = useShortcutCommandLabel("openCommandCenter");
+   const tabs = useTabStore((state) => state.tabs);
+   const activateTab = useTabStore((state) => state.activateTab);
+@@ -622,7 +614,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+       coordinateGetter: sortableKeyboardCoordinates,
+     }),
+   );
+-  const localeMenuValue = localePreference === "system" ? "system" : localePreference;
+   const workspaceTaskLists = useWorkspaceTaskLists({
+     workspaceTabs: projectWorkspaceTabs,
+     activeWorkspacePath: workspacePath,
+@@ -717,34 +708,6 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+     [activeWorkspaceDragId, projectWorkspaceTabs],
+   );
+ 
+-  const handleThemeChange = useCallback(
+-    (value: string) => {
+-      if (
+-        value === "light" ||
+-        value === "dark" ||
+-        value === "zai-light" ||
+-        value === "zai-dark" ||
+-        value === "system"
+-      ) {
+-        setTheme(value);
+-      }
+-    },
+-    [setTheme],
+-  );
+-
+-  const handleLocaleChange = useCallback(
+-    (value: string) => {
+-      if (value === "system") {
+-        setLocalePreference("system");
+-        return;
+-      }
+-      if (value === "zh-CN" || value === "en-US") {
+-        setLocalePreference(value as Locale);
+-      }
+-    },
+-    [setLocalePreference],
+-  );
+-
+   const handleOpenPluginStoreMain = useCallback(() => {
+     onOpenPluginStore?.();
+   }, [onOpenPluginStore]);
+@@ -1628,19 +1591,9 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+ 
+           <WorkspaceSidebarFooter
+             className="pr-3"
+-            theme={theme}
+-            localeMenuValue={localeMenuValue}
+-            onLocaleChange={handleLocaleChange}
+-            onThemeChange={handleThemeChange}
+             onSettingsButtonClick={openSettingsTab}
+-            onUsageClick={openSettingsTab}
+-            onLogin={onLogin}
+-            onLogout={onLogout}
+-            user={user}
+             workspacePath={workspacePath}
+             workspaceIdentity={workspaceIdentity}
+-            workspaceRemoteSessionId={workspaceRemoteSessionId}
+-            activeTaskId={activeTaskId}
+             isDesktop={isDesktop}
+           />
+         </div>
+diff --git a/packages/ui/src/WorkspaceSidebarFooter.tsx b/packages/ui/src/WorkspaceSidebarFooter.tsx
+index f6a80c8..15d7fed 100644
+--- a/packages/ui/src/WorkspaceSidebarFooter.tsx
++++ b/packages/ui/src/WorkspaceSidebarFooter.tsx
+@@ -1,60 +1,16 @@
+-/* oxlint-disable eslint(max-lines) -- footer 聚合账户、主题、模式和快捷键菜单。 */
+-import { useGitHubAccount } from "@/hooks/useGitHubAccount.js";
+-import type { Locale, UserInfo } from "@zcode/shared";
+-import { memo, useCallback, useEffect, useState } from "react";
+-import {
+-  DesktopCommandIds,
+-  TID_LOGIN_MENU_ITEM,
+-  TID_LOGIN_TRIGGER,
+-  TID_LOGOUT_BUTTON,
+-  TID_TASK_SETTINGS_BUTTON,
+-} from "@zcode/shared";
++import { memo } from "react";
++import { Settings } from "lucide-react";
++import { TID_TASK_SETTINGS_BUTTON } from "@zcode/shared";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+ import { cn } from "@/components/lib/utils.js";
+ import { Button } from "@/components/ui/button.js";
+-import {
+-  DropdownMenu,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuRadioGroup,
+-  DropdownMenuRadioItem,
+-  DropdownMenuSeparator,
+-  DropdownMenuShortcut,
+-  DropdownMenuSub,
+-  DropdownMenuSubContent,
+-  DropdownMenuSubTrigger,
+-  DropdownMenuTrigger,
+-} from "@/components/ui/dropdown-menu.js";
+-import {
+-  PencilRuler,
+-  Globe,
+-  LogInIcon,
+-  LogOut,
+-  Maximize,
+-  Palette,
+-  Settings,
+-  GitBranchIcon,
+-  Check,
+-  ZoomIn,
+-  ZoomOut,
+-} from "lucide-react";
+-import { usePlatform } from "@/hooks/usePlatform.js";
++import { ServiceProvider } from "@/hooks/useServices.js";
++import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
+-import { useZCodeStore } from "@/store/StoreProvider.js";
+-import { normalizeInterfaceMode } from "@/lib/interfaceMode.js";
+-import type { Theme } from "@/useTheme.js";
++import { LocalProfileControl } from "@/LocalProfileControl.js";
+ import { WorkspaceWebRemoteControlTrigger } from "@/WorkspaceWebRemoteControlTrigger.js";
+-import type { WorkspaceSidebarFooterUsageSummaryContent } from "@/WorkspaceSidebarFooterUsageSummary.js";
+ 
+-const DESKTOP_ZOOM_MIN_LEVEL = -3;
+-const DESKTOP_ZOOM_MAX_LEVEL = 5;
+-
+-export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterComponent({
+-  theme,
+-  localeMenuValue,
+-  onLocaleChange,
+-  onThemeChange,
++export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooter({
+   onSettingsButtonClick,
+   settingsButtonMode = "settings",
+   workspacePath,
+@@ -62,301 +18,25 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
+   isDesktop = false,
+   className,
+ }: {
+-  theme: Theme;
+-  localeMenuValue: Locale | "system";
+-  onLocaleChange: (value: string) => void;
+-  onThemeChange: (value: string) => void;
+   onSettingsButtonClick?: () => void;
+-  onUsageClick?: () => void;
+-  onUpgradeClick?: Parameters<
+-    typeof WorkspaceSidebarFooterUsageSummaryContent
+-  >[0]["onUpgradeClick"];
+-  onLogin?: () => void;
+-  onLogout?: () => void;
+   settingsButtonMode?: "settings" | "back";
+-  user?: UserInfo | null;
+   workspacePath?: string;
+   workspaceIdentity?: string;
+-  workspaceRemoteSessionId?: string;
+-  activeTaskId?: string | null;
+   isDesktop?: boolean;
+   className?: string;
+ }) {
+   const { intl } = useZCodeIntl();
+-  const platform = usePlatform();
+-  const interfaceMode = useZCodeStore((state) => state.interfaceMode);
+-  const setInterfaceMode = useZCodeStore((state) => state.setInterfaceMode);
+-  const zoomInShortcutLabel = useShortcutCommandLabel("zoomIn");
+-  const zoomOutShortcutLabel = useShortcutCommandLabel("zoomOut");
+-  const resetZoomShortcutLabel = useShortcutCommandLabel("resetZoom");
+-  const github = useGitHubAccount();
+-  const activeAccount = github.status?.accounts.find((account) => account.active);
+-  const profileBadge = activeAccount?.login ?? "GitHub";
+-  const profileContent = (
+-    <>
+-      <GitBranchIcon className="size-4 shrink-0" />
+-      <span className="min-w-0 truncate text-ui-base font-semibold">{profileBadge}</span>
+-    </>
+-  );
+-  const settingsButtonLabel =
+-    settingsButtonMode === "back"
+-      ? intl.formatMessage({ id: "workspace.backToWorkspace" })
+-      : intl.formatMessage({ id: "settings.title" });
+-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+-  const [desktopZoomLevel, setDesktopZoomLevel] = useState(0);
+-  const runDesktopZoomCommand = useCallback(
+-    (command: (typeof DesktopCommandIds)["ZoomIn" | "ZoomOut" | "ResetZoom"]) => {
+-      void platform.executeDesktopCommand(command);
+-    },
+-    [platform],
+-  );
+-
+-  useEffect(() => {
+-    if (!isDesktop) {
+-      setDesktopZoomLevel(0);
+-      return;
+-    }
+-
+-    let isCancelled = false;
+-    void platform.getDesktopZoomLevel?.().then((state) => {
+-      if (!isCancelled && Number.isFinite(state.zoomLevel)) {
+-        setDesktopZoomLevel(state.zoomLevel);
+-      }
+-    });
+-
+-    const dispose = platform.onDesktopZoomLevelChanged?.((state) => {
+-      if (Number.isFinite(state.zoomLevel)) {
+-        setDesktopZoomLevel(state.zoomLevel);
+-      }
+-    });
+-
+-    return () => {
+-      isCancelled = true;
+-      dispose?.();
+-    };
+-  }, [isDesktop, platform]);
+-
+-  const canResetDesktopZoom = desktopZoomLevel !== 0;
+-  const canZoomIn = desktopZoomLevel < DESKTOP_ZOOM_MAX_LEVEL;
+-  const canZoomOut = desktopZoomLevel > DESKTOP_ZOOM_MIN_LEVEL;
+-
++  const localServices = useBaseWorkspaceServices();
++  const settingsButtonLabel = intl.formatMessage({
++    id: settingsButtonMode === "back" ? "workspace.backToWorkspace" : "settings.title",
++  });
+   return (
+-    // footer 被 Settings 复用，页面专属边距由调用方传入，避免修改共享默认样式。
+     <footer className={cn("flex shrink-0 flex-col gap-2.5 px-4 pt-2 pb-4", className)}>
+       <div className="flex min-w-0 gap-2">
+-        <DropdownMenu
+-          open={profileMenuOpen}
+-          onOpenChange={(open) => {
+-            setProfileMenuOpen(open);
+-            if (open) void github.refresh();
+-          }}
+-        >
+-          <DropdownMenuTrigger asChild>
+-            {/* 头像和 Login 之前直接绑定到登录动作，导致用户无法从这里打开偏好设置。
+-              现在把这一块改成统一的设置菜单入口，登录/退出留在菜单项里，交互职责更清晰。 */}
+-            <Button
+-              type="button"
+-              variant="ghost"
+-              size={"lg"}
+-              className="min-w-0 flex-1 justify-start gap-2 overflow-hidden rounded-tl-2xl rounded-bl-2xl border-0 pl-0"
+-              data-testid={TID_LOGIN_TRIGGER}
+-              aria-label={profileBadge}
+-            >
+-              {/* Button 默认 shrink-0 且带 whitespace-nowrap，超长用户名会把 footer 撑出 sidebar。
+-                这里让触发按钮和文本列都允许收缩，并只在用户名自身做单行截断。 */}
+-              {profileContent}
+-            </Button>
+-          </DropdownMenuTrigger>
+-          {/* 菜单内容保持挂载，避免每次点击头像菜单都重建 footer 内部状态。*/}
+-          <DropdownMenuContent align="start" className="w-max min-w-50" forceMount>
+-            <DropdownMenuSub>
+-              <DropdownMenuSubTrigger>
+-                <Globe className="size-4" />
+-                {intl.formatMessage({ id: "settings.locale" })}
+-              </DropdownMenuSubTrigger>
+-              <DropdownMenuSubContent className="w-48">
+-                <DropdownMenuRadioGroup value={localeMenuValue} onValueChange={onLocaleChange}>
+-                  <DropdownMenuRadioItem value="system">
+-                    {intl.formatMessage({
+-                      id: "sidebar.settings.systemDefault",
+-                    })}
+-                  </DropdownMenuRadioItem>
+-                  <DropdownMenuRadioItem value="en-US">
+-                    {intl.formatMessage({
+-                      id: "sidebar.settings.locale.en-US",
+-                    })}
+-                  </DropdownMenuRadioItem>
+-                  <DropdownMenuRadioItem value="zh-CN">
+-                    {intl.formatMessage({
+-                      id: "sidebar.settings.locale.zh-CN",
+-                    })}
+-                  </DropdownMenuRadioItem>
+-                </DropdownMenuRadioGroup>
+-              </DropdownMenuSubContent>
+-            </DropdownMenuSub>
+-            <DropdownMenuSub>
+-              <DropdownMenuSubTrigger>
+-                <Palette className="size-4" />
+-                {intl.formatMessage({ id: "settings.themeMode" })}
+-              </DropdownMenuSubTrigger>
+-              <DropdownMenuSubContent className="w-48">
+-                <DropdownMenuRadioGroup value={theme} onValueChange={onThemeChange}>
+-                  <DropdownMenuRadioItem value="system">
+-                    {intl.formatMessage({
+-                      id: "sidebar.settings.systemDefault",
+-                    })}
+-                  </DropdownMenuRadioItem>
+-                  <DropdownMenuRadioItem value="zai-dark">
+-                    {intl.formatMessage({
+-                      id: "sidebar.settings.theme.zai-dark",
+-                    })}
+-                  </DropdownMenuRadioItem>
+-                  <DropdownMenuRadioItem value="zai-light">
+-                    {intl.formatMessage({
+-                      id: "sidebar.settings.theme.zai-light",
+-                    })}
+-                  </DropdownMenuRadioItem>
+-                </DropdownMenuRadioGroup>
+-              </DropdownMenuSubContent>
+-            </DropdownMenuSub>
+-            <DropdownMenuSub>
+-              <DropdownMenuSubTrigger>
+-                <PencilRuler className="size-4" />
+-                {intl.formatMessage({ id: "settings.interfaceMode" })}
+-              </DropdownMenuSubTrigger>
+-              <DropdownMenuSubContent className="w-48">
+-                <DropdownMenuRadioGroup
+-                  value={interfaceMode}
+-                  onValueChange={(value) => setInterfaceMode(normalizeInterfaceMode(value))}
+-                >
+-                  <DropdownMenuRadioItem value="coding">
+-                    {intl.formatMessage({ id: "settings.interfaceMode.coding" })}
+-                  </DropdownMenuRadioItem>
+-                  <DropdownMenuRadioItem value="office">
+-                    {intl.formatMessage({ id: "settings.interfaceMode.office" })}
+-                  </DropdownMenuRadioItem>
+-                </DropdownMenuRadioGroup>
+-              </DropdownMenuSubContent>
+-            </DropdownMenuSub>
+-            {/* 快捷键设置：缩放子菜单 label 读生效表，设置页改绑后即时跟随 */}
+-            {/* 收口重复缩放子菜单时误留了语言之后的那份，导致菜单顺序变成
+-                语言→缩放→主题；账户菜单分组顺序固定为 语言→主题→界面模式→缩放→用量→登录/登出，
+-                这里把唯一一份（读生效表）挪回用量摘要之前，不要再补第二份缩放子菜单。 */}
+-            {isDesktop ? (
+-              <DropdownMenuSub>
+-                <DropdownMenuSubTrigger>
+-                  <ZoomIn className="size-4" />
+-                  {intl.formatMessage({ id: "sidebar.settings.interfaceZoom" })}
+-                </DropdownMenuSubTrigger>
+-                <DropdownMenuSubContent className="w-50">
+-                  <DropdownMenuItem
+-                    disabled={!canZoomIn}
+-                    onSelect={() => runDesktopZoomCommand(DesktopCommandIds.ZoomIn)}
+-                  >
+-                    <ZoomIn className="size-4" />
+-                    {intl.formatMessage({ id: "titleBar.menu.view.zoomIn" })}
+-                    <DropdownMenuShortcut>{zoomInShortcutLabel}</DropdownMenuShortcut>
+-                  </DropdownMenuItem>
+-                  <DropdownMenuItem
+-                    disabled={!canZoomOut}
+-                    onSelect={() => runDesktopZoomCommand(DesktopCommandIds.ZoomOut)}
+-                  >
+-                    <ZoomOut className="size-4" />
+-                    {intl.formatMessage({ id: "titleBar.menu.view.zoomOut" })}
+-                    <DropdownMenuShortcut>{zoomOutShortcutLabel}</DropdownMenuShortcut>
+-                  </DropdownMenuItem>
+-                  <DropdownMenuItem
+-                    disabled={!canResetDesktopZoom}
+-                    onSelect={() => runDesktopZoomCommand(DesktopCommandIds.ResetZoom)}
+-                  >
+-                    <Maximize className="size-4" />
+-                    {intl.formatMessage({ id: "titleBar.menu.view.actualSize" })}
+-                    <DropdownMenuShortcut>{resetZoomShortcutLabel}</DropdownMenuShortcut>
+-                  </DropdownMenuItem>
+-                </DropdownMenuSubContent>
+-              </DropdownMenuSub>
+-            ) : null}
+-            <DropdownMenuSeparator />
+-            <div className="px-2 py-1.5 text-ui-caption text-foreground-subtle">
+-              {intl.formatMessage({ id: "github.account.cliOwner" })}
+-            </div>
+-            {github.status?.accounts.map((account) => (
+-              <DropdownMenuItem
+-                key={account.login}
+-                disabled={github.busy}
+-                onSelect={(event) => {
+-                  event.preventDefault();
+-                  void github.switchAccount(account.login);
+-                }}
+-              >
+-                <GitBranchIcon className="size-4" />
+-                {account.login}
+-                {account.active ? <Check className="ml-auto size-4" /> : null}
+-              </DropdownMenuItem>
+-            ))}
+-            {github.login?.state === "pending" ? (
+-              <>
+-                <div className="px-2 py-2 text-ui-base" role="status">
+-                  {intl.formatMessage({ id: "github.account.code" })}{" "}
+-                  <strong className="select-text font-mono">{github.login.code ?? "…"}</strong>
+-                </div>
+-                <DropdownMenuItem
+-                  onSelect={(event) => {
+-                    event.preventDefault();
+-                    void platform.openExternal(github.login!.verificationUrl);
+-                  }}
+-                >
+-                  {intl.formatMessage({ id: "github.account.open" })}
+-                </DropdownMenuItem>
+-                <DropdownMenuItem
+-                  onSelect={(event) => {
+-                    event.preventDefault();
+-                    void github.cancel();
+-                  }}
+-                >
+-                  {intl.formatMessage({ id: "common.cancel" })}
+-                </DropdownMenuItem>
+-              </>
+-            ) : (
+-              <DropdownMenuItem
+-                disabled={github.busy || github.status?.installed === false}
+-                onSelect={(event) => {
+-                  event.preventDefault();
+-                  void github.connect();
+-                }}
+-                data-testid={TID_LOGIN_MENU_ITEM}
+-              >
+-                <LogInIcon className="size-4" />
+-                {intl.formatMessage({ id: "github.account.connect" })}
+-              </DropdownMenuItem>
+-            )}
+-            {activeAccount ? (
+-              <DropdownMenuItem
+-                disabled={github.busy}
+-                onSelect={(event) => {
+-                  event.preventDefault();
+-                  void github.logout(activeAccount.login);
+-                }}
+-                data-testid={TID_LOGOUT_BUTTON}
+-              >
+-                <LogOut className="size-4" />
+-                {intl.formatMessage({ id: "github.account.disconnect" })}
+-              </DropdownMenuItem>
+-            ) : null}
+-            {github.status?.installed === false ? (
+-              <DropdownMenuItem
+-                onSelect={() => void platform.openExternal("https://cli.github.com/")}
+-              >
+-                {intl.formatMessage({ id: "github.account.install" })}
+-              </DropdownMenuItem>
+-            ) : null}
+-            {github.error ? (
+-              <div className="max-w-64 px-2 py-2 text-ui-caption text-destructive" role="alert">
+-                {intl.formatMessage({ id: "github.account.error" })}
+-              </div>
+-            ) : null}
+-          </DropdownMenuContent>
+-        </DropdownMenu>
++        {/* 个人资料属于本机设置，切换远程项目不能读写远端资料。 */}
++        <ServiceProvider services={localServices}>
++          <LocalProfileControl />
++        </ServiceProvider>
+         <div className="flex shrink-0 items-center gap-1.5">
+           {isDesktop && workspacePath ? (
+             <WorkspaceWebRemoteControlTrigger
+diff --git a/packages/ui/src/assets.d.ts b/packages/ui/src/assets.d.ts
+index 201928b..087dddf 100644
+--- a/packages/ui/src/assets.d.ts
++++ b/packages/ui/src/assets.d.ts
+@@ -9,3 +9,9 @@ declare module "*?url" {
+   const src: string;
+   export default src;
+ }
++
++// Packaged local reference text, shared with the Agent guide plugin.
++declare module "*.md?raw" {
++  const content: string;
++  export default content;
++}
+diff --git a/packages/ui/src/assets/default-profile-avatar.svg b/packages/ui/src/assets/default-profile-avatar.svg
+new file mode 100644
+index 0000000..6d80d40
+--- /dev/null
++++ b/packages/ui/src/assets/default-profile-avatar.svg
+@@ -0,0 +1,11 @@
++<!-- Local vector rendition of the owner's ZCode default-profile reference.
++     Fixed grey/white portrait; no vendor account or remote image request. -->
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
++  <defs><clipPath id="portrait"><circle cx="32" cy="32" r="32"/></clipPath></defs>
++  <g clip-path="url(#portrait)">
++    <path fill="#C7C7C7" d="M0 0h64v64H0z"/>
++    <circle cx="32" cy="26" r="14" fill="#FFF"/>
++    <ellipse cx="32" cy="60" rx="24" ry="22" fill="#FFF"/>
++  </g>
++  <circle cx="32" cy="32" r="31" stroke="#B1B1B1" stroke-width="2"/>
++</svg>
+diff --git a/packages/ui/src/chat-input-toolbar/StartPlanContextBalance.tsx b/packages/ui/src/chat-input-toolbar/StartPlanContextBalance.tsx
+index 9a64b27..782d642 100644
+--- a/packages/ui/src/chat-input-toolbar/StartPlanContextBalance.tsx
++++ b/packages/ui/src/chat-input-toolbar/StartPlanContextBalance.tsx
+@@ -137,7 +137,6 @@ export function ChatStartPlanBalancePanel({
+             <Loader2Icon className="size-3.5 shrink-0 animate-spin text-foreground-subtle" />
+           ) : null}
+         </div>
+-        {config.onUpgradeClick ? null : null}
+       </div>
+       <div className={cn("grid gap-2", getContextQuotaMeterGridClass(limits.length))}>
+         {limits.map((limit) => (
+diff --git a/packages/ui/src/chat-input-toolbar/contextUsage.tsx b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+index da91f62..f77ef6f 100644
+--- a/packages/ui/src/chat-input-toolbar/contextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+@@ -815,14 +815,6 @@ export function ChatContextUsage({
+     [locale],
+   );
+ 
+-  if (
+-    (!renderableTaskUsage || !contextUsageLabel) &&
+-    !hasCodingPlanUsageRemaining &&
+-    !hasStartPlanBalance
+-  ) {
+-    return null;
+-  }
+-
+   const usagePercent = renderableTaskUsage
+     ? Math.min(Math.max(renderableTaskUsage.used / renderableTaskUsage.size, 0), 1)
+     : 0;
+@@ -838,9 +830,10 @@ export function ChatContextUsage({
+     contextUsageLabel ??
+     (hasCodingPlanUsageRemaining
+       ? intl.formatMessage({ id: "sidebar.usage.plan.title" })
+-      : intl.formatMessage({
+-          id: "settings.modelProvider.startPlan.balance.title",
+-        }));
++      : hasStartPlanBalance
++        ? intl.formatMessage({ id: "settings.modelProvider.startPlan.balance.title" })
++        : intl.formatMessage({ id: "chat.contextUsage.title" }));
++  // 无实测用量时保留原有入口；0/1 仅绘制空环，不作为容量或百分比展示。
+   const contextUsedTokens = renderableTaskUsage?.used ?? 0;
+   const contextMaxTokens = renderableTaskUsage?.size ?? 1;
+ 
+@@ -913,6 +906,16 @@ export function ChatContextUsage({
+         sideOffset={2}
+       >
+         <ContextContentBody className="space-y-3">
++          {!renderableTaskUsage ? (
++            <div className="space-y-2">
++              <div className="text-ui-base font-medium">
++                {intl.formatMessage({ id: "chat.contextUsage.title" })}
++              </div>
++              <p className="text-ui-base text-foreground-subtle">
++                {intl.formatMessage({ id: "chat.contextUsage.unmeasured" })}
++              </p>
++            </div>
++          ) : null}
+           {/* 默认 ai-elements Header 会硬编码标题并把摘要拆到独立头部。
+           工具栏上下文 hover 只需要一块紧凑信息面板，摘要和明细统一放在 body 里。 */}
+           {renderableTaskUsage && compactTokenUsageLabel ? (
+diff --git a/packages/ui/src/hooks/useDesktopUpdateMenu.ts b/packages/ui/src/hooks/useDesktopUpdateMenu.ts
+index 44bb061..7985eb2 100644
+--- a/packages/ui/src/hooks/useDesktopUpdateMenu.ts
++++ b/packages/ui/src/hooks/useDesktopUpdateMenu.ts
+@@ -4,13 +4,13 @@ import { usePlatform } from "@/hooks/usePlatform.js";
+ import {
+   getUpdateMenuLabelId,
+   getUpdateMenuLabelValues,
+-  shouldShowDesktopUpdateEntry,
+ } from "@/lib/desktopUpdateMenu.js";
+ import { logger } from "@/logger.js";
+ 
+ export function useDesktopUpdateMenu(isDesktop: boolean) {
+   const platform = usePlatform();
+-  const visible = isDesktop && shouldShowDesktopUpdateEntry();
++  // Preview 也保留显式检查入口；可用性由主进程报告，不把未配置误写成已是最新。
++  const visible = isDesktop;
+   const [state, setState] = useState<UpdateStatePayload | null>(null);
+ 
+   useEffect(() => {
+@@ -36,7 +36,7 @@ export function useDesktopUpdateMenu(isDesktop: boolean) {
+ 
+   return {
+     visible,
+-    disabled: state?.enabled === false,
++    disabled: state?.kind === "checking",
+     labelId: getUpdateMenuLabelId(state),
+     labelValues: getUpdateMenuLabelValues(state),
+     checkForUpdates: () => {
+diff --git a/packages/ui/src/hooks/useGitHubAccount.ts b/packages/ui/src/hooks/useGitHubAccount.ts
+deleted file mode 100644
+index 709478c..0000000
+--- a/packages/ui/src/hooks/useGitHubAccount.ts
++++ /dev/null
+@@ -1,98 +0,0 @@
+-import { useCallback, useEffect, useRef, useState } from "react";
+-import { useServices } from "./useServices.js";
+-import type { IGitService } from "@zcode/services";
+-type Status = Awaited<ReturnType<IGitService["githubAccountStatus"]>>;
+-type Login = Awaited<ReturnType<IGitService["githubBeginLogin"]>>;
+-
+-export function useGitHubAccount(): {
+-  status: Status | undefined;
+-  login: Login | undefined;
+-  busy: boolean;
+-  error: boolean;
+-  refresh(): Promise<void>;
+-  connect(): Promise<void>;
+-  cancel(): Promise<void>;
+-  switchAccount(name: string): Promise<void>;
+-  logout(name: string): Promise<void>;
+-} {
+-  const { gitService } = useServices();
+-  const [status, setStatus] = useState<Status>();
+-  const [login, setLogin] = useState<Login>();
+-  const [busy, setBusy] = useState(false);
+-  const [error, setError] = useState(false);
+-  const mounted = useRef(true);
+-  useEffect(() => {
+-    mounted.current = true;
+-    return () => {
+-      mounted.current = false;
+-    };
+-  }, []);
+-  const run = useCallback(async (action: () => Promise<void>) => {
+-    setBusy(true);
+-    setError(false);
+-    try {
+-      await action();
+-    } catch {
+-      if (mounted.current) setError(true);
+-    } finally {
+-      if (mounted.current) setBusy(false);
+-    }
+-  }, []);
+-  const refresh = useCallback(
+-    () =>
+-      run(async () => {
+-        const next = await gitService.githubAccountStatus();
+-        if (mounted.current) setStatus(next);
+-      }),
+-    [gitService, run],
+-  );
+-  useEffect(() => {
+-    if (login?.state !== "pending") return;
+-    let disposed = false;
+-    let timer: ReturnType<typeof setTimeout>;
+-    const poll = async () => {
+-      try {
+-        const next = await gitService.githubLoginState(login.id);
+-        if (disposed) return;
+-        setLogin(next);
+-        if (next.state === "pending") timer = setTimeout(() => void poll(), 1000);
+-        else if (next.state === "complete") await refresh();
+-        else if (next.state === "failed") setError(true);
+-      } catch {
+-        if (!disposed) setError(true);
+-      }
+-    };
+-    void poll();
+-    return () => {
+-      disposed = true;
+-      clearTimeout(timer);
+-    };
+-  }, [gitService, login?.id, login?.state, refresh]);
+-  return {
+-    status,
+-    login,
+-    busy,
+-    error,
+-    refresh,
+-    connect: () =>
+-      run(async () => {
+-        const next = await gitService.githubBeginLogin();
+-        if (mounted.current) setLogin(next);
+-      }),
+-    cancel: () =>
+-      run(async () => {
+-        if (login) await gitService.githubCancelLogin(login.id);
+-        if (mounted.current) setLogin(undefined);
+-      }),
+-    switchAccount: (name: string) =>
+-      run(async () => {
+-        const next = await gitService.githubSwitchAccount(name);
+-        if (mounted.current) setStatus(next);
+-      }),
+-    logout: (name: string) =>
+-      run(async () => {
+-        const next = await gitService.githubLogout(name);
+-        if (mounted.current) setStatus(next);
+-      }),
+-  };
+-}
+diff --git a/packages/ui/src/hooks/usePluginCreator.ts b/packages/ui/src/hooks/usePluginCreator.ts
+index 43e56e8..12341d2 100644
+--- a/packages/ui/src/hooks/usePluginCreator.ts
++++ b/packages/ui/src/hooks/usePluginCreator.ts
+@@ -48,7 +48,11 @@ export function usePluginCreator(
+   const pending = useRef<object | null>(null);
+   const [busyScope, setBusyScope] = useState<object | null>(null);
+   const create = useCallback(async () => {
+-    if (pending.current === scope || !target || !onCreateTask) return;
++    if (pending.current === scope) return;
++    if (!target || !onCreateTask) {
++      toast(intl.formatMessage({ id: "pluginCreator.unavailable" }), { variant: "warning" });
++      return;
++    }
+     if (!resolution.rpcReady) {
+       toast(intl.formatMessage({ id: "pluginCreator.unavailable" }), { variant: "warning" });
+       return;
+@@ -72,12 +76,19 @@ export function usePluginCreator(
+     setBusyScope(scope);
+     try {
+       const prefill = await loadPluginCreatorPrefill(
+-        () =>
+-          resolution.services.skillsService.list({
++        async () => {
++          // First-use discovery seeds packaged assets through the existing plugin owner.
++          await resolution.services.pluginManagementService.listPlugins({
++            workspacePath: target.workspacePath,
++            workspaceIdentity: target.workspaceIdentity,
++          });
++          if (!isCurrent()) return { skills: [] };
++          return resolution.services.skillsService.list({
+             workspacePath: target.workspacePath,
+             workspaceIdentity: target.workspaceIdentity,
+             provider: ZCODE_AGENT_PROVIDER,
+-          }),
++          });
++        },
+         isCurrent,
+       );
+       if (prefill) {
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index fd80e34..6317f23 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,5 +1,10 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
++  "settings.modelProvider.discovery.title": "Get models",
++  "settings.modelProvider.discovery.search": "Search model name or ID",
++  "settings.modelProvider.discovery.selectVisible": "Select search results",
++  "settings.modelProvider.discovery.noMatches": "No matching models",
++  "settings.modelProvider.discovery.loading": "Fetching models…",
+   "settings.modelProvider.discovery.fetch": "Fetch model list",
+   "settings.modelProvider.discovery.catalog":
+     "Adapter catalog; account availability may vary. Select models to add.",
+@@ -86,7 +91,7 @@ const enUS: Record<string, string> = {
+   "occupationOnboarding.suggestionsDescription":
+     "Show suggestions in new conversations. Click to fill the composer.",
+   "occupationOnboarding.close": "Exit onboarding",
+-  "startup.global.silent": "Starting ZCode",
++  "startup.global.silent": "Starting Fleet",
+   "startup.global.upgrading": "Upgrading local data",
+   "startup.global.initializing": "Initializing local data",
+   "startup.global.waiting": "Waiting for database preparation",
+@@ -97,7 +102,7 @@ const enUS: Record<string, string> = {
+   "startup.global.starting": "Preparing local data",
+   "startup.global.preparing_host_storage": "Preparing task index",
+   "startup.global.preparing_session_storage": "Preparing chat history",
+-  "startup.global.starting_services": "Starting ZCode",
++  "startup.global.starting_services": "Starting Fleet",
+   "startup.global.ready": "Local data is ready",
+   "startup.global.failed": "Startup preparation failed",
+   "startup.global.help":
+@@ -923,6 +928,16 @@ const enUS: Record<string, string> = {
+ 
+   // App header
+   "app.currentTheme": "Current: {theme}",
++  "profile.defaultName": "User",
++  "profile.edit": "Profile",
++  "profile.avatar": "Change avatar",
++  "profile.upload": "Choose image",
++  "profile.resetAvatar": "Reset avatar",
++  "profile.name": "Name",
++  "profile.namePlaceholder": "Enter your name",
++  "profile.saveError": "Could not save. Please try again.",
++  "profile.imageError": "Choose a PNG, JPEG or WebP image up to 10 MB.",
++  "profile.readError": "Could not load your profile.",
+   "app.login": "Connect",
+   "app.logout": "Disconnect",
+   "logout.confirm.title": "Disconnect and restart ZCode?",
+@@ -1519,7 +1534,7 @@ const enUS: Record<string, string> = {
+   "workspaceHeader.help.productRequest": "Request a feature",
+   "workspaceHeader.help.productRequestDraft": "I would like to suggest: ",
+   "workspaceHeader.help.community": "User community",
+-  "workspaceHeader.help.docs": "Product docs",
++  "workspaceHeader.help.docs": "Help documentation",
+   "titleBar.menu.file": "File",
+   "titleBar.menu.view": "View",
+   "titleBar.menu.help": "Help",
+@@ -1533,7 +1548,7 @@ const enUS: Record<string, string> = {
+   "titleBar.menu.view.actualSize": "Actual size",
+   "titleBar.menu.view.zoomIn": "Zoom in",
+   "titleBar.menu.view.zoomOut": "Zoom out",
+-  "titleBar.menu.help.about": "About ZCode",
++  "titleBar.menu.help.about": "About Fleet",
+   "titleBar.menu.help.checkForUpdates": "Check for updates",
+   "titleBar.menu.help.feedback": "Feedback",
+   "sidebar.menu.community": "Community",
+@@ -1585,6 +1600,8 @@ const enUS: Record<string, string> = {
+   "update.toast.alreadyDownloading": "Downloading new version ({progress}%)",
+   "update.toast.ready": "v{version} downloaded, restart to install",
+   "update.toast.devSkipped": "Updates are disabled in dev builds",
++  "update.toast.unavailable":
++    "No update source is configured for this build. Updates cannot be checked yet.",
+   "update.toast.error": "Update check failed: {error}",
+   "forceUpdate.title": "Update ZCode to continue",
+   "forceUpdate.description":
+@@ -4692,6 +4709,8 @@ const enUS: Record<string, string> = {
+   "chat.reasoning.durationSeconds": "{seconds} seconds",
+   "chat.contextUsage": "Context usage {used} of {total}",
+   "chat.contextUsage.title": "Context windows",
++  "chat.contextUsage.unmeasured":
++    "No measured usage yet. It will appear after the conversation runs.",
+   "chat.contextUsageDescription":
+     "Prompt text, tool calls, and responses all share this context window.",
+   "chat.contextUsage.cacheHitRate": "Average cache hit rate",
+@@ -6369,8 +6388,7 @@ const enUS: Record<string, string> = {
+   "settings.automations.betaBadge": "Beta",
+   "automations.noWorkspace": "Open a workspace to manage its scheduled tasks.",
+   "automations.workspace.label": "Project",
+-  "automations.description":
+-    "Schedule recurring tasks or queue background work that runs during idle time.",
++  "automations.description": "Create scheduled tasks that run in the background.",
+   "automations.description.populated": "Run tasks on a schedule or whenever you need them.",
+   "automations.refresh": "Refresh",
+   "automations.refreshing": "Refreshing…",
+@@ -6401,7 +6419,7 @@ const enUS: Record<string, string> = {
+   "automations.statusFilter.completed": "Completed",
+   "automations.statusFilter.failed": "Failed",
+   "automations.statusFilter.empty": "No tasks match this filter",
+-  "offPeak.keepAwakeBanner": "Keep your computer awake while ZCode is running a chat.",
++  "offPeak.keepAwakeBanner": "Keep your computer awake while Fleet is running a chat.",
+   "offPeak.sectionTitle": "Idle-time tasks",
+   "offPeak.createButton": "Create idle-time task",
+   "offPeak.templates.sectionTitle": "Idle-time task template",
+@@ -6836,13 +6854,6 @@ const enUS: Record<string, string> = {
+   "scheduledPreview.addSchedule": "Add schedule",
+   "offPeak.create.unavailableInFleet":
+     "Hosted idle-time service is unavailable in Fleet. Use a local scheduled automation.",
+-  "github.account.cliOwner": "GitHub CLI accounts · optional",
+-  "github.account.code": "Authorization code",
+-  "github.account.open": "Open GitHub authorization",
+-  "github.account.connect": "Sign in to GitHub",
+-  "github.account.disconnect": "Sign out of this GitHub CLI account",
+-  "github.account.install": "Install GitHub CLI",
+-  "github.account.error": "GitHub connection failed. Retry or check GitHub CLI.",
+ };
+ 
+ export default enUS;
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index a27c9d6..4fdb80e 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,5 +1,10 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
++  "settings.modelProvider.discovery.title": "获取模型",
++  "settings.modelProvider.discovery.search": "搜索模型名称或 ID",
++  "settings.modelProvider.discovery.selectVisible": "全选搜索结果",
++  "settings.modelProvider.discovery.noMatches": "没有匹配的模型",
++  "settings.modelProvider.discovery.loading": "正在获取模型…",
+   "settings.modelProvider.discovery.fetch": "从服务商获取模型列表",
+   "settings.modelProvider.discovery.catalog":
+     "适配器目录，实际可用性取决于账号。选择要添加的模型。",
+@@ -81,7 +86,7 @@ const zhCN: Record<string, string> = {
+   "occupationOnboarding.suggestions": "开启主动任务推荐",
+   "occupationOnboarding.suggestionsDescription": "在新对话中显示任务建议，点击后填入输入框。",
+   "occupationOnboarding.close": "退出引导",
+-  "startup.global.silent": "正在启动 ZCode",
++  "startup.global.silent": "正在启动 Fleet",
+   "startup.global.upgrading": "正在升级本地数据",
+   "startup.global.initializing": "正在初始化本地数据",
+   "startup.global.waiting": "正在等待数据库准备",
+@@ -92,7 +97,7 @@ const zhCN: Record<string, string> = {
+   "startup.global.starting": "正在准备本地数据",
+   "startup.global.preparing_host_storage": "正在更新任务索引",
+   "startup.global.preparing_session_storage": "正在更新聊天记录",
+-  "startup.global.starting_services": "正在启动 ZCode",
++  "startup.global.starting_services": "正在启动 Fleet",
+   "startup.global.ready": "本地数据已就绪",
+   "startup.global.failed": "无法完成启动准备",
+   "startup.global.help":
+@@ -841,6 +846,16 @@ const zhCN: Record<string, string> = {
+ 
+   // 应用头部
+   "app.currentTheme": "当前: {theme}",
++  "profile.defaultName": "用户",
++  "profile.edit": "个人资料",
++  "profile.avatar": "更换头像",
++  "profile.upload": "选择图片",
++  "profile.resetAvatar": "恢复默认头像",
++  "profile.name": "昵称",
++  "profile.namePlaceholder": "输入您的名字",
++  "profile.saveError": "未能保存，请重试。",
++  "profile.imageError": "请选择不超过 10 MB 的 PNG、JPEG 或 WebP 图片。",
++  "profile.readError": "未能读取个人资料。",
+   "app.login": "连接使用",
+   "app.logout": "断开连接",
+   "logout.confirm.title": "断开连接并重启 ZCode？",
+@@ -1403,7 +1418,7 @@ const zhCN: Record<string, string> = {
+   "workspaceHeader.help.productRequest": "给产品提需求",
+   "workspaceHeader.help.productRequestDraft": "我想建议：",
+   "workspaceHeader.help.community": "用户社群",
+-  "workspaceHeader.help.docs": "产品文档",
++  "workspaceHeader.help.docs": "帮助文档",
+   "titleBar.menu.file": "文件",
+   "titleBar.menu.view": "视图",
+   "titleBar.menu.help": "帮助",
+@@ -1417,7 +1432,7 @@ const zhCN: Record<string, string> = {
+   "titleBar.menu.view.actualSize": "实际大小",
+   "titleBar.menu.view.zoomIn": "放大",
+   "titleBar.menu.view.zoomOut": "缩小",
+-  "titleBar.menu.help.about": "关于 ZCode",
++  "titleBar.menu.help.about": "关于 Fleet",
+   "titleBar.menu.help.checkForUpdates": "检查更新",
+   "titleBar.menu.help.feedback": "问题上报",
+   "sidebar.menu.community": "用户社群",
+@@ -1468,6 +1483,7 @@ const zhCN: Record<string, string> = {
+   "update.toast.alreadyDownloading": "正在下载新版本（{progress}%）",
+   "update.toast.ready": "v{version} 已下载，重启即可安装",
+   "update.toast.devSkipped": "开发环境不检查更新",
++  "update.toast.unavailable": "此版本尚未配置更新源，暂时无法检查更新。",
+   "update.toast.error": "检查更新失败：{error}",
+   "forceUpdate.title": "需要升级 ZCode 后继续使用",
+   "forceUpdate.description":
+@@ -4390,6 +4406,7 @@ const zhCN: Record<string, string> = {
+   "chat.reasoning.durationSeconds": "持续了 {seconds} 秒",
+   "chat.contextUsage": "上下文已用 {used} / 总量 {total}",
+   "chat.contextUsage.title": "上下文容量",
++  "chat.contextUsage.unmeasured": "尚无实测用量，将在对话运行后显示。",
+   "chat.contextUsageDescription": "提示词、工具调用和回复都会共享上下文窗口。",
+   "chat.contextUsage.cacheHitRate": "平均缓存命中率",
+   "chat.contextUsage.breakdown": "上下文来源",
+@@ -6077,7 +6094,7 @@ const zhCN: Record<string, string> = {
+   "automations.noWorkspace": "打开一个工作区以管理它的定时任务。",
+   "automations.workspace.label": "项目",
+   // 页头只说明任务创建方式，避免把服务端滚动配额频次固化在全局空态文案中。
+-  "automations.description": "创建定时任务，或排队在闲时算力空闲时后台执行。",
++  "automations.description": "创建定时任务，按计划在后台运行。",
+   "automations.description.populated": "按计划运行任务，或在需要时随时执行。",
+   "automations.refresh": "刷新",
+   "automations.refreshing": "刷新中…",
+@@ -6105,7 +6122,7 @@ const zhCN: Record<string, string> = {
+   "automations.statusFilter.completed": "已完成",
+   "automations.statusFilter.failed": "失败",
+   "automations.statusFilter.empty": "没有符合条件的任务",
+-  "offPeak.keepAwakeBanner": "ZCode 运行会话时保持电脑唤醒。",
++  "offPeak.keepAwakeBanner": "Fleet 运行会话时保持电脑唤醒。",
+   "offPeak.sectionTitle": "闲时任务",
+   "offPeak.createButton": "创建闲时任务",
+   "offPeak.templates.sectionTitle": "闲时任务模板",
+@@ -6511,13 +6528,6 @@ const zhCN: Record<string, string> = {
+   "scheduledPreview.toast.view": "查看",
+   "scheduledPreview.addSchedule": "添加计划",
+   "offPeak.create.unavailableInFleet": "Fleet 未接入云端闲时任务服务，请使用本地定时自动化。",
+-  "github.account.cliOwner": "GitHub CLI 账号 · 可选连接",
+-  "github.account.code": "授权码",
+-  "github.account.open": "打开 GitHub 授权页",
+-  "github.account.connect": "登录 GitHub",
+-  "github.account.disconnect": "退出此 GitHub CLI 账号",
+-  "github.account.install": "安装 GitHub CLI",
+-  "github.account.error": "GitHub 连接未完成，请重试或检查 GitHub CLI。",
+ };
+ 
+ export default zhCN;
+diff --git a/packages/ui/src/lib/desktopUpdateMenu.ts b/packages/ui/src/lib/desktopUpdateMenu.ts
+index ad9d121..463d6cb 100644
+--- a/packages/ui/src/lib/desktopUpdateMenu.ts
++++ b/packages/ui/src/lib/desktopUpdateMenu.ts
+@@ -1,15 +1,4 @@
+-import {
+-  ZCODE_PRODUCT_FLAVOR,
+-  type ZCodeProductFlavor,
+-  type UpdateStatePayload,
+-} from "@zcode/shared";
+-
+-// 更新入口跟随产品身份而不是后端环境：Preview 身份（含生产后端的 Preview）禁用更新器。
+-export function shouldShowDesktopUpdateEntry(
+-  flavor: ZCodeProductFlavor = ZCODE_PRODUCT_FLAVOR,
+-): boolean {
+-  return flavor === "production";
+-}
++import type { UpdateStatePayload } from "@zcode/shared";
+ 
+ export function getUpdateMenuLabelId(state: UpdateStatePayload | null) {
+   switch (state?.kind) {
+diff --git a/packages/ui/src/lib/helpMenuActions.ts b/packages/ui/src/lib/helpMenuActions.ts
+index 79bdf0e..38a2f24 100644
+--- a/packages/ui/src/lib/helpMenuActions.ts
++++ b/packages/ui/src/lib/helpMenuActions.ts
+@@ -1,39 +1,14 @@
+ import type { IPlatformService } from "@zcode/shared";
+ import type { IntlInstance } from "@/i18n/IntlProvider.js";
+-import type { FeedbackSubmitDraft } from "@/feedback/feedbackStore.js";
+ import { runExportLogsAction } from "@/lib/exportLogsAction.js";
+-import { ZCODE_PRODUCT_DOCS_URL } from "@/lib/productDocs.js";
++import { requestLocalHelp } from "@/lib/productDocs.js";
+ 
+-interface HelpMenuActionHandlers {
+-  openIssueReport: () => Promise<void>;
+-  openProductDocs: () => void;
+-  exportLogs: () => void;
+-}
+-
+-export function createHelpMenuActionHandlers({
+-  platform,
+-  intl,
+-  openSubmit,
+-}: {
+-  platform: Pick<IPlatformService, "captureWindowScreenshot" | "exportLogs" | "openExternal">;
++export function createHelpMenuActionHandlers({ platform, intl }: {
++  platform: Pick<IPlatformService, "exportLogs">;
+   intl: IntlInstance;
+-  openSubmit: (draft?: FeedbackSubmitDraft) => void;
+-}): HelpMenuActionHandlers {
++}) {
+   return {
+-    openIssueReport: async () => {
+-      openSubmit({
+-        type: "bug",
+-        module: "其它",
+-        severity: "P2-中",
+-        includeLogs: false,
+-        screenshots: [],
+-      });
+-    },
+-    openProductDocs: () => {
+-      platform.openExternal(ZCODE_PRODUCT_DOCS_URL);
+-    },
+-    exportLogs: () => {
+-      void runExportLogsAction(platform, intl);
+-    },
++    openProductDocs: () => requestLocalHelp(),
++    exportLogs: () => { void runExportLogsAction(platform, intl); },
+   };
+ }
+diff --git a/packages/ui/src/lib/localProfileAvatar.ts b/packages/ui/src/lib/localProfileAvatar.ts
+new file mode 100644
+index 0000000..9df1871
+--- /dev/null
++++ b/packages/ui/src/lib/localProfileAvatar.ts
+@@ -0,0 +1,33 @@
++/** Cherry UserPopup's local image normalization, using the browser codec and no upload. */
++export async function prepareLocalProfileAvatar(file: File): Promise<string> {
++  if (
++    !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
++    file.size > 10 * 1024 * 1024
++  ) {
++    throw new Error("INVALID_AVATAR");
++  }
++  const bitmap = await createImageBitmap(file);
++  try {
++    const canvas = document.createElement("canvas");
++    canvas.width = canvas.height = 128;
++    const context = canvas.getContext("2d");
++    if (!context) throw new Error("INVALID_AVATAR");
++    const side = Math.min(bitmap.width, bitmap.height);
++    context.drawImage(
++      bitmap,
++      (bitmap.width - side) / 2,
++      (bitmap.height - side) / 2,
++      side,
++      side,
++      0,
++      0,
++      128,
++      128,
++    );
++    const result = canvas.toDataURL("image/png");
++    if (result.length > 100_000) throw new Error("INVALID_AVATAR");
++    return result;
++  } finally {
++    bitmap.close();
++  }
++}
+diff --git a/packages/ui/src/lib/productDocs.ts b/packages/ui/src/lib/productDocs.ts
+index 233d5f9..1e1be50 100644
+--- a/packages/ui/src/lib/productDocs.ts
++++ b/packages/ui/src/lib/productDocs.ts
+@@ -1,2 +1,16 @@
+-// 产品文档入口统一收口，避免不同菜单跳到不一致的文档站。
+-export const ZCODE_PRODUCT_DOCS_URL = "https://zcode.z.ai/docs";
++import enGuide from "../../../../apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md?raw";
++import zhGuide from "../../../../apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md?raw";
++import type { TextCodeViewerSource } from "./codeViewer.js";
++
++export const LOCAL_HELP_REQUEST = "fleet:local-help";
++export function requestLocalHelp(): void {
++  window.dispatchEvent(new Event(LOCAL_HELP_REQUEST));
++}
++
++export function localHelpSource(locale: string): TextCodeViewerSource {
++  return {
++    type: "text", language: "markdown",
++    title: locale === "zh-CN" ? "Fleet 本地使用指南" : "Fleet local guide",
++    content: locale === "zh-CN" ? zhGuide : enGuide,
++  };
++}
+diff --git a/packages/ui/src/quickpick/quickPickCommands.ts b/packages/ui/src/quickpick/quickPickCommands.ts
+index 1ecee44..6d6bd1d 100644
+--- a/packages/ui/src/quickpick/quickPickCommands.ts
++++ b/packages/ui/src/quickpick/quickPickCommands.ts
+@@ -85,7 +85,6 @@ interface CreateQuickPickCommandsOptions {
+ 
+ export function createQuickPickCommands({
+   allowOpenWorkspace,
+-  canOpenCommunity,
+   isSidebarVisible,
+   isLoggedIn,
+   supportsEmbeddedBrowser = true,
+@@ -229,36 +228,6 @@ export function createQuickPickCommands({
+     },
+   ];
+ 
+-  commands.push({
+-    id: "feedback",
+-    sectionId: "app",
+-    titleId: "quickPick.command.feedback",
+-    icon: "feedback",
+-    keywords: [
+-      "feedback",
+-      "issue",
+-      "support",
+-      "tickets",
+-      "问题上报",
+-      "问题反馈",
+-      "反馈",
+-      "我的反馈",
+-      "工单",
+-    ],
+-    run: handlers.openFeedback,
+-  });
+-
+-  if (canOpenCommunity) {
+-    commands.push({
+-      id: "community",
+-      sectionId: "app",
+-      titleId: "quickPick.command.community",
+-      icon: "community",
+-      keywords: ["community", "users", "chat", "用户社群", "社群"],
+-      run: handlers.openCommunity,
+-    });
+-  }
+-
+   commands.push({
+     id: "product-docs",
+     sectionId: "app",
+diff --git a/packages/ui/src/root/useRootPlatformEffects.ts b/packages/ui/src/root/useRootPlatformEffects.ts
+index 4dfc81f..009eefc 100644
+--- a/packages/ui/src/root/useRootPlatformEffects.ts
++++ b/packages/ui/src/root/useRootPlatformEffects.ts
+@@ -265,6 +265,9 @@ export function useRootPlatformEffects({
+             case "dev-skipped":
+               toast(intl.formatMessage({ id: "update.toast.devSkipped" }));
+               return;
++            case "unavailable":
++              toast(intl.formatMessage({ id: "update.toast.unavailable" }));
++              return;
+             case "error":
+               toast(intl.formatMessage({ id: "update.toast.error" }, { error: payload.message }));
+               return;
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 8229e84..e260590 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -213,6 +213,21 @@ export function InlineEditableProviderCard({
+   const dirtyProviderFieldsRef = useRef(new Set<keyof ProviderDraftValues>());
+   const draftRevisionRef = useRef(0);
+   const lastSubmittedDraftSignatureRef = useRef<string | null>(null);
++  const pendingDraftSaveRef = useRef<Promise<void> | null>(null);
++  // Opaque UI lease: connection edits invalidate discovery, model-list updates do not.
++  // Never put API keys in React keys, DOM attributes or logs.
++  const discoveryConnectionIdentity = useMemo(
++    () => ({}),
++    [
++      provider.providerId,
++      apiFormat,
++      baseUrlValue,
++      apiKeyValue,
++      provider.config.access?.type,
++      provider.config.access?.type === "subscription" ? provider.config.access.connected : false,
++      JSON.stringify(provider.config.api?.headers ?? {}),
++    ],
++  );
+   const providerDisplayName = resolveModelProviderDisplayName(provider);
+   const saveNotificationRef = useRef({
+     providerId: provider.providerId,
+@@ -414,13 +429,17 @@ export function InlineEditableProviderCard({
+         now: Date.now,
+       });
+       if (!nextProvider) {
++        await pendingDraftSaveRef.current;
+         return;
+       }
+       const signature = JSON.stringify({
+         ...draftRef.current,
+         nameValue: nameConfirmed ? draftRef.current.nameValue : getProviderFormLabel(provider),
+       });
+-      if (lastSubmittedDraftSignatureRef.current === signature) return;
++      if (lastSubmittedDraftSignatureRef.current === signature) {
++        await pendingDraftSaveRef.current;
++        return;
++      }
+       lastSubmittedDraftSignatureRef.current = signature;
+ 
+       // Linux 下点击左侧供应商切换时，输入框 blur 与 Popover 关闭顺序不稳定，
+@@ -430,11 +449,17 @@ export function InlineEditableProviderCard({
+         providerId: provider.providerId,
+         reason,
+       });
+-      await saveProviderWithCleanupGuard(nextProvider, () => {
++      const pendingSave = saveProviderWithCleanupGuard(nextProvider, () => {
+         if (lastSubmittedDraftSignatureRef.current === signature) {
+           lastSubmittedDraftSignatureRef.current = null;
+         }
+       });
++      pendingDraftSaveRef.current = pendingSave;
++      try {
++        await pendingSave;
++      } finally {
++        if (pendingDraftSaveRef.current === pendingSave) pendingDraftSaveRef.current = null;
++      }
+     },
+     [provider, readOnlyEndpoints, saveProviderWithCleanupGuard],
+   );
+@@ -854,6 +879,8 @@ export function InlineEditableProviderCard({
+           providerName={getProviderFormLabel(provider)}
+           providerEnabled={provider.enabled}
+           providerAccess={provider.config.access}
++          discoveryConnectionIdentity={discoveryConnectionIdentity}
++          onBeforeDiscover={() => commitPendingDraft("model-discovery")}
+           models={models}
+           onTestModel={onTestModel ? handleTestModel : undefined}
+           onModelCommit={handleModelCommit}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index d719373..793e632 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -1,158 +1,270 @@
+ import { useRef, useEffect, useState } from "react";
+-import { DownloadIcon, LoaderCircleIcon } from "lucide-react";
+-import type { IProviderSettingsService } from "@zcode/services";
++import { DownloadIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { Checkbox } from "@/components/ui/checkbox.js";
++import { Input } from "@/components/ui/input.js";
++import {
++  Dialog,
++  DialogContent,
++  DialogDescription,
++  DialogHeader,
++  DialogTitle,
++  DialogTrigger,
++  DialogFooter,
++} from "@/components/ui/dialog.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { reloadProviderSettingsSnapshot } from "@/lib/providerSettingsSnapshot.js";
+-import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
++import {
++  addDiscoveredModels,
++  fetchSavedModelCatalog,
++  type DiscoveredCatalog,
++} from "./modelDiscoveryActions.js";
+ 
+-type Catalog = Awaited<ReturnType<IProviderSettingsService["discoverModels"]>>;
+ export function ModelDiscoverySection({
+   providerId,
++  providerName,
+   existingIds,
++  connectionIdentity,
++  onBeforeDiscover,
+ }: {
+   providerId: string;
++  providerName?: string;
+   existingIds: string[];
++  connectionIdentity?: object;
++  onBeforeDiscover?: () => Promise<void>;
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl } = useZCodeIntl();
+-  const { showFeedback } = useProviderDetailFeedback();
+-  const [catalog, setCatalog] = useState<Catalog>();
++  const t = (id: string) => intl.formatMessage({ id: `settings.modelProvider.discovery.${id}` });
++  const [open, setOpen] = useState(false);
++  const [catalog, setCatalog] = useState<DiscoveredCatalog>();
+   const [selected, setSelected] = useState<Set<string>>(new Set());
+-  const [busy, setBusy] = useState(false);
++  const [added, setAdded] = useState<Set<string>>(new Set());
++  const [query, setQuery] = useState("");
++  const [busy, setBusy] = useState<"fetch" | "import" | null>(null);
++  const [error, setError] = useState<string>();
+   const generation = useRef(0);
+-  useEffect(
+-    () => () => {
++  const busyRef = useRef(false);
++  const reset = () => {
++    generation.current++;
++    busyRef.current = false;
++    setBusy(null);
++    setCatalog(undefined);
++    setSelected(new Set());
++    setAdded(new Set());
++    setQuery("");
++    setError(undefined);
++  };
++  useEffect(() => {
++    reset();
++    setOpen(false);
++    return () => {
+       generation.current++;
+-    },
+-    [providerId],
+-  );
+-  const run = async (importing: boolean) => {
++    };
++  }, [providerId, connectionIdentity]);
++  const setDialogOpen = (value: boolean) => {
++    reset();
++    setOpen(value);
++    if (value) void run("fetch");
++  };
++  const run = async (operation: "fetch" | "import") => {
++    if (busyRef.current) return;
++    busyRef.current = true;
+     const version = ++generation.current;
+-    setBusy(true);
++    const isCurrent = () => version === generation.current;
++    setBusy(operation);
++    setError(undefined);
+     try {
+-      if (importing && catalog) {
+-        for (const model of catalog.models) {
+-          if (version !== generation.current) break;
+-          if (selected.has(model.id) && !existingIds.includes(model.id))
+-            await providerSettingsService.addPersonalModel(providerId, model.id, {
+-              ...model.config,
+-              enabled: true,
++      if (operation === "fetch") {
++        setCatalog(undefined);
++        setSelected(new Set());
++        const result = await fetchSavedModelCatalog({
++          providerId,
++          service: providerSettingsService,
++          saveDraft: onBeforeDiscover,
++          isCurrent,
++        });
++        if (result) setCatalog(result);
++      } else if (catalog) {
++        await addDiscoveredModels({
++          providerId,
++          catalog,
++          selected,
++          service: providerSettingsService,
++          isCurrent,
++          onAdded(id) {
++            setAdded((previous) => new Set(previous).add(id));
++            setSelected((previous) => {
++              const next = new Set(previous);
++              next.delete(id);
++              return next;
+             });
+-        }
+-        if (version === generation.current) {
+-          setCatalog(undefined);
+-          setSelected(new Set());
+-        }
+-      } else {
+-        const result = await providerSettingsService.discoverModels(providerId);
+-        if (version === generation.current) {
+-          setCatalog(result);
+-          setSelected(new Set());
+-        }
+-      }
+-    } catch (error) {
+-      if (version === generation.current)
+-        showFeedback({
+-          key: `models:${providerId}`,
+-          state: "failure",
+-          message: error instanceof Error ? error.message : String(error),
+-          dismissible: true,
++          },
+         });
++        if (isCurrent()) setOpen(false);
++      }
++    } catch (reason) {
++      if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+     } finally {
+-      if (importing) {
++      if (operation === "import") {
+         try {
+           await reloadProviderSettingsSnapshot();
+-        } catch (error) {
+-          if (version === generation.current)
+-            showFeedback({
+-              key: `models:${providerId}`,
+-              state: "failure",
+-              message: error instanceof Error ? error.message : String(error),
+-              dismissible: true,
+-            });
++        } catch (reason) {
++          if (isCurrent()) {
++            setOpen(true);
++            setError(reason instanceof Error ? reason.message : String(reason));
++          }
+         }
+       }
+-      if (version === generation.current) setBusy(false);
++      if (isCurrent()) {
++        setBusy(null);
++        busyRef.current = false;
++      }
+     }
+   };
++  const existing = new Set([...existingIds, ...added]);
++  const search = query.trim().toLocaleLowerCase();
++  const visible = (catalog?.models ?? []).filter((model) =>
++    `${model.name} ${model.id}`.toLocaleLowerCase().includes(search),
++  );
++  const selectable = visible.filter((model) => !existing.has(model.id));
++  const selectedCount = [...selected].filter((id) => !existing.has(id)).length;
++  const allSelected = selectable.length > 0 && selectable.every((model) => selected.has(model.id));
++  const toggle = (ids: string[], checked: boolean) =>
++    setSelected((previous) => {
++      const next = new Set(previous);
++      for (const id of ids) {
++        if (checked) next.add(id);
++        else next.delete(id);
++      }
++      return next;
++    });
+   return (
+-    <section className="space-y-3" data-testid="model-discovery">
+-      <Button variant="outline" disabled={busy} onClick={() => void run(false)}>
+-        {busy ? (
+-          <LoaderCircleIcon className="size-4 animate-spin" />
+-        ) : (
+-          <DownloadIcon className="size-4" />
+-        )}
+-        {intl.formatMessage({ id: "settings.modelProvider.discovery.fetch" })}
+-      </Button>
+-      {catalog ? (
+-        <div className="space-y-3 rounded-lg border border-border p-3">
+-          <p className="text-ui-caption text-foreground-subtle">
+-            {intl.formatMessage({
+-              id:
+-                catalog.source === "catalog"
+-                  ? "settings.modelProvider.discovery.catalog"
+-                  : "settings.modelProvider.discovery.provider",
+-            })}
+-          </p>
+-          <div className="max-h-72 overflow-y-auto">
+-            {catalog.models.map((model) => {
+-              const exists = existingIds.includes(model.id);
++    <Dialog open={open} onOpenChange={setDialogOpen}>
++      <DialogTrigger asChild>
++        <Button variant="secondary" className="rounded-lg" data-testid="model-discovery">
++          <DownloadIcon data-icon="inline-start" aria-hidden="true" />
++          {t("fetch")}
++        </Button>
++      </DialogTrigger>
++      <DialogContent className="max-h-[min(48rem,calc(100vh-4rem))] max-w-2xl grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-clip">
++        <DialogHeader className="pr-8">
++          <DialogTitle>
++            {providerName ?? providerId} · {t("title")}
++          </DialogTitle>
++          <DialogDescription>
++            {t(catalog?.source === "catalog" ? "catalog" : "provider")}
++          </DialogDescription>
++        </DialogHeader>
++        <div className="flex items-center gap-2">
++          <Input
++            value={query}
++            onChange={(event) => setQuery(event.target.value)}
++            placeholder={t("search")}
++            aria-label={t("search")}
++            disabled={!catalog || busy !== null}
++          />
++          <Button
++            variant="ghost"
++            size="icon-sm"
++            disabled={busy !== null}
++            aria-label={intl.formatMessage({ id: "common.refresh" })}
++            onClick={() => void run("fetch")}
++          >
++            <RefreshCwIcon className="size-4" />
++          </Button>
++        </div>
++        <div className="min-h-0 overflow-y-auto rounded-lg border border-input-border bg-input">
++          {busy === "fetch" ? (
++            <div
++              className="flex items-center justify-center gap-2 p-6 text-ui-base text-foreground-subtle"
++              role="status"
++            >
++              <LoaderCircleIcon className="size-4 animate-spin" />
++              {t("loading")}
++            </div>
++          ) : error && !catalog ? (
++            <div className="space-y-3 p-4">
++              <p className="text-ui-base text-destructive" role="alert">
++                {error}
++              </p>
++              <Button variant="secondary" onClick={() => void run("fetch")}>
++                {intl.formatMessage({ id: "common.retry" })}
++              </Button>
++            </div>
++          ) : visible.length === 0 ? (
++            <p className="p-6 text-ui-base text-foreground-subtle">
++              {t(search ? "noMatches" : "empty")}
++            </p>
++          ) : (
++            visible.map((model) => {
++              const exists = existing.has(model.id);
+               return (
+                 <label
+                   key={model.id}
+-                  className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-hover"
++                  className="flex items-center gap-3 border-b border-border px-3 py-2 last:border-b-0 hover:bg-hover"
+                 >
+                   <Checkbox
+                     checked={exists || selected.has(model.id)}
+-                    disabled={exists || busy}
+-                    onCheckedChange={(checked) =>
+-                      setSelected((previous) => {
+-                        const next = new Set(previous);
+-                        if (checked === true) next.add(model.id);
+-                        else next.delete(model.id);
+-                        return next;
+-                      })
+-                    }
++                    disabled={exists || busy !== null}
++                    onCheckedChange={(checked) => toggle([model.id], checked === true)}
+                   />
+-                  <span className="min-w-0 flex-1 break-all text-ui-base">
++                  <span className="min-w-0 flex-1 text-ui-base break-all">
+                     {model.name}
+                     {model.name !== model.id ? (
+-                      <span className="ml-2 text-ui-caption text-foreground-subtle">
++                      <span className="block text-ui-caption text-foreground-subtle">
+                         {model.id}
+                       </span>
+                     ) : null}
+                   </span>
+                   {exists ? (
+-                    <span className="text-ui-caption text-foreground-subtle">
+-                      {intl.formatMessage({ id: "settings.modelProvider.discovery.added" })}
+-                    </span>
++                    <span className="text-ui-caption text-foreground-subtle">{t("added")}</span>
+                   ) : null}
+                 </label>
+               );
+-            })}
+-            {!catalog.models.length ? (
+-              <p className="text-ui-base text-foreground-subtle">
+-                {intl.formatMessage({ id: "settings.modelProvider.discovery.empty" })}
+-              </p>
+-            ) : null}
+-          </div>
+-          <div className="flex justify-end gap-2">
+-            <Button variant="ghost" disabled={busy} onClick={() => setCatalog(undefined)}>
+-              {intl.formatMessage({ id: "common.cancel" })}
+-            </Button>
+-            <Button disabled={busy || selected.size === 0} onClick={() => void run(true)}>
++            })
++          )}
++        </div>
++        <div className="space-y-3">
++          {error && catalog ? (
++            <p role="alert" className="text-ui-base text-destructive">
++              {error}
++            </p>
++          ) : null}
++          <DialogFooter className="items-center sm:justify-between">
++            <label className="flex items-center gap-2 text-ui-base">
++              <Checkbox
++                disabled={busy !== null || selectable.length === 0}
++                checked={
++                  allSelected
++                    ? true
++                    : selectable.some((model) => selected.has(model.id))
++                      ? "indeterminate"
++                      : false
++                }
++                onCheckedChange={(checked) =>
++                  toggle(
++                    selectable.map((model) => model.id),
++                    checked === true,
++                  )
++                }
++              />
++              {t("selectVisible")}
++            </label>
++            <Button
++              disabled={busy !== null || selectedCount === 0}
++              onClick={() => void run("import")}
++            >
++              {busy === "import" ? <LoaderCircleIcon className="size-4 animate-spin" /> : null}
+               {intl.formatMessage(
+                 { id: "settings.modelProvider.discovery.import" },
+-                { count: selected.size },
++                { count: selectedCount },
+               )}
+             </Button>
+-          </div>
++          </DialogFooter>
+         </div>
+-      ) : null}
+-    </section>
++      </DialogContent>
++    </Dialog>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 6eae75e..b1476a5 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -349,6 +349,8 @@ export function ProviderModelsSection({
+   providerName,
+   providerEnabled = true,
+   providerAccess,
++  discoveryConnectionIdentity,
++  onBeforeDiscover,
+   models,
+   onTestModel,
+   onModelCommit,
+@@ -362,6 +364,8 @@ export function ProviderModelsSection({
+   providerName?: string;
+   providerEnabled?: boolean;
+   providerAccess?: ProviderConfigObject["access"];
++  discoveryConnectionIdentity?: object;
++  onBeforeDiscover?: () => Promise<void>;
+   models: ProviderSettingsFormModel[];
+   onTestModel?: (model: string) => Promise<ModelConnectivityResult>;
+   onModelCommit: (
+@@ -471,17 +475,29 @@ export function ProviderModelsSection({
+         <span className="text-ui-base text-foreground-subtle">
+           {intl.formatMessage({ id: "settings.modelProvider.models" })}
+         </span>
+-        <Button
+-          type="button"
+-          variant="secondary"
+-          size="default"
+-          className="rounded-lg"
+-          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+-          onClick={openAddDialog}
+-        >
+-          <Plus data-icon="inline-start" aria-hidden="true" />
+-          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+-        </Button>
++        <div className="flex flex-wrap items-center gap-2">
++          {providerAccess?.type !== "zhipu-account" ? (
++            <ModelDiscoverySection
++              key={providerId}
++              providerId={providerId}
++              providerName={providerName}
++              existingIds={models.map((model) => model.modelId)}
++              connectionIdentity={discoveryConnectionIdentity}
++              onBeforeDiscover={onBeforeDiscover}
++            />
++          ) : null}
++          <Button
++            type="button"
++            variant="secondary"
++            size="default"
++            className="rounded-lg"
++            data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
++            onClick={openAddDialog}
++          >
++            <Plus data-icon="inline-start" aria-hidden="true" />
++            {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
++          </Button>
++        </div>
+       </div>
+       {models.length > 0 ? (
+         <div className="overflow-hidden rounded-lg border border-input-border bg-input">
+@@ -549,13 +565,6 @@ export function ProviderModelsSection({
+           {intl.formatMessage({ id: "settings.modelProvider.modelsEmpty" })}
+         </div>
+       )}
+-      {providerAccess?.type !== "zhipu-account" ? (
+-        <ModelDiscoverySection
+-          key={providerId}
+-          providerId={providerId}
+-          existingIds={models.map((model) => model.modelId)}
+-        />
+-      ) : null}
+       <>
+         <ProviderModelMetadataDialog
+           onRestore={() => {
+diff --git a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+new file mode 100644
+index 0000000..db1a80e
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+@@ -0,0 +1,42 @@
++import type { IProviderSettingsService } from "@zcode/services";
++
++export type DiscoveredCatalog = Awaited<ReturnType<IProviderSettingsService["discoverModels"]>>;
++
++export async function fetchSavedModelCatalog(input: {
++  providerId: string;
++  service: Pick<IProviderSettingsService, "discoverModels">;
++  saveDraft?: () => Promise<void>;
++  isCurrent: () => boolean;
++}): Promise<DiscoveredCatalog | undefined> {
++  await input.saveDraft?.();
++  if (!input.isCurrent()) return;
++  const catalog = await input.service.discoverModels(input.providerId);
++  return input.isCurrent() ? catalog : undefined;
++}
++
++// Durable writes stay with ProviderSettingsService. Re-read before each addition so a retry
++// cannot overwrite a completed addition or a model edited in another window.
++export async function addDiscoveredModels(input: {
++  providerId: string;
++  catalog: DiscoveredCatalog;
++  selected: ReadonlySet<string>;
++  service: Pick<IProviderSettingsService, "getView" | "addPersonalModel">;
++  isCurrent: () => boolean;
++  onAdded: (id: string) => void;
++}) {
++  for (const model of input.catalog.models) {
++    if (!input.selected.has(model.id)) continue;
++    if (!input.isCurrent()) return;
++    const view = await input.service.getView();
++    if (!input.isCurrent()) return;
++    const provider = view.providers.find((item) => item.providerId === input.providerId);
++    if (!provider) throw new Error("Connection no longer exists");
++    if (!provider.models.some((item) => item.modelId === model.id)) {
++      await input.service.addPersonalModel(input.providerId, model.id, {
++        ...model.config,
++        enabled: true,
++      });
++    }
++    if (input.isCurrent()) input.onAdded(model.id);
++  }
++}
+diff --git a/packages/ui/src/settings/pluginCreatorPrefill.ts b/packages/ui/src/settings/pluginCreatorPrefill.ts
+index 970a650..2190876 100644
+--- a/packages/ui/src/settings/pluginCreatorPrefill.ts
++++ b/packages/ui/src/settings/pluginCreatorPrefill.ts
+@@ -2,15 +2,12 @@ import type { SkillSummary } from "@zcode/shared";
+ import type { CreateTaskOptions } from "@/app-shell/types.js";
+ import { buildSkillMentionMarkdown } from "@/mentions/mentionMarkdown.js";
+ 
+-const PLUGIN_CREATOR_SKILL = "plugin-creator";
+-const PLUGIN_CREATOR_ID = "plugin-creator@zcode-plugins-official";
+-
+ function buildPluginCreatorPrefill(skills: readonly SkillSummary[]): CreateTaskOptions {
+   // 创建入口只信任官方来源，不让用户目录或同名市场技能截获这项产品动作。
+   const skill = skills.find(
+     (entry) =>
+-      entry.name === PLUGIN_CREATOR_SKILL &&
+-      entry.pluginId === PLUGIN_CREATOR_ID &&
++      entry.name === "plugin-creator" &&
++      entry.pluginId === "plugin-creator@zcode-plugins-official" &&
+       entry.scope === "plugin" &&
+       entry.enabled &&
+       entry.path.trim(),

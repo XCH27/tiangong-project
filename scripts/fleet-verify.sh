@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fleet verification entry point (repository root)
-# Runs repository contracts, reference gates, types, the full source test suite and document tools.
+# The active candidate is default; --retained-craft verifies the preserved branch explicitly.
 # Upstream validate:dev is a subset; this entry also verifies Fleet boundaries.
 # FLEET_UPSTREAM_DIR selects an isolated matching Craft checkout, including in CI.
 set -euo pipefail
@@ -13,6 +13,15 @@ python3 "$ROOT_DIR/scripts/validate-doc-contracts.py"
 python3 -m unittest discover -s "$ROOT_DIR/scripts/tests" -p 'test_*.py'
 python3 "$ROOT_DIR/scripts/check-upstream-delta.py"
 python3 "$ROOT_DIR/scripts/check-orphaned-components.py"
+
+if [ "${1:-}" != "--retained-craft" ]; then
+  python3 "$ROOT_DIR/scripts/check-zcode-candidate.py"
+  cd "$ROOT_DIR/.fleet/zcode"
+  pnpm typecheck
+  pnpm -r --filter './apps/zcode-cli/packages/*' --if-present run typecheck
+  pnpm verify:pre-push
+  exit 0
+fi
 
 cd "$ROOT_DIR/app"
 bun run typecheck:all

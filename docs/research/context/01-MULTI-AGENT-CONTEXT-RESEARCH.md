@@ -2,10 +2,10 @@
 
 > **Status:** design evidence, not implementation authority. Admission still requires a pinned revision,
 > license review, concrete source symbols, a Fleet seam, and a local comparison under the reference
-> registry. Canonical owners are the accepted specs for M10, C3, SYS-01, R6, and the existing Craft
-> authorities.
+> registry. Current ownership and order are in the Context/Agent-core modules and TODO;
+> older M10/Craft mechanism names below are evidence terminology, not active implementation instructions.
 
-## 1. Decision
+## 1. Interpretation at the review boundary
 
 Fleet's design already anticipates bounded handoff, ContextPack projection, preview, and sensitivity
 scanning. Runtime support is not complete. Creating a `ContextBroker`, `ContextGrant`, global memory bus,

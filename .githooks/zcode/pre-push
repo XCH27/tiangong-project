@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+candidate="$(git rev-parse --show-toplevel)"
+project="$(cd "$candidate/../.." && pwd)"
+python3 "$project/scripts/check-zcode-candidate.py"
+cd "$candidate"
+pnpm verify:pre-push

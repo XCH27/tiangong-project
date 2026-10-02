@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Staged typecheck + i18n checks for app/, run by .githooks/pre-commit.
 #
-# Lives at the repository root on purpose. app/ is kept byte-identical to the upstream pin (see
+# Lives at the repository root on purpose. app/ preserves its declared Craft deltas (see
 # docs/UPSTREAM-DELTA.tsv), and upstream's OSS package.json names scripts it does not ship
 # (typecheck-staged.sh, lint-i18n-staged.sh and a dozen more), so the gate cannot live inside app/.
 #

@@ -1,0 +1,127 @@
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+index 7c74ce5..89606ba 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+@@ -17,6 +17,7 @@ import {
+   type UsageStorePort,
+ } from "@zcode/contracts";
+ import type { ToolEntry, ToolHandler } from "../types.js";
++import { toolUsageId } from "../../runtime/usage-identity.js";
+ 
+ const imageData = Symbol("generated-image-data");
+ 
+@@ -68,9 +69,16 @@ export function createMediaGenerationToolEntries(
+       throw new Error("Media usage ledger is unavailable; no paid provider request was made");
+     }
+     const startedAt = Date.now();
++    const requestIdentity = context.traceContext?.attributes?.assistantMessageId;
++    const usageId = `media-image:${toolUsageId(
++      context.sessionId,
++      context.toolCallId,
++      context.turnId,
++      typeof requestIdentity === "string" ? requestIdentity : context.parentSpanId,
++    )}`;
+     const usageBase = {
+-      id: `media-image:${context.sessionId}:${context.toolCallId}`,
+-      logicalRequestId: context.toolCallId,
++      id: usageId,
++      logicalRequestId: usageId,
+       sessionID: context.sessionId,
+       ...(context.turnId ? { turnID: context.turnId } : {}),
+       traceID: context.traceId,
+diff --git a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+index 4092ad4..9a45594 100644
+--- a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { NodeToolArtifactStore } from "../../adapters/src/storage/index.js";
++import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
+ import type { MediaGenerationPort } from "@zcode/contracts";
+ import type { ToolExecutionContext } from "../src/tool/types.js";
+ import { createMediaGenerationToolEntries } from "../src/tool/handlers/media-generation.js";
+@@ -12,6 +13,83 @@ import { createToolRegistry } from "../src/tool/registry.js";
+ import { persistToolResultMediaAttachments } from "../src/runtime/helpers/tool-result-media-persistence.js";
+ import { executeWithTimeout, ToolDeadline } from "../src/tool/executor/timeout.js";
+ 
++test("repeated upstream image call IDs retain every charged request and artifact after restart", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-image-accounting-"));
++  const dbPath = join(root, "sessions.sqlite");
++  let store = new SqliteSessionStore({ dbPath });
++  const artifacts = new NodeToolArtifactStore({
++    rootDir: join(root, "artifacts"),
++    imageCacheRootDir: join(root, "images"),
++    videoCacheRootDir: join(root, "videos"),
++  });
++  const uris: string[] = [];
++  try {
++    await store.createSession({
++      id: "session" as never,
++      projectID: "project" as never,
++      slug: "fixture",
++      directory: root,
++      title: "fixture",
++      version: "fixture",
++    });
++    const [, generate] = createMediaGenerationToolEntries({
++      listModels: () => [],
++      prepareImage: async () => "fixture-binding",
++      async generateImage() {
++        return {
++          bytes: Buffer.from([0xff, 0xd8, 0xff]),
++          mimeType: "image/jpeg",
++          reportedModelId: "grok-image",
++          reportedCostUsd: 0.04,
++        };
++      },
++    });
++    for (const [turnId, assistantMessageId] of [
++      ["turn-a", "request-1"],
++      ["turn-a", "request-2"],
++      ["turn-b", "request-3"],
++    ]) {
++      const result = (await generate.handler(
++        {
++          providerId: "xai",
++          modelId: "grok-image",
++          prompt: "A square",
++          binding: "fixture-binding",
++        },
++        {
++          abortSignal: new AbortController().signal,
++          sessionId: "session",
++          toolCallId: "reused-image-call",
++          turnId,
++          traceContext: { traceId: "trace", turnId, attributes: { assistantMessageId } },
++          workspaceRoot: root,
++          artifactStore: artifacts,
++          sessionStore: store,
++        } as unknown as ToolExecutionContext,
++      )) as { artifactUri: string };
++      uris.push(result.artifactUri);
++    }
++    const checkLedger = async () => {
++      const result = await store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++      assert.equal(result.accounting?.[0]?.requestCount, 3);
++      assert.ok(Math.abs((result.accounting?.[0]?.estimatedUsd ?? 0) - 0.12) < 1e-10);
++    };
++    await checkLedger();
++    store.close();
++    store = new SqliteSessionStore({ dbPath });
++    await checkLedger();
++    assert.equal(new Set(uris).size, 3);
++    for (const uri of uris)
++      assert.match(
++        (await artifacts.readToolResultArtifact({ uri })).content,
++        /^data:image\/jpeg;base64,/,
++      );
++  } finally {
++    store.close();
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
+ test("image generation uses the Session artifact store and asks approval before a paid call", async () => {
+   const calls: string[] = [];
+   const port: MediaGenerationPort = {

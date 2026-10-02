@@ -1,333 +1,152 @@
 # TODO — development plan and current progress
 
-The development order and what is being done now. Owner direction can reorder anything; record the
-change here and in [`docs/decisions.md`](docs/decisions.md).
+This file owns the active order and remaining workflow boundaries. Product meaning is in
+[Product](docs/product.md); capability status and acceptance IDs are in
+[Capabilities](docs/capabilities.md). Historical progress belongs in Git and CHANGELOG.
 
-## Where the project is
+## Current work — ZCode baseline and model boundary (OV-027)
 
-- `app/` = official Craft Agents v0.13.4 plus the exact shell/settings changes declared in
-  `docs/UPSTREAM-DELTA.tsv`.
-- Owner order: documentation and preparation → joint walkthrough of original Craft → approved
-  rectification slices → implementation and acceptance → added capabilities.
-- **R0 (baseline stabilization) is the single ACTIVE release.** The owner authorized bounded R1
-  shell-entry and Settings presentation slices; Conversation/Project data, Workspace, composer and
-  right-panel work remain paused.
+The active candidate is `.fleet/zcode`. Preserve `app/` and existing data as the retained Craft
+branch. Its earlier Craft-only R0/R1 sequence is superseded by OV-027 and later owner instructions.
+It must not block authorized candidate work or cause edits to the wrong implementation.
 
-## Current slice — shell entries and Settings presentation
+[OV-067](docs/decisions.md#ov-067--implement-and-verify-the-kernel-before-feature-pages-2026-09-29)
+puts kernel engineering first. OV-069 makes Pi AgentSession the current default loop executor beneath the
+ZCode Host; selecting it does not mean its kernel is complete or accepted. First implement and test
+input/run ownership, commit/recovery, permissions, executor boundaries, usage attribution and the
+actual model-facing projection. Correct demonstrated context defects before adding plugin breadth. The
+first page assistant consumes that verified boundary afterward. Audit remains part of every unit;
+critical regressions interrupt it, while unrelated expansion waits.
 
-Contract: [`docs/modules/shell.md`](docs/modules/shell.md#active-entry-slice).
-Separate All Conversations and Board entries over the existing Session/Task stores; put Release Notes
-beside the version in Settings → App → About with its unseen-release signal; move the desktop Craft menu to the lower-left footer
-using Craft values and ZCode's trigger/settings arrangement. The owner kept the upper-right Help
-button. Remove duplicate desktop popup actions and the Debug submenu after proving their remaining
-entry and shortcut; Settings → App owns stateful update check/install controls, while developer tools
-remain debug-only. Preserve compact and hidden-sidebar access.
-Settings replaces the **contents of the existing left sidebar slot**; Back to Workspace occupies
-the former New Conversation position, and the selected form uses the existing content panel. There
-is no added settings sidebar or navigator-only drill-in. Remove redundant visible page titles and
-per-page ellipses while keeping Craft section/card styling and accessible headings. The upper-right
-Help button remains but opens bundled local Help; existing feature-page Agent controls remain the
-question/edit entry. Localize Settings and Workspace onboarding labels. Keep upstream web
-pages visibly marked as unverified English reference until each Fleet feature is accepted.
+### Delivery order
 
-The newly requested Messaging settings slice aligns its card container with other Settings pages.
-Compare Cindy's real IM adapters and ZCode's published source before choosing the next channel;
-do not add a platform row without end-to-end receive, scoped Session, permission, send and reconnect.
+| Order | Complete deliverable | Exit before moving on |
+|---|---|---|
+| **1 — Active: execution and application kernel** | Map and rectify the production Host → Session command/admission → executor → tool/permission → durable result/usage path. Preserve immutable account/model/effort/Fast bindings; extract the complete-executor boundary and integrate the first native adapter against it. Domain operations and plugin/Job lifecycle contracts must use these same owners. | Save failure cannot publish or execute a new route; queued/retried inputs keep identity; denial/revocation, stop, late events, restart and unknown paid effects have defined outcomes. Native adapter start/tool approval/cancel/resume/usage pass their actual protocol. Existing data remains readable. Kernel decisions are judged against these cases before any cutover. |
+| **2 — Feature-page operations and complete generation** | Verify and accept the Model Settings compact assistant and its version-checked non-secret model operation; then extend the same proven path per page. Complete subscription-specific routes and the existing image/video request → artifact → usage path. | Human controls and Agent operations share the writer; drafts and target scope survive concurrent edits. Returned outputs survive stop; no blind paid replay or catalogue-only execution claim. |
+| **3 — Trustworthy project and cost views** | Retain the implemented TaskIndex-based membership and model/project/Other cost breakdown. Complete the standalone Project view, standalone-probe accounting, simple membership-value comparison and outcome-aware Agent diagnostics/customization. | Every retained request has one attribution or explicit unknown. Public plan prices are labelled and correctable, never called actual invoices; no allocation/billing-period form returns. Hover/focus views agree with totals and source coverage. |
+| **4 — Minimal app-plugin host with one real document suite** | Extend the existing installer/lifecycle with Fleet page/right-tool contributions and shared domain operations. Use a GenOffice open-source DOCX component as the first native human/Agent editing package; then extend the same pattern to XLSX/PPTX and separately declared PDF operations. | Install → Project activation → human edit → Agent edit → undo/save/reopen → disable/update preserves the same document. Import compatible Skills/MCP from real packages; disclose unsupported executable hooks instead of claiming universal compatibility. |
+| **5 — Canvas, production media and workflow composition** | Use the existing React Flow dependency for live document/media cards. Connect real domain objects, video/audio jobs and journaled workflows through the already proven operations. | The same artifacts are editable outside and inside the canvas; stopping, hiding or deleting a card does not lose admitted work or source data. Verify rich-card/resource limits and real exported files. |
+| **6 — Distribution and broader adapters** | Finish cross-platform packaging, notices, update feed and the scoped remote/IM/plugin-distribution paths. Add providers and executor adapters against the established fixtures. | Each advertised platform/channel/provider works through its real end-to-end path. No capability is promoted from a manifest, screenshot or source test alone. |
 
-The declared upstream diff, documentation contracts, typechecks, i18n checks, renderer build and
-isolated desktop paths have been checked. Model Settings, Messaging, the upper-right local Help
-reader and its internal/back links are open for owner look-and-feel review; status remains
-`wired but not visually checked` until that review. Further IM platforms need real gateway adapters,
-and the detected media models need the separate generation path before either is offered as usable.
-In the isolated desktop, Grok and ChatGPT authorization could be cancelled without a late form error;
-the ChatGPT callback port closed. Copilot initially failed at device-code fetch, then reached the
-device-code screen after routing its login through the existing proxy-aware host transport; cancelling
-it returned the form to idle. No provider account completed sign-in, model inference or allowance
-verification in this run.
-The former 11-item R1 order and visible-Workspace assumption remain withdrawn. The next unrelated
-slice requires a fresh concrete review.
+Documentation and source reviews accompany these deliveries; they are not an unbounded preliminary
+phase. Build independence, credential scope and platform portability are checked from delivery 1,
+not postponed until packaging. The retained Craft full-suite execution gap stays a retained-branch
+finding, not a blocker for unrelated ZCode work. Existing data/migration and production-dependency
+checkpoints still apply when an actual operation reaches them.
 
-## Next inside R0
+### Open baseline workflows
 
-These come from the R0 walkthrough groups and R2. Each needs owner approval as its own slice.
+This is the coverage checklist for the delivery order above, not a parallel queue.
 
-- **Updater — do before any packaged build is handed out.** Packaged Craft sets
-  `autoDownload = true` and `autoInstallOnAppQuit = true` against
-  `https://thecraftagents.com/electron/latest`; dismissing a version only hides the notice
-  (`auto-update.ts:502`). See [`docs/engineering.md`](docs/engineering.md#building-and-packaging) and [R2](docs/modules/services.md).
-- **Other Craft-operated services (R2):** Pages hosted publication default, Sentry build-time ingest,
-  OAuth relays and Craft branding in packaging. The Agent prompt now points to bundled local
-  guides; the guide bodies still need feature-by-feature review and translation
-  ([services](docs/modules/services.md)).
-- **Credential recovery:** `credentials/backends/secure-storage.ts:handleCorruptedFile` deletes
-  corrupt bytes; preserve them and report instead ([agent-core](docs/modules/agent-core.md)).
-- **Subscription sign-in:** Claude and ChatGPT authorization can reach token exchange but a real
-  account connection has not passed acceptance. The inherited flows use Craft-owned exchange code;
-  classify the provider's structured rejection in a fresh isolated attempt and compare supported
-  SDK/runtime login paths before changing authentication. Offline credential tests do not prove a
-  subscription login or allowance meter.
-- **Browser tool permissions:** `browser_tool` is allowed whole in Explore/Safe; classify per action
-  ([browser](docs/modules/browser.md)).
-- **Skill metadata:** the parser keeps a six-key subset and drops `triggers` (220 of 398 real skills)
-  ([marketplace](docs/modules/marketplace.md)).
-- **Three-platform build verification:** Windows NSIS x64, Linux AppImage x64 and macOS dmg/zip each
-  built and launched on their own platform. A Mac run certifies only the Mac.
-- **Restore the UI-contract guard** removed with the original-source reset. Its implementation and
-  test are recoverable from `snapshot/pre-rebuild-2026-09-21` (`app/scripts/check-ui-contract.ts`).
-- **Upstream test defects (L0), 31 deterministic failures in 5 files plus one timing-flaky test** — recorded with
-  causes in `scripts/known-upstream-test-failures.txt`: a millisecond timestamp that makes a prompt test nondeterministic,
-  browser test mocks without `webContents`, a connection test that only passes against a real user
-  profile, and two isolated tests whose module mocks predate v0.13.4 imports
-  (`defaultMidStreamBehavior`, `getBrowserToolEnabled`).
-- **CLI launcher (upstream defect, L0):** `app/apps/electron/resources/bin/craft-agent` runs Bun on a
-  missing entry file and exits 0. `scripts/tests/test_cli_wrapper.py` holds the expected behaviour as
-  an expected failure until the fix is approved.
+| Unit | Remaining outcome and closure | Contract |
+|---|---|---|
+| Connections and subscriptions | Correct single/multi-account login, saved identity, discovery, protocol, default/disabled state, CC Switch deduplication and exact-account requests through restart. Configured is not tested. Keep subscription/API/CLI access distinct; prove each advertised route. Primary personally handles OV-043. | [Model connection](docs/modules/models.md#model-connection-correction) |
+| Composer and execution | Accept scoped ordinary/Project new-chat defaults and the direct searchable model list; complete automatic evidenced effort, supported Fast, stable model/account intent, queue/guide/stop, retry and restart. Selection changes apply to later input; current work and accepted queued inputs retain their binding. | [Models](docs/modules/models.md#new-conversation-model-defaults), [Agent core](docs/modules/agent-core.md#kernel-target-under-ov-036), [Context](docs/modules/context.md) |
+| Context and allowance | Original Token ring structure; current model's last served account; independently scoped windows, stale/unknown readings, membership term and account-bound reset. Finish actual source attribution and live failover/restart acceptance. No fabricated weighted quota pool. | [Context meter](docs/modules/context.md#candidate-context-ring-preservation), [quota](docs/modules/context.md#subscription-allowance-acquisition-and-display) |
+| Usage and cost | One ledger with request/attempt/account/model/engine/project attribution; cache classes, API price coverage, Other, historical timezone and retention truth. Complete Project view, outcome-aware Agent customization and a simple subscription-value/API-price comparison with correctable sourced plan price. Retired billing-period allocation and the old account price row do not return implicitly. | [Economics register](docs/capabilities.md#intelligence-economics-and-memory), [Context](docs/modules/context.md) |
+| Page-local Agent operations | In Model Settings, invoke the compact assistant with the exact target, use a version-checked existing service operation, preserve human drafts and secrets, and refresh the original page from the committed result. Then extend the same proven path per feature. This does not wait for a full runtime rewrite. | [Existing P0 contract](docs/modules/components.md#context-menu-assistance-source-backed-landing-boundary) |
+| Media request and reuse | Verify the bounded API image/edit/video receipt path in the built desktop and its live-provider boundary; finish subscription-specific image/video/audio routes, general Job queue/resource/platform proof and vision-bridge tool-result/history/remote cases. Retain the existing stop/reopen, unknown-submission, same-credential, binary output and ledger recovery fixtures. Catalog rows and shared logins do not establish executors or entitlements. | [Media](docs/modules/media.md#candidate-generation-and-recovery-contract) |
+| Original interaction parity | Preserve original useful menus, conversation interactions, Board/Pages and model/settings flow. New controls use the selected host's existing primitives. Finish light/dark, zh-Hans/en, keyboard/narrow-window and owner review. | [Shell](docs/modules/shell.md), [Design](DESIGN.md) |
+| Built-in browser | Preserve the current Chromium guest/profile/Agent owner; verify page find, loading stop and native guest actions. Complete extension install/permissions/lifecycle and genuine compatibility proof before advertising Chrome Store support; history/download presentation and governed captures remain separate unfinished paths. | [Browser](docs/modules/browser.md#active-candidate-browser-and-extension-boundary) |
+| Plugin and suite foundation | Prove one installed package's real UI/tool entry, Project scope, shared human/Agent data, update/disable/restart and data-preserving removal. Distribution follows the foundation; more catalog cards are not closure. | [Components](docs/modules/components.md), [Marketplace](docs/modules/marketplace.md) |
+| Independence and release | Finish candidate guide/content correctness, branding/profile compatibility, endpoint disposition, third-party notices, update feed and signed platform builds. Keep each retained Craft service finding scoped to its own branch. | [Services](docs/modules/services.md), [Packaging](docs/engineering.md#building-and-packaging) |
 
-Joint walkthrough groups and the corrected-baseline exit: [R0](docs/modules/baseline.md).
+### Host and selectable-executor proof
 
-## After R0
+The current default is a Pi AgentSession loop under the existing Fleet/ZCode Host (OV-069). The kernel
+is more than the model transport: it owns admission, immutable execution identity, the tool and
+permission boundary, durable state, cancellation/recovery and usage/artifact attribution. Plugin
+and page/domain capabilities consume this boundary. A chosen source base does not close its gaps.
 
-1. Component and panel host foundation — Files and Notes through one registry, scoped activation,
-   user-controlled layout ([SYS-09](docs/modules/components.md)).
-2. Domain features in release order (ladder below).
-3. External component distribution ([`docs/modules/marketplace.md`](docs/modules/marketplace.md#plugin-skill-and-marketplace-design)).
+The integrated SDK runs in the existing supervised CLI process with explicit Host tool wrappers
+and no automatic external resource loading. Per-input Pi state is private and in-memory; the Host
+remains the sole durable conversation writer. Model switches enter Pi only after Host commit.
+Permission, streaming, media input, failure, Guide, stop and SQLite reopen now have local integration
+coverage. The staged binary additionally checks the actual desktop protocol and process restart.
+Live subscriptions, remote execution, platform packaging and native vendor adapters need their own proof.
 
-The updater is scheduled before any packaged distribution;
-the far releases R5–R18 stay in the ladder; their `Execution` sections in `docs/modules/` name
-the next step after their gate opens and are never current work.
+First verify the actual existing writers and command path. The initial correction covers model
+and effort commit-before-publish through runtime admission and the app facade, including write
+failure, retry and SQLite reopen. Native executor integration belongs to this stage rather than
+being postponed behind new pages. Preserve native continuation state and expose unsupported
+features; never put a vendor Agent inside an outer model/tool loop.
+
+Keep the evaluated alternatives as bounded mechanism references. A reproduced unmet contract may
+require changing the implementation choice; preserve the same criteria and compare that exact gap.
+Do not begin another unrestricted survey or declare a new universal winner from a fixture test.
+A replacement owner/dependency or live-data migration reaches its explicit checkpoint only after
+reviewable isolated preparation; user data is not changed to make a prototype work.
+
+### Regression coverage and remaining closure
+
+Compare candidate changes with ZCode `29628c9`; keep inherited failures separate from new failures.
+The [reconstruction and check instructions](docs/engineering.md#zcode-candidate) own commands,
+patches and profile isolation. The register owns statuses; test counts are evidence only.
+
+| Boundary | Required verification |
+|---|---|
+| Settings → runtime | Save/reopen, stale write, exact provider/account/model, failed discovery retaining the last good catalog, imported route conversion and language-adapted failure |
+| Input → execution | Accepted input identity, frozen options/attachments, queue edits and Stop, removed account, late events, restart and remote reconnect |
+| Request → statistics | Inclusive cache/reasoning semantics, known/unknown price coverage, request de-duplication, project identity, date boundaries and retained-history limits. Standalone connectivity probes currently bypass usage recording; the Session FK requires a reviewed operation/ledger solution, not a fabricated conversation. |
+| Page → domain operation | Correct target/selection, concurrent human edit, credential redaction, shared permission path, durable receipt, view refresh and close/reopen |
+| Suite → native artifact | Project exclusion, actual UI and Agent mutation, save/export/reopen fidelity, failed activation, disable during work and data preservation |
+| Release | Real installed/built binary, dependencies/notices, updater boundary, isolated user data and supported-platform verification |
 
 ## Release ladder
 
-> **This document answers "what integrates next?" — and only that.** It is a dependency-ordered
-> integration queue, not a calendar and not a scope cut: **design coverage is never sequenced**
-> (Decision G5 — every product domain stays registered and described at breadth in
-> [`capabilities.md`](docs/capabilities.md#product-matrix) and
-> [`capabilities.md`](docs/capabilities.md#page-structure) regardless of order here). Dependency logic:
-> [`architecture.md`](docs/architecture.md) §2. The owner may reorder or activate anything at any
-> time (G2); record the change in the log below.
+R0–R18 and TE1 remain stable acceptance/dependency identifiers. They describe the product's
+integration order, not eighteen simultaneous implementation tasks. The current owner-authorized
+baseline work above takes precedence over older Craft-only sequencing. A future dependency is
+checked against the selected candidate's real behavior; an inherited Craft path is comparison
+material, not a requirement to rebuild the product on Craft.
 
-Large capabilities remain designed in [`engineering.md`](docs/engineering.md#module-compatibility-gates) and
-`modules/` even when their implementation is `GATED` or `not implemented`. This queue controls
-integration order only; it never authorizes deleting a module packet or its reference audit.
-The larger closed-loop ownership map is `product.md`. It is an
-architecture/parallelism map, not a second roadmap: SYS-01 is the first integration owner because it
-**owns integration of** the shared action, identity, permission, prompt, runtime, Git/PR, artifact
-and job seams — contracts are extracted with their first real callers, never pre-frozen (G2/D6);
-after baseline exit, other suites may build typed preview adapters in disjoint paths, but cannot ship a
-competing authority before SYS-01's contract is real.
+States: **ACTIVE** = current integration focus; **DEP** = unmet functional dependency;
+**GATED** = named evidence/approval prerequisite; **CLOSED** = accepted or explicitly retired.
+Capability delivery continues to use the four statuses in the register.
 
-This is the complete default **development order**, not a near/mid/far-term forecast. Every
-registered product domain must resolve to one row below. A conditional row is still executed when
-its turn arrives: it either lands the smallest proven Craft extension or records `NO_GAP` with the
-task evidence that makes implementation unnecessary. It cannot be left as an unowned “someday”.
+| ID | Outcome | State / prerequisite |
+|---|---|---|
+| R0 | Rectify and accept the selected product baseline, including current documentation | ACTIVE; current workflow units above |
+| R1 | Coherent conversation/Project/Settings interactions, preserving valuable originals | Within R0 where already authorized; broader layout through its own real consumers |
+| R2 | Local-first product independence and distributable identity | Required release boundary; use branch-specific endpoint evidence |
+| R3 | First accepted research/evidence → deliverable → review/delivery chain | DEP on relevant baseline and independence paths |
+| R4 | Shared human/Agent action contract extracted from real mutations | DEP on two real callers; page-local operations are the existing baseline proof, not deferred merely by this label |
+| R5 | Versioned artifact handoff, provenance and stale-writer rejection | DEP on a real producer and consumer |
+| R6 | Bounded delegation, budgets and task-contract enforcement | DEP on R4/R5 and existing Session/child-run owners |
+| R7 | Shared production canvas for native artifacts | DEP on required action/artifact path and minimum registered host; no dependency on advanced docking |
+| R8 | Promote a completed chain into a versioned finite workflow | DEP on a real chain and R4/R5; reuse original journaled workflows where applicable |
+| R9 | Scoped memory distillation, consolidation and optional curation | GATED by repeated completed work and measured retrieval need |
+| R10 | Direct native document/design/web editing and save/reopen | DEP on relevant action/artifact/native-host paths; a preview does not satisfy editing |
+| R11 | Cancellable image/media Job and provider receipt/artifact integration | DEP on a real authorized producer; extract the Job seam from that path |
+| R12 | Video/audio sequence, captions, preview and render | DEP on the media Job and native sequence operations |
+| R13 | Deck/motion editing and honest native/rendered exports | DEP on native document, canvas and render paths; R12 only for consumed video operations |
+| R14 | User-owned remote work, Git/PR delivery, messaging and later phone connector | DEP on scoped runtime, permission and recovery; each advertised channel must work end to end |
+| R15 | Project-scoped suite foundation, then external distribution/update/revoke | Minimum local registry precedes domain expansion; external distribution needs supply-chain and release evidence |
+| R16 | Optional control of specified local apps | DEP on scoped host/target/permission and plugin foundation; no universal Core controller |
+| R17 | Explainable model/organization optimization | GATED by accepted-outcome traces; add only a measured improvement |
+| R18 | In-window layout foundation, then advanced/native multi-window behavior | Basic host serves first real surfaces; native popout has separate platform/security proof |
+| TE1 | Accurate usage/cache/context measurements | Observation may run during baseline work; behavior-changing optimization needs a bounded accepted comparison |
 
-### Status vocabulary for releases
-
-- **ACTIVE** — the single release currently being integrated (a WIP limit, not a time phase).
-  Exactly one release is ACTIVE at a time.
-- **READY** — dependencies met; can be activated by finishing the ACTIVE one or by owner request.
-- **DEP** — waiting on a named dependency edge (listed in its row).
-- **GATED** — waiting on a named non-time gate (a benchmark, a real caller, a measured failure).
-- **CLOSED** — the release contract was completed, replaced, or closed as `NO_GAP`; it is not in the
-  executable queue. The row states which case applies.
-
-These standing tracks support the queue. During baseline rectification they permit read-only
-research, documentation reconciliation and measurement only; they do not authorize new rendered
-features, preview implementations or capability scaffolding before the R0 baseline exit:
-
-- **Frontend track (Decision G6):** any page batch from
-  [`capabilities.md`](docs/capabilities.md#page-structure) §3 may be spec'd, mocked behind a typed
-  adapter, and built preview-gated after baseline exit, reported honestly as `display-only` until wired.
-- **Coverage track (Decision G5):** matrix and page-architecture rows are updated continuously;
-  source research may continue during R0; implementation follows its baseline exit unless a later
-  explicit owner instruction revises that order.
-- **Token-economy track (Decisions E12/E13):** TE1 may run beside R0 only as observation work
-  ([`modules/context.md`](docs/modules/context.md#release-contract--te1-cache-alignment); the former accounting core is absent after the
-  v0.13.4 rebuild). After R0 + TE1 establish a trustworthy current-profile baseline, prompt diet,
-  centralized effective tool projection and Pi-light may enter only as one owner-accepted bounded
-  slice that changes model-call behavior. R3 then becomes the fixed cross-domain trace. ArtifactRef
-  and TaskBrief savings still land with R5/R6; L3+ remain measured gates
-  (`modules/context.md` §6).
-
-### Baseline first, then the Component/panel foundation
-
-The owner's current order is **finish documentation/preparation → jointly inspect original Craft
-→ approve concrete corrections → correct and accept the baseline → build the Component/panel host
-→ add domain Components**. R0 remains in preparation and correction. The owner has authorized
-only the bounded shell/Settings entry correction named above; unrelated app capabilities remain
-outside this slice. Desktop scope is Windows/macOS/Linux; the later phone connector extends
-R14/EXEC-09, with transport and mobile implementation still subject to source/proof review.
-The single baseline exit, including
-inherited-capability dispositions and required R1/R2 corrections, is in
-[`modules/baseline.md`](docs/modules/baseline.md). R0 remains ACTIVE until that exit is met.
-Neither upstream equivalence, green tests nor a partial bootstrap opens the feature gate.
-
-After that exit, [`modules/components.md`](docs/modules/components.md#release-contract--r18-component-and-panel-foundation) owns the early
-R15/R18 host slice: mounted Files + a real Notes consumer → registry → in-window
-resize/move/reorder/float/restore → global/Workspace local Component activation → domain Components.
-It still needs no blanket R4/R5/R6/R9 prerequisite. R15 distribution and R18 native multi-window
-closure follow with their own evidence. The host remains `not implemented` until its real
-consumers and lifecycle are connected.
-
-The v0.13.4 rebuild is current reality; `snapshot/pre-rebuild-2026-09-21` is selective reference and
-recovery evidence, not a restore program. A test Project name never selects the baseline or
-justifies changing live user records.
-
-### The integration queue
-
-| # | Release | Outcome (one line) | State | Dependency / gate |
-|---|---|---|---|---|
-| R0 | **Craft v0.13.4 baseline stabilization** | Classify inherited Craft capabilities, complete agreed R1/R2 corrections, remove absorbed obsolete material and accept a verified baseline before feature additions. | **ACTIVE** — current code, gate coverage and product independence require fresh evidence; upstream equivalence is not Fleet acceptance. | — |
-| R1 | **Conversation shell and context** | Eventually simplify entries without a second Session/Task authority; the visible Workspace/loadout target is reopened. | **Bounded entry slice only** — All Conversations/Board separation, Release Notes beside the version in Settings → App → About, and verified duplicate-entry removal are the current implementation scope. Help remains at upper right. Sidebar restructuring, Workspace/Project changes and right panel are not authorized by this row; the separate model-connection correction retains the existing composer controls. | This bounded correction runs inside R0; later R1 work requires its own reviewed slice |
-| R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, hosted sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | **DEP** — original hosted defaults were restored; Fleet export/help/relay/update/publication/telemetry corrections are not implemented. Prepare and jointly review each service slice before changes. No Fleet release before this boundary closes. | Required independence corrections execute inside R0; closure evidence is shared, never circular |
-| R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | **DEP** | R0 + R2 |
-| R4 | **Action seam** | Caller-aware governed action contract extracted from ≥2 real dual-caller mutations (labels + R3 acceptance). | DEP | R3 (supplies the second caller) |
-| R5 | **Artifact handoff** | ArtifactRef v1: exact version + provenance; one real producer→consumer pair; stale-writer rejection. | DEP | R3 (supplies the real artifact + friction list) |
-| R6 | **Bounded delegation + contract gates** | TaskBrief → child run → validated RunReport over Craft TaskRunner; budget circuit-breaker; first mechanized TaskContract gates in PreToolUse. | **DEP** — the earlier candidate kernel and `DelegationStrip` were discarded in the rebase; current child-Session/TaskRunner mechanisms are only a starting point. | R4 + R5 |
-| R7 | **Infinite canvas (production surface)** | One surface: generate, edit and lay out images, video, websites and decks. A person and an agent edit the same board. This is not a Session-graph projection or playground page. | **DEP** — the slice owns the minimum registered-pane host seam it needs; it does not wait for generalized docking. | R4 + R5 |
-| R8 | **Workflow extraction** | Promote the completed R3 chain into one finite versioned DAG over governed Craft actions and TaskRunner state. | DEP | R4 + R5 |
-| R9 | **Layered agent memory** | Working notes → autonomous distillation into curated layers with a logged consolidation pass; optional human curation (pin/correct/delete); hard secrecy/scope floors (D5). | **GATED** — design principles remain; the earlier memory contract files were discarded and no store, index or consolidation pass exists. | gate: repeated completed R3 chains exist |
-| R10 | **Documents, design + web authoring** | Direct native-format document editing/save/reopen plus native design and versioned web edit/preview/export through one owner per artifact. R3 preview does not satisfy document editing; advanced deck/motion stays R13. | DEP | R4 + R5 + R7 |
-| R11 | **Job spine + image generation** | Extract one cancellable Job lifecycle from a real image-generation producer→consumer loop; record provenance and cost in existing authorities. | DEP | R4 + R5 |
-| R12 | **Video + audio production** | Import media, edit a sequence, maintain captions/audio provenance, render with cancel/retry, and deliver an exact output version. | DEP | R11 |
-| R13 | **Deck and motion (on the canvas)** | Decks and motion live on the R7 canvas. **3D scene authoring, panorama relighting and multi-camera shot grids are out of product** ([`product.md`](docs/product.md)) — close those as `NO_GAP`, do not design them. | DEP | R7 + R10 native document owner + R11 render Job; R12 only for consumed video operations. |
-| R14 | **Remote office, phone connector + messaging** | User-owned remote target, later Orca-like phone client, worktree/Git/PR delivery, scoped grants and Workspace-scoped message routing with honest disconnect/recovery. | DEP | R6 |
-| R15 | **Component distribution and lifecycle closure** | Local-first catalogs, provenance/permission review, staged install, update/rollback and revoke over the early scoped Component host. | **DEP** for external distribution; minimum registry, scoped activation and layout execute first under the owner-directed foundation contract above. | Foundation host + relevant R2 independence + supply-chain/permission evidence. R6/R9 apply only to components that consume delegation/memory. |
-| R16 | **Specified local-app Computer Use Component** | Optional control of selected app/window for interface development and office work; structured API first, fresh observation, scoped host permission and user takeover. General Core control and a second sandbox remain excluded. | **DEP** — execute SYS-02 / EXEC-15 helper comparison first; production binary/signing admission remains required. | R0 exit + Component foundation; no blanket memory/remote-service prerequisite. |
-| R17 | **Adaptive model/organization policy** | Use accumulated accepted-outcome traces to either add explainable overrideable routing/organization on Craft Task/Session/provider seams or close `NO_GAP`. | DEP | R6 + R9 + R12 |
-| R18 | **Advanced and native multi-window layout closure** | Verify popout/re-dock, cross-window identity/security and additional layout needs beyond the early in-window foundation. | **GATED** for this later closure; requested in-window resize/move/reorder/float/restore is in the foundation, not blocked here. Current production host remains `PanelStackContainer`. | Foundation with real existing panels + explicit packaged-window/protocol and recovery evidence. No dependency back from the minimum host. |
-
-#### R0 acceptance summary
-
-R0 closes only at the canonical baseline exit in
-[`modules/baseline.md`](docs/modules/baseline.md): inherited capabilities have dispositions,
-agreed corrections and independence boundaries are verified, obsolete material is absorbed and
-removed, the integrated gate and required smokes pass, and changed visible baseline surfaces have
-owner acceptance. A tag or clean tree is not an acceptance criterion. Remaining additive R1 work
-must not be mistaken for required baseline rectification.
-
-Specs: [`modules/baseline.md`](docs/modules/baseline.md) ·
-[`modules/shell.md`](docs/modules/shell.md) ·
-[`modules/services.md`](docs/modules/services.md) ·
-[`modules/workflow.md`](docs/modules/workflow.md#release-contract--r3-first-production-chain) ·
-[`modules/agent-core.md`](docs/modules/agent-core.md#release-contract--r4-action-seam). A DEP/GATED release gets its full spec when
-its dependency/gate is close (writing frozen detail earlier repeats the plans-outrun-code failure —
-D6/G2); its *breadth* design already lives in the matrix and page architecture now.
-
-Conditional capabilities such as interactive PTY, model routing, context projection and generalized
-docking remain behind their named real-caller gates. A second OS sandbox and general external-
-computer control are explicitly out of product and remain closed `NO_GAP`.
-
-### Why this order (once)
-
-- **R0 evidence starts from v0.13.4:** the September 21 rebuild replaced the mixed Fleet tree.
-  The old uptake-before-tag discussion is superseded by that committed state. Source comparison,
-  declared deltas and fresh full-gate evidence are required; no historical passing count applies.
-  Upstream steering, context usage and composer viewport handling already exist and must not be
-  hand-built again. The pre-rebuild snapshot is for selective review, not automatic restoration.
-- **R0/R2 safety work cannot wait on itself:** R0-C2 retains its fail-closed acceptance bar.
-  An inherited hosted default that blocks it is fixed as R0 work using the R2 independence
-  contract; R2's DEP label governs release closure, not permission to postpone that fix. R2 then
-  verifies the complete independence surface. Neither release can be claimed complete from the
-  old branch's evidence.
-- **R3 before R4 (this reverses the old loop order):** the seam contract itself requires extraction
-  from real callers; R3 creates the second real caller while proving the product story end-to-end
-  with capabilities Craft already ships.
-- **Harness work does not reorder the product:** TE1 can observe during R0; a post-baseline
-  Prompt/tool-profile slice is separately accepted because it changes model calls. It must finish or
-  be explicitly waived before its profile is used for the R3 benchmark, but it does not become a new
-  release or pull R4/R5/R6 forward.
-- **R4→R5→R6:** the Fleet-differentiating spine, each step consuming a verified real input from the
-  previous one.
-- **R7 owns its minimum host seam:** a production canvas cannot depend on a generalized layout
-  release whose need can only be proven by real surfaces. Reuse the owner-directed foundation
-  rather than constructing another host; R18 closes advanced/native-window behavior later.
-- **R16 has a bounded revised scope:** the owner's specified-local-app plugin request is carried
-  by [SYS-02](docs/modules/remote.md#local-app-computer-use-contract) and EXEC-15.
-  It starts with a helper/target/permission proof after the baseline and host. Its old whole-release
-  `NO_GAP` label is superseded; the universal controller and second sandbox exclusions survive.
-
-### Suite-level parallelism
-
-The release queue and suite map intersect at explicit seams. Build permissions in this table apply
-after the baseline exit; during R0 only its corrections, audits and measurements execute:
-
-| Suite | First usable integration point | Can research/build in parallel | Must wait before shipping |
-|---|---|---|---|
-| SYS-01 Agent operating system/governance | R1/R2 → R4/R6 action and run contracts | — (integration owner) | all shared contract changes are reviewed here |
-| SYS-02 Remote engineering office | R14 remote/Git/message loop | reference audits and isolated-target fixtures | R6 run contract |
-| SYS-03 Token/memory/skill economy | TE1/R3 measurement → R9 memory → R17 policy closure | baseline measurements and optimizer experiments | the current Craft prompt/permission/UsageTracker seams; ContextPack only if its gate lands |
-| SYS-04 Browser/evidence | R3 browser evidence path | capture fixtures and denied/offline tests after baseline exit | existing permission/file/evidence paths for R3; R5 only for the later ArtifactRef handoff |
-| SYS-05 Design/web/spatial | R7 canvas → R10 documents/design/web → R13 deck/motion → R18 layout closure | preview-gated component experiments and renderer spikes | R4 action + R5 ArtifactRef; minimum pane seam lands with first real surface |
-| SYS-06 AIGC/media | R11 image Job → R12 video/audio → R13 deck/spatial media | media fixtures and reference audits | R4 action + R5 ArtifactRef |
-| SYS-07 Workflow/delivery | R4/R5 real chains → R8 | schema experiments only | real promoted chain and SYS-01 TaskRunner projection |
-| SYS-08 Marketplaces | early R15/R18 foundation → R15 distribution | scoped local host proof and manifest/reference audits | verified host + existing permission/trust + R2 independence for distribution; R6/R9 only for specific dependent components |
-| SYS-09 Workspace compositions | early R15/R18 foundation | mounted Files + Notes RPC consumer and scoped settings proof | completed R0 baseline exit, one effective resolver, lifecycle and in-window layout recovery |
-
-### How to change this roadmap
-
-An owner request can reorder or activate anything: update the table, add one line to the log,
-adjust the affected spec's status header. Agents propose reorders with evidence at an owner
-checkpoint; they do not reorder on their own.
-
-Current order revision: 2026-09-21 — the owner requires inherited Craft rectification before
-feature additions and deletion of obsolete project material after absorption. Earlier release
-reorders and discarded execution programs are recoverable in Git; current product decisions live
-in `decisions.md`, not a second historical queue here.
+The retained Craft [baseline](docs/modules/baseline.md), [shell](docs/modules/shell.md) and
+[service](docs/modules/services.md) records preserve original behavior and unresolved risks.
+Their old ACTIVE/DEP wording does not create a second current queue. Feature breadth remains in
+[Capabilities](docs/capabilities.md#product-matrix), including formats or platforms still unsupported.
 
 ## Slice procedure
 
-[`TODO.md`](#release-ladder) owns development order. This file names the current owner-authorized
-slice, not another roadmap or progress archive.
+1. Resolve the current owner request and module contract; identify the implementation root and
+   exact original/reference flow. Apply the [official/vendor ecosystem source intake](docs/engineering.md#source-intake-before-module-implementation) and read existing callers before choosing a new abstraction.
+2. Lock the complete outcome, acceptance and non-goals. State which observations are source-only,
+   which are executable fixtures and which require actual UI/provider/platform verification.
+3. Complete reversible preparation and implementation already authorized. A production dependency,
+   new/replaced data/security authority, paid or public effect retains its explicit checkpoint.
+4. Verify the complete path and its material failures; update the canonical contract and status.
+   Show the running change for owner visual acceptance. Preserve unrelated work and user data.
+5. Retire replaced code/docs only after the retained function/data path and incoming links are
+   accounted for. Stop when acceptance is met; do not keep optimizing or collecting references.
 
-### Active contract
-
-**R0 baseline with the owner's bounded R1 entry correction.** The old R1 delivery order remains
-withdrawn; the later owner request authorizes only the current entry moves.
-
-- **Objective:** implement the named entry moves on the v0.13.4 base and make current documentation
-  distinguish those code changes from the still-paused design proposals.
-- **Sources:** current `app/`, matching Craft pin, current user instructions, and the bounded source
-  comparisons already recorded in the owning modules.
-- **Constraints:** preserve user records, reference checkouts, original routes and Help; no
-  Conversation/Project data change, Workspace migration, new backend authority or feature engine.
-- **Proof:** declared upstream delta, typecheck/build, document-contract gate, and isolated desktop
-  review of Board/list routes, Release Notes and updater, footer menu, upper-right Help and hidden-sidebar fallback.
-- **Next:** show the bounded change for owner acceptance before another correction slice.
-
-### Preparation exit and joint walkthrough
-
-The preparation exit in [R0](docs/modules/baseline.md#preparation-and-joint-review) requires current
-facts, coherent contracts, concrete comparison evidence, a disposition for obsolete material and a
-reproducible original-app launch plan. It is not the later implementation acceptance exit.
-
-Build and open original Craft for the requested joint walkthrough after preparation. First establish
-a review environment that cannot modify existing user credentials,
-Sessions, files or installations; setting one profile variable is not isolation proof. Use original
-source/build commands and their pinned dependencies, and inspect profile/network/update behavior
-before launch. Explain any unexecutable platform or check; do not patch the app to disguise it.
-
-Review startup, Project/context, Conversation/create, models/permissions, files/Pages, browser,
-Skills/Sources, Tasks/automations, settings/remote and quit/recovery as complete flows. For each,
-show current behavior → demonstrated defect/overlap → recommended change → retained capability
-and data → affected backend → acceptance. Record the owner's decision in the canonical contract.
-An available button, duplicate-looking list or old filename alone does not establish redundancy.
-
-### After the approved correction slice
-
-Implement only the approved slice across UI, RPC, state, failure/recovery, localization and cleanup.
-Preserve exact user records; remove retired callers, handlers and dependencies only after proving
-remaining consumers and recovery. Run appropriate checks and show the changed flow for acceptance.
-Then proceed to the next approved slice. Do not use R0 or IMPLEMENT labels as blanket permission.
-
-The later R0 baseline exit still precedes the Component/panel foundation and new domain features.
-The existing [host contract](docs/modules/components.md#release-contract--r18-component-and-panel-foundation) retains Files/Notes consumers, scoped
-activation and layout proof; its open engine/schema choices remain proposals. External distribution,
-mobile connection and advanced native windows keep their own evidence and review boundaries.
-
-### Obsolete material
-
-Absorb unique current requirements/evidence, update incoming links and delete superseded project
-files. Do not create dated reports, duplicate plans or replacement archive copies. Exact Git refs,
-external source checkouts, generated reference guides and user records keep their distinct
-retention decisions in R0 and the reference registry; a general cleanup is not blanket deletion.
+A user correction changes the relevant criterion; it does not silently cancel all other work.
+No worker is dispatched for the current account regression. The primary owns design, integration
+and acceptance evidence. Current scope is not permission to reset either implementation tree,
+replace a reference pin, expose credentials or publish a release.

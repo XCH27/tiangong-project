@@ -1,0 +1,1090 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts
+index 4d9fbb4..dbf8008 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-model-activity.ts
+@@ -3,7 +3,7 @@ import type { AppUsageModelActivityRow } from "@zcode/contracts";
+ 
+ const uniqueTurnModels = `with relevant_turns as (
+     select distinct session_id, turn_id from tool_usage
+-    where started_at >= ? and started_at <= ? and turn_id is not null
++    where started_at >= ? and started_at < ? and turn_id is not null
+   ), unique_turn_models as (
+     select usage.session_id, usage.turn_id, min(usage.model_id) as modelId
+     from model_usage usage join relevant_turns turn
+@@ -15,7 +15,7 @@ const uniqueTurnModels = `with relevant_turns as (
+ /** Attribute tools only when one model served that turn; mixed-model turns stay in global totals. */
+ export function queryModelActivity(db: DatabaseSync, since: number, until: number): AppUsageModelActivityRow[] {
+   const sessions = db.prepare(`select model_id as modelId, count(distinct session_id) as sessionCount
+-    from model_usage where started_at >= ? and started_at <= ? and query_source = 'main_turn'
++    from model_usage where started_at >= ? and started_at < ? and query_source = 'main_turn'
+     group by model_id`).all(since, until) as unknown as { modelId: string; sessionCount: number }[];
+   const tools = db.prepare(`${uniqueTurnModels} select m.modelId, t.tool_name as toolName,
+       count(*) as callCount,
+@@ -23,7 +23,7 @@ export function queryModelActivity(db: DatabaseSync, since: number, until: numbe
+       avg(t.duration_ms) as avgDurationMs
+     from tool_usage t join unique_turn_models m
+       on t.session_id = m.session_id and t.turn_id = m.turn_id
+-    where t.started_at >= ? and t.started_at <= ?
++    where t.started_at >= ? and t.started_at < ?
+     group by m.modelId, t.tool_name
+     order by m.modelId, callCount desc, t.tool_name`).all(since, until, since, until) as unknown as {
+     modelId: string; toolName: string; callCount: number; errorCount: number; avgDurationMs: number | null;
+@@ -37,7 +37,7 @@ export function queryModelActivity(db: DatabaseSync, since: number, until: numbe
+       avg(t.duration_ms) as avgDurationMs
+     from tool_usage t join unique_turn_models m
+       on t.session_id = m.session_id and t.turn_id = m.turn_id
+-    where t.started_at >= ? and t.started_at <= ? and t.tool_name = 'Skill'
++    where t.started_at >= ? and t.started_at < ? and t.tool_name = 'Skill'
+       and json_type(t.skill_metadata_json,'$.qualifiedName') = 'text'
+       and length(trim(json_extract(t.skill_metadata_json,'$.qualifiedName'))) > 0
+     group by m.modelId, skillId, pluginId, source
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-skills.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-skills.ts
+index 2b5bfe3..d70f1b9 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-skills.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-skills.ts
+@@ -10,10 +10,10 @@ export function querySkillUsage(db: DatabaseSync, since: number, until: number):
+    count(*) as callCount,
+    sum(case when status='error' then 1 else 0 end) as errorCount,
+    avg(duration_ms) as avgDurationMs
+-   from tool_usage where tool_name='Skill' and started_at >= ? and started_at <= ?
++   from tool_usage where tool_name='Skill' and started_at >= ? and started_at < ?
+    and json_type(skill_metadata_json,'$.qualifiedName')='text'
+    and length(trim(json_extract(skill_metadata_json,'$.qualifiedName'))) > 0
+    group by skillId,pluginId,source order by callCount desc,skillId`).all(since,until) as unknown as NonNullable<AppUsageQueryResult['skills']>;
+- const total=db.prepare("select count(*) as total from tool_usage where tool_name='Skill' and started_at >= ? and started_at <= ?").get(since,until) as {total:number};
++ const total=db.prepare("select count(*) as total from tool_usage where tool_name='Skill' and started_at >= ? and started_at < ?").get(since,until) as {total:number};
+  return {skills: skills.map((row) => ({...row})),unidentifiedSkillCalls:total.total-skills.reduce((n,s)=>n+s.callCount,0)};
+ }
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+index 71c0008..788db05 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage.ts
+@@ -427,7 +427,7 @@ export async function queryAppUsage(
+          coalesce(sum(case when status = 'error' then 1 else 0 end), 0) as modelErrorCount,
+          avg(time_to_first_token_ms) as avgTimeToFirstTokenMs
+        from model_usage
+-       where started_at >= ? and started_at <= ?`,
++       where started_at >= ? and started_at < ?`,
+     )
+     .get(since, until) as Record<string, number | null>;
+ 
+@@ -438,7 +438,7 @@ export async function queryAppUsage(
+          count(*) as totalTurns,
+          avg(case when status = 'completed' then duration_ms else null end) as avgTurnDurationMs
+        from turn_usage
+-       where started_at >= ? and started_at <= ?`,
++       where started_at >= ? and started_at < ?`,
+     )
+     .get(since, until) as Record<string, number | null>;
+   const longestSession = db
+@@ -448,7 +448,7 @@ export async function queryAppUsage(
+          select coalesce(sum(case when status = 'completed' then duration_ms else 0 end), 0)
+            as sessionDurationMs
+          from turn_usage
+-         where started_at >= ? and started_at <= ?
++         where started_at >= ? and started_at < ?
+          group by session_id
+        )`,
+     )
+@@ -460,7 +460,7 @@ export async function queryAppUsage(
+          count(*) as toolCallCount,
+          coalesce(sum(case when status = 'error' then 1 else 0 end), 0) as toolErrorCount
+        from tool_usage
+-       where started_at >= ? and started_at <= ?`,
++       where started_at >= ? and started_at < ?`,
+     )
+     .get(since, until) as Record<string, number>;
+ 
+@@ -488,7 +488,7 @@ export async function queryAppUsage(
+            and json_extract(raw_usage_json, '$.cacheReadTokens') between 0 and json_extract(raw_usage_json, '$.inputTokens')
+            then json_extract(raw_usage_json, '$.inputTokens') else 0 end) as cacheInputTokens
+        from model_usage
+-       where started_at >= ? and started_at <= ?
++       where started_at >= ? and started_at < ?
+        group by model_id
+        order by totalTokens desc`,
+     )
+@@ -502,7 +502,7 @@ export async function queryAppUsage(
+          coalesce(sum(case when status = 'error' then 1 else 0 end), 0) as errorCount,
+          avg(duration_ms) as avgDurationMs
+        from tool_usage
+-       where started_at >= ? and started_at <= ?
++       where started_at >= ? and started_at < ?
+        group by tool_name
+        order by callCount desc`,
+     )
+@@ -514,7 +514,7 @@ export async function queryAppUsage(
+          fleet_usage_day(started_at) as dayIndex,
+          coalesce(sum(computed_total_tokens), 0) as totalTokens
+        from model_usage
+-       where started_at >= ? and started_at <= ?
++       where started_at >= ? and started_at < ?
+        group by dayIndex`,
+     )
+     .all(since, until) as Array<{ dayIndex: number; totalTokens: number }>;
+@@ -523,7 +523,7 @@ export async function queryAppUsage(
+     .prepare(
+       `select fleet_usage_day(started_at) as dayIndex, count(*) as turnCount
+        from turn_usage
+-       where started_at >= ? and started_at <= ?
++       where started_at >= ? and started_at < ?
+        group by dayIndex`,
+     )
+     .all(since, until) as Array<{ dayIndex: number; turnCount: number }>;
+@@ -532,7 +532,7 @@ export async function queryAppUsage(
+     .prepare(
+       `select fleet_usage_day(started_at) as dayIndex, count(*) as toolCallCount
+        from tool_usage
+-       where started_at >= ? and started_at <= ?
++       where started_at >= ? and started_at < ?
+        group by dayIndex`,
+     )
+     .all(since, until) as Array<{ dayIndex: number; toolCallCount: number }>;
+@@ -575,7 +575,7 @@ export async function queryAppUsage(
+          model_id as modelId,
+          coalesce(sum(computed_total_tokens), 0) as totalTokens
+        from model_usage
+-       where started_at >= ? and started_at <= ?
++       where started_at >= ? and started_at < ?
+        group by dayIndex, model_id`,
+     )
+     .all(since, until) as unknown as AppUsageDayModelRow[];
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index 735c1b0..02eb80b 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -6,7 +6,7 @@ import { join } from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+ import { SqliteSessionStore } from "../src/storage/session-store/sqlite-session-store.js";
+ import type { SessionId, ProjectId, ModelUsageRecord, TurnId } from "@zcode/contracts";
+-import { allocateSubscriptionPayment, subscriptionPaymentsSchema } from "@zcode/shared";
++import { subscriptionPaymentsSchema } from "@zcode/shared";
+ import {
+   queryAccounting,
+   accountingSnapshot,
+@@ -95,26 +95,63 @@ test("accounting survives reopen and retention; same logical request is not coun
+           a.find((r) => r.modelId === "gpt-6-sol")!.estimatedCredits * 12.5,
+       ) < 1e-12,
+     );
+-    const payment = {
+-      id: "p",
+-      providerId: "chat",
+-      accountId: "a",
+-      accountLabel: "test",
+-      start: Date.UTC(2026, 7, 1),
+-      end: Date.UTC(2026, 8, 1),
+-      amount: 100,
+-      currency: "USD" as const,
+-    };
+-    const allocation = allocateSubscriptionPayment(payment, result.accounting!);
+-    assert.equal(allocation.basis, "credits");
+-    assert.equal(allocation.models.length, 2);
+-    assert.ok(Math.abs(allocation.models.reduce((n, r) => n + r.amount, 0) - 100) < 1e-10);
+     assert.equal((await f.query(Date.UTC(2026, 8, 1))).accounting?.length, 0);
+   } finally {
+     await f.close();
+   }
+ });
+ 
++test("adjacent usage ranges count every boundary once across costs, models, tools, skills and days", async () => {
++  const f = await fixture();
++  try {
++    for (const at of [100, 200, 300]) {
++      const turnID = `turn-${at}` as TurnId;
++      await f.record(`model-${at}`, "a", "standard", { startedAt: at, turnID });
++      await f.store.upsertTurnUsage({
++        sessionID: "session" as SessionId,
++        turnID,
++        status: "completed",
++        startedAt: at,
++        completedAt: at + 1,
++      });
++      await f.store.upsertToolUsage({
++        id: `skill-${at}`,
++        sessionID: "session" as SessionId,
++        turnID,
++        toolCallID: `skill-${at}`,
++        toolName: "Skill",
++        status: "completed",
++        startedAt: at,
++        skillMetadata: { qualifiedName: "design:review", source: "plugin" },
++      });
++    }
++    f.reopen();
++    for (const [since, until, count] of [
++      [100, 200, 1],
++      [200, 300, 1],
++      [100, 300, 2],
++    ]) {
++      const result = await f.query(since, until);
++      assert.equal(result.totals.modelRequestCount, count);
++      assert.equal(
++        result.accounting?.reduce((n, row) => n + row.requestCount, 0),
++        count,
++      );
++      assert.equal(result.models[0]?.requestCount, count);
++      assert.equal(result.turnTotals.totalTurns, count);
++      assert.equal(result.toolTotals.toolCallCount, count);
++      assert.equal(result.tools[0]?.callCount, count);
++      assert.equal(result.skills?.[0]?.callCount, count);
++      assert.equal(result.modelActivities?.[0]?.toolCallCount, count);
++      assert.equal(result.days[0]?.toolCallCount, count);
++      assert.equal(result.days[0]?.turnCount, count);
++      assert.equal(result.dayModels[0]?.totalTokens, count * 1100);
++    }
++  } finally {
++    await f.close();
++  }
++});
++
+ test("provider-reported image price enters the existing model and project cost ledger without invented tokens", async () => {
+   const f = await fixture();
+   try {
+@@ -147,7 +184,7 @@ test("provider-reported image price enters the existing model and project cost l
+   }
+ });
+ 
+-test("unknown speed/account and missing cache remain unknown and block a claimed complete allocation", async () => {
++test("unknown speed/account and missing cache remain unknown in price coverage", async () => {
+   const f = await fixture();
+   try {
+     await f.record("known", "a", "standard");
+@@ -159,22 +196,6 @@ test("unknown speed/account and missing cache remain unknown and block a claimed
+     assert.equal(legacy.pricedCount, 0);
+     assert.equal(legacy.cacheReportedCount, 0);
+     assert.equal(legacy.speedMode, null);
+-    assert.equal(
+-      allocateSubscriptionPayment(
+-        {
+-          id: "p",
+-          providerId: "chat",
+-          accountId: "a",
+-          accountLabel: "a",
+-          start: 0,
+-          end: Date.UTC(2026, 9, 1),
+-          amount: 20,
+-          currency: "USD",
+-        },
+-        result.accounting!,
+-      ).basis,
+-      "unavailable",
+-    );
+   } finally {
+     await f.close();
+   }
+@@ -234,44 +255,6 @@ test("payment identity and overlapping periods reject before saving; currencies
+   assert.equal(subscriptionPaymentsSchema.safeParse({ wrong: p }).success, false);
+ });
+ 
+-test("membership-key connection payments use only their explicit period and never mix native accounts", async () => {
+-  const f = await fixture();
+-  try {
+-    await f.record("key-record", undefined, "standard", {
+-      providerMetadata: {
+-        fleetAccounting: {
+-          billingProvider: "openai",
+-          authKind: "api-key",
+-          requestedSpeedMode: "standard",
+-        },
+-      },
+-    });
+-    const rows = (await f.query()).accounting!;
+-    const payment = {
+-      id: "p",
+-      providerId: "chat",
+-      accountId: "connection",
+-      accountLabel: "connection",
+-      start: Date.UTC(2026, 7, 1),
+-      end: Date.UTC(2026, 8, 1),
+-      amount: 25,
+-      currency: "CNY" as const,
+-    };
+-    const result = allocateSubscriptionPayment(payment, rows);
+-    assert.equal(result.basis, "api-value");
+-    assert.equal(result.models[0]?.amount, 25);
+-    assert.equal(
+-      allocateSubscriptionPayment(
+-        { ...payment, start: Date.UTC(2026, 8, 1), end: Date.UTC(2026, 9, 1) },
+-        rows,
+-      ).basis,
+-      "unavailable",
+-    );
+-  } finally {
+-    await f.close();
+-  }
+-});
+-
+ test("requested Fast remains visible when the provider serves Standard, and cost uses the served tier", async () => {
+   const f = await fixture();
+   try {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+index 02d45ce..c433a16 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/usage-stats-builder.ts
+@@ -112,7 +112,11 @@ export function buildAppUsageSnapshot(
+     });
+   }
+ 
+-  const endDayIndex = Math.floor((opts.until + opts.tzOffsetMs) / DAY_MS);
++  // until is exclusive; a midnight boundary belongs to the next query, not this chart.
++  const lastIncludedAt = opts.until - 1;
++  const endDayIndex = Math.floor(
++    (lastIncludedAt + resolveTzOffsetMs(opts.timeZone, lastIncludedAt)) / DAY_MS,
++  );
+   const startDayIndex = resolveUsageStartDayIndex(result, opts, endDayIndex);
+ 
+   let activeDays = 0;
+diff --git a/apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts b/apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts
+index 158477b..4d9704e 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts
+@@ -73,3 +73,23 @@ test("the existing stats protocol passes timezone through and rejects a missing
+   assert.equal(snapshot.source, "agent-db");
+   assert.equal(snapshot.summary.totalTokens, 0);
+ });
++
++test("an exclusive midnight upper bound does not add the next day to the charts", () => {
++  const timeZone = "America/Los_Angeles";
++  const since = Date.parse("2026-03-08T08:00:00Z");
++  const until = Date.parse("2026-03-09T07:00:00Z");
++  const snapshot = buildAppUsageSnapshot(empty, {
++    range: "7d",
++    timeZone,
++    since,
++    until,
++    generatedAt: until,
++    tzOffsetMs: resolveTzOffsetMs(timeZone, until),
++  });
++  assert.equal(snapshot.heatmap.startDate, "2026-03-08");
++  assert.equal(snapshot.heatmap.endDate, "2026-03-08");
++  assert.deepEqual(
++    snapshot.dailyModelUsage.map((day) => day.date),
++    ["2026-03-08"],
++  );
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+index 6eb4bab..fb1d2d7 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
+@@ -983,7 +983,7 @@ export interface ToolUsageRecord {
+ export interface AppUsageQueryInput {
+   /** 包含 since 的下界（unix ms）。 */
+   since: number;
+-  /** 上界（unix ms），通常为 now。 */
++  /** 不包含 until 的上界（unix ms），所有统计投影统一使用 [since, until)。 */
+   until: number;
+   /** 历史调用端的固定偏移；未提供 timeZone 时保留原来的归桶方式。 */
+   tzOffsetMs: number;
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+index b19ce5c..7c74ce5 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts
+@@ -13,6 +13,7 @@ import {
+   createRootTraceContext,
+   type MediaGenerationPort,
+   type ModelMessageContent,
++  type ToolArtifactWriteResult,
+   type UsageStorePort,
+ } from "@zcode/contracts";
+ import type { ToolEntry, ToolHandler } from "../types.js";
+@@ -102,31 +103,12 @@ export function createMediaGenerationToolEntries(
+       throw error;
+     }
+     const completedAt = Date.now();
++    const dataUrl = `data:${generated.mimeType};base64,${Buffer.from(generated.bytes).toString("base64")}`;
++    let artifact: ToolArtifactWriteResult | undefined;
+     let usageRecorded = true;
+     try {
+-      await usageStore.recordModelUsage({
+-        ...usageBase,
+-        modelId: generated.reportedModelId,
+-        status: "completed",
+-        completedAt,
+-        durationMs: completedAt - startedAt,
+-        providerMetadata: {
+-          fleetAccounting: {
+-            billingProvider: "xai",
+-            workspacePath: context.workspaceRoot,
+-            requestedModelId: request.modelId,
+-            ...(generated.reportedCostUsd === undefined
+-              ? {}
+-              : { reportedMediaUsd: generated.reportedCostUsd }),
+-          },
+-        },
+-      });
+-    } catch {
+-      usageRecorded = false;
+-    }
+-    const dataUrl = `data:${generated.mimeType};base64,${Buffer.from(generated.bytes).toString("base64")}`;
+-    const artifact = await context.artifactStore.writeToolResultArtifact(
+-      {
++      // The paid result already exists. Stopping inference must not discard its local recovery copy.
++      artifact = await context.artifactStore.writeToolResultArtifact({
+         content: dataUrl,
+         contentType: "text/plain",
+         retention: "session",
+@@ -135,9 +117,32 @@ export function createMediaGenerationToolEntries(
+         toolName: GENERATE_IMAGE_TOOL_NAME,
+         trace: context.traceContext ?? createRootTraceContext({ sessionId: context.sessionId }),
+         ...(context.turnId ? { turnId: context.turnId } : {}),
+-      },
+-      { signal: context.abortSignal },
+-    );
++      });
++    } finally {
++      // A local save failure does not undo the provider charge. Keep one usage fact either way.
++      try {
++        await usageStore.recordModelUsage({
++          ...usageBase,
++          modelId: generated.reportedModelId,
++          status: "completed",
++          completedAt,
++          durationMs: completedAt - startedAt,
++          providerMetadata: {
++            fleetAccounting: {
++              billingProvider: "xai",
++              workspacePath: context.workspaceRoot,
++              requestedModelId: request.modelId,
++              ...(artifact ? { artifactUri: artifact.uri } : {}),
++              ...(generated.reportedCostUsd === undefined
++                ? {}
++                : { reportedMediaUsd: generated.reportedCostUsd }),
++            },
++          },
++        });
++      } catch {
++        usageRecorded = false;
++      }
++    }
+     const publicOutput = GenerateImageOutputSchema.parse({
+       artifactUri: artifact.uri,
+       providerId: request.providerId,
+diff --git a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+index b96b4a0..4092ad4 100644
+--- a/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-generation-tool.test.ts
+@@ -1,11 +1,16 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { NodeToolArtifactStore } from "../../adapters/src/storage/index.js";
+ import type { MediaGenerationPort } from "@zcode/contracts";
+ import type { ToolExecutionContext } from "../src/tool/types.js";
+ import { createMediaGenerationToolEntries } from "../src/tool/handlers/media-generation.js";
+ import { registerBuiltInTools } from "../src/tool/handlers/index.js";
+ import { createToolRegistry } from "../src/tool/registry.js";
+ import { persistToolResultMediaAttachments } from "../src/runtime/helpers/tool-result-media-persistence.js";
++import { executeWithTimeout, ToolDeadline } from "../src/tool/executor/timeout.js";
+ 
+ test("image generation uses the Session artifact store and asks approval before a paid call", async () => {
+   const calls: string[] = [];
+@@ -111,6 +116,112 @@ test("media tools use the existing runtime tool allow/deny registration gate", (
+   assert.equal(denied.get("GenerateImage"), undefined);
+ });
+ 
++test("a charged image returned after cancellation is saved and referenced by its single usage fact", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-image-recovery-"));
++  const controller = new AbortController();
++  const usage: Array<{ providerMetadata?: { fleetAccounting?: { artifactUri?: string } } }> = [];
++  const recorded = Promise.withResolvers<void>();
++  const paths = {
++    rootDir: join(root, "artifacts"),
++    imageCacheRootDir: join(root, "images"),
++    videoCacheRootDir: join(root, "videos"),
++  };
++  let calls = 0;
++  try {
++    const [, generate] = createMediaGenerationToolEntries({
++      listModels: () => [],
++      prepareImage: async () => "binding",
++      async generateImage() {
++        calls++;
++        controller.abort(new Error("user stopped waiting"));
++        return {
++          bytes: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
++          mimeType: "image/jpeg",
++          reportedModelId: "grok-image",
++          reportedCostUsd: 0.04,
++        };
++      },
++    });
++    const pending = executeWithTimeout(
++      generate.handler,
++      { providerId: "xai", modelId: "grok-image", prompt: "A square", binding: "binding" },
++      {
++        abortSignal: controller.signal,
++        sessionId: "session",
++        toolCallId: "image-call",
++        workspaceRoot: root,
++        artifactStore: new NodeToolArtifactStore(paths),
++        sessionStore: {
++          recordModelUsage: async (value: (typeof usage)[number]) => {
++            usage.push(value);
++            recorded.resolve();
++          },
++        },
++      } as unknown as ToolExecutionContext,
++      new ToolDeadline(10000),
++      controller,
++      generate,
++    );
++    await assert.rejects(pending, /cancelled/i);
++    await recorded.promise;
++    assert.equal(calls, 1);
++    assert.equal(usage.length, 1);
++    const artifactUri = usage[0]?.providerMetadata?.fleetAccounting?.artifactUri;
++    assert.ok(artifactUri);
++    const saved = await new NodeToolArtifactStore(paths).readToolResultArtifact({
++      uri: artifactUri,
++    });
++    assert.equal(saved.content, "data:image/jpeg;base64,/9j/4A==");
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("a failed local image save preserves the charge and never retries generation", async () => {
++  let calls = 0;
++  const usage: Array<{ status: string; providerMetadata?: unknown }> = [];
++  const [, generate] = createMediaGenerationToolEntries({
++    listModels: () => [],
++    prepareImage: async () => "binding",
++    async generateImage() {
++      calls++;
++      return {
++        bytes: Buffer.from([0xff, 0xd8, 0xff]),
++        mimeType: "image/jpeg",
++        reportedModelId: "grok-image",
++        reportedCostUsd: 0.04,
++      };
++    },
++  });
++  await assert.rejects(
++    generate.handler(
++      { providerId: "xai", modelId: "grok-image", prompt: "A square", binding: "binding" },
++      {
++        abortSignal: new AbortController().signal,
++        sessionId: "session",
++        toolCallId: "image-call",
++        workspaceRoot: "/project",
++        artifactStore: {
++          writeToolResultArtifact: async () => {
++            throw new Error("disk full");
++          },
++        },
++        sessionStore: {
++          recordModelUsage: async (value: (typeof usage)[number]) => {
++            usage.push(value);
++          },
++        },
++      } as unknown as ToolExecutionContext,
++    ),
++    /disk full/,
++  );
++  assert.equal(calls, 1);
++  assert.equal(usage.length, 1);
++  assert.equal(usage[0]?.status, "completed", "the provider completed even though saving failed");
++  assert.match(JSON.stringify(usage[0]?.providerMetadata), /reportedMediaUsd/);
++  assert.equal(JSON.stringify(usage[0]?.providerMetadata).includes("artifactUri"), false);
++});
++
+ test("a denied media entitlement reaches the Agent with the actual status before approval", async () => {
+   const port: MediaGenerationPort = {
+     listModels: () => [],
+diff --git a/package.json b/package.json
+index 6bee278..900c569 100644
+--- a/package.json
++++ b/package.json
+@@ -51,6 +51,7 @@
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
++    "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts"
+   },
+   "dependencies": {
+diff --git a/packages/shared/src/usage-accounting.ts b/packages/shared/src/usage-accounting.ts
+index 19dcc3c..00d3cce 100644
+--- a/packages/shared/src/usage-accounting.ts
++++ b/packages/shared/src/usage-accounting.ts
+@@ -1,5 +1,6 @@
+ import { z } from "zod";
+ 
++/** Legacy saved payments remain readable; the retired allocation UI has no calculation owner. */
+ export const subscriptionPaymentSchema = z
+   .object({
+     id: z.string().min(1),
+@@ -61,65 +62,3 @@ export const usageAccountingRowSchema = z.object({
+   priceSources: z.string().nullable().optional(),
+ });
+ export type UsageAccountingRow = z.infer<typeof usageAccountingRowSchema>;
+-
+-/** Allocate one account-period payment; unrelated accounts and currencies never share a denominator. */
+-export function allocateSubscriptionPayment(
+-  payment: SubscriptionPayment,
+-  rows: readonly UsageAccountingRow[],
+-) {
+-  if (rows.some((row) => row.firstAt < payment.start || row.lastAt >= payment.end))
+-    return { basis: "unavailable" as const, models: [], unallocated: payment.amount };
+-  const eligible = rows.filter(
+-    (row) =>
+-      row.providerId === payment.providerId &&
+-      (payment.accountId === "connection"
+-        ? row.accountId === null
+-        : row.accountId === payment.accountId),
+-  );
+-  // 已知同服务存在无账号归属的记录时，不能声称当前账号账期完整。
+-  if (
+-    payment.accountId !== "connection" &&
+-    rows.some((row) => row.providerId === payment.providerId && row.accountId === null)
+-  )
+-    return { basis: "unavailable" as const, models: [], unallocated: payment.amount };
+-  const requests = eligible.reduce((sum, row) => sum + row.requestCount, 0);
+-  const native = requests > 0 && eligible.every((row) => row.creditCount === row.requestCount);
+-  const api = requests > 0 && eligible.every((row) => row.pricedCount === row.requestCount);
+-  const basis: "credits" | "api-value" | "unavailable" = native
+-    ? "credits"
+-    : api
+-      ? "api-value"
+-      : "unavailable";
+-  const weight = (row: UsageAccountingRow) => (native ? row.estimatedCredits : row.estimatedUsd);
+-  const total = eligible.reduce((sum, row) => sum + weight(row), 0);
+-  if (basis === "unavailable" || total <= 0)
+-    return { basis: "unavailable" as const, models: [], unallocated: payment.amount };
+-  const grouped = new Map<
+-    string,
+-    { modelId: string; weight: number; tokens: number; requests: number }
+-  >();
+-  for (const row of eligible) {
+-    const value = grouped.get(row.modelId) ?? {
+-      modelId: row.modelId,
+-      weight: 0,
+-      tokens: 0,
+-      requests: 0,
+-    };
+-    value.weight += weight(row);
+-    value.tokens += row.inputTokens + row.outputTokens;
+-    value.requests += row.requestCount;
+-    grouped.set(row.modelId, value);
+-  }
+-  return {
+-    basis,
+-    unallocated: 0,
+-    models: [...grouped.values()].map((row) => {
+-      const amount = (payment.amount * row.weight) / total;
+-      return {
+-        ...row,
+-        amount,
+-        perMillionTokens: row.tokens > 0 ? (amount * 1_000_000) / row.tokens : null,
+-      };
+-    }),
+-  };
+-}
+diff --git a/packages/shared/src/usage-stats.ts b/packages/shared/src/usage-stats.ts
+index 9d1c6d1..fe334ce 100644
+--- a/packages/shared/src/usage-stats.ts
++++ b/packages/shared/src/usage-stats.ts
+@@ -302,7 +302,9 @@ export type AppUsageFavoriteModel = z.infer<typeof appUsageFavoriteModelSchema>;
+ export type AppUsageSnapshot = z.infer<typeof appUsageSnapshotSchema>;
+ 
+ export interface AppUsageRequest {
++  /** Inclusive Unix-millisecond start; all usage projections share [since, until). */
+   since?: number;
++  /** Exclusive Unix-millisecond end; defaults to the query time. */
+   until?: number;
+   range: AppUsageRange;
+   timeZone?: string;
+diff --git a/packages/ui/src/hooks/useUsageStats.ts b/packages/ui/src/hooks/useUsageStats.ts
+index 6e8babe..3738058 100644
+--- a/packages/ui/src/hooks/useUsageStats.ts
++++ b/packages/ui/src/hooks/useUsageStats.ts
+@@ -137,37 +137,42 @@ export function useCodingPlanUsageStats(
+   },
+ ) {
+   const { usageStatsService } = useServices();
+-  const requestScopeKey = [
+-    range,
+-    options.preferredProviderId ?? "",
+-    JSON.stringify(options.accountAccess ?? null),
+-    options.customStartDate?.trim() ?? "",
+-    options.customEndDate?.trim() ?? "",
+-  ].join("\0");
+-  const cachedUsage = codingPlanUsageAccessCache.get(usageStatsService)?.get(requestScopeKey);
+-  const [state, setState] = useState<CodingPlanUsageStatsState>({
+-    snapshot: cachedUsage?.snapshot ?? null,
+-    loading: false,
+-    error: null,
+-  });
+-  const latestSnapshotRef = useRef<CodingPlanUsageSnapshot | null>(cachedUsage?.snapshot ?? null);
+-  const requestVersionRef = useRef(0);
++  const accountAccess = useStableAccountAccess(options.accountAccess);
+   const enabled = options.enabled ?? true;
+   const preferredProviderId = options.preferredProviderId;
+-  const accountAccess = useStableAccountAccess(options.accountAccess);
+   const customStartDate = options.customStartDate?.trim() || null;
+   const customEndDate = options.customEndDate?.trim() || null;
+-  const requestIdentityKey = [
+-    preferredProviderId ?? "",
+-    JSON.stringify(accountAccess ?? null),
+-  ].join("\0");
+-  const lastRequestScopeKeyRef = useRef(requestIdentityKey);
++  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
++  const requestScopeKey = JSON.stringify([
++    range,
++    preferredProviderId,
++    accountAccess,
++    customStartDate,
++    customEndDate,
++    timeZone,
++  ]);
++  const scope = useMemo(
++    () => ({ service: usageStatsService, enabled, requestScopeKey }),
++    [usageStatsService, enabled, requestScopeKey],
++  );
++  const currentScope = useRef<typeof scope | null>(scope);
++  const requestVersionRef = useRef(0);
++  const [state, setState] = useState<CodingPlanUsageStatsState & { scope: typeof scope }>({
++    scope,
++    snapshot: enabled
++      ? (codingPlanUsageAccessCache.get(usageStatsService)?.get(requestScopeKey)?.snapshot ?? null)
++      : null,
++    loading: enabled,
++    error: null,
++  });
+ 
+   const refresh = useCallback(
+     async (refreshOptions: { force?: boolean } = {}) => {
++      if (currentScope.current !== scope) return;
++      // Cache hits and disabling also supersede pending reads from this mounted consumer.
++      const requestVersion = ++requestVersionRef.current;
+       if (!enabled || !preferredProviderId || !accountAccess) {
+-        latestSnapshotRef.current = null;
+-        setState({ snapshot: null, loading: false, error: null });
++        setState({ scope, snapshot: null, loading: false, error: null });
+         return;
+       }
+       let serviceCache = codingPlanUsageAccessCache.get(usageStatsService);
+@@ -182,23 +187,13 @@ export function useCodingPlanUsageStats(
+         !refreshOptions.force &&
+         cached?.snapshot &&
+         !shouldRefreshCodingPlanUsageOnAccess({
+-          lastUpdatedAt: cached?.requestedAt ?? null,
++          lastUpdatedAt: cached.requestedAt,
+           now: Date.now(),
+         })
+       ) {
+-        latestSnapshotRef.current = cached?.snapshot ?? null;
+-        setState({
+-          snapshot: cached?.snapshot ?? null,
+-          loading: false,
+-          error: null,
+-        });
++        setState({ scope, snapshot: cached.snapshot, loading: false, error: null });
+         return;
+       }
+-      const requestVersion = requestVersionRef.current + 1;
+-      requestVersionRef.current = requestVersion;
+-      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+-      const keepPreviousSnapshot = lastRequestScopeKeyRef.current === requestIdentityKey;
+-      lastRequestScopeKeyRef.current = requestIdentityKey;
+       if (!request || refreshOptions.force) {
+         request = usageStatsService.getCodingPlanUsageSnapshot({
+           range,
+@@ -209,37 +204,35 @@ export function useCodingPlanUsageStats(
+           timeZone,
+         });
+         serviceCache.set(requestScopeKey, {
+-          // requestedAt 只能表示成功快照的生成时间。用请求开始时间预写空快照会
+-          // 导致同 scope 的后挂载实例把 pending 当成 fresh，并错过首个请求的成功或失败结果。
+           snapshot: cached?.snapshot ?? null,
+-          requestedAt: cached?.inFlight ? null : (cached?.requestedAt ?? null),
++          requestedAt: cached?.requestedAt ?? null,
+           inFlight: request,
+         });
++        // Settle the shared request even if its first reader has switched pages or unmounted.
++        const cache = serviceCache;
++        const pending = request;
++        void pending.then(
++          (snapshot) => {
++            if (cache.get(requestScopeKey)?.inFlight === pending)
++              cache.set(requestScopeKey, { snapshot, requestedAt: Date.now() });
++          },
++          () => {
++            if (cache.get(requestScopeKey)?.inFlight === pending) cache.delete(requestScopeKey);
++          },
++        );
+       }
+       setState((current) => ({
+-        // 切换 Z.AI/BigModel 时不能保留上一家 Coding Plan 的 monitor 快照；
+-        // 但同一 provider 切换 today/7d/30d 时保留旧快照，避免 Quota Remaining 和趋势区域闪空。
+-        snapshot: keepPreviousSnapshot ? current.snapshot : null,
++        scope,
++        snapshot: current.scope === scope ? current.snapshot : null,
+         loading: true,
+         error: null,
+       }));
+       try {
+         const snapshot = await request;
+-        if (requestVersionRef.current !== requestVersion) {
+-          return;
+-        }
+-        if (serviceCache.get(requestScopeKey)?.inFlight === request) {
+-          serviceCache.set(requestScopeKey, {
+-            snapshot,
+-            requestedAt: Date.now(),
+-          });
+-        }
+-        latestSnapshotRef.current = snapshot;
+-        setState({ snapshot, loading: false, error: null });
++        if (requestVersionRef.current !== requestVersion || currentScope.current !== scope) return;
++        setState({ scope, snapshot, loading: false, error: null });
+       } catch (error) {
+-        if (requestVersionRef.current !== requestVersion) {
+-          return;
+-        }
++        if (requestVersionRef.current !== requestVersion || currentScope.current !== scope) return;
+         const message = getErrorMessage(error);
+         logger.warn("[useCodingPlanUsageStats] 读取 Coding Plan 使用统计失败", {
+           range,
+@@ -247,31 +240,39 @@ export function useCodingPlanUsageStats(
+           timeZone,
+           error: message,
+         });
+-        // 失败请求不能保留本次 access 预写入的 cache entry。
+-        // 否则 TTL 内重新打开同一组织会跳过真实请求，展示旧来源快照或静默空掉错误。
+-        if (serviceCache.get(requestScopeKey)?.inFlight === request) {
+-          serviceCache.delete(requestScopeKey);
+-        }
+-        latestSnapshotRef.current = null;
+-        setState({ snapshot: null, loading: false, error: message });
++        setState({ scope, snapshot: null, loading: false, error: message });
+       }
+     },
+     [
++      scope,
+       accountAccess,
+       customEndDate,
+       customStartDate,
+       enabled,
+       preferredProviderId,
+       range,
+-      requestIdentityKey,
+       requestScopeKey,
++      timeZone,
+       usageStatsService,
+     ],
+   );
+ 
++  useLayoutEffect(() => {
++    currentScope.current = scope;
++    return () => {
++      currentScope.current = null;
++      requestVersionRef.current += 1;
++    };
++  }, [scope]);
++
+   useEffect(() => {
+     void refresh();
+   }, [refresh]);
+ 
+-  return { ...state, refresh };
++  return {
++    snapshot: enabled && state.scope === scope ? state.snapshot : null,
++    loading: enabled && state.scope === scope ? state.loading : enabled,
++    error: enabled && state.scope === scope ? state.error : null,
++    refresh,
++  };
+ }
+diff --git a/packages/ui/test/usageHooks.browser.tsx b/packages/ui/test/usageHooks.browser.tsx
+new file mode 100644
+index 0000000..6cf21f7
+--- /dev/null
++++ b/packages/ui/test/usageHooks.browser.tsx
+@@ -0,0 +1,124 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { useCodingPlanUsageStats } from "../src/hooks/useUsageStats.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++
++async function fixture() {
++  const container = document.createElement("div");
++  document.body.append(container);
++  let root = createRoot(container);
++  let closed = false;
++  const requests: Array<ReturnType<typeof Promise.withResolvers<any>>> = [];
++  const services = {
++    usageStatsService: {
++      getCodingPlanUsageSnapshot() {
++        const request = Promise.withResolvers<any>();
++        requests.push(request);
++        return request.promise;
++      },
++    },
++  };
++  const renders: Array<{ provider: string; marker?: string }> = [];
++  let latest: ReturnType<typeof useCodingPlanUsageStats>;
++  function Probe({ provider, enabled }: { provider: string; enabled: boolean }) {
++    latest = useCodingPlanUsageStats("7d", {
++      enabled,
++      preferredProviderId: provider,
++      accountAccess: { type: "fixture", accountId: provider } as never,
++    });
++    renders.push({ provider, marker: (latest.snapshot as any)?.marker });
++    return null;
++  }
++  return {
++    requests,
++    renders,
++    get latest() {
++      return latest!;
++    },
++    async render(provider: string, enabled = true) {
++      if (closed) {
++        document.body.append(container);
++        root = createRoot(container);
++        closed = false;
++      }
++      await act(async () => {
++        root.render(
++          <ServiceProvider services={services as never}>
++            <Probe provider={provider} enabled={enabled} />
++          </ServiceProvider>,
++        );
++      });
++    },
++    async resolve(index: number, marker: string) {
++      await act(async () => {
++        requests[index]!.resolve({ marker });
++      });
++    },
++    async close() {
++      if (closed) return;
++      await act(async () => {
++        root.unmount();
++      });
++      container.remove();
++      closed = true;
++    },
++  };
++}
++
++async function run() {
++  const results: Array<{ name: string; error?: string }> = [];
++  const cases: Record<string, (f: Awaited<ReturnType<typeof fixture>>) => Promise<void>> = {
++    "cached account switch rejects the previous account's late result": async (f) => {
++      await f.render("B");
++      await f.resolve(0, "B");
++      await f.render("A");
++      await f.render("B");
++      check(f.requests.length === 2, "B should reuse its fresh cache");
++      await f.resolve(1, "A");
++      check((f.latest.snapshot as any)?.marker === "B", "late A overwrote cached B");
++    },
++    "disabling the reader rejects pending completions": async (f) => {
++      await f.render("A");
++      await f.render("A", false);
++      await f.resolve(0, "A");
++      check(f.latest.snapshot === null, "disabled reader published a late snapshot");
++    },
++    "the first render of a new account never shows the former account": async (f) => {
++      await f.render("A");
++      await f.resolve(0, "A");
++      await f.render("B");
++      check(!f.renders.some((r) => r.provider === "B" && r.marker === "A"), "cross-account render");
++      await f.resolve(1, "B");
++    },
++    "unmounted pending reads populate only their own reusable cache": async (f) => {
++      await f.render("A");
++      await f.close();
++      await f.resolve(0, "A");
++      // The closed reader must never publish a new state.
++      check(f.latest.snapshot === null, "unmounted reader published a snapshot");
++      await f.render("A");
++      check(f.requests.length === 1, "remount should reuse the settled same-account cache");
++      check((f.latest.snapshot as any)?.marker === "A", "remount lost its same-account snapshot");
++    },
++  };
++  for (const [name, execute] of Object.entries(cases)) {
++    const f = await fixture();
++    try {
++      await execute(f);
++      results.push({ name });
++    } catch (error) {
++      results.push({ name, error: String(error) });
++    } finally {
++      await f.close();
++    }
++  }
++  return results;
++}
++
++(globalThis as any).__usageHookTests = run();
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+new file mode 100644
+index 0000000..3195144
+--- /dev/null
++++ b/scripts/test-usage-hooks.mjs
+@@ -0,0 +1,55 @@
++// Exercise the actual React hooks in the installed desktop renderer, with no accounts or network.
++import { mkdtemp, writeFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import { createRequire } from "node:module";
++import { spawn } from "node:child_process";
++
++const require = createRequire(import.meta.url);
++const { build } = createRequire(new URL("../apps/zcode-cli/package.json", import.meta.url))(
++  "esbuild",
++);
++const root = resolve(import.meta.dirname, "..");
++const profile = await mkdtemp(join(tmpdir(), "fleet-usage-hooks-"));
++try {
++  await build({
++    entryPoints: [join(root, "packages/ui/test/usageHooks.browser.tsx")],
++    outfile: join(profile, "test.js"),
++    bundle: true,
++    platform: "browser",
++    format: "esm",
++    tsconfig: join(root, "packages/ui/tsconfig.json"),
++    define: { "process.env.NODE_ENV": '"development"' },
++  });
++  await writeFile(join(profile, "index.html"), '<script type="module" src="./test.js"></script>');
++  await writeFile(
++    join(profile, "main.cjs"),
++    `
++const { app, BrowserWindow, session } = require("electron");
++app.setPath("userData", ${JSON.stringify(join(profile, "data"))});
++app.whenReady().then(async () => {
++  session.defaultSession.webRequest.onBeforeRequest({urls:["http://*/*","https://*/*"]}, (_r, cb) => cb({cancel:true}));
++  const window = new BrowserWindow({show:false, webPreferences:{sandbox:true, contextIsolation:true}});
++  await window.loadFile(${JSON.stringify(join(profile, "index.html"))});
++  const results = await window.webContents.executeJavaScript("window.__usageHookTests");
++  if (!Array.isArray(results)) throw new Error("Renderer test bundle did not execute");
++  results.forEach(r => console.log((r.error ? "FAIL " : "PASS ") + r.name + (r.error ? ": " + r.error : "")));
++  app.exit(results.some(r => r.error) ? 1 : 0);
++}).catch(error => {console.error(error);app.exit(1)});
++setTimeout(() => {console.error("Usage hook tests timed out");app.exit(1)}, 20000);
++`,
++  );
++  const env = { ...process.env };
++  delete env.ELECTRON_RUN_AS_NODE;
++  const code = await new Promise((done, reject) => {
++    const child = spawn(require("electron"), [join(profile, "main.cjs")], {
++      env,
++      stdio: "inherit",
++    });
++    child.on("error", reject);
++    child.on("exit", (code) => done(code ?? 1));
++  });
++  process.exitCode = code;
++} finally {
++  await rm(profile, { recursive: true, force: true });
++}

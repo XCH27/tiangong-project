@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+candidate="$(git rev-parse --show-toplevel)"
+project="$(cd "$candidate/../.." && pwd)"
+python3 "$project/scripts/validate-doc-contracts.py"
+cd "$candidate"
+pnpm typecheck
+pnpm -r --filter './apps/zcode-cli/packages/*' --if-present run typecheck

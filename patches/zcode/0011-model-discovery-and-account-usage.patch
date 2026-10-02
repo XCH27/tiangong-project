@@ -1,0 +1,1884 @@
+diff --git a/package.json b/package.json
+index a9a381c..e1f598e 100644
+--- a/package.json
++++ b/package.json
+@@ -48,7 +48,7 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts"
++    "test:provider-catalog": "tsx --test packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index b1c7ab0..3ad33db 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -385,6 +385,50 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+     });
+   }
+ 
++  async mergeDiscoveredModels(
++    providerId: ProviderId,
++    models: readonly { modelId: ModelId; config: ModelConfig }[],
++    membership?: ProviderModelMembership,
++  ): Promise<ProviderConfigLayerSnapshot> {
++    const id = normalizeId("providerId", providerId);
++    const incoming = models.map((model) => ({
++      modelId: normalizeId("modelId", model.modelId),
++      config: model.config,
++    }));
++    const builtin = await this.#zcodeBuiltinSource.read();
++    // 自动发现必须一次写入；逐行调用添加会留下半份目录，并覆盖用户修改。
++    return this.#updatePersonal((current) => {
++      assertMembershipCurrent(membership, id, current);
++      const provider = writableProviderOverlay(builtin, current, id);
++      const inherited =
++        membership?.inheritedModelIds ??
++        resolveProviderBuiltinModelIds(builtin, current.providers, id);
++      const personal = [...(provider.personalModelIds ?? [])];
++      const existing = new Set([...inherited, ...personal]);
++      let rules = current.models;
++      for (const model of incoming) {
++        if (existing.has(model.modelId)) continue;
++        existing.add(model.modelId);
++        personal.push(model.modelId);
++        rules = rules.setExact(
++          id,
++          model.modelId,
++          model.config.overlay(new ModelConfig({ enabled: true })),
++        );
++      }
++      return {
++        providers: current.providers.set(
++          id,
++          provider
++            .withPersonalModelIds(personal)
++            .withModelOrder(normalizeModelOrder(inherited, personal, provider.modelOrder ?? [])),
++        ),
++        models: rules,
++        providerOrder: current.providerOrder,
++      };
++    });
++  }
++
+   async renamePersonalModel(
+     providerId: ProviderId,
+     currentModelId: ModelId,
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 49dc420..5900420 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -49,6 +49,11 @@ export interface ProviderRegistryFacadeSource {
+ }
+ 
+ export interface ProviderSettingsMutationTarget {
++  mergeDiscoveredModels(
++    providerId: ProviderId,
++    models: readonly { modelId: ModelId; config: ModelConfig }[],
++    membership?: ProviderModelMembership,
++  ): Promise<unknown>;
+   createPersonalProvider(input?: {
+     readonly templateId?: ProviderTemplateId;
+     readonly providerName?: string;
+@@ -379,6 +384,34 @@ export class ProviderSettingsFacade {
+     );
+   }
+ 
++  mergeDiscoveredModels(
++    providerId: ProviderId,
++    models: readonly { id: string; config: ModelConfigObject }[],
++    expectedConnection: ProviderConfigObject,
++    assertAccountCurrent?: () => Promise<void>,
++  ): Promise<ProviderSettingsView> {
++    return this.#mutateProvider(providerId, "discover-models", async (target) => {
++      await assertAccountCurrent?.();
++      const current = this.getView().providers.find(
++        (provider) => provider.providerId === providerId,
++      );
++      if (!current) throw new Error("Connection no longer exists");
++      // 只核对连接身份；发现期间的模型编辑、禁用与排序必须保留，不能使整份目录失效。
++      const identity = (config: ProviderConfigObject) =>
++        JSON.stringify([config.api, config.access]);
++      if (identity(current.effectiveConfig) !== identity(expectedConnection))
++        throw new Error("Connection changed; reload its model list");
++      const existing = new Set(current.models.map((model) => model.modelId));
++      const additions = models.filter((model) => !existing.has(model.id));
++      if (!additions.length) return;
++      await target.mergeDiscoveredModels(
++        providerId,
++        additions.map((model) => ({ modelId: model.id, config: parseModelConfig(model.config) })),
++        this.#modelMembership(providerId),
++      );
++    });
++  }
++
+   renamePersonalModel(
+     providerId: ProviderId,
+     currentModelId: ModelId,
+diff --git a/packages/services/src/model-provider/codexResetCredits.ts b/packages/services/src/model-provider/codexResetCredits.ts
+new file mode 100644
+index 0000000..a1cefb4
+--- /dev/null
++++ b/packages/services/src/model-provider/codexResetCredits.ts
+@@ -0,0 +1,171 @@
++import type { SubscriptionRequestAuth } from "./subscriptionConnectionTypes.js";
++import type { OAuthCredential } from "@earendil-works/pi-ai";
++
++// Source: OpenAI codex-rs/backend-client/src/client/rate_limit_resets.rs and types.rs.
++export interface CodexResetCredit {
++  id: string;
++  resetType: string;
++  status: string;
++  expiresAt?: number;
++  title?: string;
++}
++export interface CodexResetCredits {
++  revision: string;
++  availableCount: number;
++  credits: CodexResetCredit[];
++}
++export interface CodexResetRequest {
++  revision: string;
++  creditId: string;
++  requestId: string;
++}
++export type CodexResetResult = "reset" | "nothing_to_reset" | "no_credit" | "already_redeemed";
++
++async function request(
++  credential: OAuthCredential,
++  fetcher: typeof fetch,
++  body?: { credit_id: string; redeem_request_id: string },
++): Promise<any> {
++  if (typeof credential.accountId !== "string" || !credential.accountId)
++    throw new Error("Subscription account identity unavailable");
++  const response = await fetcher(
++    `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits${body ? "/consume" : ""}`,
++    {
++      method: body ? "POST" : "GET",
++      redirect: "error",
++      signal: AbortSignal.timeout(10_000),
++      headers: {
++        Authorization: `Bearer ${credential.access}`,
++        "ChatGPT-Account-Id": credential.accountId,
++        Accept: "application/json",
++        ...(body ? { "Content-Type": "application/json" } : {}),
++      },
++      ...(body ? { body: JSON.stringify(body) } : {}),
++    },
++  );
++  if (!response.ok) {
++    await response.body?.cancel();
++    throw new Error(`Reset request failed (${response.status})`);
++  }
++  const reader = response.body?.getReader();
++  if (!reader) throw new Error("Empty reset response");
++  const chunks: Uint8Array[] = [];
++  let length = 0;
++  try {
++    for (;;) {
++      const part = await reader.read();
++      if (part.done) break;
++      length += part.value.byteLength;
++      if (length > 256 * 1024) {
++        await reader.cancel();
++        throw new Error("Reset response too large");
++      }
++      chunks.push(part.value);
++    }
++  } finally {
++    reader.releaseLock();
++  }
++  const result = JSON.parse(Buffer.concat(chunks).toString("utf8"));
++  if (result?.account_id && result.account_id !== credential.accountId)
++    throw new Error("Reset account mismatch");
++  return result;
++}
++
++export async function readCodexResetCredits(
++  credential: OAuthCredential,
++  fetcher: typeof fetch,
++): Promise<Omit<CodexResetCredits, "revision">> {
++  const body = await request(credential, fetcher);
++  if (
++    !Number.isSafeInteger(body?.available_count) ||
++    body.available_count < 0 ||
++    !Array.isArray(body.credits)
++  )
++    throw new Error("Invalid reset credit response");
++  const credits = body.credits.map((credit: any): CodexResetCredit => {
++    if (
++      typeof credit?.id !== "string" ||
++      !credit.id ||
++      credit.id.length > 256 ||
++      typeof credit.status !== "string" ||
++      typeof credit.reset_type !== "string"
++    )
++      throw new Error("Invalid reset credit");
++    const expiry = credit.expires_at == null ? undefined : Date.parse(credit.expires_at);
++    if (expiry !== undefined && !Number.isFinite(expiry)) throw new Error("Invalid reset expiry");
++    return {
++      id: credit.id,
++      status: credit.status,
++      resetType: credit.reset_type,
++      ...(expiry === undefined ? {} : { expiresAt: expiry }),
++      ...(typeof credit.title === "string" ? { title: credit.title.slice(0, 256) } : {}),
++    };
++  });
++  return { availableCount: body.available_count, credits };
++}
++
++export async function consumeCodexResetCredit(
++  credential: OAuthCredential,
++  input: CodexResetRequest,
++  fetcher: typeof fetch,
++): Promise<CodexResetResult> {
++  if (
++    !/^[a-zA-Z0-9-]{16,128}$/.test(input.requestId) ||
++    !input.creditId ||
++    input.creditId.length > 256
++  )
++    throw new Error("Invalid reset confirmation");
++  // 固定 credit_id 与 redeem_request_id；超时重试不能另选一张卡或重新生成请求身份。
++  const body = await request(credential, fetcher, {
++    credit_id: input.creditId,
++    redeem_request_id: input.requestId,
++  });
++  if (!["reset", "nothing_to_reset", "no_credit", "already_redeemed"].includes(body?.code))
++    throw new Error("Reset result unknown; refresh before continuing");
++  return body.code;
++}
++
++// Commands execute under the existing subscription account lock; there is no alternate account fallback.
++export function createSubscriptionResetActions(options: {
++  fetch: typeof fetch;
++  now: () => number;
++  invalidate(id: string): void;
++  withAccount<T>(
++    id: string,
++    auth: SubscriptionRequestAuth,
++    revision: string | undefined,
++    operation: (credential: OAuthCredential, revision: string) => Promise<T>,
++  ): Promise<T>;
++}) {
++  return {
++    read(id: string, auth: SubscriptionRequestAuth): Promise<CodexResetCredits> {
++      return options.withAccount(id, auth, undefined, async (credential, revision) => ({
++        ...(await readCodexResetCredits(credential, options.fetch)),
++        revision,
++      }));
++    },
++    consume(
++      id: string,
++      input: CodexResetRequest,
++      auth: SubscriptionRequestAuth,
++    ): Promise<CodexResetResult> {
++      if (!input.revision) throw new Error("Reset account revision required");
++      return options.withAccount(id, auth, input.revision, async (credential) => {
++        const details = await readCodexResetCredits(credential, options.fetch);
++        const credit = details.credits.find((c) => c.id === input.creditId);
++        if (
++          !credit ||
++          credit.resetType !== "codex_rate_limits" ||
++          !["available", "redeeming", "redeemed"].includes(credit.status) ||
++          (credit.expiresAt !== undefined && credit.expiresAt <= options.now())
++        )
++          throw new Error("Reset credit no longer available; refresh its details");
++        try {
++          return await consumeCodexResetCredit(credential, input, options.fetch);
++        } finally {
++          options.invalidate(id);
++        }
++      });
++    },
++  };
++}
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index db9c25b..b0fa608 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -1,3 +1,8 @@
++import type {
++  CodexResetCredits,
++  CodexResetRequest,
++  CodexResetResult,
++} from "./codexResetCredits.js";
+ import type { SubscriptionUsageResult } from "./subscriptionUsage.js";
+ import { discoverConnectionModels, type ModelDiscoveryResult } from "./modelDiscovery.js";
+ import type {
+@@ -39,7 +44,12 @@ export interface IProviderSettingsService {
+   readonly onDidChange: Event<ProviderSettingsView>;
+   getView(): Promise<ProviderSettingsView>;
+   discoverModels(providerId: string): Promise<ModelDiscoveryResult>;
+-  getSubscriptionUsage(providerId: string): Promise<SubscriptionUsageResult>;
++  getSubscriptionUsage(providerId: string, refresh?: boolean): Promise<SubscriptionUsageResult>;
++  getSubscriptionResetCredits(providerId: string): Promise<CodexResetCredits>;
++  consumeSubscriptionResetCredit(
++    providerId: string,
++    request: CodexResetRequest,
++  ): Promise<CodexResetResult>;
+   getSubscriptionAccounts(providerId: string): Promise<SubscriptionAccountsView>;
+   updateSubscriptionAccounts(
+     providerId: string,
+@@ -136,6 +146,10 @@ export function createProviderSettingsService(
+   subscriptions?: SubscriptionConnectionOwner,
+   fetch: typeof globalThis.fetch = globalThis.fetch,
+ ): IProviderSettingsService {
++  const discoveries = new Map<
++    string,
++    { identity: string; request: Promise<ModelDiscoveryResult> }
++  >();
+   return {
+     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
+     async discoverModels(id) {
+@@ -143,12 +157,49 @@ export function createProviderSettingsService(
+       await facade.waitForProviderOperations(id);
+       const provider = facade.getView().providers.find((entry) => entry.providerId === id);
+       if (!provider) throw new Error("Connection no longer exists");
+-      return discoverConnectionModels(provider, fetch, subscriptions);
++      const subscription =
++        provider.effectiveConfig.access?.type === "subscription" ? subscriptions : undefined;
++      const accountRevision = (await subscription?.accounts(id))?.revision;
++      const identity = JSON.stringify([
++        provider.effectiveConfig.api,
++        provider.effectiveConfig.access,
++        accountRevision,
++      ]);
++      const existing = discoveries.get(id);
++      if (existing?.identity === identity) return existing.request;
++      // 页面探测挂载和并行读取共享同一次目录请求；保存仍走 Facade 的串行写入。
++      const request = (async () => {
++        const catalog = await discoverConnectionModels(provider, fetch, subscriptions);
++        await facade.mergeDiscoveredModels(
++          id,
++          catalog.models,
++          provider.effectiveConfig,
++          async () => {
++            if (subscription && (await subscription.accounts(id)).revision !== accountRevision)
++              throw new Error("Subscription account changed; reload its model list");
++          },
++        );
++        return catalog;
++      })();
++      discoveries.set(id, { identity, request });
++      try {
++        return await request;
++      } finally {
++        if (discoveries.get(id)?.request === request) discoveries.delete(id);
++      }
+     },
+-    async getSubscriptionUsage(id) {
++    async getSubscriptionUsage(id, refresh) {
+       await ensureReady();
+       if (!subscriptions) return { status: "unsupported" };
+-      return subscriptions.usage(id);
++      return subscriptions.usage(id, refresh);
++    },
++    async getSubscriptionResetCredits(id) {
++      if (!subscriptions) throw new Error("Subscription login unavailable on this host");
++      return subscriptions.resetCredits(id);
++    },
++    async consumeSubscriptionResetCredit(id, request) {
++      if (!subscriptions) throw new Error("Subscription login unavailable on this host");
++      return subscriptions.consumeResetCredit(id, request);
+     },
+     async getSubscriptionAccounts(id) {
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+@@ -270,12 +321,18 @@ export function createProviderSettingsService(
+           },
+         };
+       }
+-      return testConnectivity({
++      const result = await testConnectivity({
+         workspacePath: input.workspacePath,
+         ...(input.workspaceIdentity ? { workspaceIdentity: input.workspaceIdentity } : {}),
+         providerId: input.providerId,
+         modelId: input.modelId,
+       });
++      // RPC 成功只说明调用返回；记录实际测试判定，不记录凭据、提示词或响应正文。
++      createServiceLogger("model-settings").info("Model connectivity test completed", {
++        success: result.success,
++        ...(!result.success ? { code: result.error?.code } : {}),
++      });
++      return result;
+     },
+   };
+ }
+diff --git a/packages/services/src/model-provider/providerRuntime.ts b/packages/services/src/model-provider/providerRuntime.ts
+index fe07187..54b1627 100644
+--- a/packages/services/src/model-provider/providerRuntime.ts
++++ b/packages/services/src/model-provider/providerRuntime.ts
+@@ -162,6 +162,7 @@ function createSettingsMutationTarget(
+       configService.reorderPersonalModels(providerId, modelIds, membership),
+     // 手工四参数转发曾丢掉新增的配置模式；直接绑定完整签名，避免装配层截断写入意图。
+     addPersonalModel: configService.addPersonalModel.bind(configService),
++    mergeDiscoveredModels: configService.mergeDiscoveredModels.bind(configService),
+     renamePersonalModel: (providerId, currentModelId, nextModelId, membership) =>
+       configService.renamePersonalModel(providerId, currentModelId, nextModelId, membership),
+     deletePersonalModel: (providerId, modelId, membership) =>
+diff --git a/packages/services/src/model-provider/subscriptionConnectionTypes.ts b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+index a35af4c..0456405 100644
+--- a/packages/services/src/model-provider/subscriptionConnectionTypes.ts
++++ b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+@@ -1,3 +1,8 @@
++import type {
++  CodexResetCredits,
++  CodexResetRequest,
++  CodexResetResult,
++} from "./codexResetCredits.js";
+ import type { OAuthCredential } from "@earendil-works/pi-ai";
+ import type { ModelDiscoveryResult } from "./modelDiscovery.js";
+ import type { SubscriptionUsageResult } from "./subscriptionUsage.js";
+@@ -27,7 +32,9 @@ export interface SubscriptionRecovery {
+   status: 401 | 429;
+ }
+ export interface SubscriptionConnectionOwner {
+-  usage(providerId: string): Promise<SubscriptionUsageResult>;
++  resetCredits(providerId: string): Promise<CodexResetCredits>;
++  consumeResetCredit(providerId: string, request: CodexResetRequest): Promise<CodexResetResult>;
++  usage(providerId: string, refresh?: boolean): Promise<SubscriptionUsageResult>;
+   accounts(providerId: string): Promise<SubscriptionAccountsView>;
+   updateAccounts(
+     providerId: string,
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+index ff4f4c8..a131449 100644
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -1,3 +1,4 @@
++import { createSubscriptionResetActions } from "./codexResetCredits.js";
+ import {
+   GROK_SUBSCRIPTION_BASE_URL,
+   grokSubscriptionHeaders,
+@@ -8,7 +9,7 @@ import {
+ import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
+ import { subscriptionLoginInteraction } from "./subscriptionLoginInteraction.js";
+ import { accountsView, parseSavedConnection, requestAuth } from "./subscriptionRecords.js";
+-import { readSubscriptionUsage } from "./subscriptionUsage.js";
++import { createSubscriptionUsageReader } from "./subscriptionUsageCache.js";
+ import { createHash, randomUUID } from "node:crypto";
+ import { type OAuthCredential, type Provider } from "@earendil-works/pi-ai";
+ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+@@ -59,6 +60,12 @@ export function createSubscriptionConnections(options: {
+   const flows = new Map<string, Flow>();
+   const generations = new Map<string, number>();
+   const refreshing = new Map<string, Promise<SubscriptionRequestAuth>>();
++  const usageReader = createSubscriptionUsageReader({
++    now,
++    fetch: options.fetch ?? globalThis.fetch,
++    load,
++    getKind: async (id) => (await driver(id)).kind,
++  });
+   const key = (id: string) => `model-subscription:${id}`;
+   const generation = (id: string) => generations.get(id) ?? 0;
+   async function driver(id: string, expectedKind?: SubscriptionKind) {
+@@ -78,16 +85,38 @@ export function createSubscriptionConnections(options: {
+     return parseSavedConnection(raw, kind);
+   }
+ 
++  const resetActions = createSubscriptionResetActions({
++    fetch: options.fetch ?? globalThis.fetch,
++    now,
++    invalidate: (id) => usageReader.invalidate(id),
++    withAccount: (id, auth, revision, operation) =>
++      options.withConnectionLock(id, async () => {
++        await driver(id, "openai-codex");
++        const saved = await load(id, "openai-codex");
++        const selected = saved?.accounts?.find((a) => a.id === saved.activeAccountId);
++        if (
++          !selected ||
++          !saved ||
++          saved.revision !== auth.credentialSelection?.revision ||
++          selected.id !== auth.credentialSelection?.accountId ||
++          (revision !== undefined && saved.revision !== revision)
++        )
++          throw new Error("Subscription account changed; review the reset again");
++        return operation(selected.credential, saved.revision!);
++      }),
++  });
++
+   function invalidate(id: string) {
+     generations.set(id, generation(id) + 1);
+     flows.get(id)?.controller.abort();
+     flows.delete(id);
++    usageReader.invalidate(id);
+     for (const requestKey of refreshing.keys())
+       if (requestKey.startsWith(`${id}:`)) refreshing.delete(requestKey);
+   }
+ 
+   return {
+-    async usage(id) {
++    async usage(id, refresh = false) {
+       const { kind } = await driver(id);
+       let auth: SubscriptionRequestAuth;
+       try {
+@@ -95,35 +124,13 @@ export function createSubscriptionConnections(options: {
+       } catch {
+         return { status: "auth-required" };
+       }
+-      const snapshot = await load(id, kind);
+-      const account = snapshot?.accounts?.find((a) => a.id === snapshot.activeAccountId);
+-      if (
+-        !account ||
+-        account.id !== auth.credentialSelection?.accountId ||
+-        snapshot?.revision !== auth.credentialSelection.revision
+-      )
+-        return { status: "unavailable" };
+-      const result = await readSubscriptionUsage(
+-        kind,
+-        account.credential,
+-        options.fetch ?? globalThis.fetch,
+-        now,
+-      );
+-      // 切换/删除/重新授权的迟到读数不能发布到另一个账号，包括跨窗口的变更。
+-      try {
+-        await driver(id, kind);
+-        const current = await load(id, kind);
+-        const selected = current?.accounts?.find((a) => a.id === current.activeAccountId);
+-        if (
+-          current?.revision !== snapshot.revision ||
+-          selected?.id !== account.id ||
+-          selected.credential.access !== account.credential.access
+-        )
+-          return { status: "unavailable" };
+-      } catch {
+-        return { status: "unavailable" };
+-      }
+-      return result;
++      return usageReader.read(id, kind, auth, refresh);
++    },
++    async resetCredits(id) {
++      return resetActions.read(id, await this.resolve(id, "openai-codex"));
++    },
++    async consumeResetCredit(id, request) {
++      return resetActions.consume(id, request, await this.resolve(id, "openai-codex"));
+     },
+     async accounts(id) {
+       const { kind } = await driver(id);
+@@ -387,7 +394,7 @@ export function createSubscriptionConnections(options: {
+           material.headers["chatgpt-account-id"] = credential.accountId;
+         return {
+           ...material,
+-          credentialSelection: { accountId: account.id, revision: saved.revision! },
++          credentialSelection: { accountId: account.id, revision: saved!.revision! },
+         };
+       });
+       refreshing.set(refreshKey, request);
+diff --git a/packages/services/src/model-provider/subscriptionUsage.ts b/packages/services/src/model-provider/subscriptionUsage.ts
+index 95665ef..ce239a4 100644
+--- a/packages/services/src/model-provider/subscriptionUsage.ts
++++ b/packages/services/src/model-provider/subscriptionUsage.ts
+@@ -9,15 +9,18 @@ export interface SubscriptionUsageWindow {
+   windowMinutes?: number;
+   resetAt?: number;
+ }
+-export type SubscriptionUsageResult =
++export type SubscriptionUsageResult = { refreshAfter?: number } & (
+   | {
+       status: "available";
+       source: string;
+       observedAt: number;
+       plan?: string;
++      resetsAvailable?: number;
++      refreshError?: "auth-required" | "rate-limited" | "unavailable" | "unsupported";
+       windows: SubscriptionUsageWindow[];
+     }
+-  | { status: "auth-required" | "rate-limited" | "unavailable" | "unsupported" };
++  | { status: "auth-required" | "rate-limited" | "unavailable" | "unsupported" }
++);
+ 
+ function record(value: unknown): Record<string, unknown> | undefined {
+   return value !== null && typeof value === "object" && !Array.isArray(value)
+@@ -107,6 +110,11 @@ export function parseSubscriptionUsage(
+   return windows.length
+     ? {
+         status: "available",
++        ...(kind === "openai-codex" &&
++        Number.isSafeInteger(record(body.rate_limit_reset_credits)?.available_count) &&
++        Number(record(body.rate_limit_reset_credits)?.available_count) >= 0
++          ? { resetsAvailable: Number(record(body.rate_limit_reset_credits)?.available_count) }
++          : {}),
+         observedAt,
+         windows,
+         source:
+diff --git a/packages/services/src/model-provider/subscriptionUsageCache.ts b/packages/services/src/model-provider/subscriptionUsageCache.ts
+new file mode 100644
+index 0000000..cfed80c
+--- /dev/null
++++ b/packages/services/src/model-provider/subscriptionUsageCache.ts
+@@ -0,0 +1,90 @@
++import { createHash } from "node:crypto";
++import { readSubscriptionUsage, type SubscriptionUsageResult } from "./subscriptionUsage.js";
++import type {
++  SavedConnection,
++  SubscriptionKind,
++  SubscriptionRequestAuth,
++} from "./subscriptionConnectionTypes.js";
++
++// Derived readings belong to the subscription owner instance, never a page or credential store.
++export function createSubscriptionUsageReader(options: {
++  now: () => number;
++  fetch: typeof fetch;
++  load(id: string, kind: SubscriptionKind): Promise<SavedConnection | undefined>;
++  getKind(id: string): Promise<SubscriptionKind>;
++}) {
++  const now = options.now;
++  const usageCache = new Map<
++    string,
++    {
++      identity: string;
++      value?: SubscriptionUsageResult;
++      pending?: Promise<SubscriptionUsageResult>;
++    }
++  >();
++  return {
++    invalidate(id: string) {
++      usageCache.delete(id);
++    },
++    async read(
++      id: string,
++      kind: SubscriptionKind,
++      auth: SubscriptionRequestAuth,
++      refresh: boolean,
++    ): Promise<SubscriptionUsageResult> {
++      const snapshot = await options.load(id, kind);
++      const account = snapshot?.accounts?.find((a) => a.id === snapshot.activeAccountId);
++      if (
++        !account ||
++        account.id !== auth.credentialSelection?.accountId ||
++        snapshot?.revision !== auth.credentialSelection.revision
++      )
++        return { status: "unavailable" };
++      const identity = JSON.stringify([
++        kind,
++        snapshot.revision,
++        account.id,
++        createHash("sha256").update(account.credential.access).digest("hex"),
++      ]);
++      let entry = usageCache.get(id);
++      if (entry?.identity !== identity) {
++        entry = { identity };
++        usageCache.set(id, entry);
++      }
++      if (!refresh && entry.value) return entry.value;
++      if (entry.pending) return entry.pending;
++      const request = (async (): Promise<SubscriptionUsageResult> => {
++        const result = await readSubscriptionUsage(kind, account.credential, options.fetch, now);
++        // 切换/删除/重新授权的迟到读数不能发布到另一个账号，包括跨窗口的变更。
++        try {
++          if ((await options.getKind(id)) !== kind) return { status: "unavailable" };
++          const current = await options.load(id, kind);
++          const selected = current?.accounts?.find((a) => a.id === current.activeAccountId);
++          if (
++            current?.revision !== snapshot.revision ||
++            selected?.id !== account.id ||
++            selected.credential.access !== account.credential.access
++          )
++            return { status: "unavailable" };
++        } catch {
++          return { status: "unavailable" };
++        }
++        // 同一账号保留最近成功读数；失败不把原额度清空，也不伪装成最新数据。
++        const value: SubscriptionUsageResult =
++          result.status !== "available" &&
++          result.status !== "auth-required" &&
++          entry.value?.status === "available"
++            ? { ...entry.value, refreshError: result.status, refreshAfter: now() + 60_000 }
++            : { ...result, refreshAfter: now() + 60_000 };
++        if (usageCache.get(id) === entry) entry.value = value;
++        return value;
++      })();
++      entry.pending = request;
++      try {
++        return await request;
++      } finally {
++        if (entry.pending === request) entry.pending = undefined;
++      }
++    },
++  };
++}
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+new file mode 100644
+index 0000000..af2d477
+--- /dev/null
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -0,0 +1,193 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, readFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
++import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
++import type { SubscriptionConnectionOwner } from "../src/model-provider/subscriptionConnections.js";
++
++async function fixture(subscriptions?: SubscriptionConnectionOwner) {
++  const root = await mkdtemp(join(tmpdir(), "fleet-model-discovery-"));
++  const options = {
++    personalFilePath: join(root, "providers.json"),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  let fetcher = async () => Response.json({ data: [{ id: "gpt-4.1" }, { id: "gpt-4.1-mini" }] });
++  const create = () =>
++    new ProviderRuntime({
++      configRuntime: createProviderConfigRuntime(options),
++      fetch: (() => fetcher()) as typeof fetch,
++      subscriptions,
++    });
++  let runtime = create();
++  await runtime.start();
++  const { providerId } = await runtime.providerSettings.createPersonalProvider({
++    ...(subscriptions ? { templateId: "fleet-openai-codex" } : {}),
++    initialConfig: subscriptions
++      ? { access: { type: "subscription", provider: "openai-codex", connected: true } }
++      : {
++          api: { type: "openai-responses", baseUrl: "https://catalog.example/v1" },
++          access: { type: "api-key", apiKey: "synthetic" },
++        },
++  });
++  return {
++    providerId,
++    get service() {
++      return runtime.providerSettings;
++    },
++    get runtime() {
++      return runtime;
++    },
++    setFetch(value: typeof fetcher) {
++      fetcher = value;
++    },
++    disk: () => readFile(options.personalFilePath, "utf8"),
++    async models() {
++      return (await runtime.providerSettings.getView()).providers.find(
++        (p) => p.providerId === providerId,
++      )!.models;
++    },
++    async restart() {
++      runtime.dispose();
++      runtime = create();
++      await runtime.start();
++    },
++    async dispose() {
++      runtime.dispose();
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}
++
++test("discovery persists the whole catalog, survives restart, and preserves disabled, edited and manual models", async () => {
++  const f = await fixture();
++  try {
++    await f.service.addPersonalModel(f.providerId, "manual-private-model", {
++      properties: { contextWindow: 12345 },
++    });
++    await f.service.discoverModels(f.providerId);
++    assert.deepEqual(
++      (await f.models()).map((m) => m.modelId),
++      ["manual-private-model", "gpt-4.1", "gpt-4.1-mini"],
++    );
++    await f.service.setPersonalModelEnabled(f.providerId, "gpt-4.1", false);
++    await f.service.reorderPersonalModels(f.providerId, [
++      "gpt-4.1-mini",
++      "manual-private-model",
++      "gpt-4.1",
++    ]);
++    const before = await f.models();
++    let requests = 0;
++    const response = Promise.withResolvers<Response>();
++    const requested = Promise.withResolvers<void>();
++    f.setFetch(() => {
++      requests++;
++      requested.resolve();
++      return response.promise;
++    });
++    const readers = Promise.all([
++      f.service.discoverModels(f.providerId),
++      f.service.discoverModels(f.providerId),
++    ]);
++    await requested.promise;
++    response.resolve(Response.json({ data: [{ id: "gpt-4.1" }, { id: "gpt-4.1-mini" }] }));
++    await readers;
++    assert.equal(requests, 1, "concurrent readers share one catalog request");
++    assert.deepEqual(await f.models(), before);
++    await f.restart();
++    assert.deepEqual(await f.models(), before);
++    const selection = await f.runtime.modelSelection.getView();
++    const ids = selection.providers
++      .find((p) => p.providerId === f.providerId)!
++      .models.map((m) => m.modelId);
++    assert.ok(ids.includes("gpt-4.1-mini"));
++    assert.ok(!ids.includes("gpt-4.1"));
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("failed or partial catalogs never alter persisted models; manual add remains available", async () => {
++  const f = await fixture();
++  try {
++    await f.service.discoverModels(f.providerId);
++    const before = await f.disk();
++    let page = 0;
++    f.setFetch(async () =>
++      ++page === 1
++        ? Response.json({
++            data: [{ id: "must-not-import" }],
++            has_more: true,
++            last_id: "must-not-import",
++          })
++        : new Response("unavailable", { status: 503 }),
++    );
++    await assert.rejects(f.service.discoverModels(f.providerId), /503/);
++    assert.equal(await f.disk(), before);
++    await f.service.addPersonalModel(f.providerId, "not-in-catalog", {});
++    assert.ok((await f.models()).some((m) => m.modelId === "not-in-catalog"));
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("connection edits and deletion reject late discovery without reviving old models", async () => {
++  const f = await fixture();
++  try {
++    for (const remove of [false, true]) {
++      const requested = Promise.withResolvers<void>();
++      const response = Promise.withResolvers<Response>();
++      f.setFetch(() => {
++        requested.resolve();
++        return response.promise;
++      });
++      const discovery = f.service.discoverModels(f.providerId);
++      const rejected = assert.rejects(discovery, /changed|no longer exists|不存在/i);
++      await requested.promise;
++      if (remove) await f.service.deletePersonalProvider(f.providerId);
++      else
++        await f.service.savePersonalProviderOverlay(f.providerId, {
++          api: { type: "openai-responses", baseUrl: "https://new.example/v1" },
++          access: { type: "api-key", apiKey: "new-synthetic" },
++        });
++      const saved = await f.disk();
++      response.resolve(Response.json({ data: [{ id: "stale-model" }] }));
++      await rejected;
++      assert.equal(await f.disk(), saved);
++    }
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("subscription account changes during discovery cannot populate the new account from the old catalog", async () => {
++  let revision = "first";
++  const requested = Promise.withResolvers<void>();
++  const catalog = Promise.withResolvers<any>();
++  const subscriptions = {
++    accounts: async () => ({ accounts: [], autoSwitch: false, revision }),
++    models: () => {
++      requested.resolve();
++      return catalog.promise;
++    },
++  } as unknown as SubscriptionConnectionOwner;
++  const f = await fixture(subscriptions);
++  try {
++    const discovery = f.service.discoverModels(f.providerId);
++    const rejected = assert.rejects(discovery, /account changed/i);
++    await requested.promise;
++    revision = "second";
++    const before = await f.disk();
++    catalog.resolve({ source: "provider", models: [{ id: "stale", name: "Stale", config: {} }] });
++    await rejected;
++    assert.equal(await f.disk(), before);
++  } finally {
++    await f.dispose();
++  }
++});
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index ceaf716..a74518a 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -295,81 +295,127 @@ test("automatic discovery requires a committed connection and drops obsolete res
+   );
+ });
+ 
+-test("partial model import retries preserve existing manual configuration and completed additions", async () => {
+-  const { addDiscoveredModels } =
+-    await import("../../ui/src/settings/model-provider-section/modelDiscoveryActions.js");
+-  const records = new Map<string, object>([
+-    ["existing", { enabled: false, properties: { contextWindow: 12345 } }],
+-  ]);
+-  const writes: string[] = [];
+-  const selected = new Set(["existing", "first", "second"]);
+-  let failSecond = true;
+-  const service = {
+-    async getView() {
+-      return {
+-        providers: [{ providerId: "one", models: [...records].map(([modelId]) => ({ modelId })) }],
+-      } as any;
+-    },
+-    async addPersonalModel(_providerId: string, id: string, config: object) {
+-      if (id === "second" && failSecond) throw new Error("disk unavailable");
+-      assert.equal(records.has(id), false);
+-      records.set(id, config);
+-      writes.push(id);
+-      return this.getView();
+-    },
+-  };
+-  const input = {
+-    providerId: "one",
+-    service,
+-    selected,
+-    isCurrent: () => true,
+-    catalog: {
+-      source: "provider" as const,
+-      models: [...selected].map((id) => ({ id, name: id, config: {} })),
+-    },
+-    onAdded: (id: string) => {
+-      selected.delete(id);
+-    },
+-  };
+-  await assert.rejects(addDiscoveredModels(input), /disk unavailable/);
+-  assert.deepEqual([...selected], ["second"]);
+-  failSecond = false;
+-  await addDiscoveredModels(input);
+-  assert.deepEqual(writes, ["first", "second"]);
+-  assert.deepEqual(records.get("existing"), {
+-    enabled: false,
+-    properties: { contextWindow: 12345 },
++async function addAccount(f: ReturnType<typeof fixture>, name: string) {
++  const flow = await f.owner.begin("one");
++  f.pending.at(-1)!.resolve({ ...token(name), accountId: name });
++  await f.owner.finish("one", flow.flowId);
++}
++
++test("allowance is shared across page remounts, coalesces refreshes and retains dated data on failure", async () => {
++  let calls = 0;
++  let offline = false;
++  const f = fixture(undefined, async () => {
++    calls++;
++    await new Promise((resolve) => setTimeout(resolve, 5));
++    return offline
++      ? new Response(null, { status: 503 })
++      : Response.json({
++          account_id: "alice",
++          rate_limit: { primary_window: { used_percent: 25 } },
++        });
+   });
++  await addAccount(f, "alice");
++  const [one, two] = await Promise.all([f.owner.usage("one"), f.owner.usage("one")]);
++  assert.equal(calls, 1);
++  assert.equal(one.status, "available");
++  assert.deepEqual(two, one);
++  assert.deepEqual(await f.owner.usage("one"), one);
++  assert.equal(calls, 1);
++  offline = true;
++  const failed = await f.owner.usage("one", true);
++  assert.equal(calls, 2);
++  assert.equal(failed.status, "available");
++  if (failed.status === "available" && one.status === "available") {
++    assert.equal(failed.observedAt, one.observedAt);
++    assert.deepEqual(failed.windows, one.windows);
++    assert.equal(failed.refreshError, "unavailable");
++  }
++  await f.owner.disconnect("one");
++  assert.equal((await f.owner.usage("one")).status, "auth-required");
+ });
+ 
+-test("leaving model settings before the snapshot returns admits no import mutation", async () => {
+-  const { addDiscoveredModels } =
+-    await import("../../ui/src/settings/model-provider-section/modelDiscoveryActions.js");
+-  let current = true;
+-  const read = Promise.withResolvers<any>();
+-  const pending = addDiscoveredModels({
+-    providerId: "one",
+-    selected: new Set(["model"]),
+-    catalog: { source: "provider", models: [{ id: "model", name: "Model", config: {} }] },
+-    isCurrent: () => current,
+-    onAdded: () => assert.fail("stale completion"),
+-    service: {
+-      getView: () => read.promise,
+-      addPersonalModel: async () => {
+-        throw new Error("must not write");
+-      },
+-    },
++test("reset details are read-only; explicit redemption is account-bound and preserves its idempotency key", async () => {
++  const requests: { method: string; body?: any }[] = [];
++  const f = fixture(undefined, async (url, init) => {
++    const headers = new Headers(init?.headers);
++    assert.equal(headers.get("chatgpt-account-id"), "alice");
++    assert.equal(init?.redirect, "error");
++    requests.push({
++      method: init!.method!,
++      ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
++    });
++    if (String(url).endsWith("/consume")) return Response.json({ code: "reset", windows_reset: 2 });
++    assert.equal(url, "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits");
++    return Response.json({
++      available_count: 1,
++      credits: [
++        {
++          id: "credit-a",
++          reset_type: "codex_rate_limits",
++          status: "available",
++          expires_at: "2030-01-01T00:00:00Z",
++        },
++      ],
++    });
+   });
+-  current = false;
+-  read.resolve({ providers: [{ providerId: "one", models: [] }] });
+-  await pending;
++  await addAccount(f, "alice");
++  const details = await f.owner.resetCredits("one");
++  assert.equal(details.availableCount, 1);
++  assert.deepEqual(
++    requests.map((r) => r.method),
++    ["GET"],
++  );
++  const input = {
++    revision: details.revision,
++    creditId: "credit-a",
++    requestId: "00000000-0000-4000-8000-000000000001",
++  };
++  await assert.rejects(
++    f.owner.consumeResetCredit("one", { ...input, revision: "other" }),
++    /account changed/,
++  );
++  assert.equal(requests.length, 1);
++  assert.equal(await f.owner.consumeResetCredit("one", input), "reset");
++  assert.equal(await f.owner.consumeResetCredit("one", input), "reset");
++  const posts = requests.filter((r) => r.method === "POST");
++  assert.deepEqual(
++    posts.map((r) => r.body),
++    [
++      { credit_id: "credit-a", redeem_request_id: input.requestId },
++      { credit_id: "credit-a", redeem_request_id: input.requestId },
++    ],
++  );
+ });
+ 
+-async function addAccount(f: ReturnType<typeof fixture>, name: string) {
+-  const flow = await f.owner.begin("one");
+-  f.pending.at(-1)!.resolve({ ...token(name), accountId: name });
+-  await f.owner.finish("one", flow.flowId);
+-}
++test("unknown and expired reset credits cannot be consumed", async () => {
++  let posts = 0;
++  const f = fixture(undefined, async (_url, init) => {
++    if (init?.method === "POST") posts++;
++    return Response.json({
++      available_count: 1,
++      credits: [
++        {
++          id: "expired",
++          status: "available",
++          reset_type: "codex_rate_limits",
++          expires_at: "1970-01-01T00:00:00Z",
++        },
++      ],
++    });
++  });
++  await addAccount(f, "alice");
++  const { revision } = await f.owner.accounts("one");
++  for (const creditId of ["expired", "missing"])
++    await assert.rejects(
++      f.owner.consumeResetCredit("one", {
++        revision,
++        creditId,
++        requestId: "00000000-0000-4000-8000-000000000001",
++      }),
++      /no longer available/,
++    );
++  assert.equal(posts, 0);
++});
+ test("multiple subscription accounts keep a default and never expose tokens in metadata", async () => {
+   const f = fixture();
+   await addAccount(f, "alice");
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 31e1d14..d11001f 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,7 +1,8 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
+   "settings.modelProvider.connectionsTitle": "Connected services",
+-  "settings.modelProvider.connection.saveFirst": "Save the connection changes before testing a model.",
++  "settings.modelProvider.connection.saveFirst":
++    "Save the connection changes before testing a model.",
+   "settings.modelProvider.connection.unsaved": "Unsaved connection changes",
+   "settings.modelProvider.loadFailed": "Could not connect to model settings. Please retry.",
+   "settings.modelProvider.discovery.search": "Search model name or ID",
+@@ -21,6 +22,25 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.discovery.import": "Add selected ({count})",
+   "settings.modelProvider.discovery.empty": "No models returned. You can add a model manually.",
+ 
++  "settings.modelProvider.allowance.stale": "Refresh failed. Showing the last successful reading.",
++  "settings.modelProvider.reset.count": "{count} resets available",
++  "settings.modelProvider.reset.view": "View resets",
++  "settings.modelProvider.reset.close": "Collapse",
++  "settings.modelProvider.reset.full": "Full reset",
++  "settings.modelProvider.reset.expires": "Expires",
++  "settings.modelProvider.reset.use": "Use",
++  "settings.modelProvider.reset.confirm":
++    "Use this reset for the current account? It refreshes eligible 5-hour and weekly limits and changes your weekly reset date. It cannot be undone.",
++  "settings.modelProvider.reset.confirmUse": "Confirm use",
++  "settings.modelProvider.reset.loadFailed": "Unable to read resets. Try again.",
++  "settings.modelProvider.reset.failed":
++    "Result not confirmed. Retry with the same confirmation or check official usage.",
++  "settings.modelProvider.reset.reset": "Reset applied. Updating allowance…",
++  "settings.modelProvider.reset.nothing_to_reset":
++    "No eligible usage needed resetting. The reset remains available.",
++  "settings.modelProvider.reset.no_credit": "This reset is no longer available.",
++  "settings.modelProvider.reset.already_redeemed":
++    "This reset was already used. Updating allowance…",
+   "settings.modelProvider.allowance.title": "Plan allowance",
+   "settings.modelProvider.allowance.refresh": "Refresh plan allowance",
+   "settings.modelProvider.allowance.window": "Usage window",
+@@ -2277,9 +2297,9 @@ const enUS: Record<string, string> = {
+   "settings.memory.viewer.noSelection": "Select a memory file to preview it.",
+   "settings.httpProxy": "HTTP Proxy",
+   "settings.httpProxyDescription":
+-    "Route model, MCP, command-tool, and app renderer egress traffic through this proxy; system environment variables are not read. Leave blank and that traffic connects directly, while the embedded browser follows your system proxy settings. Restart the app to take effect.",
++    "Route model, MCP, command-tool, and app renderer traffic through this proxy; system environment variables are not read. When blank, subscription sign-in, model and usage requests and the embedded browser follow the system proxy; other traffic connects directly. Restart the app to apply changes to all features.",
+   "settings.httpProxyPlaceholder":
+-    "Blank means the embedded browser follows the system proxy, e.g. http://127.0.0.1:7890",
++    "e.g. http://127.0.0.1:7890",
+   "settings.httpProxyNoProxy": "No proxy",
+   "settings.httpProxyNoProxyDescription":
+     "Requests matching these hosts connect directly instead of using the HTTP proxy. Separate rules with commas. Restart the app to take effect.",
+@@ -2821,6 +2841,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.edit": "Edit",
+   "settings.modelProvider.editModel": "Edit model settings",
+   "settings.modelProvider.editModelDescription": "Edit the context window for this model.",
++  "settings.modelProvider.addModelDescription": "Enter the provider's model ID to add a model that was not discovered.",
+   "settings.modelProvider.delete": "Delete",
+   "settings.modelProvider.save": "Save",
+   "settings.modelProvider.providerSaveSuccess": "{provider} saved",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 1edd645..6003929 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -18,6 +18,22 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.discovery.import": "添加所选模型（{count}）",
+   "settings.modelProvider.discovery.empty": "未返回模型，可手动添加。",
+ 
++  "settings.modelProvider.allowance.stale": "刷新失败，保留上次成功读取的额度。",
++  "settings.modelProvider.reset.count": "可用重置卡：{count} 张",
++  "settings.modelProvider.reset.view": "查看重置卡",
++  "settings.modelProvider.reset.close": "收起",
++  "settings.modelProvider.reset.full": "完整重置",
++  "settings.modelProvider.reset.expires": "到期时间",
++  "settings.modelProvider.reset.use": "使用",
++  "settings.modelProvider.reset.confirm":
++    "确认对当前账号使用这张重置卡？它将刷新符合条件的 5 小时和每周额度，并改变每周重置日期。使用后无法撤回。",
++  "settings.modelProvider.reset.confirmUse": "确认使用",
++  "settings.modelProvider.reset.loadFailed": "无法读取重置卡，请重试。",
++  "settings.modelProvider.reset.failed": "尚未确认使用结果。可重试本次确认，或到官方用量页核对。",
++  "settings.modelProvider.reset.reset": "已使用重置卡，正在更新额度…",
++  "settings.modelProvider.reset.nothing_to_reset": "当前无需重置，重置卡仍可使用。",
++  "settings.modelProvider.reset.no_credit": "这张重置卡已不可用。",
++  "settings.modelProvider.reset.already_redeemed": "这张重置卡已经使用，正在更新额度…",
+   "settings.modelProvider.allowance.title": "订阅额度",
+   "settings.modelProvider.allowance.refresh": "刷新订阅额度",
+   "settings.modelProvider.allowance.window": "用量窗口",
+@@ -2130,8 +2146,8 @@ const zhCN: Record<string, string> = {
+   "settings.memory.viewer.noSelection": "选择一个记忆文件以查看内容。",
+   "settings.httpProxy": "HTTP 代理",
+   "settings.httpProxyDescription":
+-    "模型、MCP、命令工具与应用渲染层的出口流量将经此代理，不读取系统环境变量。留空时这些流量直连，内置浏览器则跟随系统代理设置。修改后需重启应用生效。",
+-  "settings.httpProxyPlaceholder": "留空则内置浏览器跟随系统代理，例如 http://127.0.0.1:7890",
++    "模型、MCP、命令工具与应用渲染层的出口流量将经此代理，不读取系统环境变量。留空时，订阅账号的登录、模型和额度请求及内置浏览器跟随系统代理，其余流量直连。修改后重启应用以应用到所有功能。",
++  "settings.httpProxyPlaceholder": "例如 http://127.0.0.1:7890",
+   // 中文词条曾在批量文案调整中被误改为英文，导致中文设置页混入未翻译标签。
+   // 文案原因：「代理例外」含义模糊，沿用 Windows 系统代理的标准表述「不使用代理的地址」。
+   "settings.httpProxyNoProxy": "不使用代理的地址",
+@@ -2631,6 +2647,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.edit": "编辑",
+   "settings.modelProvider.editModel": "编辑模型配置",
+   "settings.modelProvider.editModelDescription": "编辑这个模型的上下文窗口。",
++  "settings.modelProvider.addModelDescription": "输入服务商提供的模型 ID，用于补充未识别的模型。",
+   "settings.modelProvider.delete": "删除",
+   "settings.modelProvider.save": "保存",
+   "settings.modelProvider.providerSaveSuccess": "{provider} 保存成功",
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index 860a684..604ecce 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -162,7 +162,6 @@ export function ModelProviderSection({
+   }
+   return (
+     <ModelProviderSectionLayout
+-      description={intl.formatMessage({ id: "settings.modelProviderDescription" })}
+       refreshLabel={intl.formatMessage({ id: "settings.modelProvider.refresh" })}
+       loadingLabel={intl.formatMessage({ id: "common.loading" })}
+       presetLoading={loading || refreshing}
+diff --git a/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx b/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
+index 7fdb191..55809e7 100644
+--- a/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
+@@ -25,20 +25,27 @@ export function CredentialAutoSwitchSection({
+         <label id={`${id}-title`} htmlFor={id} className="text-ui-base font-medium text-foreground">
+           {intl.formatMessage({ id: `settings.modelProvider.credentials.${kind}.autoSwitch` })}
+         </label>
+-        <p
+-          id={`${id}-hint`}
+-          className="mt-0.5 text-ui-caption leading-relaxed text-foreground-subtle"
+-        >
+-          {intl.formatMessage({
+-            id: `settings.modelProvider.credentials.${kind}.${eligible ? "switchHint" : "switchRequiresTwo"}`,
+-          })}
+-        </p>
++        {!eligible ? (
++          <p
++            id={`${id}-hint`}
++            className="mt-0.5 text-ui-caption leading-relaxed text-foreground-subtle"
++          >
++            {intl.formatMessage({
++              id: `settings.modelProvider.credentials.${kind}.switchRequiresTwo`,
++            })}
++          </p>
++        ) : null}
+       </div>
+       <Switch
+         id={id}
+         className="shrink-0"
+         aria-labelledby={`${id}-title`}
+-        aria-describedby={`${id}-hint`}
++        aria-describedby={!eligible ? `${id}-hint` : undefined}
++        title={
++          eligible
++            ? intl.formatMessage({ id: `settings.modelProvider.credentials.${kind}.switchHint` })
++            : undefined
++        }
+         checked={eligible && checked}
+         disabled={disabled || !eligible}
+         onCheckedChange={onCheckedChange}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index 511a8a2..bfcd752 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -1,34 +1,27 @@
+ import { useCallback, useRef, useEffect, useState, type ReactNode } from "react";
+-import { RefreshCwIcon, Plus } from "lucide-react";
++import { RefreshCwIcon } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { Input } from "@/components/ui/input.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import {
+-  addDiscoveredModels,
+-  fetchSavedModelCatalog,
+-  type DiscoveredCatalog,
+-} from "./modelDiscoveryActions.js";
++import { fetchSavedModelCatalog } from "./modelDiscoveryActions.js";
+ 
+ export function ModelDiscoverySection({
+   providerId,
+   disabledReason,
+-  existingIds,
+   connectionIdentity,
+   renderConfiguredModels,
+ }: {
+   providerId: string;
+   disabledReason?: string;
+-  existingIds: string[];
+   connectionIdentity?: object;
+-  renderConfiguredModels: (query: string, additionalRows?: ReactNode) => ReactNode;
++  renderConfiguredModels: (query: string) => ReactNode;
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl } = useZCodeIntl();
+   const t = (id: string) => intl.formatMessage({ id: `settings.modelProvider.discovery.${id}` });
+-  const [catalog, setCatalog] = useState<DiscoveredCatalog>();
+   const [query, setQuery] = useState("");
+-  const [busy, setBusy] = useState<"fetch" | "import" | null>(null);
++  const [busy, setBusy] = useState<"fetch" | null>(null);
+   const [error, setError] = useState<string>();
+   const generation = useRef(0);
+   const busyRef = useRef(false);
+@@ -40,12 +33,11 @@ export function ModelDiscoverySection({
+     setBusy("fetch");
+     setError(undefined);
+     try {
+-      const result = await fetchSavedModelCatalog({
++      await fetchSavedModelCatalog({
+         providerId,
+         service: providerSettingsService,
+         isCurrent,
+       });
+-      if (result) setCatalog(result);
+     } catch (reason) {
+       if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+     } finally {
+@@ -61,7 +53,6 @@ export function ModelDiscoverySection({
+     generation.current++;
+     busyRef.current = false;
+     setBusy(null);
+-    setCatalog(undefined);
+     setError(undefined);
+     void loadCatalog();
+     return () => {
+@@ -69,40 +60,6 @@ export function ModelDiscoverySection({
+     };
+   }, [connectionIdentity, loadCatalog]);
+ 
+-  const importModel = async (id: string) => {
+-    if (busyRef.current || disabledReason || !catalog) return;
+-    busyRef.current = true;
+-    const version = ++generation.current;
+-    const isCurrent = () => version === generation.current;
+-    setBusy("import");
+-    setError(undefined);
+-    try {
+-      await addDiscoveredModels({
+-        providerId,
+-        catalog,
+-        selected: new Set([id]),
+-        service: providerSettingsService,
+-        isCurrent,
+-        onAdded() {},
+-      });
+-    } catch (reason) {
+-      if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+-    } finally {
+-      // addPersonalModel publishes the current service's authoritative view. Do not
+-      // refresh the unrelated root environment after editing a remote connection.
+-      if (isCurrent()) {
+-        setBusy(null);
+-        busyRef.current = false;
+-      }
+-    }
+-  };
+-  const existing = new Set(existingIds);
+-  const search = query.trim().toLocaleLowerCase();
+-  const available = (catalog?.models ?? []).filter((model) => !existing.has(model.id));
+-  const visible = available.filter((model) =>
+-    `${model.name} ${model.id}`.toLocaleLowerCase().includes(search),
+-  );
+-
+   return (
+     <div className="space-y-3" data-testid="model-discovery">
+       <div className="flex items-center gap-2">
+@@ -126,36 +83,7 @@ export function ModelDiscoverySection({
+           <RefreshCwIcon className={busy === "fetch" ? "size-4 animate-spin" : "size-4"} />
+         </Button>
+       </div>
+-      {renderConfiguredModels(
+-        query,
+-        visible.length ? (
+-          <div className={existingIds.length ? "border-t border-input-border" : undefined}>
+-            {visible.map((model) => (
+-              <div
+-                key={model.id}
+-                className="flex items-center gap-3 border-b border-input-border px-3 py-2 last:border-b-0"
+-              >
+-                <span className="min-w-0 flex-1 text-ui-base break-all">
+-                  {model.name}
+-                  {model.name !== model.id ? (
+-                    <span className="block text-ui-caption text-foreground-subtle">{model.id}</span>
+-                  ) : null}
+-                </span>
+-                <Button
+-                  type="button"
+-                  variant="ghost"
+-                  size="icon-sm"
+-                  disabled={busy !== null || Boolean(disabledReason)}
+-                  aria-label={`${intl.formatMessage({ id: "settings.modelProvider.addModel" })} ${model.id}`}
+-                  onClick={() => void importModel(model.id)}
+-                >
+-                  <Plus className="size-4" />
+-                </Button>
+-              </div>
+-            ))}
+-          </div>
+-        ) : null,
+-      )}
++      {renderConfiguredModels(query)}
+       {disabledReason ? (
+         <p role="status" className="text-ui-caption text-foreground-subtle">
+           {disabledReason}
+@@ -177,9 +105,6 @@ export function ModelDiscoverySection({
+           </Button>
+         </div>
+       ) : null}
+-      {catalog?.source === "catalog" ? (
+-        <p className="text-ui-caption text-foreground-subtle">{t("catalog")}</p>
+-      ) : null}
+     </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 8d7ae48..318a59a 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -571,14 +571,14 @@ export function ProviderModelsSection({
+       })
+     : null;
+ 
+-  const renderConfiguredModels = (query: string, additionalRows?: ReactNode) => {
++  const renderConfiguredModels = (query: string) => {
+     const search = query.trim().toLocaleLowerCase();
+     const visibleModels = models.filter((model) =>
+       model.modelId.toLocaleLowerCase().includes(search),
+     );
+     return (
+       <div>
+-        {visibleModels.length > 0 || additionalRows ? (
++        {visibleModels.length > 0 ? (
+           <div className="overflow-hidden rounded-lg border border-input-border bg-input">
+             <SortableProviderModelList
+               modelIds={visibleModels.map((model) => model.modelId)}
+@@ -639,7 +639,6 @@ export function ProviderModelsSection({
+                 );
+               }}
+             />
+-            {additionalRows}
+           </div>
+         ) : (
+           <div className="mt-1 flex h-12 items-center justify-start gap-2 rounded-lg border border-dashed border-border px-4 text-left text-ui-base text-foreground-subtle">
+@@ -687,7 +686,6 @@ export function ProviderModelsSection({
+                 })
+               : undefined
+           }
+-          existingIds={models.map((model) => model.modelId)}
+           connectionIdentity={discoveryConnectionIdentity}
+           renderConfiguredModels={renderConfiguredModels}
+         />
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderModelMetadataDialog.tsx b/packages/ui/src/settings/model-provider-section/ProviderModelMetadataDialog.tsx
+index b9c2462..c7a5fd4 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderModelMetadataDialog.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderModelMetadataDialog.tsx
+@@ -157,7 +157,10 @@ export function ProviderModelMetadataDialog({
+           </DialogTitle>
+           <DialogDescription className="sr-only">
+             {intl.formatMessage({
+-              id: "settings.modelProvider.editModelDescription",
++              id:
++                mode === "add"
++                  ? "settings.modelProvider.addModelDescription"
++                  : "settings.modelProvider.editModelDescription",
+             })}
+           </DialogDescription>
+           <ModelSmartConfigSwitch
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx b/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx
+index 2b7aa9d..89c1093 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx
+@@ -43,11 +43,9 @@ export function ProviderProtocolControl({
+       <span className="text-foreground">
+         {resolveProviderConnectionApiFormatTitle(intl, value)}
+       </span>
+-      <span>
+-        {intl.formatMessage({
+-          id: `settings.modelProvider.protocol.${policy.mode === "override" ? "override" : "preset"}`,
+-        })}
+-      </span>
++      {policy.mode === "override" ? (
++        <span>{intl.formatMessage({ id: "settings.modelProvider.protocol.override" })}</span>
++      ) : null}
+     </div>
+   );
+   if (formats.length < 2) return summary;
+diff --git a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+index 75d974c..9461fdb 100644
+--- a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
++++ b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+@@ -6,7 +6,6 @@ import { ProviderDetailFeedbackBoundary } from "@/settings/model-provider-sectio
+ import { SettingsResourceHeaderActions } from "@/settings/SettingsResourceHeaderActions.js";
+ 
+ interface ModelProviderSectionLayoutProps {
+-  description: string;
+   refreshLabel: string;
+   loadingLabel: string;
+   presetLoading: boolean;
+@@ -30,7 +29,6 @@ function shouldShowModelProviderRefreshLoading(params: {
+ }
+ 
+ export function ModelProviderSectionLayout({
+-  description,
+   refreshLabel,
+   loadingLabel,
+   presetLoading,
+@@ -52,8 +50,7 @@ export function ModelProviderSectionLayout({
+ 
+   return (
+     <div className="space-y-4">
+-      <div className="flex items-start justify-between gap-3">
+-        <p className="text-ui-base leading-6 text-foreground-subtle">{description}</p>
++      <div className="flex items-start justify-end gap-3">
+         <SettingsResourceHeaderActions
+           onRefresh={onRefresh}
+           onNew={onAddProvider}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index c4bdaa6..26834a5 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -67,7 +67,6 @@ export function SubscriptionConnectionSection({
+   const [connecting, setConnecting] = useState(false);
+   const [flow, setFlow] =
+     useState<Awaited<ReturnType<typeof providerSettingsService.beginSubscriptionLogin>>>();
+-  const [method, setMethod] = useState<"browser" | "device_code">("browser");
+   const [callbackUrl, setCallbackUrl] = useState("");
+   const [callbackError, setCallbackError] = useState<string>();
+   const attempt = useRef(0);
+@@ -118,7 +117,7 @@ export function SubscriptionConnectionSection({
+     setCallbackError(undefined);
+     try {
+       {
+-        const next = await providerSettingsService.beginSubscriptionLogin(providerId, method);
++        const next = await providerSettingsService.beginSubscriptionLogin(providerId);
+         if (attempt.current !== version) {
+           await providerSettingsService.cancelSubscriptionLogin(providerId, next.flowId);
+           return;
+@@ -215,28 +214,9 @@ export function SubscriptionConnectionSection({
+           key={`usage:${accounts.revision}`}
+           providerId={providerId}
+           revision={accounts.revision}
++          kind={kind}
+         />
+       ) : null}
+-      {kind === "openai-codex" && !connecting ? (
+-        <div
+-          className="flex flex-wrap gap-2"
+-          role="group"
+-          aria-label={intl.formatMessage({ id: "settings.modelProvider.subscription.method" })}
+-        >
+-          {(["browser", "device_code"] as const).map((value) => (
+-            <Button
+-              key={value}
+-              variant={method === value ? "secondary" : "ghost"}
+-              size="sm"
+-              disabled={busy}
+-              aria-pressed={method === value}
+-              onClick={() => setMethod(value)}
+-            >
+-              {intl.formatMessage({ id: `settings.modelProvider.subscription.${value}` })}
+-            </Button>
+-          ))}
+-        </div>
+-      ) : null}
+       {flow ? (
+         <div className="space-y-3 rounded-lg border border-border bg-surface p-4" role="status">
+           <p className="text-ui-base">
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionResetCredits.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionResetCredits.tsx
+new file mode 100644
+index 0000000..213c209
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionResetCredits.tsx
+@@ -0,0 +1,149 @@
++import { useEffect, useRef, useState } from "react";
++import { Button } from "@/components/ui/button.js";
++import { useServices } from "@/hooks/useServices.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++
++// Follow Codex's usage picker → selected credit → explicit confirmation, within the account card.
++export function SubscriptionResetCredits({
++  providerId,
++  revision,
++  count,
++  onConsumed,
++}: {
++  providerId: string;
++  revision: string;
++  count: number;
++  onConsumed: () => void;
++}) {
++  const { providerSettingsService: service } = useServices();
++  const { intl, locale } = useZCodeIntl();
++  const t = (key: string) => intl.formatMessage({ id: `settings.modelProvider.reset.${key}` });
++  const [details, setDetails] =
++    useState<Awaited<ReturnType<typeof service.getSubscriptionResetCredits>>>();
++  const [selected, setSelected] = useState<{ id: string; requestId: string }>();
++  const [busy, setBusy] = useState(false);
++  const [message, setMessage] = useState<string>();
++  const active = useRef(true);
++  const pending = useRef(false);
++  useEffect(() => {
++    active.current = true;
++    return () => {
++      active.current = false;
++    };
++  }, []);
++  const read = async () => {
++    if (pending.current) return;
++    pending.current = true;
++    setBusy(true);
++    setMessage(undefined);
++    try {
++      const value = await service.getSubscriptionResetCredits(providerId);
++      if (active.current && value.revision === revision) setDetails(value);
++    } catch {
++      if (active.current) setMessage(t("loadFailed"));
++    } finally {
++      pending.current = false;
++      if (active.current) setBusy(false);
++    }
++  };
++  const consume = async () => {
++    if (!selected || !details || pending.current) return;
++    pending.current = true;
++    setBusy(true);
++    setMessage(undefined);
++    try {
++      const code = await service.consumeSubscriptionResetCredit(providerId, {
++        revision: details.revision,
++        creditId: selected.id,
++        requestId: selected.requestId,
++      });
++      if (active.current) {
++        setMessage(t(code));
++        setSelected(undefined);
++        setDetails(undefined);
++        onConsumed();
++      }
++    } catch {
++      // 保留同一确认的请求身份，网络结果不明时重试不会消耗另一张卡。
++      if (active.current) setMessage(t("failed"));
++    } finally {
++      pending.current = false;
++      if (active.current) setBusy(false);
++    }
++  };
++  const available = details?.credits.filter(
++    (c) =>
++      c.status === "available" &&
++      c.resetType === "codex_rate_limits" &&
++      (c.expiresAt === undefined || c.expiresAt > Date.now()),
++  );
++  return (
++    <div className="space-y-2 border-t border-border pt-3">
++      <div className="flex items-center justify-between gap-3">
++        <span className="text-ui-base">
++          {intl.formatMessage(
++            { id: "settings.modelProvider.reset.count" },
++            { count: details?.availableCount ?? count },
++          )}
++        </span>
++        {count > 0 || details ? (
++          <Button
++            variant="ghost"
++            size="sm"
++            disabled={busy}
++            onClick={() => (details ? setDetails(undefined) : void read())}
++          >
++            {details ? t("close") : t("view")}
++          </Button>
++        ) : null}
++      </div>
++      {available?.map((credit) => (
++        <div key={credit.id} className="flex items-center justify-between gap-3 text-ui-base">
++          <span>
++            {credit.title ?? t("full")}
++            {credit.expiresAt ? (
++              <span className="block text-ui-caption text-foreground-subtle">
++                {t("expires")}{" "}
++                {new Intl.DateTimeFormat(locale, {
++                  dateStyle: "medium",
++                  timeStyle: "short",
++                }).format(credit.expiresAt)}
++              </span>
++            ) : null}
++          </span>
++          <Button
++            variant="secondary"
++            size="sm"
++            disabled={busy || Boolean(selected)}
++            onClick={() => setSelected({ id: credit.id, requestId: crypto.randomUUID() })}
++          >
++            {t("use")}
++          </Button>
++        </div>
++      ))}
++      {selected ? (
++        <div className="space-y-2 rounded-lg border border-border p-3">
++          <p className="text-ui-base">{t("confirm")}</p>
++          <div className="flex justify-end gap-2">
++            <Button
++              variant="ghost"
++              size="sm"
++              disabled={busy}
++              onClick={() => setSelected(undefined)}
++            >
++              {intl.formatMessage({ id: "common.cancel" })}
++            </Button>
++            <Button size="sm" disabled={busy} onClick={() => void consume()}>
++              {t("confirmUse")}
++            </Button>
++          </div>
++        </div>
++      ) : null}
++      {message ? (
++        <p role="status" className="text-ui-caption text-foreground-subtle">
++          {message}
++        </p>
++      ) : null}
++    </div>
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index 768bcee..0300f47 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -1,4 +1,5 @@
+-import { useEffect, useRef, useState } from "react";
++import { SubscriptionResetCredits } from "./SubscriptionResetCredits.js";
++import { useEffect, useRef, useState, useCallback } from "react";
+ import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { Progress } from "@/components/ui/progress.js";
+@@ -9,9 +10,11 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ export function SubscriptionUsageSection({
+   providerId,
+   revision,
++  kind,
+ }: {
+   providerId: string;
+   revision: string;
++  kind: "openai-codex" | "github-copilot" | "xai";
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl, locale } = useZCodeIntl();
+@@ -28,33 +31,49 @@ export function SubscriptionUsageSection({
+   const generation = useRef(0);
+   const pending = useRef(false);
+   const t = (key: string) => intl.formatMessage({ id: `settings.modelProvider.allowance.${key}` });
++  const refresh = useCallback(
++    async (force = false) => {
++      if (pending.current) return;
++      pending.current = true;
++      const version = ++generation.current;
++      setBusy(true);
++      try {
++        const value = await providerSettingsService.getSubscriptionUsage(providerId, force);
++        if (version === generation.current) setResult(value);
++        return value;
++      } catch {
++        if (version === generation.current)
++          setResult((previous) =>
++            previous?.status === "available"
++              ? { ...previous, refreshError: "unavailable", refreshAfter: Date.now() + 60_000 }
++              : { status: "unavailable", refreshAfter: Date.now() + 60_000 },
++          );
++      } finally {
++        if (version === generation.current) {
++          setBusy(false);
++          pending.current = false;
++        }
++      }
++    },
++    [providerId, providerSettingsService],
++  );
+   useEffect(() => {
+     generation.current++;
+     pending.current = false;
+     setResult(undefined);
+-    setBusy(false);
++    void refresh();
+     return () => {
+       generation.current++;
+     };
+-  }, [providerId, revision]);
+-  const refresh = async () => {
+-    if (pending.current) return;
+-    pending.current = true;
+-    const version = ++generation.current;
+-    setBusy(true);
+-    setResult(undefined);
+-    try {
+-      const value = await providerSettingsService.getSubscriptionUsage(providerId);
+-      if (version === generation.current) setResult(value);
+-    } catch {
+-      if (version === generation.current) setResult({ status: "unavailable" });
+-    } finally {
+-      if (version === generation.current) {
+-        setBusy(false);
+-        pending.current = false;
+-      }
+-    }
+-  };
++  }, [revision, refresh]);
++  useEffect(() => {
++    if (!result?.refreshAfter) return;
++    const timer = setTimeout(
++      () => void refresh(true),
++      Math.max(0, result.refreshAfter - Date.now()),
++    );
++    return () => clearTimeout(timer);
++  }, [result, refresh]);
+   return (
+     <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
+       <div className="flex items-center justify-between gap-3">
+@@ -67,7 +86,7 @@ export function SubscriptionUsageSection({
+           size="icon-sm"
+           disabled={busy}
+           aria-label={t("refresh")}
+-          onClick={() => void refresh()}
++          onClick={() => void refresh(true)}
+         >
+           {busy ? (
+             <LoaderCircleIcon className="size-4 animate-spin" />
+@@ -108,8 +127,21 @@ export function SubscriptionUsageSection({
+               ) : null}
+             </div>
+           ))}
+-          <p className="text-ui-caption text-foreground-subtle">
+-            {result.source} · {t("observed")} {dateFormat.format(result.observedAt)}
++          {result.refreshError ? (
++            <p role="status" className="text-ui-caption text-foreground-subtle">
++              {t("stale")}
++            </p>
++          ) : null}
++          {kind === "openai-codex" && result.resetsAvailable !== undefined ? (
++            <SubscriptionResetCredits
++              providerId={providerId}
++              revision={revision}
++              count={result.resetsAvailable}
++              onConsumed={() => void refresh(true)}
++            />
++          ) : null}
++          <p className="text-ui-caption text-foreground-subtle" title={result.source}>
++            {t("observed")} {dateFormat.format(result.observedAt)}
+           </p>
+         </>
+       ) : (
+diff --git a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+index c90709b..0a25645 100644
+--- a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
++++ b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+@@ -18,33 +18,6 @@ export async function fetchSavedModelCatalog(input: {
+   return input.isCurrent() ? catalog : undefined;
+ }
+ 
+-// Durable writes stay with ProviderSettingsService. Re-read before each addition so a retry
+-// cannot overwrite a completed addition or a model edited in another window.
+-export async function addDiscoveredModels(input: {
+-  providerId: string;
+-  catalog: DiscoveredCatalog;
+-  selected: ReadonlySet<string>;
+-  service: Pick<IProviderSettingsService, "getView" | "addPersonalModel">;
+-  isCurrent: () => boolean;
+-  onAdded: (id: string) => void;
+-}) {
+-  for (const model of input.catalog.models) {
+-    if (!input.selected.has(model.id)) continue;
+-    if (!input.isCurrent()) return;
+-    const view = await readProviderSettings(() => input.service.getView());
+-    if (!input.isCurrent()) return;
+-    const provider = view.providers.find((item) => item.providerId === input.providerId);
+-    if (!provider) throw new Error("Connection no longer exists");
+-    if (!provider.models.some((item) => item.modelId === model.id)) {
+-      await input.service.addPersonalModel(input.providerId, model.id, {
+-        ...model.config,
+-        enabled: true,
+-      });
+-    }
+-    if (input.isCurrent()) input.onAdded(model.id);
+-  }
+-}
+-
+ // 自动读取只消费已保存连接；输入过程中不能补保存，也不能把密钥发往未提交的地址。
+ export function modelDiscoveryBlockReason(
+   config: ProviderConfigObject,

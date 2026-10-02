@@ -1,0 +1,3532 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+index dd7b8a1ad7a970b9a5baf5901f226648004d9ae1..2e8a46e71efb2f5a080340682f12ce97a4915596 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+@@ -261,6 +261,13 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+         workingDirectory,
+         workspaceIdentity: options.runtimeConfig?.memory?.workspaceIdentity,
+       });
++    const executor =
++      options.runtimeConfig?.agentExecutor ??
++      (options.env ?? process.env).FLEET_AGENT_EXECUTOR ??
++      "pi";
++    if (executor !== "pi" && executor !== "zcode")
++      throw new Error("Unsupported Fleet Agent executor");
++    runtimeConfig.agentExecutor = executor;
+     const browserControlPort = options.browserControlPort;
+     if (
+       browserControlPort &&
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts b/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
+index 156d5d2820654606c7043774e316b0e015f3ac33..c56ba79199349f32f3375c6e0d58a971b66e5f58 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
+@@ -651,6 +651,9 @@ async function persistSessionModelSelection(
+   selection: ModelSelection,
+ ): Promise<void> {
+   if (!deps.sessionStore.saveSessionEntry) return;
++  // An unsent conversation is a Host draft; first input creates and snapshots it.
++  // Existing Sessions must still commit before publishing a configuration change.
++  if (!(await deps.sessionStore.getSession(deps.sessionId))) return;
+   const timestamp = Date.now();
+   try {
+     await deps.sessionStore.saveSessionEntry({
+diff --git a/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts b/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts
+index 25b71f37b4609cf56cf8272bfe9e577c41761163..c99a4272eab411b719254cd9b7786cdd9584da92 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts
+@@ -18,27 +18,29 @@ import { createSessionFacade } from "../src/app/session-facade.js";
+ const original = { providerId: "fixture", modelId: "first", options: { reasoningLevel: "medium" } };
+ const requested = { providerId: "fixture", modelId: "second", options: { reasoningLevel: "high" } };
+ 
+-async function fixture() {
++async function fixture(draft = false) {
+   const dir = await mkdtemp(join(tmpdir(), "fleet-kernel-commit-"));
+   const path = join(dir, "session.sqlite");
+   let store = new SqliteSessionStore({ dbPath: path });
+   const sessionId = "session" as never;
+-  await store.createSession({
+-    id: sessionId,
+-    projectID: "project" as never,
+-    directory: dir,
+-    slug: "fixture",
+-    title: "fixture",
+-    version: "fixture",
+-  });
+-  await store.saveSessionEntry({
+-    id: `${sessionId}:runtime-model-selection`,
+-    sessionID: sessionId,
+-    type: SESSION_ENTRY_MODEL_SELECTION,
+-    touchSession: false,
+-    time: { created: 1, updated: 1 },
+-    data: original,
+-  });
++  if (!draft) {
++    await store.createSession({
++      id: sessionId,
++      projectID: "project" as never,
++      directory: dir,
++      slug: "fixture",
++      title: "fixture",
++      version: "fixture",
++    });
++    await store.saveSessionEntry({
++      id: `${sessionId}:runtime-model-selection`,
++      sessionID: sessionId,
++      type: SESSION_ENTRY_MODEL_SELECTION,
++      touchSession: false,
++      time: { created: 1, updated: 1 },
++      data: original,
++    });
++  }
+   const provider = createRegistryProviderConfig(
+     parseProviderConfig({
+       group: "standard-personal",
+@@ -87,6 +89,7 @@ async function fixture() {
+   const events: unknown[] = [];
+   const pendingChanges: unknown[] = [];
+   const writer = {
++    getSession: (id: Parameters<typeof store.getSession>[0]) => store.getSession(id),
+     async saveSessionEntry(entry: Parameters<typeof store.saveSessionEntry>[0]) {
+       started.resolve();
+       if (gate) await gate;
+@@ -244,3 +247,16 @@ test("explicit transient model selection remains transient", async () => {
+     await f.close();
+   }
+ });
++
++test("unsent conversation configuration remains a draft until first input", async () => {
++  const f = await fixture(true);
++  try {
++    f.fail(true); // No entry writer may be called before the parent Session exists.
++    await f.facade.setModel(requested);
++    await f.facade.setThoughtLevel("medium");
++    assert.deepEqual(f.current, { ...requested, options: { reasoningLevel: "medium" } });
++    assert.equal(await f.persisted(), undefined);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/apps/zcode-cli/packages/cli/scripts/build.mjs b/apps/zcode-cli/packages/cli/scripts/build.mjs
+index cfb86397062062d9dbb2b2ca1208726f3f682dc7..2a129c7a848cea061fef699f4bca68d05b8f35b3 100644
+--- a/apps/zcode-cli/packages/cli/scripts/build.mjs
++++ b/apps/zcode-cli/packages/cli/scripts/build.mjs
+@@ -1,5 +1,8 @@
+ import { chmod, readFile, rm } from "node:fs/promises";
+-import { readThirdPartyNotices, stageThirdPartyNotices } from "../../../../../scripts/third-party-notices.mjs";
++import {
++  readThirdPartyNotices,
++  stageThirdPartyNotices,
++} from "../../../../../scripts/third-party-notices.mjs";
+ import { basename, dirname, relative, resolve } from "node:path";
+ import { pathToFileURL } from "node:url";
+ import { build } from "esbuild";
+@@ -13,6 +16,30 @@ const rootPackageVersionError = "Root package.json must define a non-empty strin
+ const desktopAgentBuildFlag = "--desktop-agent";
+ export const resolveBuildExternal = () => ["@zcode/tui", "playwright-core", "koffi"];
+ 
++// Pi's ESM package evaluates import.meta.url during SDK initialization. The desktop ships a
++// single CJS artifact, so only these embedded packages resolve their location to that artifact.
++export function createPiBundleLocationPlugin() {
++  return {
++    name: "fleet-pi-bundle-location",
++    setup(builder) {
++      builder.onLoad(
++        { filter: /[/\\]@earendil-works[/\\][^/\\]+[/\\].*\.js$/ },
++        async ({ path }) => {
++          const source = await readFile(path, "utf8");
++          if (!source.includes("import.meta.")) return;
++          return {
++            contents: source
++              .replaceAll("import.meta.url", "__fleetBundleUrl")
++              .replaceAll("import.meta.dirname", "__dirname")
++              .replaceAll("import.meta.filename", "__filename"),
++            loader: "js",
++          };
++        },
++      );
++    },
++  };
++}
++
+ export const readZodBuildVersion = async () => {
+   const sharedPackage = JSON.parse(
+     await readFile(resolve(projectRoot, "../../packages/shared/package.json"), "utf8"),
+@@ -225,12 +252,14 @@ export const buildCli = async ({
+   await build({
+     banner: {
+       // SEA 与普通 CLI 共用入口；声明必须在 Agent 初始化和原生资源解压前可独立读取。
+-      js: `#!/usr/bin/env node\n"use strict";\nif (process.argv.length === 3 && process.argv[2] === "--licenses") { const sea = require("node:sea"); const nodeNotice = sea.isSea() ? "\\n\\n## Bundled Node.js runtime\\n\\n" + sea.getAsset("zcode-node-license", "utf8") : ""; process.stdout.write(${JSON.stringify(notices.toString("utf8"))} + nodeNotice, () => process.exit(0)); } else {`,
++      js: `#!/usr/bin/env node\n"use strict";\nif (process.argv.length === 3 && process.argv[2] === "--licenses") { const sea = require("node:sea"); const nodeNotice = sea.isSea() ? "\\n\\n## Bundled Node.js runtime\\n\\n" + sea.getAsset("zcode-node-license", "utf8") : ""; process.stdout.write(${JSON.stringify(notices.toString("utf8"))} + nodeNotice, () => process.exit(0)); } else { const __fleetBundleLocation = require("node:url").pathToFileURL(__filename).href;`,
+     },
+     footer: { js: "}" },
+     bundle: true,
+     define: {
+       __CLI_VERSION__: JSON.stringify(cliVersion),
++      __fleetBundleUrl: "__fleetBundleLocation",
++      PI_BUNDLED_NODE: "true",
+     },
+     entryPoints: [resolve(cliDirectory, "src/main.ts")],
+     // Ink 7 and yoga-layout use top-level await, so the CJS CLI bundle loads the TUI
+@@ -250,13 +279,16 @@ export const buildCli = async ({
+     logLevel: "info",
+     minify,
+     metafile: true,
+-    plugins: [createZodDedupePlugin({ expectedV4Version: await readZodBuildVersion() })],
++    plugins: [
++      createPiBundleLocationPlugin(),
++      createZodDedupePlugin({ expectedV4Version: await readZodBuildVersion() }),
++    ],
+     outfile,
+     platform: "node",
+     sourcemap,
+     // target 取所有承载运行时里最低的 Node 版本：桌面用 Electron 内置 Node 24，
+-    // 远端 SSH 复用已部署的独立 Node v22.16 跑同一份 zcode.cjs。降到 node22 保证这份产物
+-    // 在两端都不会用到目标运行时不支持的语法/特性。
++    // node22 is a syntax target; the full Pi SDK requires Node >=22.19.0.
++    // Older SSH runtimes need an upgrade before the Pi route is advertised there.
+     target: "node22",
+     alias: resolveBuildAliases({ cliDirectory, rootDirectory }),
+   });
+diff --git a/apps/zcode-cli/packages/core/package.json b/apps/zcode-cli/packages/core/package.json
+index 6ea21f876843b7d78c1cb0f774d210610440a7bb..bfa9b21ef21f1d0e2ac64d9bc5bec83bf644d7c5 100644
+--- a/apps/zcode-cli/packages/core/package.json
++++ b/apps/zcode-cli/packages/core/package.json
+@@ -31,6 +31,8 @@
+     "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
++    "@earendil-works/pi-ai": "0.99.1",
++    "@earendil-works/pi-coding-agent": "0.99.1",
+     "@zcode/contracts": "workspace:*",
+     "@zcode/dynamic-workflow": "workspace:*",
+     "@zcode/shared": "workspace:*",
+diff --git a/apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts b/apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts
+index 520b0258d3d37ade291f0c5c54d477853791488e..8310527abc67f97807e9fbb8f67da799604380e7 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/agent-runtime.ts
+@@ -232,6 +232,7 @@ export class AgentRuntime {
+     // 3.12.2：兼容旧 Host/内部调用传入 legacy，但本版本 Runtime、日志和子 Agent 只使用 preflight。
+     this.config = projectPersistentAgentMemoryTools({
+       ...config,
++      agentExecutor: config.agentExecutor ?? "pi",
+       modelContextBudgetStrategy: DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
+     });
+     Object.assign(this.config, resolveExecutionState(config));
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e358f5bcfc286058afcbdca3e1c4cd5affaf4a21
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
+@@ -0,0 +1,105 @@
++import type {
++  AssistantMessage,
++  Model as PiModel,
++  Usage,
++  TextContent,
++  ImageContent,
++} from "@earendil-works/pi-ai";
++import type { Model, ModelMessageContent } from "../deps.js";
++import type { RuntimeModelTextResult } from "../types.js";
++
++/** Pi is the loop executor. The Host model port owns route, auth, effort/Fast and actual prices. */
++export function piHostModel(model: Model): PiModel<string> {
++  return {
++    id: String(model.modelId),
++    name: String(model.modelId),
++    provider: String(model.providerId),
++    api: "fleet-host",
++    baseUrl: "https://fleet.invalid/host-managed",
++    reasoning: model.optionSpecs.reasoningLevel.values.some(
++      (level) => level !== "off" && level !== "auto",
++    ),
++    input: ["text"],
++    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
++    contextWindow: model.properties.contextWindow,
++    maxTokens: model.optionSpecs.maxOutputTokens.max,
++  };
++}
++
++export function piHostMessage(
++  model: Model,
++  result: RuntimeModelTextResult | undefined,
++  error?: unknown,
++): AssistantMessage {
++  const usage = result?.usage;
++  const cacheRead = usage?.cacheReadTokens ?? 0;
++  const cacheWrite = usage?.cacheWriteTokens ?? 0;
++  const nativeUsage: Usage = {
++    input: Math.max(0, (usage?.inputTokens ?? 0) - cacheRead - cacheWrite),
++    output: usage?.outputTokens ?? 0,
++    cacheRead,
++    cacheWrite,
++    totalTokens: usage?.totalTokens ?? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0),
++    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
++  };
++  const content: AssistantMessage["content"] = [];
++  for (const block of result?.reasoning ?? []) {
++    if (block.text) content.push({ type: "thinking", thinking: block.text });
++  }
++  if (result?.text) content.push({ type: "text", text: result.text });
++  for (const call of result?.toolCalls ?? []) {
++    content.push({
++      type: "toolCall",
++      id: call.id,
++      name: call.name,
++      arguments: (typeof call.input === "object" &&
++      call.input !== null &&
++      !Array.isArray(call.input)
++        ? call.input
++        : { value: call.input }) as Extract<
++        AssistantMessage["content"][number],
++        { type: "toolCall" }
++      >["arguments"],
++    });
++  }
++  return {
++    role: "assistant",
++    content,
++    api: "fleet-host",
++    provider: String(model.providerId),
++    model: String(model.modelId),
++    timestamp: Date.now(),
++    usage: nativeUsage,
++    stopReason:
++      error !== undefined
++        ? "error"
++        : result?.toolCalls?.length
++          ? "toolUse"
++          : result?.finishReason === "length"
++            ? "length"
++            : "stop",
++    ...(error !== undefined
++      ? { errorMessage: error instanceof Error ? error.message : String(error) }
++      : {}),
++  };
++}
++
++/** Private SDK outcome projection; provider-visible media still uses the existing Host codec. */
++export function piToolContent(content: ModelMessageContent): Array<TextContent | ImageContent> {
++  if (typeof content === "string") return [{ type: "text" as const, text: content }];
++  return content.flatMap((block): Array<TextContent | ImageContent> => {
++    if (block.type === "text") return [{ type: "text" as const, text: block.text }];
++    if (block.type === "image") {
++      const data = /^data:([^;,]+);base64,([\s\S]+)$/.exec(block.dataUrl);
++      if (data) return [{ type: "image" as const, mimeType: data[1]!, data: data[2]! }];
++    }
++    return [
++      {
++        type: "text" as const,
++        text:
++          ("source" in block ? block.source?.placeholder : undefined) ??
++          "Media retained by the Fleet artifact owner",
++      },
++    ];
++  });
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e51f8060b1ce5bf9da1e762b936aa10d6083a75d
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+@@ -0,0 +1,253 @@
++import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
++import {
++  createAgentSession,
++  DefaultResourceLoader,
++  SessionManager,
++  SettingsManager,
++  type AgentSession,
++  type ExtensionAPI,
++  type ModelRuntime,
++  type ToolDefinition,
++} from "@earendil-works/pi-coding-agent";
++import type { AgentRuntimeInternal } from "../internal.js";
++import type { RegularTurnLoopState } from "./turn-loop-state.js";
++import type { ToolExecutionResult } from "../deps.js";
++import {
++  throwIfTurnAborted,
++  modelContentForToolResult,
++  isErrorForToolResult,
++} from "../helpers/index.js";
++import { prepareRegularModelStep } from "./turn-step-prepare.js";
++import {
++  runModelBackedTurnStep,
++  type ExternalModelTools,
++  type ModelStepResult,
++  type ModelStepRequestOptions,
++} from "./turn-model-step.js";
++import { executeToolCallsForModelStep } from "./turn-tools.js";
++import { piHostMessage, piHostModel, piToolContent } from "./pi-turn-message.js";
++import type { RuntimeModelTextResult } from "../types.js";
++
++/** One full AgentSession owns the model/tool loop for one admitted input in the existing CLI process.
++ * Host preparation, retries, compaction, artifacts and durable events retain their existing owners.
++ * Native SDK state is private/in-memory; restart is hydrated by the existing canonical Session store.
++ */
++export async function runPiTurn(
++  runtime: AgentRuntimeInternal,
++  state: RegularTurnLoopState,
++): Promise<void> {
++  let prepared: ModelStepRequestOptions | undefined = await prepareRegularModelStep(runtime, state);
++  let pending: ExternalModelTools | undefined;
++  let batch: Promise<void> | undefined;
++  let results = new Map<string, ToolExecutionResult>();
++  let outcome: ModelStepResult = "continue";
++  let failure: unknown;
++  let failed = false;
++  let session: AgentSession | undefined;
++  let extension: ExtensionAPI | undefined;
++  const registered = new Set<string>();
++  const pendingStep = (): ExternalModelTools | undefined => pending;
++  const hostOutcome = (): ModelStepResult => outcome;
++
++  const executeBatch = () => {
++    if (!pending) return Promise.reject(new Error("Pi tool call has no admitted Host model step"));
++    if (!batch) {
++      const step = pending;
++      batch = (async () => {
++        outcome = await executeToolCallsForModelStep.call(runtime, state, {
++          ...step,
++          onResults: (values) => {
++            results = new Map(values.map((value) => [value.toolCallId, value]));
++          },
++        });
++        if (
++          session &&
++          (session.model?.id !== String(state.model.modelId) ||
++            session.model?.provider !== String(state.model.providerId))
++        ) {
++          await session.setModel(piHostModel(state.model));
++        }
++        if (outcome === "break") void session?.abort();
++      })().catch((error) => {
++        failed = true;
++        failure = error;
++        throw error;
++      });
++      // A rejected native call reports its error through Pi; keep the Host cause for the terminal result.
++      void batch.catch(() => {});
++    }
++    return batch;
++  };
++  const definition = (name: string): ToolDefinition => ({
++    name,
++    label: name,
++    description:
++      "Execute the admitted Fleet tool through its Host permission and persistence path.",
++    // Provider schemas come from prepared.tools. The Host executor validates the actual captured input.
++    parameters: { type: "object", additionalProperties: true } as ToolDefinition["parameters"],
++    async execute(id) {
++      await executeBatch();
++      const result = results.get(id);
++      if (!result) throw new Error("Pi tool result does not match the admitted Host call");
++      if (isErrorForToolResult(result)) {
++        const content = modelContentForToolResult(result);
++        throw new Error(
++          typeof content === "string" ? content : (result.error?.message ?? "Fleet tool failed"),
++        );
++      }
++      return {
++        content: piToolContent(modelContentForToolResult(result)),
++        details: { hostToolCallId: id },
++      };
++    },
++  });
++  const register = (names: readonly string[]) => {
++    for (const name of names) {
++      if (registered.has(name)) continue;
++      extension?.registerTool(definition(name));
++      registered.add(name);
++    }
++  };
++  const settings = SettingsManager.inMemory({
++    retry: { enabled: false },
++    compaction: { enabled: false },
++    packages: [],
++    extensions: [],
++    skills: [],
++    themes: [],
++  });
++  const loader = new DefaultResourceLoader({
++    cwd: runtime.workingDirectory,
++    agentDir: runtime.modelIoDir ?? runtime.workingDirectory,
++    settingsManager: settings,
++    noExtensions: true,
++    noSkills: true,
++    noPromptTemplates: true,
++    noThemes: true,
++    noContextFiles: true,
++    systemPrompt: "",
++    extensionFactories: [
++      (api) => {
++        extension = api;
++        register(runtime.registry.list());
++        api.on("agent_before_settle", () => {
++          if (failed || state.turnAbortSignal.aborted || outcome === "break") return;
++          return {
++            continue: true,
++            entries: [
++              {
++                type: "custom_message" as const,
++                customType: "fleet.hostContinuation",
++                content: "Continue the admitted operation at its next Host boundary.",
++                display: false,
++              },
++            ],
++          };
++        });
++      },
++    ],
++  });
++  await loader.reload();
++  const streamSimple: ModelRuntime["streamSimple"] = () => {
++    const stream = createAssistantMessageEventStream();
++    void (async () => {
++      try {
++        if (batch) await batch;
++        throwIfTurnAborted(state.turnAbortSignal);
++        if (outcome === "break") throw new Error("Host run already completed");
++        batch = undefined;
++        pending = undefined;
++        results = new Map();
++        prepared ??= await prepareRegularModelStep(runtime, state);
++        register(runtime.registry.list());
++        session?.setActiveToolsByName([...registered]);
++        let result: RuntimeModelTextResult | undefined;
++        const requestModel = state.model;
++        outcome = await runModelBackedTurnStep.call(runtime, state, {
++          ...prepared,
++          onResult: (value) => {
++            result = value;
++          },
++          externalToolExecution: (step) => {
++            pending = step;
++          },
++        });
++        prepared = undefined;
++        if (
++          session &&
++          (session.model?.id !== String(state.model.modelId) ||
++            session.model?.provider !== String(state.model.providerId))
++        ) {
++          await session.setModel(piHostModel(state.model));
++        }
++        // Register unexpected names as routed calls too: the existing executor owns registry-miss errors.
++        register(pendingStep()?.toolCalls.map((call) => call.name) ?? []);
++        session?.setActiveToolsByName([...registered]);
++        const message = piHostMessage(requestModel, result);
++        stream.push({ type: "start", partial: { ...message, content: [], stopReason: "pending" } });
++        stream.push({
++          type: "done",
++          reason: message.stopReason as "stop" | "toolUse" | "length",
++          message,
++        });
++      } catch (error) {
++        if (outcome !== "break") {
++          failed = true;
++          failure = error;
++        }
++        const message = piHostMessage(state.model, undefined, error);
++        stream.push({ type: "error", reason: "error", error: message });
++      }
++    })();
++    return stream;
++  };
++  const modelRuntime = {
++    hasConfiguredAuth: () => true,
++    checkAuth: async () => ({}),
++    getModel: () => piHostModel(state.model),
++    getAvailableSnapshot: () => [piHostModel(state.model)],
++    getModels: () => [piHostModel(state.model)],
++    getError: () => undefined,
++    streamSimple,
++  } as unknown as ModelRuntime;
++  const created = await createAgentSession({
++    cwd: runtime.workingDirectory,
++    model: piHostModel(state.model),
++    modelRuntime,
++    sessionManager: SessionManager.inMemory(runtime.workingDirectory),
++    settingsManager: settings,
++    resourceLoader: loader,
++    noTools: "builtin",
++  });
++  session = created.session;
++  await session.bindExtensions({});
++  const unsubscribe = session.subscribe((event) => {
++    // A newly discovered/invalid name may be rejected by Pi before its handler. The Host still
++    // closes that admitted batch, so canonical tool outcomes and turn phases cannot be left open.
++    if (
++      event.type === "tool_execution_end" &&
++      !batch &&
++      pendingStep()?.toolCalls.some((call) => call.id === event.toolCallId)
++    ) {
++      void executeBatch().catch(() => {});
++    }
++  });
++  const onAbort = () => {
++    void session?.abort();
++  };
++  state.turnAbortSignal.addEventListener("abort", onAbort, { once: true });
++  try {
++    throwIfTurnAborted(state.turnAbortSignal);
++    await session.prompt(state.input, { expandPromptTemplates: false, source: "rpc" });
++    if (batch) await batch;
++    if (failed) throw failure;
++    throwIfTurnAborted(state.turnAbortSignal);
++    if (hostOutcome() !== "break")
++      throw new Error("Pi settled before the admitted Host turn completed");
++  } finally {
++    state.turnAbortSignal.removeEventListener("abort", onAbort);
++    unsubscribe();
++    await session.abort();
++    session.dispose();
++  }
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts
+index 3b28f71942e3917893bafb54b316c7a980e8056e..bbd83bf0e67cb2ce80188775780dbb5d25262ca4 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts
+@@ -1,238 +1,20 @@
+-import { beginLocalTurnPreparation } from "@zcode/contracts";
+-import {
+-  CompactPhase,
+-  CompactReason,
+-  createMessageId,
+-  traceContextToLogContext,
+-  TurnMachineImpl,
+-} from "../deps.js";
+-import {
+-  buildRuntimeModeReminderBody,
+-  buildPlanModeExitReminderBody,
+-  buildRuntimeOutputStyleReminderBody,
+-  buildTodoReminderBody,
+-  buildRuntimeProviderRequestMessages,
+-  createCompactRapidRefillError,
+-  throwIfTurnAborted,
+-  shouldBuildTodoReminder,
+-} from "../helpers/index.js";
+-import {
+-  systemReminderAttachmentEntry,
+-  todoReminderRuntimeMetadata,
+-} from "../../agent/message-history.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+-import { runModelBackedTurnStep } from "./turn-model-step.js";
+-import {
+-  AUTOMATION_MUTATION_TOOL_NAMES,
+-  evaluateRapidRefill,
+-  isAutomationMutationRestrictedTurn,
+-  isOffPeakCreateRestrictedTurn,
+-  MAX_CONSECUTIVE_RAPID_REFILLS,
+-  OFF_PEAK_MUTATION_TOOL_NAMES,
+-  RAPID_REFILL_TOOL_TURN_THRESHOLD,
+-  recordCompactHistoryRound,
+-  recordCompactSuccess,
+-} from "./turn-loop-state.js";
+ import type { RegularTurnLoopState } from "./turn-loop-state.js";
+-import {
+-  appendTurnRequestEntries,
+-  commitTurnRequestEntries,
+-  filterOutputTokenContinuationEntries,
+-} from "./turn-output-token-continuation.js";
++import { prepareRegularModelStep } from "./turn-step-prepare.js";
++import { runModelBackedTurnStep } from "./turn-model-step.js";
+ 
+ export async function runRegularTurnLoop(
+   this: AgentRuntimeInternal,
+   state: RegularTurnLoopState,
+ ): Promise<void> {
+-  while (true) {
+-    throwIfTurnAborted(state.turnAbortSignal);
+-    const outputTokenRecoveryActive = state.turnRequestState.outputTokenContinuationCount > 0;
+-    // guide 只允许由完整 tool result batch 设置这个一次性诊断；普通 queue 不在
+-    // model roundtrip 起点消费，避免把未来 turn 错并入当前 product turn。
+-    const drainedSteerForNextRequest = state.drainedSteerForNextRequest;
+-    state.drainedSteerForNextRequest = undefined;
+-
+-    if (state.modelStepCount > 0 && !outputTokenRecoveryActive) {
+-      const drainedRuntimeCommands = await this.drainPendingRuntimeCommandsForActiveLoop();
+-      state.backgroundSubagentResultConsumed ||=
+-        drainedRuntimeCommands.backgroundSubagentResultConsumed;
+-      state.workflowResultConsumed ||= drainedRuntimeCommands.workflowResultConsumed;
+-      appendTurnRequestEntries(state.turnRequestState, drainedRuntimeCommands.runtimeEntries);
+-      if (drainedRuntimeCommands.drained > 0) {
+-        state.repeatedToolCallSignature = undefined;
+-        state.repeatedToolCallStreakCount = 0;
+-      }
+-    }
+-
+-    const compactPhase =
+-      state.modelStepCount === 0 ? CompactPhase.PreRequest : CompactPhase.MidTurn;
+-    await this.microcompactIfNeeded(state.turnTraceContext, state.events, state.turnAbortSignal, {
+-      model: state.model,
+-      modelStepIndex: state.modelStepCount,
+-      phase: compactPhase,
+-      turnRequestState: state.turnRequestState,
+-    });
+-    throwIfTurnAborted(state.turnAbortSignal);
+-
+-    const rapidRefill = evaluateRapidRefill(state.compactTracking);
+-    const autoCompactOutcome = await this.autoCompactIfNeeded(
+-      state.turnTraceContext,
+-      state.events,
+-      state.turnAbortSignal,
+-      {
+-        compactReason: CompactReason.ContextLimit,
+-        modelStepIndex: state.modelStepCount,
+-        phase: compactPhase,
+-        rapidRefill,
+-        model: state.model,
+-        turnRequestState: state.turnRequestState,
+-      },
+-    );
+-    if (autoCompactOutcome === "rapid_refill_blocked") {
+-      throw createCompactRapidRefillError({
+-        consecutiveRapidRefills: rapidRefill.consecutiveRapidRefills,
+-        maxConsecutiveRapidRefills: MAX_CONSECUTIVE_RAPID_REFILLS,
+-        toolTurnThreshold: RAPID_REFILL_TOOL_TURN_THRESHOLD,
+-        toolTurnsSinceCompact: rapidRefill.toolTurnsSinceCompact,
+-      });
+-    }
+-    if (autoCompactOutcome === "compacted") {
+-      recordCompactSuccess(state, rapidRefill);
+-      recordCompactHistoryRound(state);
+-    }
+-    throwIfTurnAborted(state.turnAbortSignal);
+-
+-    const finishMcp = beginLocalTurnPreparation(state.turnTraceContext, "mcp");
+-    await this.initializeMcp(state.turnTraceContext);
+-    finishMcp();
+-    throwIfTurnAborted(state.turnAbortSignal);
+-    const finishTools = beginLocalTurnPreparation(state.turnTraceContext, "tools");
+-    const turnDisallowedTools = buildTurnDisallowedTools(state);
+-    // automation 派发到已 active 会话或重试恢复时，入口 metadata 可能没有带到
+-    // loop state；但 queryId 仍是 automation-*。provider 请求边界必须按 queryId 再硬过滤
+-    // automation 写工具，否则模型会先看到并创建、修改或删除任务定义。
+-    const tools = state.automationCreateLimitReached
+-      ? []
+-      : turnDisallowedTools
+-        ? this.getTools(state.model).filter((tool) => !turnDisallowedTools.has(tool.name))
+-        : this.getTools(state.model);
+-    finishTools();
+-    if (!outputTokenRecoveryActive && this.needsPlanModeExitReminder) {
+-      this.needsPlanModeExitReminder = false;
+-      commitTurnRequestEntries(this, state.turnRequestState, [
+-        systemReminderAttachmentEntry("plan_mode_exit", buildPlanModeExitReminderBody()),
+-      ]);
+-    }
+-    const runtimeModeReminderBody = outputTokenRecoveryActive
+-      ? null
+-      : buildRuntimeModeReminderBody(
+-          state.turnRequestState.entries,
+-          this.getMode(),
+-          this.getPlanEnabled(),
+-        );
+-    if (runtimeModeReminderBody) {
+-      commitTurnRequestEntries(this, state.turnRequestState, [
+-        systemReminderAttachmentEntry("runtime_mode", runtimeModeReminderBody),
+-      ]);
+-    }
+-    if (
+-      !outputTokenRecoveryActive &&
+-      tools.some((tool) => tool.name === "TodoWrite") &&
+-      shouldBuildTodoReminder(state.turnRequestState.entries)
+-    ) {
+-      const currentTodos = await this.readSessionTodosForContext(state.turnTraceContext);
+-      const reminderBody = buildTodoReminderBody(currentTodos);
+-      commitTurnRequestEntries(this, state.turnRequestState, [
+-        systemReminderAttachmentEntry("todo_reminder", reminderBody),
+-      ]);
+-      await this.persistSyntheticUserNoticeForSession({
+-        messageID: createMessageId(),
+-        metadata: { runtimeMessage: todoReminderRuntimeMetadata() },
+-        sessionId: this.sessionId,
+-        source: "todo_reminder",
+-        text: reminderBody,
+-        traceContext: state.turnTraceContext,
+-      });
+-    }
+-    const outputStyleReminderBody =
+-      state.modelStepCount === 0
+-        ? buildRuntimeOutputStyleReminderBody(state.turnOutputStyle)
+-        : null;
+-    if (outputStyleReminderBody) {
+-      // output_style 是 provider-visible 的当前 turn runtime attachment，
+-      // 需要进入内存历史参与后续 request 的增量轨迹；但不把它落 session。
+-      commitTurnRequestEntries(this, state.turnRequestState, [
+-        systemReminderAttachmentEntry("output_style", outputStyleReminderBody),
+-      ]);
+-    }
+-    const providerEntries = [...state.turnRequestState.entries];
+-    const requestEntries = providerEntries;
+-    // provider-visible user ordering projection 会改变最终 latest user 落点，
+-    // cache-control 必须在 projection 后统一设置，避免 raw synthetic entry 抢占缓存锚点。
+-    const providerProjection = buildRuntimeProviderRequestMessages(this, {
+-      entries: requestEntries,
+-      applyCacheControl: true,
+-      model: state.model,
+-    });
+-    const { messages } = providerProjection;
+-    const recordableEntries = filterOutputTokenContinuationEntries(requestEntries);
+-    const recordableProjection =
+-      recordableEntries === requestEntries
+-        ? providerProjection
+-        : buildRuntimeProviderRequestMessages(this, {
+-            entries: recordableEntries,
+-            applyCacheControl: true,
+-            model: state.model,
+-          });
+-    state.turnMachine = new TurnMachineImpl(
+-      state.turnMachine.startModelRequest(
+-        `${state.model.providerId}/${state.model.modelId}`,
+-        recordableProjection.messages,
+-      ),
+-    );
+-
+-    // 生产包需要知道 Turn 是否已经跨过 provider 边界；这里只记录请求元数据，
+-    // 不记录 prompt、消息内容或 streaming chunk，避免泄露内容并控制日志量。
+-    this.logger?.info("Model request started", {
+-      ...traceContextToLogContext(state.turnTraceContext),
+-      event: "model.request.started",
+-      module: "core.runtime",
+-      status: "started",
+-      messageCount: messages.length,
+-      iteration: state.toolCallCount === 0 ? 0 : Math.ceil(state.toolCallCount / 10),
+-    });
+-
+-    const result = await runModelBackedTurnStep.call(this, state, {
+-      drainedSteerForNextRequest,
+-      latestRealUserMessageIndex: providerProjection.diagnostics.latestRealUserMessageIndex,
+-      messages,
+-      sourceEntries: providerProjection.sourceEntries,
+-      requestEntries,
+-      recordedMessages: recordableProjection.messages,
+-      tools,
+-    });
+-
+-    if (result === "break") {
+-      break;
+-    }
++  if (this.config.agentExecutor === "pi") {
++    const { runPiTurn } = await import("./pi-turn.js");
++    await runPiTurn(this, state);
++    return;
+   }
+-}
+-
+-function buildTurnDisallowedTools(state: RegularTurnLoopState): Set<string> | null {
+-  const tools = new Set(state.toolDisallowlist ?? []);
+-  if (isAutomationMutationRestrictedTurn(state)) {
+-    // 定时任务执行轮只应运行任务 prompt，不能反过来管理自己的定义。
+-    // 保留 CronList 供只读查询；所有 mutation 在 provider 请求边界统一隐藏。
+-    for (const toolName of AUTOMATION_MUTATION_TOOL_NAMES) {
+-      tools.add(toolName);
+-    }
+-  }
+-  if (isOffPeakCreateRestrictedTurn(state)) {
+-    // 闲时执行轮禁止再创建闲时任务（防递归自我派生）；OffPeakList 只读保留。
+-    // 注意 automation 执行轮不进此分支——cron turn 放行 OffPeakCreate。
+-    for (const toolName of OFF_PEAK_MUTATION_TOOL_NAMES) {
+-      tools.add(toolName);
+-    }
++  while (true) {
++    const options = await prepareRegularModelStep(this, state);
++    const result = await runModelBackedTurnStep.call(this, state, options);
++    if (result === "break") return;
+   }
+-  return tools.size > 0 ? tools : null;
+ }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+index 28417ed50723882e3c51e0a52cfa26b985039ea7..51cc88d85383780cc64e140bed4a0625c76e3adc 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+@@ -83,20 +83,33 @@ import {
+   OUTPUT_TOKEN_LIMIT_ERROR_MESSAGE,
+ } from "./turn-output-token-continuation.js";
+ 
+-type ModelStepResult = "continue" | "output_continuation" | "break";
++export type ModelStepResult = "continue" | "output_continuation" | "break" | "external_tools";
++
++export interface ExternalModelTools {
++  assistantCreatedAt: number;
++  assistantMessageId: MessageId;
++  modelTraceContext: import("../deps.js").TraceContext;
++  result: RuntimeModelTextResult;
++  toolCalls: import("../deps.js").ModelToolCall[];
++  streamedToolResults: import("../types.js").StreamedToolExecutionResult[];
++}
++
++export interface ModelStepRequestOptions {
++  drainedSteerForNextRequest?: DrainedPendingInputDiagnostics;
++  latestRealUserMessageIndex?: number;
++  messages: RunModelTextRequestOptions["messages"];
++  sourceEntries: readonly (RuntimeMessageEntry | undefined)[];
++  recordedMessages: RunModelTextRequestOptions["messages"];
++  requestEntries: readonly RuntimeMessageEntry[];
++  tools: ModelToolContract[];
++  onResult?: (result: RuntimeModelTextResult) => void;
++  externalToolExecution?: (step: ExternalModelTools) => void;
++}
+ 
+ export async function runModelBackedTurnStep(
+   this: AgentRuntimeInternal,
+   state: RegularTurnLoopState,
+-  options: {
+-    drainedSteerForNextRequest?: DrainedPendingInputDiagnostics;
+-    latestRealUserMessageIndex?: number;
+-    messages: RunModelTextRequestOptions["messages"];
+-    sourceEntries: readonly (RuntimeMessageEntry | undefined)[];
+-    recordedMessages: RunModelTextRequestOptions["messages"];
+-    requestEntries: readonly RuntimeMessageEntry[];
+-    tools: ModelToolContract[];
+-  },
++  options: ModelStepRequestOptions,
+ ): Promise<ModelStepResult> {
+   const assistantMessageId = createMessageId();
+   const stepTelemetry = this.agentTelemetry.step({
+@@ -114,7 +127,7 @@ export async function runModelBackedTurnStep(
+       stepTelemetry.finishCompleted(
+         result === "output_continuation"
+           ? "model_completed"
+-          : result === "continue"
++          : result === "continue" || result === "external_tools"
+             ? "tool_requested"
+             : "turn_completed",
+       );
+@@ -133,15 +146,7 @@ export async function runModelBackedTurnStep(
+ async function runModelBackedTurnStepImpl(
+   this: AgentRuntimeInternal,
+   state: RegularTurnLoopState,
+-  options: {
+-    drainedSteerForNextRequest?: DrainedPendingInputDiagnostics;
+-    latestRealUserMessageIndex?: number;
+-    messages: RunModelTextRequestOptions["messages"];
+-    sourceEntries: readonly (RuntimeMessageEntry | undefined)[];
+-    recordedMessages: RunModelTextRequestOptions["messages"];
+-    requestEntries: readonly RuntimeMessageEntry[];
+-    tools: ModelToolContract[];
+-  },
++  options: ModelStepRequestOptions,
+   assistantMessageId: MessageId,
+ ): Promise<ModelStepResult> {
+   const model = state.model;
+@@ -155,8 +160,10 @@ async function runModelBackedTurnStepImpl(
+   // ModelFactory 不再把该请求参数伪装成长期 ModelSelection/Active Model 状态。
+   const executionMaxOutputTokens = model.optionSpecs.maxOutputTokens.max;
+   const executionContextWindow = model.properties.contextWindow;
+-  const publishedContextWindow = model.contextWindowEvidence !== undefined
+-    ? model.contextWindowEvidence : executionContextWindow;
++  const publishedContextWindow =
++    model.contextWindowEvidence !== undefined
++      ? model.contextWindowEvidence
++      : executionContextWindow;
+   const modelTraceContext = createChildTraceContext(state.turnTraceContext, {
+     attributes: {
+       providerId: String(model.providerId),
+@@ -594,16 +601,22 @@ async function runModelBackedTurnStepImpl(
+     supportsTurnFileChanges && toolCalls.length === 0
+       ? buildTurnFileChangeSummary(this.currentTurnFileChanges)
+       : undefined;
+-  const servedAccountId = (result.providerMetadata?.fleetAccounting as {accountId?:unknown} | undefined)?.accountId;
++  const servedAccountId = (
++    result.providerMetadata?.fleetAccounting as { accountId?: unknown } | undefined
++  )?.accountId;
+   const modelCompleteEvent = this.createEvent(
+     SessionEventType.ModelComplete,
+     {
+       content: state.modelResponse,
+-      ...(typeof servedAccountId === "string" && servedAccountId ? { accountId: servedAccountId } : {}),
++      ...(typeof servedAccountId === "string" && servedAccountId
++        ? { accountId: servedAccountId }
++        : {}),
+       // 桌面 continuous 实时事件只携带当前 model_complete payload。
+       // 如果主轮次只发 usage 不发 contextWindow，旧 task stream 无法生成 usage_update，
+       // 长程任务中输入栏会拿不到 context meter 的 size 而隐藏。
+-      ...(querySource === "main_turn" && publishedContextWindow !== null && publishedContextWindow !== undefined
++      ...(querySource === "main_turn" &&
++      publishedContextWindow !== null &&
++      publishedContextWindow !== undefined
+         ? { contextWindow: publishedContextWindow }
+         : {}),
+       querySource,
+@@ -647,6 +660,7 @@ async function runModelBackedTurnStepImpl(
+   });
+ 
+   const executableToolCalls = toolCalls.filter((toolCall) => !toolCall.providerExecuted);
++  options.onResult?.({ ...result, text: state.modelResponse, toolCalls: executableToolCalls });
+   const streamedToolResults = await streamingToolCoordinator.drain(executableToolCalls);
+   if (outputTokenContinuation !== "none") {
+     // 首次命中 output-limit 时，当前 request 可能带有一次性的 project-memory attachment；
+@@ -725,6 +739,17 @@ async function runModelBackedTurnStepImpl(
+   if (commitAssistantToTurnRequest(this, state, result, executableToolCalls)) {
+     recordModelHistoryRound(state);
+   }
++  if (options.externalToolExecution) {
++    options.externalToolExecution({
++      assistantCreatedAt,
++      assistantMessageId,
++      modelTraceContext,
++      result,
++      toolCalls: executableToolCalls,
++      streamedToolResults,
++    });
++    return "external_tools";
++  }
+   const toolStepResult = await executeToolCallsForModelStep.call(this, state, {
+     assistantCreatedAt,
+     assistantMessageId,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1ecbdcdf15b31f5eecf852c300241bfd8a13f37b
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+@@ -0,0 +1,229 @@
++import { beginLocalTurnPreparation } from "@zcode/contracts";
++import {
++  CompactPhase,
++  CompactReason,
++  createMessageId,
++  traceContextToLogContext,
++  TurnMachineImpl,
++} from "../deps.js";
++import {
++  buildRuntimeModeReminderBody,
++  buildPlanModeExitReminderBody,
++  buildRuntimeOutputStyleReminderBody,
++  buildTodoReminderBody,
++  buildRuntimeProviderRequestMessages,
++  createCompactRapidRefillError,
++  throwIfTurnAborted,
++  shouldBuildTodoReminder,
++} from "../helpers/index.js";
++import {
++  systemReminderAttachmentEntry,
++  todoReminderRuntimeMetadata,
++} from "../../agent/message-history.js";
++import type { AgentRuntimeInternal } from "../internal.js";
++import type { ModelStepRequestOptions } from "./turn-model-step.js";
++import {
++  AUTOMATION_MUTATION_TOOL_NAMES,
++  evaluateRapidRefill,
++  isAutomationMutationRestrictedTurn,
++  isOffPeakCreateRestrictedTurn,
++  MAX_CONSECUTIVE_RAPID_REFILLS,
++  OFF_PEAK_MUTATION_TOOL_NAMES,
++  RAPID_REFILL_TOOL_TURN_THRESHOLD,
++  recordCompactHistoryRound,
++  recordCompactSuccess,
++} from "./turn-loop-state.js";
++import type { RegularTurnLoopState } from "./turn-loop-state.js";
++import {
++  appendTurnRequestEntries,
++  commitTurnRequestEntries,
++  filterOutputTokenContinuationEntries,
++} from "./turn-output-token-continuation.js";
++
++/** Shared Host request preparation; the selected executor owns continuation. */
++export async function prepareRegularModelStep(
++  runtime: AgentRuntimeInternal,
++  state: RegularTurnLoopState,
++): Promise<ModelStepRequestOptions> {
++  throwIfTurnAborted(state.turnAbortSignal);
++  const outputTokenRecoveryActive = state.turnRequestState.outputTokenContinuationCount > 0;
++  // guide 只允许由完整 tool result batch 设置这个一次性诊断；普通 queue 不在
++  // model roundtrip 起点消费，避免把未来 turn 错并入当前 product turn。
++  const drainedSteerForNextRequest = state.drainedSteerForNextRequest;
++  state.drainedSteerForNextRequest = undefined;
++
++  if (state.modelStepCount > 0 && !outputTokenRecoveryActive) {
++    const drainedRuntimeCommands = await runtime.drainPendingRuntimeCommandsForActiveLoop();
++    state.backgroundSubagentResultConsumed ||=
++      drainedRuntimeCommands.backgroundSubagentResultConsumed;
++    state.workflowResultConsumed ||= drainedRuntimeCommands.workflowResultConsumed;
++    appendTurnRequestEntries(state.turnRequestState, drainedRuntimeCommands.runtimeEntries);
++    if (drainedRuntimeCommands.drained > 0) {
++      state.repeatedToolCallSignature = undefined;
++      state.repeatedToolCallStreakCount = 0;
++    }
++  }
++
++  const compactPhase = state.modelStepCount === 0 ? CompactPhase.PreRequest : CompactPhase.MidTurn;
++  await runtime.microcompactIfNeeded(state.turnTraceContext, state.events, state.turnAbortSignal, {
++    model: state.model,
++    modelStepIndex: state.modelStepCount,
++    phase: compactPhase,
++    turnRequestState: state.turnRequestState,
++  });
++  throwIfTurnAborted(state.turnAbortSignal);
++
++  const rapidRefill = evaluateRapidRefill(state.compactTracking);
++  const autoCompactOutcome = await runtime.autoCompactIfNeeded(
++    state.turnTraceContext,
++    state.events,
++    state.turnAbortSignal,
++    {
++      compactReason: CompactReason.ContextLimit,
++      modelStepIndex: state.modelStepCount,
++      phase: compactPhase,
++      rapidRefill,
++      model: state.model,
++      turnRequestState: state.turnRequestState,
++    },
++  );
++  if (autoCompactOutcome === "rapid_refill_blocked") {
++    throw createCompactRapidRefillError({
++      consecutiveRapidRefills: rapidRefill.consecutiveRapidRefills,
++      maxConsecutiveRapidRefills: MAX_CONSECUTIVE_RAPID_REFILLS,
++      toolTurnThreshold: RAPID_REFILL_TOOL_TURN_THRESHOLD,
++      toolTurnsSinceCompact: rapidRefill.toolTurnsSinceCompact,
++    });
++  }
++  if (autoCompactOutcome === "compacted") {
++    recordCompactSuccess(state, rapidRefill);
++    recordCompactHistoryRound(state);
++  }
++  throwIfTurnAborted(state.turnAbortSignal);
++
++  const finishMcp = beginLocalTurnPreparation(state.turnTraceContext, "mcp");
++  await runtime.initializeMcp(state.turnTraceContext);
++  finishMcp();
++  throwIfTurnAborted(state.turnAbortSignal);
++  const finishTools = beginLocalTurnPreparation(state.turnTraceContext, "tools");
++  const turnDisallowedTools = buildTurnDisallowedTools(state);
++  // automation 派发到已 active 会话或重试恢复时，入口 metadata 可能没有带到
++  // loop state；但 queryId 仍是 automation-*。provider 请求边界必须按 queryId 再硬过滤
++  // automation 写工具，否则模型会先看到并创建、修改或删除任务定义。
++  const tools = state.automationCreateLimitReached
++    ? []
++    : turnDisallowedTools
++      ? runtime.getTools(state.model).filter((tool) => !turnDisallowedTools.has(tool.name))
++      : runtime.getTools(state.model);
++  finishTools();
++  if (!outputTokenRecoveryActive && runtime.needsPlanModeExitReminder) {
++    runtime.needsPlanModeExitReminder = false;
++    commitTurnRequestEntries(runtime, state.turnRequestState, [
++      systemReminderAttachmentEntry("plan_mode_exit", buildPlanModeExitReminderBody()),
++    ]);
++  }
++  const runtimeModeReminderBody = outputTokenRecoveryActive
++    ? null
++    : buildRuntimeModeReminderBody(
++        state.turnRequestState.entries,
++        runtime.getMode(),
++        runtime.getPlanEnabled(),
++      );
++  if (runtimeModeReminderBody) {
++    commitTurnRequestEntries(runtime, state.turnRequestState, [
++      systemReminderAttachmentEntry("runtime_mode", runtimeModeReminderBody),
++    ]);
++  }
++  if (
++    !outputTokenRecoveryActive &&
++    tools.some((tool) => tool.name === "TodoWrite") &&
++    shouldBuildTodoReminder(state.turnRequestState.entries)
++  ) {
++    const currentTodos = await runtime.readSessionTodosForContext(state.turnTraceContext);
++    const reminderBody = buildTodoReminderBody(currentTodos);
++    commitTurnRequestEntries(runtime, state.turnRequestState, [
++      systemReminderAttachmentEntry("todo_reminder", reminderBody),
++    ]);
++    await runtime.persistSyntheticUserNoticeForSession({
++      messageID: createMessageId(),
++      metadata: { runtimeMessage: todoReminderRuntimeMetadata() },
++      sessionId: runtime.sessionId,
++      source: "todo_reminder",
++      text: reminderBody,
++      traceContext: state.turnTraceContext,
++    });
++  }
++  const outputStyleReminderBody =
++    state.modelStepCount === 0 ? buildRuntimeOutputStyleReminderBody(state.turnOutputStyle) : null;
++  if (outputStyleReminderBody) {
++    // output_style 是 provider-visible 的当前 turn runtime attachment，
++    // 需要进入内存历史参与后续 request 的增量轨迹；但不把它落 session。
++    commitTurnRequestEntries(runtime, state.turnRequestState, [
++      systemReminderAttachmentEntry("output_style", outputStyleReminderBody),
++    ]);
++  }
++  const providerEntries = [...state.turnRequestState.entries];
++  const requestEntries = providerEntries;
++  // provider-visible user ordering projection 会改变最终 latest user 落点，
++  // cache-control 必须在 projection 后统一设置，避免 raw synthetic entry 抢占缓存锚点。
++  const providerProjection = buildRuntimeProviderRequestMessages(runtime, {
++    entries: requestEntries,
++    applyCacheControl: true,
++    model: state.model,
++  });
++  const { messages } = providerProjection;
++  const recordableEntries = filterOutputTokenContinuationEntries(requestEntries);
++  const recordableProjection =
++    recordableEntries === requestEntries
++      ? providerProjection
++      : buildRuntimeProviderRequestMessages(runtime, {
++          entries: recordableEntries,
++          applyCacheControl: true,
++          model: state.model,
++        });
++  state.turnMachine = new TurnMachineImpl(
++    state.turnMachine.startModelRequest(
++      `${state.model.providerId}/${state.model.modelId}`,
++      recordableProjection.messages,
++    ),
++  );
++
++  // 生产包需要知道 Turn 是否已经跨过 provider 边界；这里只记录请求元数据，
++  // 不记录 prompt、消息内容或 streaming chunk，避免泄露内容并控制日志量。
++  runtime.logger?.info("Model request started", {
++    ...traceContextToLogContext(state.turnTraceContext),
++    event: "model.request.started",
++    module: "core.runtime",
++    status: "started",
++    messageCount: messages.length,
++    iteration: state.toolCallCount === 0 ? 0 : Math.ceil(state.toolCallCount / 10),
++  });
++  return {
++    drainedSteerForNextRequest,
++    latestRealUserMessageIndex: providerProjection.diagnostics.latestRealUserMessageIndex,
++    messages,
++    sourceEntries: providerProjection.sourceEntries,
++    requestEntries,
++    recordedMessages: recordableProjection.messages,
++    tools,
++  };
++}
++
++function buildTurnDisallowedTools(state: RegularTurnLoopState): Set<string> | null {
++  const tools = new Set(state.toolDisallowlist ?? []);
++  if (isAutomationMutationRestrictedTurn(state)) {
++    // 定时任务执行轮只应运行任务 prompt，不能反过来管理自己的定义。
++    // 保留 CronList 供只读查询；所有 mutation 在 provider 请求边界统一隐藏。
++    for (const toolName of AUTOMATION_MUTATION_TOOL_NAMES) {
++      tools.add(toolName);
++    }
++  }
++  if (isOffPeakCreateRestrictedTurn(state)) {
++    // 闲时执行轮禁止再创建闲时任务（防递归自我派生）；OffPeakList 只读保留。
++    // 注意 automation 执行轮不进此分支——cron turn 放行 OffPeakCreate。
++    for (const toolName of OFF_PEAK_MUTATION_TOOL_NAMES) {
++      tools.add(toolName);
++    }
++  }
++  return tools.size > 0 ? tools : null;
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+index a73ed30aae051e525811d4749149f6473bd0888c..7ae84ea452faebc221ab1efcd1f43fcd39dff49b 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-tools.ts
+@@ -50,13 +50,13 @@ export async function executeToolCallsForModelStep(
+     result: RuntimeModelTextResult;
+     streamedToolResults?: StreamedToolExecutionResult[];
+     toolCalls: ModelToolCall[];
++    onResults?: (results: readonly ToolExecutionResult[]) => void;
+   },
+ ): Promise<"continue" | "break"> {
+   const model = state.model;
+   if (!model) {
+     throw new Error("Model-backed tool execution requires the loop Model");
+   }
+-  const modelSelection = { providerId: model.providerId, modelId: model.modelId };
+   const coreToolCalls: ToolCall[] = options.toolCalls.map((tc) => ({
+     id: tc.id as ToolCallId,
+     // Model step admission 已完成类型/ID 校验；这里保留可恢复的原始空白名称，
+@@ -417,6 +417,7 @@ export async function executeToolCallsForModelStep(
+     );
+   }
+ 
++  options.onResults?.(results);
+   if (deferredCheckpointCancellation) {
+     throw deferredCheckpointCancellation;
+   }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index 37ec75af1f3999a8e3a779b5a56e7005a3a93166..c53d9756f7677fdbb612ba19adfdd61abc5d6c30 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -117,7 +117,14 @@ export async function recordModelUsageFact(
+       rawUsage: usage,
+       providerMetadata: {
+         ...input.result?.providerMetadata,
+-        fleetAccounting: { ...(input.result?.providerMetadata?.fleetAccounting as Record<string,unknown> | undefined), workspacePath: runtime.workspaceRoot, requestedSpeedMode: input.model.options.speedMode ?? "standard" },
++        fleetAccounting: {
++          ...(input.result?.providerMetadata?.fleetAccounting as
++            | Record<string, unknown>
++            | undefined),
++          workspacePath: runtime.workspaceRoot,
++          requestedSpeedMode: input.model.options.speedMode ?? "standard",
++          executor: runtime.config.agentExecutor ?? "zcode",
++        },
+       },
+     });
+   } catch (error) {
+@@ -218,9 +225,11 @@ export async function recordToolUsageFromEvent(
+   const metadata = runtime.registry.get(toolName)?.metadata;
+   const startedAt = event.timestamp.getTime();
+   const base = {
+-    ...(payload.skillMetadata && typeof payload.skillMetadata === "object" ? {
+-      skillMetadata: payload.skillMetadata as import("@zcode/contracts").SkillTelemetryMetadata,
+-    } : {}),
++    ...(payload.skillMetadata && typeof payload.skillMetadata === "object"
++      ? {
++          skillMetadata: payload.skillMetadata as import("@zcode/contracts").SkillTelemetryMetadata,
++        }
++      : {}),
+     id: toolUsageId(runtime.sessionId, toolCallId),
+     sessionID: runtime.sessionId,
+     turnID: event.turnId ?? traceContext.turnId,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index 63f6964f369a8e5579dd2e4bf27823198a8d2fc7..084ef35499271580bf56c07691bafe58e6269146 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -116,6 +116,8 @@ import type { WorkspaceHookRuntimeAdmissionPort } from "../hooks/workspace-hook-
+ // -----------------------------------------------
+ 
+ export interface AgentRuntimeConfig {
++  /** Complete turn executor; Session, permission, context and persistence stay Host-owned. */
++  agentExecutor?: "zcode" | "pi";
+   /** shared-host CUA request routing metadata; desktop is the safe default. */
+   clientMode?: "desktop-continuous" | "web-remote-replayable";
+   deliveryKind?: "desktop-continuous" | "web-remote-replayable";
+diff --git a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..14df3c54e2438e07a25d029d323fb1f583c93297
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+@@ -0,0 +1,575 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { DatabaseSync } from "node:sqlite";
++import {
++  createInMemorySessionEventStore,
++  getCurrentModelInvocationContext,
++} from "@zcode/contracts";
++import { AgentRuntime } from "../src/runtime/agent-runtime.js";
++import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
++
++type Step = (request: any, selection: any) => unknown | Promise<unknown>;
++const usage = {
++  inputTokens: 100,
++  outputTokens: 10,
++  totalTokens: 110,
++  cacheReadTokens: 20,
++  cacheWriteTokens: 0,
++};
++const selection = (id = "model-a") => ({
++  providerId: "fixture",
++  modelId: id,
++  options: { reasoningLevel: "off" },
++});
++const reply = (text: string, toolCalls?: any[]) => ({
++  text,
++  toolCalls,
++  finishReason: toolCalls?.length ? "tool-calls" : "stop",
++  usage,
++});
++const call = (id: string, value: string) => ({ id, name: "Probe", input: { value } });
++
++async function fixture(executor?: "pi" | "zcode", streaming = false) {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-pi-turn-"));
++  const path = join(dir, "session.sqlite");
++  let store = new SqliteSessionStore({ dbPath: path });
++  let runtime: AgentRuntime;
++  const steps: Step[] = [];
++  const requests: Array<{ messages: any[]; tools: string[]; selection: any }> = [];
++  let decision = "allow";
++  let effects = 0;
++  let subscription = false;
++  let selectedAccount = "account-a";
++  const accounts: string[] = [];
++  let permissionCalls = 0;
++  const factory = ({ selection: selected }: any): any => {
++    const model = {
++      providerId: selected.providerId,
++      modelId: selected.modelId,
++      options: selected.options,
++      properties: {
++        contextWindow: 1000000,
++        requiresMfjsToolSchema: false,
++        inputFormat: {
++          supportsText: true,
++          supportsImage: true,
++          supportsAudio: false,
++          supportsVideo: false,
++          supportsPdf: false,
++        },
++        outputFormat: { supportsText: true },
++        supportsToolCall: true,
++        supportsJsonSchemaOutput: false,
++        supportsNativeWebSearch: false,
++        supportsMidConversationSystem: true,
++      },
++      optionSpecs: {
++        maxOutputTokens: { max: 4096, map: "{}" },
++        reasoningLevel: { values: ["off"], map: "{}" },
++      },
++      bind(options: any) {
++        return factory({
++          selection: { ...selected, options: { ...selected.options, ...options } },
++        });
++      },
++      async generateText(request: any) {
++        if (subscription) {
++          const refresh = getCurrentModelInvocationContext()?.refreshRuntimeHeadersBeforeAttempt;
++          assert.ok(refresh, "Pi must preserve the Host per-attempt credential context");
++          await refresh({
++            subscriptionAccess: { provider: "openai-codex" },
++            attempt: 0,
++            providerId: selected.providerId,
++            modelId: selected.modelId,
++          });
++        }
++        requests.push({
++          messages: structuredClone(request.messages),
++          tools: (request.tools ?? []).map((tool: any) => tool.name),
++          selection: selected,
++        });
++        const next = steps.shift();
++        assert.ok(next, "Unexpected physical model request");
++        return await next(request, selected);
++      },
++      async *streamText(request: any) {
++        const result = (await model.generateText(request)) as any;
++        yield { type: "start" };
++        if (result.text) yield { type: "text_delta", text: result.text };
++        for (const toolCall of result.toolCalls ?? []) yield { type: "tool_call", toolCall };
++        yield { type: "finish", finishReason: result.finishReason, usage: result.usage };
++      },
++    };
++    return model;
++  };
++  const create = () => {
++    runtime = new AgentRuntime(
++      "session" as never,
++      {
++        agentExecutor: executor,
++        workingDirectory: dir,
++        modelSelection: selection(),
++        mode: "build",
++        modelStreaming: streaming ? "on" : "off",
++        titleGeneration: { enabled: false },
++        memory: { use: false },
++        dynamicWorkflowEnabled: false,
++        toolAllowlist: ["Probe"],
++      },
++      {
++        eventStore: createInMemorySessionEventStore(),
++        sessionStore: store,
++        modelFactory: factory,
++        providerRuntimeHeadersPort: {
++          async refreshBeforeModelRequest(input: any) {
++            const accountId = input.subscriptionAccess.accountId ?? selectedAccount;
++            accounts.push(accountId);
++            return {
++              headersApplied: true,
++              requestAuth: {
++                apiKey: "synthetic",
++                credentialSelection: { accountId, revision: "fixture" },
++              },
++            };
++          },
++        },
++        permissionBroker: {
++          async requestPermission() {
++            permissionCalls++;
++            return { decision } as never;
++          },
++        },
++      },
++    );
++    runtime.getToolRegistry().register({
++      metadata: {
++        name: "Probe",
++        description: "write fixture",
++        readOnly: false,
++        destructive: false,
++        concurrentSafe: false,
++        sideEffectScope: "workspace",
++        riskLevel: "high",
++        needsApproval: true,
++      },
++      inputSchema: {
++        type: "object",
++        properties: { value: { type: "string" } },
++        required: ["value"],
++      },
++      async handler(input: any) {
++        effects++;
++        await writeFile(join(dir, "effect.txt"), input.value);
++        return { saved: input.value };
++      },
++    } as never);
++    runtime.invalidateToolCache();
++  };
++  create();
++  return {
++    steps,
++    requests,
++    accounts,
++    enableSubscription() {
++      subscription = true;
++    },
++    selectAccount(id: string) {
++      selectedAccount = id;
++    },
++    get runtime() {
++      return runtime;
++    },
++    get store() {
++      return store;
++    },
++    dir,
++    get effects() {
++      return effects;
++    },
++    get permissionCalls() {
++      return permissionCalls;
++    },
++    deny() {
++      decision = "deny";
++    },
++    terminal() {
++      runtime.getToolRegistry().getMetadata("Probe")!.stopTurnOnSuccess = true;
++    },
++    read: () => readFile(join(dir, "effect.txt"), "utf8"),
++    executorFacts() {
++      const db = new DatabaseSync(path, { readOnly: true });
++      try {
++        return db
++          .prepare("select provider_metadata_json from model_usage")
++          .all()
++          .map((row) => JSON.parse(String(row.provider_metadata_json)).fleetAccounting.executor);
++      } finally {
++        db.close();
++      }
++    },
++    async reopen() {
++      runtime.beginShutdown();
++      store.close();
++      store = new SqliteSessionStore({ dbPath: path });
++      create();
++      await runtime.resumeFromStore();
++    },
++    async close() {
++      runtime.beginShutdown();
++      store.close();
++      await rm(dir, { recursive: true, force: true });
++    },
++  };
++}
++
++test(
++  "full Pi executor writes model and tool results through the existing Host, once per call",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      f.steps.push(
++        () => reply("working", [call("one", "first"), call("two", "second")]),
++        (request) => {
++          assert.equal(
++            request.messages.filter((message: any) => message.role === "tool").length,
++            2,
++          );
++          return reply("finished");
++        },
++      );
++      const result = await f.runtime.executeTurn("Use Probe twice");
++      assert.equal(result.response, "finished");
++      assert.equal(f.effects, 2);
++      assert.equal(await f.read(), "second");
++      assert.equal(f.permissionCalls, 2);
++      assert.equal(f.requests.length, 2);
++      assert.ok(f.requests.every((request) => request.tools.every((name) => name === "Probe")));
++      const rows = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++      assert.equal(rows.totals.modelRequestCount, 2);
++      assert.equal(rows.toolTotals.toolCallCount, 2);
++      await f.reopen();
++      f.steps.push((request) => {
++        assert.equal(request.messages.filter((message: any) => message.role === "tool").length, 2);
++        return reply("restored");
++      });
++      assert.equal((await f.runtime.executeTurn("Continue after reopen")).response, "restored");
++      assert.equal(f.effects, 2);
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "the new runtime default executes through Pi while the legacy control remains selectable",
++  { timeout: 10000 },
++  async () => {
++    for (const executor of [undefined, "zcode"] as const) {
++      const f = await fixture(executor);
++      try {
++        f.steps.push(() => reply("complete"));
++        assert.equal((await f.runtime.executeTurn("One request")).response, "complete");
++        const rows = await f.store.queryAppUsage({
++          since: 0,
++          until: Date.now() + 1,
++          tzOffsetMs: 0,
++        });
++        assert.equal(rows.totals.modelRequestCount, 1);
++        assert.deepEqual(f.executorFacts(), [executor ?? "pi"]);
++      } finally {
++        await f.close();
++      }
++    }
++  },
++);
++
++test(
++  "unexpected tool names close through the Host's registry-miss path",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    try {
++      f.steps.push(
++        () => reply("invalid tool", [{ id: "unknown", name: "NoSuchTool", input: {} }]),
++        (request) => {
++          assert.ok(
++            request.messages.some((message: any) => message.role === "tool" && message.isError),
++          );
++          return reply("recovered");
++        },
++      );
++      assert.equal((await f.runtime.executeTurn("Try the missing tool")).response, "recovered");
++      assert.equal(f.effects, 0);
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test("terminal Host tools prevent another physical model request", { timeout: 10000 }, async () => {
++  const f = await fixture();
++  try {
++    f.terminal();
++    f.steps.push(() => reply("terminal", [call("stop", "saved")]));
++    const result = await f.runtime.executeTurn("Finish through Probe");
++    assert.equal(result.response, "terminal");
++    assert.equal(f.requests.length, 1);
++    assert.equal(f.effects, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++test(
++  "a text-only Guide continues through Pi at the committed Host boundary",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    const entered = Promise.withResolvers<void>(),
++      release = Promise.withResolvers<void>();
++    let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++    try {
++      f.steps.push(
++        async () => {
++          entered.resolve();
++          await release.promise;
++          return reply("first");
++        },
++        (request) => {
++          assert.ok(
++            request.messages.some(
++              (message: any) =>
++                message.role === "user" &&
++                JSON.stringify(message.content).includes("New instruction"),
++            ),
++          );
++          return reply("guided");
++        },
++      );
++      running = f.runtime.executeTurn("Original input");
++      await entered.promise;
++      const accepted = await f.runtime.steerTurn({ input: "New instruction", delivery: "guide" });
++      assert.equal(accepted.kind, "queued");
++      release.resolve();
++      assert.equal((await running).response, "guided");
++      assert.equal(f.requests.length, 2);
++    } finally {
++      release.resolve();
++      await running?.catch(() => {});
++      await f.close();
++    }
++  },
++);
++
++test("physical model failure remains a failed Host turn", { timeout: 10000 }, async () => {
++  const f = await fixture();
++  try {
++    f.steps.push(() => {
++      throw new Error("fixture provider refused");
++    });
++    await assert.rejects(
++      f.runtime.executeTurn("Fail the model"),
++      (error: any) => error.cause?.message === "fixture provider refused",
++    );
++    assert.equal(f.requests.length, 1);
++    assert.equal(f.effects, 0);
++  } finally {
++    await f.close();
++  }
++});
++
++test("Pi tool calls retain the original Host permission refusal", { timeout: 10000 }, async () => {
++  const f = await fixture();
++  try {
++    f.deny();
++    f.steps.push(
++      () => reply("attempt", [call("denied", "no")]),
++      (request) => {
++        assert.ok(
++          request.messages.some((message: any) => message.role === "tool" && message.isError),
++        );
++        return reply("permission denied");
++      },
++    );
++    assert.equal((await f.runtime.executeTurn("Attempt Probe")).response, "permission denied");
++    assert.equal(f.effects, 0);
++    assert.equal(f.permissionCalls, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++test(
++  "changing the Session selection cannot change a running Pi input",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    const entered = Promise.withResolvers<void>();
++    const release = Promise.withResolvers<void>();
++    try {
++      f.steps.push(
++        async () => {
++          entered.resolve();
++          await release.promise;
++          return reply("step", [call("bound", "yes")]);
++        },
++        () => reply("first done"),
++      );
++      const running = f.runtime.executeTurn("First input");
++      await entered.promise;
++      f.runtime.setSessionModelSelection(selection("model-b"));
++      release.resolve();
++      await running;
++      assert.deepEqual(
++        f.requests.map((request) => request.selection.modelId),
++        ["model-a", "model-a"],
++      );
++      f.steps.push(() => reply("second done"));
++      await f.runtime.executeTurn("Second input");
++      assert.deepEqual(
++        f.requests.map((request) => request.selection.modelId),
++        ["model-a", "model-a", "model-b"],
++      );
++    } finally {
++      release.resolve();
++      await f.close();
++    }
++  },
++);
++
++test(
++  "Pi cancellation is a cancelled Host turn, never successful completion",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture();
++    const entered = Promise.withResolvers<void>();
++    const controller = new AbortController();
++    try {
++      f.steps.push(async (request) => {
++        entered.resolve();
++        await new Promise((_, reject) =>
++          request.abortSignal.addEventListener(
++            "abort",
++            () => reject(new Error("cancelled request")),
++            { once: true },
++          ),
++        );
++        return reply("must not complete");
++      });
++      const running = f.runtime.executeTurn("Stop this input", undefined, {
++        abortSignal: controller.signal,
++      });
++      await entered.promise;
++      controller.abort(new Error("user stop"));
++      await assert.rejects(running);
++      assert.equal(f.effects, 0);
++      const messages = await f.store.messages({ sessionID: "session" as never });
++      assert.ok(
++        messages.some((message) => message.info.role === "assistant" && "error" in message.info),
++      );
++    } finally {
++      controller.abort();
++      await f.close();
++    }
++  },
++);
++
++test(
++  "streaming responses and attachments keep the Host media and usage paths",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture("pi", true);
++    try {
++      const image = join(f.dir, "fixture.png");
++      await writeFile(
++        image,
++        Buffer.from(
++          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==",
++          "base64",
++        ),
++      );
++      f.steps.push(
++        (request) => {
++          assert.ok(
++            request.messages.some(
++              (message: any) =>
++                Array.isArray(message.content) &&
++                message.content.some((block: any) => block.type === "image"),
++            ),
++          );
++          return reply("streamed working", [call("streamed", "once")]);
++        },
++        () => reply("streamed complete"),
++      );
++      const result = await f.runtime.executeTurn("Read this image", [
++        {
++          type: "image",
++          content: `data:image/png;base64,${(await readFile(image)).toString("base64")}`,
++          mimeType: "image/png",
++        },
++      ]);
++      assert.equal(result.response, "streamed complete");
++      assert.equal(f.effects, 1);
++      const rows = await f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++      assert.equal(rows.totals.modelRequestCount, 2);
++      assert.equal(rows.toolTotals.toolCallCount, 1);
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "Pi keeps the admitted subscription account across tool rounds and refreshes each attempt",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture("pi", true);
++    try {
++      f.enableSubscription();
++      f.selectAccount("account-b");
++      f.steps.push(
++        () => reply("working", [call("bound-account", "saved")]),
++        () => reply("complete"),
++      );
++      await f.runtime.executeTurn("Use the admitted account", undefined, {
++        intent: {
++          modelSelection: selection(),
++          subscriptionAccountId: "account-a",
++        },
++      } as never);
++      assert.deepEqual(f.accounts, ["account-a", "account-a"]);
++      f.steps.push(() => reply("next account"));
++      await f.runtime.executeTurn("Next input");
++      assert.deepEqual(f.accounts, ["account-a", "account-a", "account-b"]);
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test("Host output-limit continuation survives Pi settlement", { timeout: 10000 }, async () => {
++  const f = await fixture("pi", true);
++  try {
++    f.steps.push(
++      () => ({
++        ...reply("partial reply"),
++        finishReason: "length",
++        usage: { ...usage, outputTokens: 4096, totalTokens: 4196 },
++      }),
++      (request) => {
++        assert.ok(JSON.stringify(request.messages).includes("partial reply"));
++        return reply("continuation complete");
++      },
++    );
++    const result = await f.runtime.executeTurn("Finish the answer");
++    assert.ok(result.response.includes("continuation complete"));
++    assert.equal(f.requests.length, 2);
++    assert.equal(f.effects, 0);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/package.json b/package.json
+index 73b9e3524761e06efce90804ab8109d91b9025d9..b5290bb1db42f9cdeec011efd9b00c0fd9dbb92b 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,7 @@
+     "prepare:desktop-runtime": "pnpm --filter @zcode/desktop prepare:runtime-assets",
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+-    "verify:pre-push": "pnpm run lint && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run architecture:check -- --changed",
++    "verify:pre-push": "pnpm run lint && pnpm run test:pi-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run architecture:check -- --changed",
+     "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+@@ -52,7 +52,9 @@
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+-    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts"
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
++    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
++    "test:pi-bundle": "node scripts/test-pi-bundle.mjs"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 09b3dc3e67c61332cd8492aca67135829406529f..4956dfc5129542f7ef593b61f38b016b63a82f0b 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -401,6 +401,12 @@ importers:
+       yaml:
+         specifier: ^2.9.0
+         version: 2.9.0
++      "@earendil-works/pi-ai":
++        specifier: 0.99.1
++        version: 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      "@earendil-works/pi-coding-agent":
++        specifier: 0.99.1
++        version: 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(zod@4.6.5)
+     devDependencies:
+       '@types/node':
+         specifier: ^24.0.0
+@@ -10194,6 +10200,230 @@ packages:
+ 
+   zwitch@2.0.4:
+     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
++  "@earendil-works/pi-ai@0.99.1":
++    resolution: {integrity: sha512-4nV9JKc94iPX8bwdGPc2nTuVPKIPsffhnp3WoN9NYCNqbtoOF8LhYcIs/+Sn/alroqJK/5QRu6/Z6Ck+n0hyBA==}
++    engines: {node: '>=22.19.0'}
++    hasBin: true
++  "@earendil-works/pi-telemetry@0.99.1":
++    resolution: {integrity: sha512-9PBPjGk+TXRtuMianpqBbHBpYpyKusESF6rwdmgD0WTZSTUQXhcKEO0hAINRLuSwy4V7yPvXV+EVV0ONY7mbpQ==}
++    engines: {node: '>=22.19.0'}
++  openai@7.19.0:
++    resolution: {integrity: sha512-MX2s3u2L5racTO0CC/SWpCOasJQBCJrqLKXK+l82cAhdeF8mPMBEe/gxMm0ZFa2xpKpOFLRjxv5afYEZbBXmbQ==}
++    engines: {node: '>=22.0.0'}
++    peerDependencies:
++      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
++      '@smithy/hash-node': '>=4.3.0 <5'
++      '@smithy/signature-v4': '>=5.4.0 <6'
++      undici: '>=5 <9'
++      ws: ^8.21.0
++      zod: ^3.25 || ^4.0
++    peerDependenciesMeta:
++      '@aws-sdk/credential-provider-node':
++        optional: true
++      '@smithy/hash-node':
++        optional: true
++      '@smithy/signature-v4':
++        optional: true
++      undici:
++        optional: true
++      ws:
++        optional: true
++      zod:
++        optional: true
++  undici@8.10.2:
++    resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
++    engines: {node: '>=22.19.0'}
++  "@earendil-works/pi-coding-agent@0.99.1":
++    resolution: {integrity: sha512-cWUrTOqA5M73cOYMgsh9PlhDrsBhavd+n5kVY6F7BGbGl1RjqCteVCoeVMVqhngoGACVDyw1tbLjajL8l9jrHg==}
++    engines: {node: '>=22.19.0'}
++    hasBin: true
++  "@earendil-works/chord@0.99.1":
++    resolution: {integrity: sha512-4xyn0IBzJ+Xu/iOGi2hjXJGAR61QEhEWZsIqTDqr+GmItdquYwBO5jYFnqGiBaTqlY12/EpM7QHoEKSHbyvOug==}
++    engines: {node: '>=22.19.0'}
++  esbuild@0.28.2:
++    resolution: {integrity: sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==}
++    engines: {node: '>=18'}
++    hasBin: true
++  "@esbuild/aix-ppc64@0.28.2":
++    resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
++    engines: {node: '>=18'}
++    cpu: [ppc64]
++    os: [aix]
++  "@esbuild/android-arm@0.28.2":
++    resolution: {integrity: sha512-kXXoiPVVGQcnIYGOeaovwOURpniDBpSq4A03qkQ+BMQqtGG6HYap3xne9C1O1yo4TR3qxlCX5IqqmX6fFo2Lqg==}
++    engines: {node: '>=18'}
++    cpu: [arm]
++    os: [android]
++  "@esbuild/android-arm64@0.28.2":
++    resolution: {integrity: sha512-5YfKeeI8qWfBZIX+u2xZC3Zlb3Os/gLS2sbEKM+I4ZOcsWmHS2WLysCcQZDAFRslDUU5Oiq44gf6PYN1vGwG5A==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [android]
++  "@esbuild/android-x64@0.28.2":
++    resolution: {integrity: sha512-O387ite7SzUyCcy3JQX4P4bLtEA7bLLkx+esve5JHnyYfNTxcVpXZo9jhdB0lTKN44gztELTdU7nS8Nr16Fs1Q==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [android]
++  "@esbuild/darwin-arm64@0.28.2":
++    resolution: {integrity: sha512-n4KqkOQrraxHJcgjM1RvwbigfQKIKJVpM7xp+KsxiyUSrRdIXnt73VhrPAx0fV44hgfmIVKjxMN9J1t5jySVkw==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [darwin]
++  "@esbuild/darwin-x64@0.28.2":
++    resolution: {integrity: sha512-uq6suIWYP37qzGddBKPw5QEQPi6HiLGsO7UmkpfyaYNQ3D+rN6w6WfwH+nuqcGXWvawGwxOEroO4YGnFh95azw==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [darwin]
++  "@esbuild/freebsd-arm64@0.28.2":
++    resolution: {integrity: sha512-n+I0BTSRIoy+d6RPKnEVwql5UwBJolytvY4mAOIEJorKlqgPII8ix6slVVrfZ5Tnj7glIZvloylbB/EJPMWEXw==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [freebsd]
++  "@esbuild/freebsd-x64@0.28.2":
++    resolution: {integrity: sha512-78XJTJkvPs0kz2w61301PJjXl4g7q3JqiYMZ/M/yVI73EHBrCRTgkhu9oqG7vPqq+a/yadEW8aD+agKlk5xrmg==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [freebsd]
++  "@esbuild/linux-arm@0.28.2":
++    resolution: {integrity: sha512-XlDnu2q5yoqems+xay6wSAcg9DDD7K9RLKZEBOMZm3ckNpJBvOX20tSfby8KfrrhINDyv9V2YVZKY/SpoGJI8w==}
++    engines: {node: '>=18'}
++    cpu: [arm]
++    os: [linux]
++  "@esbuild/linux-arm64@0.28.2":
++    resolution: {integrity: sha512-pW4AC0P3it8c7do9MVM4p51FzHzdM/TZrerurgRcHJ2WTa1VQ1CIq18xncfpBJw4ojkiZZrKW2yIBWBP92j6Ug==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [linux]
++  "@esbuild/linux-ia32@0.28.2":
++    resolution: {integrity: sha512-CYbnj78HsIeA+DhgUKgFCfvNsTHFhMMrinUrMZpDXJXKN8T3XViTZ/+wtHeVxEWY8ewSzTFN+nRmSwO2tZaLUQ==}
++    engines: {node: '>=18'}
++    cpu: [ia32]
++    os: [linux]
++  "@esbuild/linux-loong64@0.28.2":
++    resolution: {integrity: sha512-buwkd8nsph4R+ajRvw0qM5Hja/TXQow3ptzWO2EbG/cqcIkHloRrdlBtQlshyYGTNFvfkfJ5tpPLVkY4DtsPfQ==}
++    engines: {node: '>=18'}
++    cpu: [loong64]
++    os: [linux]
++  "@esbuild/linux-mips64el@0.28.2":
++    resolution: {integrity: sha512-ZVykbDyk7519VwiNb9Lcj9m8XM6v5V9uKPvrEMkkEedVewf+0itkhahp4HDpgERXhwLRpWFypsGbG/J8s0QjJA==}
++    engines: {node: '>=18'}
++    cpu: [mips64el]
++    os: [linux]
++  "@esbuild/linux-ppc64@0.28.2":
++    resolution: {integrity: sha512-CAXl+Dtd9UUuJd8pKKdwh6MLm3MUMiqMPmhZ3tTSXPqfyQ3vDl6R5hZdZ/kYojK4ofXtdfSv1tFq8XzWx3heNQ==}
++    engines: {node: '>=18'}
++    cpu: [ppc64]
++    os: [linux]
++  "@esbuild/linux-riscv64@0.28.2":
++    resolution: {integrity: sha512-GeXCej4IQtU1B+QlDV8W/RRvbzI3O/Stss+/bCXv4lZls5WGRtu2a+3JkA3i4qIUlMXpcHebWpF8AkJhATowuA==}
++    engines: {node: '>=18'}
++    cpu: [riscv64]
++    os: [linux]
++  "@esbuild/linux-s390x@0.28.2":
++    resolution: {integrity: sha512-3H1weTYZPxt/WOhByszQZybS9w5lKzUn1FDMsgEChbHWQwHYQQRfBxgCcZvPhjHfKyJjIievvMmEUawJrdY9Dg==}
++    engines: {node: '>=18'}
++    cpu: [s390x]
++    os: [linux]
++  "@esbuild/linux-x64@0.28.2":
++    resolution: {integrity: sha512-4xTZr1FUmSoQW4XIWmit3tzQrUTZM+N3P0XV8xROKYF50XfI7xeO90+1bZvNwxIufQ9hDQVRJH5YhgPVF8A/HQ==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [linux]
++  "@esbuild/netbsd-arm64@0.28.2":
++    resolution: {integrity: sha512-sSATRjPeDBg3pdgHoQfoYBob11Kk1FGa9lui5RIHZCoCkJa9QKlvl3/vKz2usCmYYjs7ymJR/2Nnsqe+Hjt5nw==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [netbsd]
++  "@esbuild/netbsd-x64@0.28.2":
++    resolution: {integrity: sha512-lqnzCV+mM0gIADaKihiCg6ifgfU2L3h5E33rNQBN1Y4MaVGnzryzmvvf7UHxprpQdE8hpqLolJ9Rl+SkIRDpyw==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [netbsd]
++  "@esbuild/openbsd-arm64@0.28.2":
++    resolution: {integrity: sha512-AL2qJILH7lNjrDmCQDvdxMfAUIv8KMNZOvrwAQ8i8//ntL9FflhOyMJ8OZSMBb8/AWXe3/5v5S20y3zCoZWKoQ==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [openbsd]
++  "@esbuild/openbsd-x64@0.28.2":
++    resolution: {integrity: sha512-QtiuPytchRyC4rwUKhexJdQKvDuZ6hWloi3igqPQNUJCS1/v9EiO3UTOXR6A3FoMo4fnAKbWJdqaIwhOzh8qEw==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [openbsd]
++  "@esbuild/openharmony-arm64@0.28.2":
++    resolution: {integrity: sha512-WkhYDmpTjLvGlScA1rwjRUmhl4k8oXR3cIbtqWmELgU/dFeHHlEllxDvdWcNJV9rbzCexB5vz8gtNewWLgCT7Q==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [openharmony]
++  "@esbuild/sunos-x64@0.28.2":
++    resolution: {integrity: sha512-GPMSkTOtMnv2U2F8gxe4Io6qmVs+YKyp832Etqqxr0hFngmXQ3rzwytelm3GIn7T4VviRUlf3sOgBOiTdvaf7g==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [sunos]
++  "@esbuild/win32-arm64@0.28.2":
++    resolution: {integrity: sha512-PIhhEkE9uPBleRBrQEJpUn7MBnibZzbGzYWPmY3x+YoVg/95zbjB4CxPPOQ8l5tYYM4mMaCthF8/1DIfBQQyWQ==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [win32]
++  "@esbuild/win32-ia32@0.28.2":
++    resolution: {integrity: sha512-YmJbfTlvU7Sdn9BB+4PRES4oB6pxgS37MAONj+hBr/cpXS1aBPKXxNnDbu+QCWPj0o9dgyxeq79g6c5P8KeuYA==}
++    engines: {node: '>=18'}
++    cpu: [ia32]
++    os: [win32]
++  "@esbuild/win32-x64@0.28.2":
++    resolution: {integrity: sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [win32]
++  "@earendil-works/pi-agent-core@0.99.1":
++    resolution: {integrity: sha512-zywvWnj5FujeuFI/x/CJHwwxhcLIQgjqseTA+bQgX4O8gJTcgjRd/I8SZnQDqJvxC9QcV12ujiGLviv6EgwcCg==}
++    engines: {node: '>=22.19.0'}
++  ignore@7.0.8:
++    resolution: {integrity: sha512-YYNsSlXBjMk92SKnkwvB5LOVSa6OznlFUGcsvrFgNJbJCd0M1XKeFVRc8ZByeCqz32FivYNHJVooLmdqrmvp/Q==}
++    engines: {node: '>= 4'}
++  "@earendil-works/pi-codemode@0.99.1":
++    resolution: {integrity: sha512-oh8TMsBI3SWTN3xTQtX8u5n+BKhnVXcFagroWumfn6/WWfBnDYL/LmeQtjLb83WRTb9rcu+ZdK8rFa4vggvCJg==}
++    engines: {node: '>=22.19.0'}
++  quickjs-wasi@3.6.2:
++    resolution: {integrity: sha512-FCqGtGOrMgzUiIrMNMA2YnsOxCNwo31dzqXvclXUC6xeT35NJLKXQJsvbeCTjvoFAwZgEAPg8U6+KAPDGXn8Mg==}
++  "@earendil-works/pi-mcp@0.99.1":
++    resolution: {integrity: sha512-YCFGPkmDzLwQuIzwfbP6Vuk/g/ukKpZhwTpbcfzomuI1Fkiu6hHRkOGwAqsO3G8cTkZWkM8vmOkFJjStQNC4qA==}
++    engines: {node: '>=22.19.0'}
++  "@earendil-works/pi-tui@0.99.1":
++    resolution: {integrity: sha512-gZp0Guat96Fr1AuC/xqVz5B2lulZakp/PxD1lXx3lSgBdjiqmwYhJbcQ0HRrGAfy0WtMGn9b05RJr5qJf7oIuw==}
++    engines: {node: '>=22.19.0'}
++  get-east-asian-width@1.6.0:
++    resolution: {integrity: sha512-QRbvDIbx6YklUe6RxeTeleMR0yv3cYH6PsPZHcnVn7xv7zO1BHN8r0XETu8n6Ye3Q+ahtSarc3WgtNWmehIBfA==}
++    engines: {node: '>=18'}
++  marked@18.0.11:
++    resolution: {integrity: sha512-HnslJfsZkRPBDJRHvVtAaWlZHEpSu7u8LgQuJCELjRKuWR+hpq4A7sLq3p8HaI9ypVoXDXxV34CsQJEe1+J5Aw==}
++    engines: {node: '>= 20'}
++    hasBin: true
++  "@silvia-odwyer/photon-node@0.3.4":
++    resolution: {integrity: sha512-bnly4BKB3KDTFxrUIcgCLbaeVVS8lrAkri1pEzskpmxu9MdfGQTy8b8EgcD83ywD3RPMsIulY8xJH5Awa+t9fA==}
++  chalk@6.0.0:
++    resolution: {integrity: sha512-2uNTXIuTTxk7ciZgAU1BQcgnchcG0xXnrs6jzkQfj9SsRa9M2s5zE8WT96hS6KmG4MzWHSrvH43DF1m4XRkrFg==}
++    engines: {node: '>=22'}
++  grok-mermaid@0.2.3:
++    resolution: {integrity: sha512-/4KopAbsjvuRP9MdPtlDjOHUmUVEohOX73JNcsWpzAtFxh+bq5+Dhb6gzvRieLDwIPQIR3/vy8V1NNTuz4Zsmg==}
++    engines: {node: '>=18'}
++  highlight.js@10.7.3:
++    resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
++  hosted-git-info@9.0.3:
++    resolution: {integrity: sha512-Hc+ghLoSt6QaYZUv0WBiIvmMDZuZZ7oaDvdH8MbfOO4lOsxdXLEvuC6ePoGs9H1X9oCLyq6+NVN0MKqD+ydxyg==}
++    engines: {node: ^20.17.0 || >=22.9.0}
++  jiti@2.7.0:
++    resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
++    hasBin: true
++  minimatch@10.2.6:
++    resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
++    engines: {node: 18 || 20 || >=22}
++  brace-expansion@5.0.12:
++    resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
++    engines: {node: 20 || >=22}
++  semver@7.8.5:
++    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
++    engines: {node: '>=10'}
++    hasBin: true
+ 
+ snapshots:
+ 
+@@ -19884,3 +20114,203 @@ snapshots:
+       use-sync-external-store: 1.6.0(react@19.2.7)
+ 
+   zwitch@2.0.4: {}
++  "@earendil-works/pi-ai@0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)":
++    dependencies:
++      '@anthropic-ai/sdk': 0.124.0(zod@4.6.5)
++      '@aws-sdk/client-bedrock-runtime': 3.1127.0
++      '@earendil-works/pi-telemetry': 0.99.1
++      '@google/genai': 2.21.0(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))
++      '@smithy/node-http-handler': 4.12.1
++      http-proxy-agent: 9.1.0
++      https-proxy-agent: 9.1.0
++      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      partial-json: 0.1.7
++      typebox: 1.3.27
++    transitivePeerDependencies:
++      - '@aws-sdk/credential-provider-node'
++      - '@modelcontextprotocol/sdk'
++      - '@smithy/hash-node'
++      - '@smithy/signature-v4'
++      - bufferutil
++      - kerberos
++      - supports-color
++      - undici
++      - utf-8-validate
++      - ws
++      - zod
++  "@earendil-works/pi-telemetry@0.99.1": {}
++  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5):
++    optionalDependencies:
++      '@aws-sdk/credential-provider-node': 3.972.84
++      '@smithy/signature-v4': 5.7.4
++      undici: 8.10.2
++      zod: 4.6.5
++  undici@8.10.2: {}
++  "@earendil-works/pi-coding-agent@0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(zod@4.6.5)":
++    dependencies:
++      '@earendil-works/chord': 0.99.1
++      '@earendil-works/pi-agent-core': 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-ai': 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-codemode': 0.99.1
++      '@earendil-works/pi-mcp': 0.99.1
++      '@earendil-works/pi-tui': 0.99.1
++      '@silvia-odwyer/photon-node': 0.3.4
++      chalk: 6.0.0
++      cross-spawn: 7.0.6
++      diff: 8.0.4
++      grok-mermaid: 0.2.3
++      highlight.js: 10.7.3
++      hosted-git-info: 9.0.3
++      ignore: 7.0.8
++      jiti: 2.7.0
++      minimatch: 10.2.6
++      proper-lockfile: 4.1.2
++      quickjs-wasi: 3.6.2
++      semver: 7.8.5
++      typebox: 1.3.27
++      undici: 8.10.2
++      yaml: 2.9.0
++    transitivePeerDependencies:
++      - '@aws-sdk/credential-provider-node'
++      - '@modelcontextprotocol/sdk'
++      - '@smithy/hash-node'
++      - '@smithy/signature-v4'
++      - bufferutil
++      - kerberos
++      - supports-color
++      - utf-8-validate
++      - ws
++      - zod
++  "@earendil-works/chord@0.99.1":
++    dependencies:
++      esbuild: 0.28.2
++  esbuild@0.28.2:
++    optionalDependencies:
++      '@esbuild/aix-ppc64': 0.28.2
++      '@esbuild/android-arm': 0.28.2
++      '@esbuild/android-arm64': 0.28.2
++      '@esbuild/android-x64': 0.28.2
++      '@esbuild/darwin-arm64': 0.28.2
++      '@esbuild/darwin-x64': 0.28.2
++      '@esbuild/freebsd-arm64': 0.28.2
++      '@esbuild/freebsd-x64': 0.28.2
++      '@esbuild/linux-arm': 0.28.2
++      '@esbuild/linux-arm64': 0.28.2
++      '@esbuild/linux-ia32': 0.28.2
++      '@esbuild/linux-loong64': 0.28.2
++      '@esbuild/linux-mips64el': 0.28.2
++      '@esbuild/linux-ppc64': 0.28.2
++      '@esbuild/linux-riscv64': 0.28.2
++      '@esbuild/linux-s390x': 0.28.2
++      '@esbuild/linux-x64': 0.28.2
++      '@esbuild/netbsd-arm64': 0.28.2
++      '@esbuild/netbsd-x64': 0.28.2
++      '@esbuild/openbsd-arm64': 0.28.2
++      '@esbuild/openbsd-x64': 0.28.2
++      '@esbuild/openharmony-arm64': 0.28.2
++      '@esbuild/sunos-x64': 0.28.2
++      '@esbuild/win32-arm64': 0.28.2
++      '@esbuild/win32-ia32': 0.28.2
++      '@esbuild/win32-x64': 0.28.2
++  "@esbuild/aix-ppc64@0.28.2":
++    optional: true
++  "@esbuild/android-arm@0.28.2":
++    optional: true
++  "@esbuild/android-arm64@0.28.2":
++    optional: true
++  "@esbuild/android-x64@0.28.2":
++    optional: true
++  "@esbuild/darwin-arm64@0.28.2":
++    optional: true
++  "@esbuild/darwin-x64@0.28.2":
++    optional: true
++  "@esbuild/freebsd-arm64@0.28.2":
++    optional: true
++  "@esbuild/freebsd-x64@0.28.2":
++    optional: true
++  "@esbuild/linux-arm@0.28.2":
++    optional: true
++  "@esbuild/linux-arm64@0.28.2":
++    optional: true
++  "@esbuild/linux-ia32@0.28.2":
++    optional: true
++  "@esbuild/linux-loong64@0.28.2":
++    optional: true
++  "@esbuild/linux-mips64el@0.28.2":
++    optional: true
++  "@esbuild/linux-ppc64@0.28.2":
++    optional: true
++  "@esbuild/linux-riscv64@0.28.2":
++    optional: true
++  "@esbuild/linux-s390x@0.28.2":
++    optional: true
++  "@esbuild/linux-x64@0.28.2":
++    optional: true
++  "@esbuild/netbsd-arm64@0.28.2":
++    optional: true
++  "@esbuild/netbsd-x64@0.28.2":
++    optional: true
++  "@esbuild/openbsd-arm64@0.28.2":
++    optional: true
++  "@esbuild/openbsd-x64@0.28.2":
++    optional: true
++  "@esbuild/openharmony-arm64@0.28.2":
++    optional: true
++  "@esbuild/sunos-x64@0.28.2":
++    optional: true
++  "@esbuild/win32-arm64@0.28.2":
++    optional: true
++  "@esbuild/win32-ia32@0.28.2":
++    optional: true
++  "@esbuild/win32-x64@0.28.2":
++    optional: true
++  "@earendil-works/pi-agent-core@0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)":
++    dependencies:
++      '@earendil-works/chord': 0.99.1
++      '@earendil-works/pi-ai': 0.99.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-telemetry': 0.99.1
++      diff: 8.0.4
++      ignore: 7.0.8
++      typebox: 1.3.27
++      yaml: 2.9.0
++    transitivePeerDependencies:
++      - '@aws-sdk/credential-provider-node'
++      - '@modelcontextprotocol/sdk'
++      - '@smithy/hash-node'
++      - '@smithy/signature-v4'
++      - bufferutil
++      - kerberos
++      - supports-color
++      - undici
++      - utf-8-validate
++      - ws
++      - zod
++  ignore@7.0.8: {}
++  "@earendil-works/pi-codemode@0.99.1":
++    dependencies:
++      quickjs-wasi: 3.6.2
++  quickjs-wasi@3.6.2: {}
++  "@earendil-works/pi-mcp@0.99.1":
++    dependencies:
++      cross-spawn: 7.0.6
++  "@earendil-works/pi-tui@0.99.1":
++    dependencies:
++      get-east-asian-width: 1.6.0
++      marked: 18.0.11
++  get-east-asian-width@1.6.0: {}
++  marked@18.0.11: {}
++  "@silvia-odwyer/photon-node@0.3.4": {}
++  chalk@6.0.0: {}
++  grok-mermaid@0.2.3: {}
++  highlight.js@10.7.3: {}
++  hosted-git-info@9.0.3:
++    dependencies:
++      lru-cache: 11.5.1
++  jiti@2.7.0: {}
++  minimatch@10.2.6:
++    dependencies:
++      brace-expansion: 5.0.12
++  brace-expansion@5.0.12:
++    dependencies:
++      balanced-match: 4.0.4
++  semver@7.8.5: {}
+diff --git a/scripts/test-pi-bundle.mjs b/scripts/test-pi-bundle.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..850f09f23d2623f5cc4bf84da7b3691e83d8c8f3
+--- /dev/null
++++ b/scripts/test-pi-bundle.mjs
+@@ -0,0 +1,314 @@
++// Actual staged desktop CLI, loopback provider, real Read tool and canonical SQLite persistence.
++// No vendor accounts, provider traffic, payments or user profile are involved.
++import assert from "node:assert/strict";
++import { spawn } from "node:child_process";
++import { createServer } from "node:http";
++import { mkdtemp, mkdir, readFile, writeFile, rm, copyFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import { createInterface } from "node:readline";
++
++const root = resolve(import.meta.dirname, "..");
++const profile = await mkdtemp(join(tmpdir(), "fleet-pi-bundle-"));
++const workspace = join(profile, "workspace");
++const requests = [];
++const notifications = [];
++const marker = "FLEET_PI_BUNDLE_FIXTURE";
++let child;
++let sessionId;
++let stderr = "";
++let sequence = 0;
++const pending = new Map();
++let serverFailure;
++const server = createServer(async (req, res) => {
++  try {
++    assert.equal(req.method, "POST");
++    assert.equal(req.url, "/v1/chat/completions");
++    const chunks = [];
++    for await (const chunk of req) chunks.push(chunk);
++    const body = JSON.parse(Buffer.concat(chunks).toString());
++    assert.equal(body.model, "fixture-model");
++    assert.equal(body.stream, true);
++    requests.push(body);
++    assert.ok(requests.length <= 3, "Unexpected physical request");
++    const first = requests.length === 1;
++    if (!first)
++      assert.ok(
++        body.messages.some((m) => m.role === "tool" && JSON.stringify(m.content).includes(marker)),
++      );
++    res.writeHead(200, { "Content-Type": "text/event-stream" });
++    const frame = (delta, finish_reason = null) =>
++      res.write(
++        `data: ${JSON.stringify({
++          id: `fixture-${requests.length}`,
++          object: "chat.completion.chunk",
++          created: 1,
++          model: "fixture-model",
++          choices: [{ index: 0, delta, finish_reason }],
++        })}\n\n`,
++      );
++    frame({ role: "assistant" });
++    if (first) {
++      assert.ok(body.tools.some((t) => t.function.name === "Read"));
++      frame({
++        tool_calls: [
++          {
++            index: 0,
++            id: "fixture-read",
++            type: "function",
++            function: {
++              name: "Read",
++              arguments: JSON.stringify({ file_path: join(workspace, "evidence.txt") }),
++            },
++          },
++        ],
++      });
++      frame({}, "tool_calls");
++    } else {
++      frame({ content: requests.length === 2 ? "fixture-complete" : "fixture-restored" });
++      frame({}, "stop");
++    }
++    res.write(
++      `data: ${JSON.stringify({
++        id: "fixture-usage",
++        object: "chat.completion.chunk",
++        choices: [],
++        usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
++      })}\n\ndata: [DONE]\n\n`,
++    );
++    res.end();
++  } catch (error) {
++    serverFailure = error;
++    res.writeHead(500);
++    res.end("fixture assertion failed");
++  }
++});
++
++function rpc(method, params) {
++  const id = ++sequence;
++  return new Promise((resolve, reject) => {
++    const timer = setTimeout(() => {
++      pending.delete(id);
++      reject(new Error(`RPC timed out: ${method}\n${stderr.slice(-2000)}`));
++    }, 15000);
++    pending.set(id, { resolve, reject, timer });
++    child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
++  });
++}
++function start(env, binary) {
++  child = spawn(process.execPath, [binary, "app-server", "--stdio", "--cwd", workspace], {
++    cwd: workspace,
++    env,
++    stdio: ["pipe", "pipe", "pipe"],
++  });
++  child.stderr.on("data", (chunk) => {
++    stderr = (stderr + chunk).slice(-20000);
++  });
++  child.on("exit", (code) => {
++    for (const item of pending.values()) {
++      clearTimeout(item.timer);
++      item.reject(new Error(`CLI exited ${code}: ${stderr.slice(-2000)}`));
++    }
++    pending.clear();
++  });
++  createInterface({ input: child.stdout }).on("line", (line) => {
++    try {
++      const frame = JSON.parse(line);
++      if (frame.method) {
++        notifications.push(frame);
++        if (frame.id !== undefined)
++          child.stdin.write(
++            `${JSON.stringify({ id: frame.id, error: { code: -32601, message: "Fixture does not authorize extra interactions" } })}\n`,
++          );
++      } else {
++        const item = pending.get(frame.id);
++        if (!item) return;
++        clearTimeout(item.timer);
++        pending.delete(frame.id);
++        if (frame.error) item.reject(new Error(JSON.stringify(frame.error)));
++        else item.resolve(frame.result);
++      }
++    } catch (error) {
++      for (const item of pending.values()) item.reject(error);
++    }
++  });
++}
++async function stop() {
++  if (!child || child.exitCode !== null) return;
++  const exited = new Promise((resolve) => child.once("exit", resolve));
++  child.kill("SIGTERM");
++  const timer = setTimeout(() => child.kill("SIGKILL"), 3000);
++  await exited;
++  clearTimeout(timer);
++}
++async function waitFor(text) {
++  const deadline = Date.now() + 15000;
++  let last;
++  while (Date.now() < deadline) {
++    if (serverFailure) throw serverFailure;
++    const result = await rpc("session/read", { sessionId });
++    last = result;
++    if (result.projection?.lastError) throw new Error(JSON.stringify(result.projection.lastError));
++    if (
++      JSON.stringify(result).includes(text) &&
++      ["idle", "completed"].includes(result.projection.status)
++    )
++      return result;
++    await new Promise((resolve) => setTimeout(resolve, 50));
++  }
++  throw new Error(
++    `Missing ${text}: ${stderr.slice(-2000)}\n${JSON.stringify(last)}\nrequests=${requests.length}`,
++  );
++}
++
++try {
++  await mkdir(workspace);
++  await writeFile(join(workspace, "evidence.txt"), marker);
++  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
++  const properties = {
++    contextWindow: 1000000,
++    requiresMfjsToolSchema: false,
++    inputFormat: {
++      supportsText: true,
++      supportsImage: true,
++      supportsAudio: false,
++      supportsVideo: false,
++      supportsPdf: false,
++    },
++    outputFormat: { supportsText: true },
++    supportsToolCall: true,
++    supportsJsonSchemaOutput: false,
++    supportsNativeWebSearch: false,
++    supportsMidConversationSystem: true,
++  };
++  const model = {
++    providerId: "fixture",
++    modelId: "fixture-model",
++    options: { reasoningLevel: "off" },
++  };
++  const builtin = join(profile, "builtin.json"),
++    personal = join(profile, "personal.json");
++  await copyFile(join(root, "config/provider/zcode-builtin.json"), builtin);
++  await writeFile(
++    personal,
++    JSON.stringify({
++      schemaVersion: 1,
++      config: {
++        providerConfigRules: {
++          providerRules: [
++            {
++              providerId: "fixture",
++              providerName: "Fixture",
++              config: {
++                group: "standard-personal",
++                api: {
++                  type: "openai-chat-completions",
++                  baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
++                },
++                access: { type: "api-key", apiKey: "synthetic-not-a-credential" },
++                personalModelIds: ["fixture-model"],
++              },
++            },
++          ],
++        },
++        modelConfigRules: {
++          providerModelRules: [
++            {
++              providerId: "fixture",
++              modelId: "fixture-model",
++              config: {
++                enabled: true,
++                properties,
++                optionSpecs: {
++                  maxOutputTokens: { max: 4096, map: "{}" },
++                  reasoningLevel: { values: ["off"], map: "{}" },
++                },
++              },
++            },
++          ],
++          manualProviderModelRules: [],
++        },
++        defaultModelSelection: model,
++      },
++    }),
++  );
++  // Pass only machine necessities and explicit isolated stores; no inherited provider credentials.
++  const env = {
++    PATH: process.env.PATH,
++    LANG: "en_US.UTF-8",
++    ZCODE_RUNTIME_ENV: "production",
++    FLEET_AGENT_EXECUTOR: "pi",
++    ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: builtin,
++    ZCODE_PERSONAL_PROVIDER_CONFIG_FILE: personal,
++  };
++  for (const key of [
++    "ZCODE_DATA_BASE_DIR",
++    "ZCODE_DESKTOP_USER_DATA_DIR",
++    "ZCODE_DESKTOP_HOME_DIR",
++    "ZCODE_STORAGE_DIR",
++    "ZCODE_HOME",
++  ])
++    env[key] = join(profile, key);
++  env.ZCODE_SESSION_DB = join(profile, "session.sqlite");
++  const binary = join(
++    root,
++    `packages/desktop/bundled-agents/${process.platform}-${process.arch}/glm/zcode.cjs`,
++  );
++  await readFile(binary);
++  start(env, binary);
++  const workspaceRef = { workspacePath: workspace, workspaceKey: workspace };
++  const created = await rpc("session/create", {
++    workspace: workspaceRef,
++    model,
++    mode: "build",
++    titleGenerationEnabled: false,
++    toolAllowlist: ["Read"],
++    dynamicWorkflowEnabled: false,
++  });
++  sessionId = created.sessionId ?? created.session?.sessionId;
++  assert.ok(sessionId, JSON.stringify(created));
++  await rpc("session/subscribe", { sessionId, deliveryKind: "desktop-continuous" });
++  await rpc("session/send", {
++    sessionId,
++    content: "Read evidence.txt and finish.",
++    modelSelection: model,
++  });
++  await waitFor("fixture-complete");
++  assert.equal(requests.length, 2);
++  assert.ok(
++    notifications.some((frame) => JSON.stringify(frame).includes("fixture-complete")),
++    "No renderer-facing response notification",
++  );
++  await stop();
++  start(env, binary);
++  await rpc("session/resume", {
++    sessionId,
++    workspace: workspaceRef,
++    toolAllowlist: ["Read"],
++    dynamicWorkflowEnabled: false,
++  });
++  await rpc("session/send", {
++    sessionId,
++    content: "Continue after process restart.",
++    modelSelection: model,
++  });
++  await waitFor("fixture-restored");
++  assert.equal(requests.length, 3);
++  const stats = await rpc("usage/stats", { range: "all" });
++  assert.equal(
++    stats.models.reduce((total, model) => total + model.requestCount, 0),
++    3,
++  );
++  assert.equal(stats.summary.toolCallCount, 1);
++  console.log(
++    "PASS staged Pi CLI: streaming, real Read, renderer events, restart hydration, 3 model receipts and 1 tool receipt",
++  );
++} catch (error) {
++  console.error(error);
++  console.error(stderr.slice(-3000));
++  process.exitCode = 1;
++} finally {
++  await stop();
++  await new Promise((resolve) => server.close(resolve));
++  await rm(profile, { recursive: true, force: true });
++}
+diff --git a/third-party/npm-overrides.json b/third-party/npm-overrides.json
+index 27ba2a01d162b8d1cde1f3a823b21d9488a44bfd..0bc86bced9076cac857b75d22beda0506c4a1572 100644
+--- a/third-party/npm-overrides.json
++++ b/third-party/npm-overrides.json
+@@ -14,7 +14,11 @@
+   {
+     "package": "unsafe-pointer@0.2.0",
+     "repo": "justjake/node-unsafe-pointer",
+-    "refs": ["v0.2.0", "unsafe-pointer@0.2.0", "0.2.0"],
++    "refs": [
++      "v0.2.0",
++      "unsafe-pointer@0.2.0",
++      "0.2.0"
++    ],
+     "file": "third-party/upstream/0ab717053f3e24736cd404a0801407fb305db75d1b58f7e6487d14feee30d28a.txt",
+     "sha256": "0ab717053f3e24736cd404a0801407fb305db75d1b58f7e6487d14feee30d28a",
+     "source": "https://registry.npmjs.org/unsafe-pointer/0.2.0",
+@@ -32,7 +36,9 @@
+   {
+     "package": "react-remove-scroll-bar@2.3.8",
+     "repo": "theKashey/react-remove-scroll-bar",
+-    "refs": ["b3b1287aad81def2e2ae707274b74531b61ddbaf"],
++    "refs": [
++      "b3b1287aad81def2e2ae707274b74531b61ddbaf"
++    ],
+     "file": "third-party/upstream/f158b3bd10b867740fdbf81447216f1f8685473acf61e6a105ef91ba9fe8ebc3.txt",
+     "sha256": "f158b3bd10b867740fdbf81447216f1f8685473acf61e6a105ef91ba9fe8ebc3",
+     "source": "https://registry.npmjs.org/react-remove-scroll-bar/2.3.8",
+@@ -47,7 +53,11 @@
+   {
+     "package": "quickjs-wasi@2.2.0",
+     "repo": "vercel-labs/quickjs-wasi",
+-    "refs": ["v2.2.0", "quickjs-wasi@2.2.0", "2.2.0"],
++    "refs": [
++      "v2.2.0",
++      "quickjs-wasi@2.2.0",
++      "2.2.0"
++    ],
+     "file": "third-party/upstream/f29b60ea39a2132e3baa98927c2d473b349a54143da44a0c6762b243e6459452.txt",
+     "sha256": "f29b60ea39a2132e3baa98927c2d473b349a54143da44a0c6762b243e6459452",
+     "source": "https://registry.npmjs.org/quickjs-wasi/2.2.0",
+@@ -116,7 +126,9 @@
+   {
+     "package": "@hono/node-ws@1.3.0",
+     "repo": "honojs/middleware",
+-    "refs": ["2c026b9d5bfff006dc9abdc1b33c53856d2d784f"],
++    "refs": [
++      "2c026b9d5bfff006dc9abdc1b33c53856d2d784f"
++    ],
+     "file": "third-party/upstream/c681d64256e752c1435814cf045f4467720a8473e425ea54103a0f5128bfc817.txt",
+     "sha256": "c681d64256e752c1435814cf045f4467720a8473e425ea54103a0f5128bfc817",
+     "source": "https://registry.npmjs.org/@hono%2fnode-ws/1.3.0",
+@@ -134,7 +146,11 @@
+   {
+     "package": "strict-event-emitter@0.5.1",
+     "repo": "open-draft/strict-event-emitter",
+-    "refs": ["v0.5.1", "strict-event-emitter@0.5.1", "0.5.1"],
++    "refs": [
++      "v0.5.1",
++      "strict-event-emitter@0.5.1",
++      "0.5.1"
++    ],
+     "file": "third-party/upstream/93f24a47f95aea2be1b0dad78de98dc6d3de01ce22c0b72dc73e453c7917b955.txt",
+     "sha256": "93f24a47f95aea2be1b0dad78de98dc6d3de01ce22c0b72dc73e453c7917b955",
+     "source": "https://registry.npmjs.org/strict-event-emitter/0.5.1",
+@@ -224,7 +240,9 @@
+   {
+     "package": "lazy-val@1.0.5",
+     "repo": "develar/lazy-val",
+-    "refs": ["b69ad4119f1b19bdab13c61ee2fcc88d46b89071"],
++    "refs": [
++      "b69ad4119f1b19bdab13c61ee2fcc88d46b89071"
++    ],
+     "file": "third-party/upstream/f18c12b8e7daf98d572518b7db133b2dc66a713921dac4825410dd656e0c1a1a.txt",
+     "sha256": "f18c12b8e7daf98d572518b7db133b2dc66a713921dac4825410dd656e0c1a1a",
+     "source": "https://registry.npmjs.org/lazy-val/1.0.5",
+@@ -242,7 +260,9 @@
+   {
+     "package": "semaphore@1.1.0",
+     "repo": "abrkn/semaphore.js",
+-    "refs": ["88a33875b168cc7b5943d7fe987c36d08321d252"],
++    "refs": [
++      "88a33875b168cc7b5943d7fe987c36d08321d252"
++    ],
+     "file": "third-party/upstream/1b8910ad1a22011c632f7ff544708be6cf08818ef80e8d4b45b6808ee8b05c17.txt",
+     "sha256": "1b8910ad1a22011c632f7ff544708be6cf08818ef80e8d4b45b6808ee8b05c17",
+     "source": "https://registry.npmjs.org/semaphore/1.1.0",
+@@ -266,7 +286,11 @@
+   {
+     "package": "boolbase@1.0.0",
+     "repo": "fb55/boolbase",
+-    "refs": ["v1.0.0", "boolbase@1.0.0", "1.0.0"],
++    "refs": [
++      "v1.0.0",
++      "boolbase@1.0.0",
++      "1.0.0"
++    ],
+     "file": "third-party/upstream/2d2349188616c4b64ceeae33e1386bb546b0658864b4f7f8c9785757cb065b5d.txt",
+     "sha256": "2d2349188616c4b64ceeae33e1386bb546b0658864b4f7f8c9785757cb065b5d",
+     "source": "https://registry.npmjs.org/boolbase/1.0.0",
+@@ -281,7 +305,9 @@
+   {
+     "package": "@open-draft/deferred-promise@2.2.0",
+     "repo": "open-draft/deferred-promise",
+-    "refs": ["b30f1b683311030e92fcdd08d2bd6574d652b77f"],
++    "refs": [
++      "b30f1b683311030e92fcdd08d2bd6574d652b77f"
++    ],
+     "file": "third-party/upstream/b1688598c3e32605b3973902a546225e0159349c05a0f74db67f76e08e116e65.txt",
+     "sha256": "b1688598c3e32605b3973902a546225e0159349c05a0f74db67f76e08e116e65",
+     "source": "https://registry.npmjs.org/@open-draft%2fdeferred-promise/2.2.0",
+@@ -389,7 +415,11 @@
+   {
+     "package": "is-node-process@1.2.0",
+     "repo": "mswjs/is-node-process",
+-    "refs": ["v1.2.0", "is-node-process@1.2.0", "1.2.0"],
++    "refs": [
++      "v1.2.0",
++      "is-node-process@1.2.0",
++      "1.2.0"
++    ],
+     "file": "third-party/upstream/000ffa2d773c511f4459fb31d89f841806f93bf5caf2050468ab2097c081b443.txt",
+     "sha256": "000ffa2d773c511f4459fb31d89f841806f93bf5caf2050468ab2097c081b443",
+     "source": "https://registry.npmjs.org/is-node-process/1.2.0",
+@@ -415,7 +445,9 @@
+   {
+     "package": "ansi-to-react@6.2.6",
+     "repo": "nteract/ansi-to-react",
+-    "refs": ["145140971e9d83ccac32265f24b1c55dea437896"],
++    "refs": [
++      "145140971e9d83ccac32265f24b1c55dea437896"
++    ],
+     "file": "third-party/upstream/2c88816684a40c718113a10062a8335b665cec00d3c7b32e2b3fe9c620a3e03e.txt",
+     "sha256": "2c88816684a40c718113a10062a8335b665cec00d3c7b32e2b3fe9c620a3e03e",
+     "source": "https://registry.npmjs.org/ansi-to-react/6.2.6",
+@@ -513,5 +545,263 @@
+     "file": "third-party/upstream/add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a.txt",
+     "sha256": "add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a",
+     "source": "https://raw.githubusercontent.com/lobehub/lobe-icons/49a2130df7bfa5eb1b088261bff20a37e2967789/LICENSE"
++  },
++  {
++    "package": "@earendil-works/chord@0.99.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2532a0bef7f72f45828f190b0be6c38227bbd34d/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-agent-core@0.99.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2532a0bef7f72f45828f190b0be6c38227bbd34d/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-ai@0.99.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2532a0bef7f72f45828f190b0be6c38227bbd34d/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-codemode@0.99.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2532a0bef7f72f45828f190b0be6c38227bbd34d/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-coding-agent@0.99.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2532a0bef7f72f45828f190b0be6c38227bbd34d/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-mcp@0.99.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2532a0bef7f72f45828f190b0be6c38227bbd34d/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-telemetry@0.99.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2532a0bef7f72f45828f190b0be6c38227bbd34d/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-tui@0.99.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2532a0bef7f72f45828f190b0be6c38227bbd34d/LICENSE"
++  },
++  {
++    "package": "@aws-sdk/credential-provider-http@3.972.74",
++    "file": "third-party/upstream/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt",
++    "sha256": "edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d",
++    "source": "https://raw.githubusercontent.com/aws/aws-sdk-js-v3/81afad00ca9394ca4d767468216743ac3ba90fb1/LICENSE"
++  },
++  {
++    "package": "@aws-sdk/credential-provider-login@3.972.79",
++    "file": "third-party/upstream/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt",
++    "sha256": "edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d",
++    "source": "https://raw.githubusercontent.com/aws/aws-sdk-js-v3/81afad00ca9394ca4d767468216743ac3ba90fb1/LICENSE"
++  },
++  {
++    "package": "@aws-sdk/nested-clients@3.997.46",
++    "file": "third-party/upstream/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt",
++    "sha256": "edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d",
++    "source": "https://raw.githubusercontent.com/aws/aws-sdk-js-v3/81afad00ca9394ca4d767468216743ac3ba90fb1/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-ai@0.87.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2b0a123de98318c2ff8069661721ce0c3794c34e/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-telemetry@0.87.1",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/2b0a123de98318c2ff8069661721ce0c3794c34e/LICENSE"
++  },
++  {
++    "package": "@esbuild/aix-ppc64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/android-arm@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/android-arm64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/android-x64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/darwin-arm64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/darwin-x64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/freebsd-arm64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/freebsd-x64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-arm@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-arm64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-ia32@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-loong64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-mips64el@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-ppc64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-riscv64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-s390x@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/linux-x64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/netbsd-arm64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/netbsd-x64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/openbsd-arm64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/openbsd-x64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/openharmony-arm64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/sunos-x64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/win32-arm64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/win32-ia32@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@esbuild/win32-x64@0.28.2",
++    "file": "third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
++    "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
++    "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
++  },
++  {
++    "package": "@napi-rs/canvas-android-arm64@0.1.100",
++    "file": "third-party/upstream/8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6.txt",
++    "sha256": "8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6",
++    "source": "https://raw.githubusercontent.com/Brooooooklyn/canvas/db337893b9b53483050ca7b24c6d306e4da06741/LICENSE"
++  },
++  {
++    "package": "@napi-rs/canvas-linux-arm-gnueabihf@0.1.100",
++    "file": "third-party/upstream/8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6.txt",
++    "sha256": "8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6",
++    "source": "https://raw.githubusercontent.com/Brooooooklyn/canvas/db337893b9b53483050ca7b24c6d306e4da06741/LICENSE"
++  },
++  {
++    "package": "@napi-rs/canvas-linux-riscv64-gnu@0.1.100",
++    "file": "third-party/upstream/8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6.txt",
++    "sha256": "8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6",
++    "source": "https://raw.githubusercontent.com/Brooooooklyn/canvas/db337893b9b53483050ca7b24c6d306e4da06741/LICENSE"
++  },
++  {
++    "package": "standardwebhooks@1.1.1",
++    "file": "third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
++    "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
++    "source": "https://raw.githubusercontent.com/standard-webhooks/standard-webhooks/b4d2c14fc5b4ccff3ff271e3b087dff812254c59/LICENSE"
+   }
+ ]
+diff --git a/third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt b/third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..b0a8e9b81083294360c69b4ec45d3d39a2b28197
+--- /dev/null
++++ b/third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2025 Mario Zechner
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+\ No newline at end of file
+diff --git a/third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt b/third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..2027e8dcf3787f5aac9fcd835e2b80cb75a39211
+--- /dev/null
++++ b/third-party/upstream/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2020 Evan Wallace
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt b/third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64
+--- /dev/null
++++ b/third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt
+@@ -0,0 +1,201 @@
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "[]"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright [yyyy] [name of copyright owner]
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
+diff --git a/third-party/upstream/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt b/third-party/upstream/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..0322cba2eac898acb5c8577a20657e7a74af55a4
+--- /dev/null
++++ b/third-party/upstream/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt
+@@ -0,0 +1,201 @@
++Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "[]"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
+\ No newline at end of file

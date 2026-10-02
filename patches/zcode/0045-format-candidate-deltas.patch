@@ -1,0 +1,2360 @@
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 8c0afb86739636d6b142f80f29a4a4d4df1578d1..11c2ecadd3fbde8e3665479bdd044f0611a78032 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -331,10 +331,7 @@
+               "type": "openai-chat-completions",
+               "baseUrl": "https://api.deepseek.com"
+             },
+-            "builtinModelIds": [
+-              "deepseek-flash",
+-              "deepseek-v4-pro"
+-            ],
++            "builtinModelIds": ["deepseek-flash", "deepseek-v4-pro"],
+             "logo": {
+               "type": "builtin",
+               "key": "deepseek"
+diff --git a/packages/desktop/scripts/stage-agent-bundle.mjs b/packages/desktop/scripts/stage-agent-bundle.mjs
+index 841113f98e10de7ab43d93a15cf748741dae15b8..81ee6c4189cd54a1db518d603b48c648af7b09fe 100644
+--- a/packages/desktop/scripts/stage-agent-bundle.mjs
++++ b/packages/desktop/scripts/stage-agent-bundle.mjs
+@@ -40,8 +40,11 @@ export function stageAgentBundle({ repoRoot, platformKey, log = console.log }) {
+   mkdirSync(glmDir, { recursive: true });
+   copyFileSync(cliBundlePath, stagedBundlePath);
+   // 与 CLI filesystem seed 的 packages/<plugin> 路径一致；dev 与发行共用。
+-  cpSync(resolve(repoRoot, "apps/zcode-cli/packages/zcode-guide-plugin"),
+-    resolve(glmDir, "packages/zcode-guide-plugin"), { recursive: true });
++  cpSync(
++    resolve(repoRoot, "apps/zcode-cli/packages/zcode-guide-plugin"),
++    resolve(glmDir, "packages/zcode-guide-plugin"),
++    { recursive: true },
++  );
+   const meta = {
+     runtime: "electron-node",
+     entry: "zcode.cjs",
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index 26aa83e31d24a1629745f02ed0fb5f140d4e32e4..303ee9a596ce3bd97fa2d8027630610ff0833096 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -506,23 +506,27 @@ export class ModelConfigRules {
+     models: readonly { modelId: string; config: ModelConfig }[],
+   ): ModelConfigRules {
+     const observed = new Map(models.map((model) => [model.modelId, model.config.toJSON()]));
+-    return new ModelConfigRules(this.#rules.filter((rule) => {
+-      if (rule.type !== "provider-model" || rule.providerId !== providerId) return true;
+-      const current = rule.config.toJSON();
+-      const latest = observed.get(rule.modelId);
+-      if (!latest || current.enabled !== true || !current.properties?.contextWindow) return true;
+-      const oldReasoning = current.optionSpecs?.reasoningLevel;
+-      const newReasoning = latest.optionSpecs?.reasoningLevel;
+-      if (
+-        oldReasoning?.map !== "{}" ||
+-        oldReasoning.values?.length !== 1 || oldReasoning.values[0] !== "off" ||
+-        oldReasoning.defaultValue !== undefined ||
+-        !newReasoning?.values?.some((level) => level !== "off") ||
+-        Object.keys(current.optionSpecs ?? {}).length !== 1 ||
+-        JSON.stringify(current.properties) !== JSON.stringify(latest.properties)
+-      ) return true;
+-      return false;
+-    }));
++    return new ModelConfigRules(
++      this.#rules.filter((rule) => {
++        if (rule.type !== "provider-model" || rule.providerId !== providerId) return true;
++        const current = rule.config.toJSON();
++        const latest = observed.get(rule.modelId);
++        if (!latest || current.enabled !== true || !current.properties?.contextWindow) return true;
++        const oldReasoning = current.optionSpecs?.reasoningLevel;
++        const newReasoning = latest.optionSpecs?.reasoningLevel;
++        if (
++          oldReasoning?.map !== "{}" ||
++          oldReasoning.values?.length !== 1 ||
++          oldReasoning.values[0] !== "off" ||
++          oldReasoning.defaultValue !== undefined ||
++          !newReasoning?.values?.some((level) => level !== "off") ||
++          Object.keys(current.optionSpecs ?? {}).length !== 1 ||
++          JSON.stringify(current.properties) !== JSON.stringify(latest.properties)
++        )
++          return true;
++        return false;
++      }),
++    );
+   }
+ 
+   observedRecommendations(builtin: ModelConfigRules): ModelConfigRules {
+diff --git a/packages/services/src/model-provider/ccSwitchImport.ts b/packages/services/src/model-provider/ccSwitchImport.ts
+index e39aa372f7ca3ec1964210c75af64b93b17a14b4..449c4bb00e35d9ddcdb318135b09ba034bf5e109 100644
+--- a/packages/services/src/model-provider/ccSwitchImport.ts
++++ b/packages/services/src/model-provider/ccSwitchImport.ts
+@@ -101,8 +101,13 @@ export function createCcSwitchImportAdapter(
+         const api = candidate?.config?.api;
+         if (!api || !isApiKeyAccess(access) || !access.apiKey) return row;
+         const signature = JSON.stringify([
+-          access.apiKey, normalizedUrl(api.baseUrl), api.type, api.headers ?? null,
+-          row.eligible, row.reason ?? null, row.existingProviderName ?? null,
++          access.apiKey,
++          normalizedUrl(api.baseUrl),
++          api.type,
++          api.headers ?? null,
++          row.eligible,
++          row.reason ?? null,
++          row.existingProviderName ?? null,
+         ]);
+         const first = firstByConnection.get(signature);
+         if (first) return { ...row, duplicateOf: first };
+diff --git a/packages/services/src/model-provider/codexResetCredits.ts b/packages/services/src/model-provider/codexResetCredits.ts
+index 8043effac3446056833601193b6fab1b427cf0b3..a61bc4228170b8aa7aaac6b6b6c5e0dc3015524a 100644
+--- a/packages/services/src/model-provider/codexResetCredits.ts
++++ b/packages/services/src/model-provider/codexResetCredits.ts
+@@ -146,10 +146,7 @@ export function createSubscriptionResetActions(options: {
+         revision,
+       }));
+     },
+-    consume(
+-      id: string,
+-      input: CodexResetRequest,
+-    ): Promise<CodexResetResult> {
++    consume(id: string, input: CodexResetRequest): Promise<CodexResetResult> {
+       if (!input.revision) throw new Error("Reset account revision required");
+       return options.withAccount(id, input.accountId, input.revision, async (credential) => {
+         const details = await readCodexResetCredits(credential, options.fetch);
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+index 2ea088bb5f7765455be4a74dec178236cfcc8cf0..f5bb2e97aa2fb966463b96b97e56f366e5bdd422 100644
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -131,14 +131,13 @@ export function createSubscriptionConnections(options: {
+         await driver(id, "openai-codex");
+         const saved = await load(id, "openai-codex");
+         const selected = saved?.accounts?.find((a) => a.id === accountId);
+-        if (
+-          !selected ||
+-          !saved ||
+-          (revision !== undefined && saved.revision !== revision)
+-        )
++        if (!selected || !saved || (revision !== undefined && saved.revision !== revision))
+           throw new Error("Subscription account changed; review the reset again");
+         const credential = await refreshAccountCredential(
+-          id, saved, selected, authorizationGeneration(id),
++          id,
++          saved,
++          selected,
++          authorizationGeneration(id),
+         );
+         return operation(credential, saved.revision!);
+       }),
+diff --git a/packages/services/src/setting/settingService.ts b/packages/services/src/setting/settingService.ts
+index 21340a7699ca60cdb87c2000156471953b3f6e1f..e3e671b382cc0c3a396c63fc9b0de78439ac545a 100644
+--- a/packages/services/src/setting/settingService.ts
++++ b/packages/services/src/setting/settingService.ts
+@@ -315,7 +315,14 @@ export function createSettingServiceWithMigrations(): {
+         const merged = appSettingsSchema.parse({
+           ...current,
+           ...validatedPatch,
+-          ...(validatedPatch.subscriptionPayments ? {subscriptionPayments:{...current.subscriptionPayments,...validatedPatch.subscriptionPayments}} : {}),
++          ...(validatedPatch.subscriptionPayments
++            ? {
++                subscriptionPayments: {
++                  ...current.subscriptionPayments,
++                  ...validatedPatch.subscriptionPayments,
++                },
++              }
++            : {}),
+         });
+ 
+         // 打开工作区后会几乎同时写 recentProjects 和 lastWorkspaceSession。
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index bec66e3c0c1c333eed2e5ff6f3751b8a35826e44..9748fd09c82ad4c6479f0559a0274184df724256 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -871,7 +871,7 @@ interface CreateZCodeAgentServiceOptions extends Omit<
+     kind: "openai-codex" | "github-copilot" | "xai",
+     modelId: string,
+     recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery,
+-    preference?: {accountId?:string;speedMode?:"standard"|"fast"},
++    preference?: { accountId?: string; speedMode?: "standard" | "fast" },
+   ) => Promise<AccountRequestAuthMaterial>;
+   /** Desktop Host 请求 Main 登记 Agent 已授权的精确本地视频路径。 */
+   authorizeLocalMediaPreviewPath?: (path: string) => Promise<string>;
+@@ -1273,7 +1273,10 @@ export function createZCodeAgentService(
+         request.subscriptionAccess.provider,
+         request.modelSelection.modelId,
+         request.subscriptionAccess.recovery,
+-        {accountId:request.subscriptionAccess.accountId,speedMode:request.subscriptionAccess.speedMode},
++        {
++          accountId: request.subscriptionAccess.accountId,
++          speedMode: request.subscriptionAccess.speedMode,
++        },
+       );
+     }
+     if (!request.accountAccess || !accountRequestAuthService) {
+@@ -3675,7 +3678,12 @@ export function createZCodeAgentService(
+       // 载荷同形；旧词消费清零，CLI 旧 case 留到旧词删除之时）。
+       return client.request(
+         V4_METHODS.usageStats,
+-        { range: params.range, timeZone: params.timeZone, since:params.since, until:params.until },
++        {
++          range: params.range,
++          timeZone: params.timeZone,
++          since: params.since,
++          until: params.until,
++        },
+         v4UsageStatsResultSchema,
+       );
+     },
+diff --git a/packages/services/test/cc-switch-import.test.ts b/packages/services/test/cc-switch-import.test.ts
+index 6d311a4a732e7210173f25d9a9bd45145ca8540c..5827ddd0703e3a7a80f80000042fbe6a35d2fb8b 100644
+--- a/packages/services/test/cc-switch-import.test.ts
++++ b/packages/services/test/cc-switch-import.test.ts
+@@ -224,7 +224,9 @@ test("same key, endpoint and wire format from two clients preview as one connect
+     assert.equal(preview.rows[1]?.duplicateOf, preview.rows[0]?.id);
+     assert.equal(JSON.stringify(preview).includes("synthetic-shared-import-key"), false);
+     const result = await f.service.importCcSwitchProviders({
+-      path: preview.path, revision: preview.revision, ids: preview.rows.map((row) => row.id),
++      path: preview.path,
++      revision: preview.revision,
++      ids: preview.rows.map((row) => row.id),
+     });
+     assert.equal(new Set(result.results.map((row) => row.providerId)).size, 1);
+     const imported = (await f.service.getView()).providers.find(
+diff --git a/packages/services/test/model-preferences.test.ts b/packages/services/test/model-preferences.test.ts
+index 4ea1a33c34900fe2bbfdc8fcfa06a145a1b35946..8fa9c4f2f5cd4beec5b7bd2e9f1190bb1e4597fc 100644
+--- a/packages/services/test/model-preferences.test.ts
++++ b/packages/services/test/model-preferences.test.ts
+@@ -210,11 +210,19 @@ test("missing and obsolete effort become executable defaults while Auto omits th
+     maxOutputTokens: { map: "{}" },
+   });
+   assert.deepEqual(
+-    JSON.parse(JSON.stringify(maps.apply({ model: "fixture" }, { reasoningLevel: "auto", maxOutputTokens: 100 }))),
++    JSON.parse(
++      JSON.stringify(
++        maps.apply({ model: "fixture" }, { reasoningLevel: "auto", maxOutputTokens: 100 }),
++      ),
++    ),
+     { model: "fixture" },
+   );
+   assert.deepEqual(
+-    JSON.parse(JSON.stringify(maps.apply({ model: "fixture" }, { reasoningLevel: "high", maxOutputTokens: 100 }))),
++    JSON.parse(
++      JSON.stringify(
++        maps.apply({ model: "fixture" }, { reasoningLevel: "high", maxOutputTokens: 100 }),
++      ),
++    ),
+     { model: "fixture", reasoning: { effort: "high" } },
+   );
+ });
+diff --git a/packages/services/test/subscription-catalog-replacement.test.ts b/packages/services/test/subscription-catalog-replacement.test.ts
+index 6b55b4beefd9bd4dbd7aaf5b2d33b664d386eca5..5a78ba913af5ae68ae7026d079ddce9d11db9e9e 100644
+--- a/packages/services/test/subscription-catalog-replacement.test.ts
++++ b/packages/services/test/subscription-catalog-replacement.test.ts
+@@ -128,53 +128,94 @@ test("subscription replacement removes absent observations while API merge and e
+ test("a legacy synthetic Off snapshot yields to the verified account's effort catalog", async () => {
+   const f = await fixture();
+   try {
+-    const properties = { contextWindow: 272000, inputFormat: {
+-      supportsText: true, supportsImage: true, supportsVideo: false,
+-      supportsAudio: false, supportsPdf: false,
+-    } };
++    const properties = {
++      contextWindow: 272000,
++      inputFormat: {
++        supportsText: true,
++        supportsImage: true,
++        supportsVideo: false,
++        supportsAudio: false,
++        supportsPdf: false,
++      },
++    };
+     await f.service.addPersonalModel(f.providerId, "gpt-6-sol", {
+-      enabled: true, properties,
++      enabled: true,
++      properties,
+       optionSpecs: { reasoningLevel: { values: ["off"], map: "{}" } },
+     });
+     f.setCatalog(async () => ({
+-      source: "provider", models: [{ id: "gpt-6-sol", name: "gpt-6-sol", config: {
+-        properties,
+-        optionSpecs: { reasoningLevel: {
+-          values: ["low", "medium", "high", "xhigh", "max"],
+-          defaultValue: "medium", map: "{}",
+-        }, speedMode: "openai-priority" },
+-      } }],
++      source: "provider",
++      models: [
++        {
++          id: "gpt-6-sol",
++          name: "gpt-6-sol",
++          config: {
++            properties,
++            optionSpecs: {
++              reasoningLevel: {
++                values: ["low", "medium", "high", "xhigh", "max"],
++                defaultValue: "medium",
++                map: "{}",
++              },
++              speedMode: "openai-priority",
++            },
++          },
++        },
++      ],
+     }));
+     await f.service.discoverModels(f.providerId);
+-    assert.equal((await f.stored()).providerModelRules.some(
+-      (row: { modelId: string }) => row.modelId === "gpt-6-sol",
+-    ), false);
++    assert.equal(
++      (await f.stored()).providerModelRules.some(
++        (row: { modelId: string }) => row.modelId === "gpt-6-sol",
++      ),
++      false,
++    );
+     const model = (await f.models()).find((row) => row.modelId === "gpt-6-sol")!;
+-    assert.deepEqual(model.effectiveConfig.optionSpecs?.reasoningLevel?.values,
+-      ["low", "medium", "high", "xhigh", "max"]);
+-    assert.equal(completeNewModelSelection(await f.selection(), {
+-      providerId: f.providerId, modelId: "gpt-6-sol",
+-    })?.options?.reasoningLevel, "medium");
++    assert.deepEqual(model.effectiveConfig.optionSpecs?.reasoningLevel?.values, [
++      "low",
++      "medium",
++      "high",
++      "xhigh",
++      "max",
++    ]);
++    assert.equal(
++      completeNewModelSelection(await f.selection(), {
++        providerId: f.providerId,
++        modelId: "gpt-6-sol",
++      })?.options?.reasoningLevel,
++      "medium",
++    );
+   } finally {
+     await f.dispose();
+   }
+ });
+ 
+ test("subscription refresh preserves disabled or materially edited exact settings", () => {
+-  const observed = [{ modelId: "m", config: parseModelConfig({
+-    properties: { contextWindow: 272000 },
+-    optionSpecs: { reasoningLevel: { values: ["low", "high"], map: "{}" } },
+-  }) }];
++  const observed = [
++    {
++      modelId: "m",
++      config: parseModelConfig({
++        properties: { contextWindow: 272000 },
++        optionSpecs: { reasoningLevel: { values: ["low", "high"], map: "{}" } },
++      }),
++    },
++  ];
+   for (const legacy of [
+     { enabled: false, properties: { contextWindow: 272000 } },
+     { enabled: true, properties: { contextWindow: 128000 } },
+   ]) {
+-    const exact = parseModelConfig({ ...legacy,
++    const exact = parseModelConfig({
++      ...legacy,
+       optionSpecs: { reasoningLevel: { values: ["off"], map: "{}" } },
+     });
+     const rules = ModelConfigRules.empty().setExact("provider", "m", exact);
+-    assert.deepEqual(rules.withoutLegacySubscriptionOffSnapshots("provider", observed)
+-      .getExact("provider", "m")?.toJSON(), exact.toJSON());
++    assert.deepEqual(
++      rules
++        .withoutLegacySubscriptionOffSnapshots("provider", observed)
++        .getExact("provider", "m")
++        ?.toJSON(),
++      exact.toJSON(),
++    );
+   }
+ });
+ 
+diff --git a/packages/services/test/subscription-payment-settings.test.ts b/packages/services/test/subscription-payment-settings.test.ts
+index b67d0e23aa43babb24d34381faea89aa207f25f2..bdc110591f97c00bcddcdd8bab4a725c3af307f3 100644
+--- a/packages/services/test/subscription-payment-settings.test.ts
++++ b/packages/services/test/subscription-payment-settings.test.ts
+@@ -1,20 +1,44 @@
+ import test from "node:test";
+ import assert from "node:assert/strict";
+-import {mkdtemp,rm} from "node:fs/promises";
+-import {tmpdir} from "node:os";
+-import {join} from "node:path";
+-import {createSettingService} from "../src/setting/settingService.js";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { createSettingService } from "../src/setting/settingService.js";
+ 
+-test("payment records persist/reopen and concurrent per-key updates cannot erase another account",async()=>{
+- const dir=await mkdtemp(join(tmpdir(),"fleet-payments-"));const previous=process.env.ZCODE_DESKTOP_HOME_DIR;process.env.ZCODE_DESKTOP_HOME_DIR=dir;
+- try{
+-  const service=createSettingService();const one={id:"one",providerId:"chat",accountId:"a",accountLabel:"A",start:1,end:20,amount:20,currency:"USD" as const};
+-  const two={...one,id:"two",accountId:"b",currency:"CNY" as const,amount:100};
+-  await Promise.all([service.update({subscriptionPayments:{one}}),service.update({subscriptionPayments:{two}})]);
+-  assert.deepEqual((await createSettingService().get()).subscriptionPayments,{one,two});
+-  await assert.rejects(service.update({subscriptionPayments:{overlap:{...one,id:"overlap",start:10,end:30}}}),/overlap/);
+-  assert.deepEqual((await service.get()).subscriptionPayments,{one,two});
+-  await service.update({subscriptionPayments:{one:null}});
+-  assert.deepEqual((await createSettingService().get()).subscriptionPayments,{one:null,two});
+- }finally{if(previous===undefined)delete process.env.ZCODE_DESKTOP_HOME_DIR;else process.env.ZCODE_DESKTOP_HOME_DIR=previous;await rm(dir,{recursive:true,force:true});}
++test("payment records persist/reopen and concurrent per-key updates cannot erase another account", async () => {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-payments-"));
++  const previous = process.env.ZCODE_DESKTOP_HOME_DIR;
++  process.env.ZCODE_DESKTOP_HOME_DIR = dir;
++  try {
++    const service = createSettingService();
++    const one = {
++      id: "one",
++      providerId: "chat",
++      accountId: "a",
++      accountLabel: "A",
++      start: 1,
++      end: 20,
++      amount: 20,
++      currency: "USD" as const,
++    };
++    const two = { ...one, id: "two", accountId: "b", currency: "CNY" as const, amount: 100 };
++    await Promise.all([
++      service.update({ subscriptionPayments: { one } }),
++      service.update({ subscriptionPayments: { two } }),
++    ]);
++    assert.deepEqual((await createSettingService().get()).subscriptionPayments, { one, two });
++    await assert.rejects(
++      service.update({
++        subscriptionPayments: { overlap: { ...one, id: "overlap", start: 10, end: 30 } },
++      }),
++      /overlap/,
++    );
++    assert.deepEqual((await service.get()).subscriptionPayments, { one, two });
++    await service.update({ subscriptionPayments: { one: null } });
++    assert.deepEqual((await createSettingService().get()).subscriptionPayments, { one: null, two });
++  } finally {
++    if (previous === undefined) delete process.env.ZCODE_DESKTOP_HOME_DIR;
++    else process.env.ZCODE_DESKTOP_HOME_DIR = previous;
++    await rm(dir, { recursive: true, force: true });
++  }
+ });
+diff --git a/packages/services/test/usage-price.test.ts b/packages/services/test/usage-price.test.ts
+index 836734492f48ee3dfdec8291ed2ac59ec840cf3f..9fe0ebcbfce70f30d54123ea1c8d64e83deedb4b 100644
+--- a/packages/services/test/usage-price.test.ts
++++ b/packages/services/test/usage-price.test.ts
+@@ -1,6 +1,10 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { estimateUsagePrice, lookupFastModePriceImpact, type UsagePriceInput } from "../../shared/src/usage-price.js";
++import {
++  estimateUsagePrice,
++  lookupFastModePriceImpact,
++  type UsagePriceInput,
++} from "../../shared/src/usage-price.js";
+ 
+ const request: UsagePriceInput = {
+   billingProvider: "openai",
+@@ -45,8 +49,10 @@ test("exact catalog supports the configured OpenAI models and their Fast API rat
+ test("Fast impact separates subscription credits from each vendor's API rates", () => {
+   const impact = (billingProvider: string, modelId: string, subscription: boolean) =>
+     lookupFastModePriceImpact({ billingProvider, modelId, subscription });
+-  assert.deepEqual([impact("openai", "gpt-6-sol", true)?.basis,
+-    impact("openai", "gpt-6-sol", true)?.multiplier], ["subscription-credits", 2.5]);
++  assert.deepEqual(
++    [impact("openai", "gpt-6-sol", true)?.basis, impact("openai", "gpt-6-sol", true)?.multiplier],
++    ["subscription-credits", 2.5],
++  );
+   assert.equal(impact("openai", "gpt-6-sol", false)?.multiplier, 2);
+   assert.equal(impact("openai", "gpt-5.5", false)?.multiplier, 2.5);
+   assert.equal(impact("anthropic", "claude-opus-5-5", false)?.multiplier, 2);
+diff --git a/packages/shared/src/usage-price-directory.ts b/packages/shared/src/usage-price-directory.ts
+index 2ed3ceb86647362b4e5123e2eb284bfed16ad8fa..b0909541d548d6c275138aef631e879b29ff53d0 100644
+--- a/packages/shared/src/usage-price-directory.ts
++++ b/packages/shared/src/usage-price-directory.ts
+@@ -9,7 +9,7 @@ export function estimateDirectoryUsagePrice(input: UsagePriceInput): UsagePriceE
+   const xaiPriority = input.billingProvider === "xai" && input.speedMode === "fast";
+   const version = xaiPriority
+     ? `${entry?.version ?? "unpriced"}+xai-priority-2026-09-28`
+-    : official?.version ?? entry?.version ?? "unpriced";
++    : (official?.version ?? entry?.version ?? "unpriced");
+   // This URL identifies the base token rate. The Priority multiplier has its
+   // own official evidence in lookupFastModePriceImpact; a catalog base rate
+   // must not be relabelled as individually verified xAI pricing.
+@@ -33,9 +33,8 @@ export function estimateDirectoryUsagePrice(input: UsagePriceInput): UsagePriceE
+     return missing("speed-mode-missing");
+   if (input.speedMode !== undefined && input.speedMode !== "standard" && input.speedMode !== "fast")
+     return missing("speed-mode-unavailable");
+-  const multiplier = input.speedMode === "fast"
+-    ? (xaiPriority ? 2 : official?.rates.fastMultiplier)
+-    : 1;
++  const multiplier =
++    input.speedMode === "fast" ? (xaiPriority ? 2 : official?.rates.fastMultiplier) : 1;
+   if (multiplier === undefined) return missing("fast-price-unavailable");
+   const reads = input.cacheReadTokens!;
+   if (reads > 0 && rates.cacheRead === undefined) return missing("cache-read-price-unavailable");
+diff --git a/packages/shared/src/usage-price.ts b/packages/shared/src/usage-price.ts
+index e1fb250d165c790b33b65c30e81230b0c6226d97..3c916b71120085e93ea406f47253a182edc08905 100644
+--- a/packages/shared/src/usage-price.ts
++++ b/packages/shared/src/usage-price.ts
+@@ -143,16 +143,24 @@ export function lookupFastModePriceImpact(input: {
+   billingProvider: string | undefined;
+   modelId: string;
+   subscription: boolean;
+-}): { multiplier: number; basis: "subscription-credits" | "api-list-price"; sourceUrl: string } | undefined {
++}):
++  | { multiplier: number; basis: "subscription-credits" | "api-list-price"; sourceUrl: string }
++  | undefined {
+   const modelId = input.modelId.toLowerCase();
+   if (input.billingProvider === "openai") {
+     const price = OPENAI_PRICES.get(modelId);
+     if (!price) return undefined;
+     return input.subscription
+-      ? { multiplier: CHATGPT_FAST_CREDIT_MULTIPLIER,
+-          basis: "subscription-credits", sourceUrl: "https://learn.chatgpt.com/docs/agent-configuration/speed" }
+-      : { multiplier: price.apiFastMultiplier,
+-          basis: "api-list-price", sourceUrl: OPENAI_PRICE_URL };
++      ? {
++          multiplier: CHATGPT_FAST_CREDIT_MULTIPLIER,
++          basis: "subscription-credits",
++          sourceUrl: "https://learn.chatgpt.com/docs/agent-configuration/speed",
++        }
++      : {
++          multiplier: price.apiFastMultiplier,
++          basis: "api-list-price",
++          sourceUrl: OPENAI_PRICE_URL,
++        };
+   }
+   if (input.subscription) return undefined;
+   if (input.billingProvider === "xai")
+@@ -161,7 +169,8 @@ export function lookupFastModePriceImpact(input: {
+     ? lookupOfficialPrice(input.billingProvider, modelId)
+     : undefined;
+   const multiplier = official?.rates.fastMultiplier;
+-  return multiplier === undefined ? undefined
++  return multiplier === undefined
++    ? undefined
+     : { multiplier, basis: "api-list-price", sourceUrl: official!.sourceUrl };
+ }
+ 
+diff --git a/packages/shared/src/usage-stats.ts b/packages/shared/src/usage-stats.ts
+index fa9d88f0cf79f3b451db9da5bdba1f837c1c6968..9d1c6d128b045767e4bcebc232435ade6faa8079 100644
+--- a/packages/shared/src/usage-stats.ts
++++ b/packages/shared/src/usage-stats.ts
+@@ -250,16 +250,33 @@ export const appUsageModelActivitySchema = z.object({
+   toolCallCount: z.number(),
+   toolErrorCount: z.number(),
+   tools: z.array(appUsageToolUsageSchema),
+-  skills: z.array(z.object({
+-    skillId: z.string(), pluginId: z.string().nullable(), source: z.string().nullable(),
+-    callCount: z.number(), errorCount: z.number(), avgDurationMs: z.number().nullable(),
+-  })),
++  skills: z.array(
++    z.object({
++      skillId: z.string(),
++      pluginId: z.string().nullable(),
++      source: z.string().nullable(),
++      callCount: z.number(),
++      errorCount: z.number(),
++      avgDurationMs: z.number().nullable(),
++    }),
++  ),
+   unidentifiedSkillCalls: z.number(),
+ });
+ 
+ export const appUsageSnapshotSchema = z.object({
+   modelActivities: z.array(appUsageModelActivitySchema).optional(),
+-  skills: z.array(z.object({skillId:z.string(),pluginId:z.string().nullable(),source:z.string().nullable(),callCount:z.number(),errorCount:z.number(),avgDurationMs:z.number().nullable()})).optional(),
++  skills: z
++    .array(
++      z.object({
++        skillId: z.string(),
++        pluginId: z.string().nullable(),
++        source: z.string().nullable(),
++        callCount: z.number(),
++        errorCount: z.number(),
++        avgDurationMs: z.number().nullable(),
++      }),
++    )
++    .optional(),
+   unidentifiedSkillCalls: z.number().optional(),
+   range: z.enum(APP_USAGE_RANGES),
+   generatedAt: z.number(),
+diff --git a/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx b/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
+index 518838a75642eb15b36281edab400a34025539b5..fd8eba4258c347918035b81c36dfd832e7ac8b05 100644
+--- a/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
++++ b/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
+@@ -99,9 +99,10 @@ export function ThoughtAndSpeedMenu({
+           >
+             <DropdownMenuItem
+               aria-label={intl.formatMessage({
+-                id: speed.value === "fast"
+-                  ? "chat.toolbar.speed.disable"
+-                  : "chat.toolbar.speed.enable",
++                id:
++                  speed.value === "fast"
++                    ? "chat.toolbar.speed.disable"
++                    : "chat.toolbar.speed.enable",
+               })}
+               className={cn(
+                 "size-7 min-h-7 justify-center p-0",
+@@ -112,12 +113,14 @@ export function ThoughtAndSpeedMenu({
+                 speed.onChange(speed.value === "fast" ? "standard" : "fast");
+               }}
+             >
+-              <ZapIcon className={cn(
+-                "size-4",
+-                speed.value === "fast"
+-                  ? "fill-current text-foreground"
+-                  : "text-foreground-subtle",
+-              )} />
++              <ZapIcon
++                className={cn(
++                  "size-4",
++                  speed.value === "fast"
++                    ? "fill-current text-foreground"
++                    : "text-foreground-subtle",
++                )}
++              />
+             </DropdownMenuItem>
+           </ControlHintTooltip>
+         </div>
+diff --git a/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx b/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
+index daf2187263f58f8b91574dbc914723c4bfb5282b..f658c8da439fd850716e5d624176f9ee9a60f3da 100644
+--- a/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
++++ b/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
+@@ -253,9 +253,11 @@ export function ThoughtLevelCycleControl({
+           triggerClassName,
+         )}
+         composerCollapsePriority={composerCollapsePriority}
+-        label={speed.value === "fast"
+-          ? `${currentLabel} · ${intl.formatMessage({ id: "chat.toolbar.speed.label" })}`
+-          : currentLabel}
++        label={
++          speed.value === "fast"
++            ? `${currentLabel} · ${intl.formatMessage({ id: "chat.toolbar.speed.label" })}`
++            : currentLabel
++        }
+         restoreFocusSelector={restoreFocusSelector}
+         value={String(option.currentValue)}
+         onValueChange={onValueChange}
+diff --git a/packages/ui/src/chat-input-toolbar/contextUsage.tsx b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+index 766576c1564cb6875c748b2d2e97fc5ecf5b34ac..8c0236cd89b6db2abcdafe3cfa5d5c95bd9fbe09 100644
+--- a/packages/ui/src/chat-input-toolbar/contextUsage.tsx
++++ b/packages/ui/src/chat-input-toolbar/contextUsage.tsx
+@@ -811,10 +811,13 @@ export function ChatContextUsage({
+       },
+     );
+   }, [intl, numberFormatter, renderableTaskUsage]);
+-  const cacheHitRateLabel = useMemo(() =>
+-    formatContextCacheHitRateLabel(renderableTaskUsage?.cache?.hitRate, locale, {
+-      showBelowThreshold: import.meta.env.DEV,
+-    }), [locale, renderableTaskUsage]);
++  const cacheHitRateLabel = useMemo(
++    () =>
++      formatContextCacheHitRateLabel(renderableTaskUsage?.cache?.hitRate, locale, {
++        showBelowThreshold: import.meta.env.DEV,
++      }),
++    [locale, renderableTaskUsage],
++  );
+   const breakdownSegments = useMemo(
+     () => buildContextUsageBreakdownSegments(renderableTaskUsage?.breakdown),
+     [renderableTaskUsage?.breakdown],
+@@ -984,7 +987,11 @@ export function ChatContextUsage({
+               <Progress
+                 className="h-2 bg-surface"
+                 indicatorClassName="min-w-2"
+-                segments={breakdownSegments.map((segment,index)=>({id:segment.source,percent:segment.percent,style:getBreakdownToneStyle(index)}))}
++                segments={breakdownSegments.map((segment, index) => ({
++                  id: segment.source,
++                  percent: segment.percent,
++                  style: getBreakdownToneStyle(index),
++                }))}
+                 value={usagePercent * PERCENT_MAX}
+               />
+             </div>
+@@ -997,7 +1004,7 @@ export function ChatContextUsage({
+                     id: "chat.contextUsage.breakdown",
+                   })}
+                   className="space-y-1.5"
+-                  title={intl.formatMessage({id:"chat.contextUsage.compositionEstimate"})}
++                  title={intl.formatMessage({ id: "chat.contextUsage.compositionEstimate" })}
+                 >
+                   <div className="grid gap-1.5">
+                     {breakdownSegments.map((segment, index) => (
+@@ -1025,10 +1032,12 @@ export function ChatContextUsage({
+                 </div>
+               ) : null}
+               {cacheHitRateLabel ? (
+-                <div className={cn(
+-                  "flex items-center justify-between gap-3 text-ui-sm",
+-                  breakdownSegments.length > 0 && "border-t border-border pt-3",
+-                )}>
++                <div
++                  className={cn(
++                    "flex items-center justify-between gap-3 text-ui-sm",
++                    breakdownSegments.length > 0 && "border-t border-border pt-3",
++                  )}
++                >
+                   <span className="text-foreground-subtle">
+                     {intl.formatMessage({ id: "chat.contextUsage.cacheHitRate" })}
+                   </span>
+diff --git a/packages/ui/src/hooks/useDesktopUpdateMenu.ts b/packages/ui/src/hooks/useDesktopUpdateMenu.ts
+index 7985eb26c7bcdbe899891bfc1e62184ea35c21aa..0df40c4f89a3919a2071a74c25356cd982f726b1 100644
+--- a/packages/ui/src/hooks/useDesktopUpdateMenu.ts
++++ b/packages/ui/src/hooks/useDesktopUpdateMenu.ts
+@@ -1,10 +1,7 @@
+ import { DesktopCommandIds, type UpdateStatePayload } from "@zcode/shared";
+ import { useEffect, useState } from "react";
+ import { usePlatform } from "@/hooks/usePlatform.js";
+-import {
+-  getUpdateMenuLabelId,
+-  getUpdateMenuLabelValues,
+-} from "@/lib/desktopUpdateMenu.js";
++import { getUpdateMenuLabelId, getUpdateMenuLabelValues } from "@/lib/desktopUpdateMenu.js";
+ import { logger } from "@/logger.js";
+ 
+ export function useDesktopUpdateMenu(isDesktop: boolean) {
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index 066a5baec406c561961784395980c186eb2a7ff9..d96bd492515e1a5ba126098daca9ca9f31dde9d3 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -48,7 +48,10 @@ export function useModelProviders(target: {
+     [providerSettingsView],
+   );
+   const providerScopes = useMemo(
+-    () => new Map(baseModelProviders.map((provider) => [provider.providerId, providerProbeScope(provider)])),
++    () =>
++      new Map(
++        baseModelProviders.map((provider) => [provider.providerId, providerProbeScope(provider)]),
++      ),
+     [baseModelProviders],
+   );
+   const currentProbeScope = useRef({ service: providerSettingsService, scopes: providerScopes });
+diff --git a/packages/ui/src/hooks/usePluginCreator.ts b/packages/ui/src/hooks/usePluginCreator.ts
+index 12341d2d45be0a514a65e6fd811101932834e71c..97441016e403b38d61f5c05af291e606bb8ee7eb 100644
+--- a/packages/ui/src/hooks/usePluginCreator.ts
++++ b/packages/ui/src/hooks/usePluginCreator.ts
+@@ -75,22 +75,19 @@ export function usePluginCreator(
+     pending.current = scope;
+     setBusyScope(scope);
+     try {
+-      const prefill = await loadPluginCreatorPrefill(
+-        async () => {
+-          // First-use discovery seeds packaged assets through the existing plugin owner.
+-          await resolution.services.pluginManagementService.listPlugins({
+-            workspacePath: target.workspacePath,
+-            workspaceIdentity: target.workspaceIdentity,
+-          });
+-          if (!isCurrent()) return { skills: [] };
+-          return resolution.services.skillsService.list({
+-            workspacePath: target.workspacePath,
+-            workspaceIdentity: target.workspaceIdentity,
+-            provider: ZCODE_AGENT_PROVIDER,
+-          });
+-        },
+-        isCurrent,
+-      );
++      const prefill = await loadPluginCreatorPrefill(async () => {
++        // First-use discovery seeds packaged assets through the existing plugin owner.
++        await resolution.services.pluginManagementService.listPlugins({
++          workspacePath: target.workspacePath,
++          workspaceIdentity: target.workspaceIdentity,
++        });
++        if (!isCurrent()) return { skills: [] };
++        return resolution.services.skillsService.list({
++          workspacePath: target.workspacePath,
++          workspaceIdentity: target.workspaceIdentity,
++          provider: ZCODE_AGENT_PROVIDER,
++        });
++      }, isCurrent);
+       if (prefill) {
+         logger.info("[PluginCreator] 已解析创建技能", { workspaceKey: targetKey });
+         onCreateTask({ ...prefill, expectedWorkspaceKey: targetKey });
+diff --git a/packages/ui/src/lib/composerRecent.ts b/packages/ui/src/lib/composerRecent.ts
+index 931ac76261b6b588ef02219817406e1ce4be8ca8..c1efeba62cbb97f2163ccbe209bb8012ba0186d4 100644
+--- a/packages/ui/src/lib/composerRecent.ts
++++ b/packages/ui/src/lib/composerRecent.ts
+@@ -110,12 +110,9 @@ export function resolveDraftInitialModelSelection(
+     if (!model) return { selection: null, invalidated: true };
+     const reasoning = recent.options?.reasoningLevel;
+     const reasoningValues = model.evidenceConfig
+-      ? model.evidenceConfig.optionSpecs?.reasoningLevel?.values ?? []
++      ? (model.evidenceConfig.optionSpecs?.reasoningLevel?.values ?? [])
+       : model.config.optionSpecs.reasoningLevel.values;
+-    if (
+-      reasoning === undefined ||
+-      (reasoning !== "auto" && !reasoningValues.includes(reasoning))
+-    ) {
++    if (reasoning === undefined || (reasoning !== "auto" && !reasoningValues.includes(reasoning))) {
+       // 仍保留 Provider/Model 身份，但清空失效档位；Composer 不弹泛化通知，
+       // 让空的 Reasoning 控件直接要求用户作出新的明确选择。
+       return {
+@@ -139,7 +136,7 @@ function isSelectionInView(view: ModelSelectionView, selection: ModelSelection):
+   if (!model) return false;
+   const reasoning = selection.options?.reasoningLevel;
+   const reasoningValues = model.evidenceConfig
+-    ? model.evidenceConfig.optionSpecs?.reasoningLevel?.values ?? []
++    ? (model.evidenceConfig.optionSpecs?.reasoningLevel?.values ?? [])
+     : model.config.optionSpecs.reasoningLevel.values;
+   return reasoning !== undefined && (reasoning === "auto" || reasoningValues.includes(reasoning));
+ }
+diff --git a/packages/ui/src/lib/helpMenuActions.ts b/packages/ui/src/lib/helpMenuActions.ts
+index 38a2f24c527439903cb1b5ad6e7046682b791dbc..f82d15e4ac03929983ef5a7ea5c0d2d76781d1e1 100644
+--- a/packages/ui/src/lib/helpMenuActions.ts
++++ b/packages/ui/src/lib/helpMenuActions.ts
+@@ -3,12 +3,17 @@ import type { IntlInstance } from "@/i18n/IntlProvider.js";
+ import { runExportLogsAction } from "@/lib/exportLogsAction.js";
+ import { requestLocalHelp } from "@/lib/productDocs.js";
+ 
+-export function createHelpMenuActionHandlers({ platform, intl }: {
++export function createHelpMenuActionHandlers({
++  platform,
++  intl,
++}: {
+   platform: Pick<IPlatformService, "exportLogs">;
+   intl: IntlInstance;
+ }) {
+   return {
+     openProductDocs: () => requestLocalHelp(),
+-    exportLogs: () => { void runExportLogsAction(platform, intl); },
++    exportLogs: () => {
++      void runExportLogsAction(platform, intl);
++    },
+   };
+ }
+diff --git a/packages/ui/src/lib/productDocs.ts b/packages/ui/src/lib/productDocs.ts
+index 1e1be50db81b3caae9c83b90cd22383f80fc866c..e0f87cc927ad16f918b18371c1acc896ebf36b33 100644
+--- a/packages/ui/src/lib/productDocs.ts
++++ b/packages/ui/src/lib/productDocs.ts
+@@ -9,7 +9,8 @@ export function requestLocalHelp(): void {
+ 
+ export function localHelpSource(locale: string): TextCodeViewerSource {
+   return {
+-    type: "text", language: "markdown",
++    type: "text",
++    language: "markdown",
+     title: locale === "zh-CN" ? "Fleet 本地使用指南" : "Fleet local guide",
+     content: locale === "zh-CN" ? zhGuide : enGuide,
+   };
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index d0f603d81abc3c4f5a34c51e49c24a2595c29f78..1afa6593907efdfd2bb6f4c14813e260dc95c454 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -76,7 +76,9 @@ export function ModelProviderSection({
+   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+   const [creatingProvider, setCreatingProvider] = useState(false);
+   const [connectProviderId, setConnectProviderId] = useState<string>();
+-  const [expandedAccountByProvider, setExpandedAccountByProvider] = useState<Record<string, string | null>>({});
++  const [expandedAccountByProvider, setExpandedAccountByProvider] = useState<
++    Record<string, string | null>
++  >({});
+   const { navigationGroups, selectedNavItem } = useModelProviderNavigation({
+     modelProviders,
+     displayOrder,
+@@ -229,12 +231,18 @@ export function ModelProviderSection({
+           onReorderProviderModels={reorderProviderModels}
+           onTestModel={testModelConnectivity}
+           onConnectionChanged={invalidateConnectionTest}
+-          expandedAccountId={selectedNavItem?.type === "custom" && selectedNavItem.provider
+-            ? expandedAccountByProvider[selectedNavItem.provider.providerId]
+-            : undefined}
+-          onExpandedAccountChange={(providerId, accountId) => setExpandedAccountByProvider((previous) =>
+-            previous[providerId] === accountId ? previous : { ...previous, [providerId]: accountId },
+-          )}
++          expandedAccountId={
++            selectedNavItem?.type === "custom" && selectedNavItem.provider
++              ? expandedAccountByProvider[selectedNavItem.provider.providerId]
++              : undefined
++          }
++          onExpandedAccountChange={(providerId, accountId) =>
++            setExpandedAccountByProvider((previous) =>
++              previous[providerId] === accountId
++                ? previous
++                : { ...previous, [providerId]: accountId },
++            )
++          }
+           onOpenApiKeyUrl={(url) => {
+             void platform.openExternal(url);
+           }}
+diff --git a/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx b/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
+index 4bf9cbec6db0707168c9bfe3f40ac9a6db8e91fb..b3529212cf7580dd270b2d8a7c3db97e4c74b820 100644
+--- a/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
+@@ -138,26 +138,39 @@ export function CcSwitchImportSection({
+       ? t("failedShort")
+       : row.existingProviderName
+         ? intl.formatMessage(
+-            { id: `settings.modelProvider.import.${row.eligible ? "completeExisting" : "boundExisting"}` },
++            {
++              id: `settings.modelProvider.import.${row.eligible ? "completeExisting" : "boundExisting"}`,
++            },
+             { name: row.existingProviderName },
+           )
+-        : row.eligible ? t("ready") : t("notImportable");
++        : row.eligible
++          ? t("ready")
++          : t("notImportable");
+     return (
+       <div key={row.id} className="rounded-lg border border-border bg-surface px-3 py-2.5">
+         <div className="flex min-w-0 items-center gap-3">
+           <Checkbox
+             aria-label={row.name}
+-            checked={checkedCount === group.ids.length ? true : checkedCount ? "indeterminate" : false}
++            checked={
++              checkedCount === group.ids.length ? true : checkedCount ? "indeterminate" : false
++            }
+             disabled={busy || !row.eligible}
+-            onCheckedChange={(checked) => setSelected((current) => checked
+-              ? [...new Set([...current, ...group.ids])]
+-              : current.filter((id) => !group.ids.includes(id)))}
++            onCheckedChange={(checked) =>
++              setSelected((current) =>
++                checked
++                  ? [...new Set([...current, ...group.ids])]
++                  : current.filter((id) => !group.ids.includes(id)),
++              )
++            }
+           />
+           <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-card">
+             <ProviderLogo logo={row.logo} className="size-5" />
+           </span>
+           <span className="min-w-0 flex-1 truncate text-ui-base font-medium">{row.name}</span>
+-          <span title={status} className={`max-w-40 shrink-0 truncate text-ui-sm ${failedRows.some((id) => group.ids.includes(id)) ? "text-destructive" : "text-foreground-subtle"}`}>
++          <span
++            title={status}
++            className={`max-w-40 shrink-0 truncate text-ui-sm ${failedRows.some((id) => group.ids.includes(id)) ? "text-destructive" : "text-foreground-subtle"}`}
++          >
+             {status}
+           </span>
+         </div>
+@@ -169,9 +182,21 @@ export function CcSwitchImportSection({
+           <summary className="w-fit cursor-pointer">{t("details")}</summary>
+           <div className="mt-2 space-y-1 border-t border-border pt-2">
+             {!row.eligible && !row.existingProviderName ? <p>{reason(row.reason)}</p> : null}
+-            {row.baseUrl ? <p className="break-all">{t("endpoint")}: {row.baseUrl}</p> : null}
+-            {row.apiType ? <p>{t("format")}: {format(row.apiType)}</p> : null}
+-            {group.modelIds.length ? <p className="break-words">{t("models")}: {group.modelIds.join(" · ")}</p> : null}
++            {row.baseUrl ? (
++              <p className="break-all">
++                {t("endpoint")}: {row.baseUrl}
++              </p>
++            ) : null}
++            {row.apiType ? (
++              <p>
++                {t("format")}: {format(row.apiType)}
++              </p>
++            ) : null}
++            {group.modelIds.length ? (
++              <p className="break-words">
++                {t("models")}: {group.modelIds.join(" · ")}
++              </p>
++            ) : null}
+           </div>
+         </details>
+       </div>
+@@ -192,17 +217,23 @@ export function CcSwitchImportSection({
+         <h2 className="text-ui-lg font-semibold">{t("title")}</h2>
+       </div>
+       <p className="text-ui-base text-foreground-subtle">{t("description")}</p>
+-      {preview ? <p className="text-ui-sm text-foreground-subtle">{preview.path.split(/[/\\]/).at(-1)}</p> : null}
++      {preview ? (
++        <p className="text-ui-sm text-foreground-subtle">{preview.path.split(/[/\\]/).at(-1)}</p>
++      ) : null}
+       <div className="space-y-4">
+         {importable.length ? (
+           <div className="space-y-2">
+-            <h3 className="text-ui-base font-medium">{t("available", { count: importable.length })}</h3>
++            <h3 className="text-ui-base font-medium">
++              {t("available", { count: importable.length })}
++            </h3>
+             {importable.map(renderRow)}
+           </div>
+         ) : null}
+         {unavailable.length ? (
+           <div className="space-y-2">
+-            <h3 className="text-ui-base font-medium">{t("unavailable", { count: unavailable.length })}</h3>
++            <h3 className="text-ui-base font-medium">
++              {t("unavailable", { count: unavailable.length })}
++            </h3>
+             {unavailable.map(renderRow)}
+           </div>
+         ) : null}
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index d72666bbbb280e015bf9bbc4625a3f9ea0a38d93..04b679f8edde983fa1c32fc64a496c24d2933a1c 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -937,7 +937,9 @@ export function InlineEditableProviderCard({
+             onRevision={handleSubscriptionRevision}
+             onChangeStart={() => onConnectionChanged?.(provider.providerId)}
+             rememberedExpandedId={expandedAccountId}
+-            onExpandedChange={(accountId) => onExpandedAccountChange?.(provider.providerId, accountId)}
++            onExpandedChange={(accountId) =>
++              onExpandedAccountChange?.(provider.providerId, accountId)
++            }
+             connectOnMount={connectOnMount}
+             onConnectConsumed={onConnectConsumed}
+           />
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+index 1a648c40a55bb0777ef7b02780e1bb093f6272be..66cff6b33ea5323a1a4377527ee793a8b40b2fd7 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+@@ -101,7 +101,9 @@ export function ModelDraftRows({
+             }}
+             value={row.value}
+             disabled={saving}
+-            placeholder={intl.formatMessage({ id: "settings.modelProvider.discovery.manualPlaceholder" })}
++            placeholder={intl.formatMessage({
++              id: "settings.modelProvider.discovery.manualPlaceholder",
++            })}
+             aria-label={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
+             aria-invalid={duplicate(row.value.trim())}
+             onChange={(event) => {
+diff --git a/packages/ui/src/settings/model-provider-section/Navigation.tsx b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+index 4ec94cbdfa7dc03b04789ac12bbee7cbb5bb5957..b2c4cf3b4e370c137c749ff5cc6aa93e15ed4ee8 100644
+--- a/packages/ui/src/settings/model-provider-section/Navigation.tsx
++++ b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+@@ -99,12 +99,15 @@ function ModelProviderNavigationButton({
+   const isSelected = item.key === selectedNodeKey;
+   const isLoadingItem = item.type === "codingPlanLoading";
+   const inactiveItemClassName = "border-transparent text-foreground hover:border-border-hover/60";
+-  const statusProvider = "provider" in item
+-    ? item.type === "preset" ? item.statusProvider : item.provider
+-    : undefined;
++  const statusProvider =
++    "provider" in item ? (item.type === "preset" ? item.statusProvider : item.provider) : undefined;
+ 
+   return (
+-    <ControlHintTooltip title={label} description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined} side="right">
++    <ControlHintTooltip
++      title={label}
++      description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined}
++      side="right"
++    >
+       <button
+         type="button"
+         disabled={isLoadingItem}
+@@ -178,9 +181,8 @@ function SortableModelProviderNavigationButton({
+   };
+   const isSelected = item.key === selectedNodeKey;
+   const inactiveItemClassName = "border-transparent text-foreground hover:border-border-hover/60";
+-  const statusProvider = "provider" in item
+-    ? item.type === "preset" ? item.statusProvider : item.provider
+-    : undefined;
++  const statusProvider =
++    "provider" in item ? (item.type === "preset" ? item.statusProvider : item.provider) : undefined;
+   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+     listeners?.onKeyDown?.(event);
+     if (event.defaultPrevented) return;
+@@ -188,7 +190,11 @@ function SortableModelProviderNavigationButton({
+   };
+ 
+   return (
+-    <ControlHintTooltip title={label} description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined} side="right">
++    <ControlHintTooltip
++      title={label}
++      description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined}
++      side="right"
++    >
+       <div
+         ref={setNodeRef}
+         style={style}
+diff --git a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+index 85a411a6c0d1932b0b52f7ae73a2d686237387ea..650d98aa6f2c892261ff48ecd7bbc31fd4cfdb21 100644
+--- a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
++++ b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+@@ -20,13 +20,25 @@ export function PlanStatusCardSurface({
+   trailingActionFillNarrow?: boolean;
+ }) {
+   return (
+-    <div className={cn("rounded-xl border border-border bg-surface", compact ? "px-3 py-2.5" : "p-4")}>
++    <div
++      className={cn("rounded-xl border border-border bg-surface", compact ? "px-3 py-2.5" : "p-4")}
++    >
+       <div className="flex min-w-0 items-center justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
+-        <div className={cn("min-w-0", compact ? "flex flex-1 flex-wrap items-center gap-x-3 gap-y-1" : "space-y-1")}>
++        <div
++          className={cn(
++            "min-w-0",
++            compact ? "flex flex-1 flex-wrap items-center gap-x-3 gap-y-1" : "space-y-1",
++          )}
++        >
+           {planTitle || titleAccessory ? (
+             <div className="flex min-w-0 items-center gap-1">
+               {planTitle ? (
+-                <h3 className={cn("min-w-0 truncate leading-5 text-foreground", compact ? "text-ui-base font-medium" : "text-ui-lg font-semibold")}>
++                <h3
++                  className={cn(
++                    "min-w-0 truncate leading-5 text-foreground",
++                    compact ? "text-ui-base font-medium" : "text-ui-lg font-semibold",
++                  )}
++                >
+                   {planTitle}
+                 </h3>
+               ) : null}
+@@ -34,16 +46,25 @@ export function PlanStatusCardSurface({
+             </div>
+           ) : null}
+           {statusMeta ? (
+-            <div className={cn("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1", !compact && "mt-1")}>
++            <div
++              className={cn(
++                "flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1",
++                !compact && "mt-1",
++              )}
++            >
+               {statusMeta}
+             </div>
+           ) : null}
+         </div>
+         {trailingAction ? (
+-          <div className={cn(
+-            "shrink-0 max-sm:flex",
+-            trailingActionFillNarrow ? "max-sm:w-full max-sm:[&>button]:w-full" : "max-sm:justify-end",
+-          )}>
++          <div
++            className={cn(
++              "shrink-0 max-sm:flex",
++              trailingActionFillNarrow
++                ? "max-sm:w-full max-sm:[&>button]:w-full"
++                : "max-sm:justify-end",
++            )}
++          >
+             {trailingAction}
+           </div>
+         ) : null}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index a877683f7dccbeeb93c6b1a6ac310bfbb5b9bbe0..8f7002ccc274bf8edfa2c4cc6f4471cd7bc4ea55 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -350,9 +350,7 @@ export function ProviderApiKeySection({
+     ? rowEditing.savedKeys.filter((key) => key.trim()).length
+     : keys.filter((key) => key.trim()).length;
+   const reserveActions = savedKeyCount > 1;
+-  const reserveSwitch = Boolean(
+-    rowEditing && savedKeyCount > 1,
+-  );
++  const reserveSwitch = Boolean(rowEditing && savedKeyCount > 1);
+   const commitRow = (index: number) => {
+     if (!rowEditing) return;
+     const key = keys[index]?.trim() ?? "";
+@@ -411,9 +409,11 @@ export function ProviderApiKeySection({
+                 key={index}
+                 alignWithSiblings
+                 reserveActions={reserveActions}
+-                showRemove={saved
+-                  ? savedKeyCount > 1 || rowEditing.savedKeys.length > 1
+-                  : index > 0 || savedKeyCount > 1}
++                showRemove={
++                  saved
++                    ? savedKeyCount > 1 || rowEditing.savedKeys.length > 1
++                    : index > 0 || savedKeyCount > 1
++                }
+                 removeKind={saved ? "delete" : "cancel"}
+                 trailing={
+                   reserveSwitch ? (
+@@ -441,12 +441,16 @@ export function ProviderApiKeySection({
+                   ) : undefined
+                 }
+                 disabled={readOnly}
+-                removeLabel={saved
+-                  ? intl.formatMessage(
+-                      { id: "settings.modelProvider.credentials.removeKey" },
+-                      { number: index + 1 },
+-                    )
+-                  : intl.formatMessage({ id: "settings.modelProvider.credentials.cancelKeyDraft" })}
++                removeLabel={
++                  saved
++                    ? intl.formatMessage(
++                        { id: "settings.modelProvider.credentials.removeKey" },
++                        { number: index + 1 },
++                      )
++                    : intl.formatMessage({
++                        id: "settings.modelProvider.credentials.cancelKeyDraft",
++                      })
++                }
+                 onRemove={() => remove(index)}
+                 actions={
+                   !pending && multiple ? (
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+index ad7e554f655dd95caab4f8ae330f4e1ce9a23b8f..c34a077494f180409ca7e810b1fc577a8bf6afb2 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+@@ -6,12 +6,18 @@ import { resolveProviderStatus } from "./providerStatus.js";
+ const presentation = {
+   disabled: { label: "settings.modelProvider.disabledStatus", color: "text-foreground-subtlest" },
+   unavailable: { label: "settings.modelProvider.unavailableStatus", color: "text-warning" },
+-  configured: { label: "settings.modelProvider.configuredStatus", color: "text-foreground fill-transparent" },
++  configured: {
++    label: "settings.modelProvider.configuredStatus",
++    color: "text-foreground fill-transparent",
++  },
+   failed: { label: "settings.modelProvider.testFailedStatus", color: "text-warning" },
+   ready: { label: "settings.modelProvider.testPassedStatus", color: "text-success" },
+ } as const;
+ 
+-type StatusProvider = Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "connectionTest" | "config">;
++type StatusProvider = Pick<
++  ProviderSettingsFormProvider,
++  "enabled" | "executable" | "connectionTest" | "config"
++>;
+ 
+ export function providerStatusLabel(
+   provider: StatusProvider | null | undefined,
+@@ -19,25 +25,20 @@ export function providerStatusLabel(
+   locale: string,
+ ): string {
+   const status = resolveProviderStatus(provider);
+-  const key = status === "configured" && provider?.config.access?.type === "subscription"
+-    ? "settings.modelProvider.subscriptionConfiguredStatus"
+-    : presentation[status].label;
++  const key =
++    status === "configured" && provider?.config.access?.type === "subscription"
++      ? "settings.modelProvider.subscriptionConfiguredStatus"
++      : presentation[status].label;
+   const time = provider?.connectionTest
+     ? new Date(provider.connectionTest.checkedAt).toLocaleTimeString(locale, {
+-        hour: "2-digit", minute: "2-digit",
++        hour: "2-digit",
++        minute: "2-digit",
+       })
+     : "";
+-  return intl.formatMessage(
+-    { id: key },
+-    { model: provider?.connectionTest?.modelId ?? "", time },
+-  );
++  return intl.formatMessage({ id: key }, { model: provider?.connectionTest?.modelId ?? "", time });
+ }
+ 
+-export function ProviderStatusIndicator({
+-  provider,
+-}: {
+-  provider?: StatusProvider | null;
+-}) {
++export function ProviderStatusIndicator({ provider }: { provider?: StatusProvider | null }) {
+   const { intl, locale } = useZCodeIntl();
+   const status = resolveProviderStatus(provider);
+   const { color } = presentation[status];
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
+index 43fb4f6d25a83eff5daa039e3548b2cc7d44854e..a77279ef9290a3091f73d553d00e634a9adba43c 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
+@@ -26,9 +26,7 @@ export function SubscriptionConnectCard({
+   return (
+     <PlanStatusCardSurface
+       compact
+-      statusMeta={
+-        <p className="text-ui-base text-foreground-subtle">{t("flow")}</p>
+-      }
++      statusMeta={<p className="text-ui-base text-foreground-subtle">{t("flow")}</p>}
+       trailingAction={action}
+       usageContent={
+         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ui-sm text-foreground-subtle">
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index 77d9733e4e0d45b0e820d8b897dd8462d7820147..1553ed04640d2e82868c3d875512cc3d4d15c430 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -306,9 +306,11 @@ export function SubscriptionConnectionSection({
+                     })
+                     .catch((error) => {
+                       if (attempt.current === version)
+-                        setCallbackError(intl.formatMessage({
+-                          id: `settings.modelProvider.subscription.error.${subscriptionUiErrorKey(error)}`,
+-                        }));
++                        setCallbackError(
++                          intl.formatMessage({
++                            id: `settings.modelProvider.subscription.error.${subscriptionUiErrorKey(error)}`,
++                          }),
++                        );
+                     });
+                 }}
+               >
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index b48cff4d04c7a8ce1d00894006992d7f14f467b7..58214fbe73c6630163307368f3f90f89e1aef702 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -61,9 +61,11 @@ export function SubscriptionUsageSection({
+         </span>
+         <ControlHintTooltip
+           title={t("refresh")}
+-          description={result?.status === "available"
+-            ? `${t("lastFetched")} ${new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(result.observedAt)}`
+-            : t("neverFetched")}
++          description={
++            result?.status === "available"
++              ? `${t("lastFetched")} ${new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(result.observedAt)}`
++              : t("neverFetched")
++          }
+         >
+           <Button
+             variant="ghost"
+diff --git a/packages/ui/src/settings/model-provider-section/ccSwitchImportViewModel.ts b/packages/ui/src/settings/model-provider-section/ccSwitchImportViewModel.ts
+index ebe4f83fa180729ef98c5a87317f28a5a8071997..4351d1ff6d55a6904cf2d2532cf4653441d79017 100644
+--- a/packages/ui/src/settings/model-provider-section/ccSwitchImportViewModel.ts
++++ b/packages/ui/src/settings/model-provider-section/ccSwitchImportViewModel.ts
+@@ -14,7 +14,9 @@ export interface ImportRowGroup<T extends ImportRow> {
+ }
+ 
+ /** Collapse equivalent source-client entries without merging different saved keys. */
+-export function groupCcSwitchImportRows<T extends ImportRow>(rows: readonly T[]): ImportRowGroup<T>[] {
++export function groupCcSwitchImportRows<T extends ImportRow>(
++  rows: readonly T[],
++): ImportRowGroup<T>[] {
+   const groups: ImportRowGroup<T>[] = [];
+   const byId = new Map<string, ImportRowGroup<T>>();
+   for (const row of rows) {
+@@ -22,8 +24,7 @@ export function groupCcSwitchImportRows<T extends ImportRow>(rows: readonly T[])
+     if (group) {
+       group.ids.push(row.id);
+       if (!group.clients.includes(row.appType)) group.clients.push(row.appType);
+-      for (const id of row.modelIds)
+-        if (!group.modelIds.includes(id)) group.modelIds.push(id);
++      for (const id of row.modelIds) if (!group.modelIds.includes(id)) group.modelIds.push(id);
+       continue;
+     }
+     const created = {
+diff --git a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+index 713c45867bbac5709824ce1602a2fe56de3155d2..ddf5048a65cb767ce9b85cf2b16af918cb28d457 100644
+--- a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
++++ b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+@@ -4,8 +4,9 @@ import type { IProviderSettingsService } from "@zcode/services";
+ 
+ export type DiscoveredCatalog = Awaited<ReturnType<IProviderSettingsService["discoverModels"]>>;
+ 
+-export function modelCatalogFailureKind(error: unknown):
+-  "noCatalog" | "unauthorized" | "forbidden" | "failed" {
++export function modelCatalogFailureKind(
++  error: unknown,
++): "noCatalog" | "unauthorized" | "forbidden" | "failed" {
+   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+   const status = /Model list request failed \((\d{3})\)/.exec(message)?.[1];
+   if (status === "404" || status === "405") return "noCatalog";
+diff --git a/packages/ui/src/settings/model-provider-section/providerStatus.ts b/packages/ui/src/settings/model-provider-section/providerStatus.ts
+index f31823042f1ad80236c10356398ded2b5edde4c3..d097d16957491872771a59356bc4b9d3de378d0f 100644
+--- a/packages/ui/src/settings/model-provider-section/providerStatus.ts
++++ b/packages/ui/src/settings/model-provider-section/providerStatus.ts
+@@ -8,7 +8,10 @@ export function providerProbeScope(
+   provider: Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "config" | "models">,
+ ): string {
+   const value = JSON.stringify([
+-    provider.enabled, provider.executable, provider.config.api, provider.config.access,
++    provider.enabled,
++    provider.executable,
++    provider.config.api,
++    provider.config.access,
+     provider.models.map((model) => [model.modelId, model.config, model.executable]),
+   ]);
+   const hashes = [0x811c9dc5, 0x9e3779b1];
+@@ -29,7 +32,15 @@ export function resolveProviderStatus(provider?: StatusFacts | null): ProviderSt
+   if (result.success) return "ready";
+   // A model/parameter/network error is not evidence that the account itself is invalid.
+   return [
+-    "authentication", "subscription-expired", "subscription-access",
+-    "quota", "rate-limit", "endpoint", "client", "access-denied",
+-  ].includes(result.error.kind ?? "") ? "failed" : "configured";
++    "authentication",
++    "subscription-expired",
++    "subscription-access",
++    "quota",
++    "rate-limit",
++    "endpoint",
++    "client",
++    "access-denied",
++  ].includes(result.error.kind ?? "")
++    ? "failed"
++    : "configured";
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/subscriptionUiError.ts b/packages/ui/src/settings/model-provider-section/subscriptionUiError.ts
+index f66a41630ac76c2f25cfb474e5bd3c5da5540b16..2526637a8aa84b315bce9d2f98e93a1f76da7062 100644
+--- a/packages/ui/src/settings/model-provider-section/subscriptionUiError.ts
++++ b/packages/ui/src/settings/model-provider-section/subscriptionUiError.ts
+@@ -3,13 +3,19 @@ export function subscriptionUiErrorKey(error: unknown): string {
+   const message = error instanceof Error ? error.message : "";
+   if (message === "Paste the complete localhost callback URL") return "callbackIncomplete";
+   if (message === "This callback does not belong to the current login") return "callbackMismatch";
+-  if (message === "Subscription login expired or cancelled" ||
+-      message === "Subscription operation cancelled") return "expired";
++  if (
++    message === "Subscription login expired or cancelled" ||
++    message === "Subscription operation cancelled"
++  )
++    return "expired";
+   if (message === "Remove an account before adding another") return "accountLimit";
+   if (message.includes("account changed") || message === "Account no longer exists")
+     return "accountChanged";
+-  if (message === "Unsupported authorization step" ||
+-      message === "Subscription authorization is unavailable") return "unsupported";
++  if (
++    message === "Unsupported authorization step" ||
++    message === "Subscription authorization is unavailable"
++  )
++    return "unsupported";
+   if (message === "Unexpected authorization address") return "address";
+   if (error instanceof TypeError || /\b(?:ETIMEDOUT|ECONNRESET|ENOTFOUND)\b/.test(message))
+     return "network";
+diff --git a/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx b/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
+index c9a479bca8edcf3df59d72ce796b51e780f7aa27..f9484c894cfe740a0a0c206e8376cd98dd403bb7 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsageActivity.tsx
+@@ -9,7 +9,13 @@ import {
+ } from "./usageStatsUiParts.js";
+ 
+ /** Display original usage/stats facts; never count installed resources as executions. */
+-export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnapshot; modelId?: string }) {
++export function AppUsageActivity({
++  snapshot,
++  modelId,
++}: {
++  snapshot: AppUsageSnapshot;
++  modelId?: string;
++}) {
+   const { intl, locale } = useZCodeIntl();
+   const t = (key: string, values?: Record<string, string | number>) =>
+     intl.formatMessage({ id: `settings.usage.activity.${key}` }, values);
+@@ -19,7 +25,9 @@ export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnap
+   const accounted = snapshot.accounting ?? [];
+   const scoped = modelId ? accounted.filter((row) => row.modelId === modelId) : accounted;
+   const model = modelId ? snapshot.models.find((row) => row.modelId === modelId) : undefined;
+-  const activity = modelId ? snapshot.modelActivities?.find((row) => row.modelId === modelId) : undefined;
++  const activity = modelId
++    ? snapshot.modelActivities?.find((row) => row.modelId === modelId)
++    : undefined;
+   const speedKnown = scoped
+     .filter((r) => r.speedMode !== null)
+     .reduce((n, r) => n + r.requestCount, 0);
+@@ -27,10 +35,26 @@ export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnap
+     .filter((r) => r.speedMode === "fast" || r.speedMode === "priority")
+     .reduce((n, r) => n + r.requestCount, 0);
+   const toolCalls = modelId ? activity?.toolCallCount : snapshot.summary.toolCallCount;
+-  const toolErrors = modelId ? activity?.toolErrorCount : snapshot.tools.reduce((sum, row) => sum + row.errorCount, 0);
++  const toolErrors = modelId
++    ? activity?.toolErrorCount
++    : snapshot.tools.reduce((sum, row) => sum + row.errorCount, 0);
+   const summary = [
+-    [t("conversations"), modelId ? activity ? counts.format(activity.sessionCount) : "—" : counts.format(snapshot.summary.totalSessions)],
+-    [t("modelRequests"), counts.format(modelId ? model?.requestCount ?? 0 : snapshot.models.reduce((sum, row) => sum + row.requestCount, 0))],
++    [
++      t("conversations"),
++      modelId
++        ? activity
++          ? counts.format(activity.sessionCount)
++          : "—"
++        : counts.format(snapshot.summary.totalSessions),
++    ],
++    [
++      t("modelRequests"),
++      counts.format(
++        modelId
++          ? (model?.requestCount ?? 0)
++          : snapshot.models.reduce((sum, row) => sum + row.requestCount, 0),
++      ),
++    ],
+     [t("toolCalls"), toolCalls === undefined ? "—" : counts.format(toolCalls)],
+     [
+       t("toolErrors"),
+@@ -40,8 +64,13 @@ export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnap
+   ];
+   const rows =
+     view === "tools"
+-      ? (modelId ? activity?.tools ?? [] : snapshot.tools).map((r) => ({ ...r, key: r.toolName, label: r.toolName, source: undefined }))
+-      : (modelId ? activity?.skills ?? [] : snapshot.skills ?? []).map((r) => ({
++      ? (modelId ? (activity?.tools ?? []) : snapshot.tools).map((r) => ({
++          ...r,
++          key: r.toolName,
++          label: r.toolName,
++          source: undefined,
++        }))
++      : (modelId ? (activity?.skills ?? []) : (snapshot.skills ?? [])).map((r) => ({
+           ...r,
+           key: JSON.stringify([r.skillId, r.pluginId, r.source]),
+           label: r.skillId,
+@@ -50,14 +79,20 @@ export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnap
+   return (
+     <div className="grid gap-6 md:grid-cols-2">
+       <div className="space-y-3">
+-        <h3 className="min-w-0 truncate text-ui-base font-medium">{modelId ? t("titleForModel", { model: modelId }) : t("title")}</h3>
++        <h3 className="min-w-0 truncate text-ui-base font-medium">
++          {modelId ? t("titleForModel", { model: modelId }) : t("title")}
++        </h3>
+         <dl className="space-y-3">
+           {summary.map(([label, value]) => (
+             <div key={label} className="flex items-center justify-between gap-3 text-ui-base">
+               <dt className="text-foreground-subtle">
+                 {modelId && label === t("toolCalls") ? (
+-                  <ControlHintTooltip title={t("attributionHelp")}><span tabIndex={0}>{label}</span></ControlHintTooltip>
+-                ) : label}
++                  <ControlHintTooltip title={t("attributionHelp")}>
++                    <span tabIndex={0}>{label}</span>
++                  </ControlHintTooltip>
++                ) : (
++                  label
++                )}
+               </dt>
+               <dd className="font-mono tabular-nums">{value}</dd>
+             </div>
+@@ -108,9 +143,13 @@ export function AppUsageActivity({ snapshot, modelId }: { snapshot: AppUsageSnap
+             {t(view === "skills" ? "noSkills" : "empty")}
+           </p>
+         ) : null}
+-        {view === "skills" && (modelId ? activity?.unidentifiedSkillCalls : snapshot.unidentifiedSkillCalls) ? (
++        {view === "skills" &&
++        (modelId ? activity?.unidentifiedSkillCalls : snapshot.unidentifiedSkillCalls) ? (
+           <p className="text-ui-sm text-foreground-subtle">
+-            {t("unidentified", { count: (modelId ? activity?.unidentifiedSkillCalls : snapshot.unidentifiedSkillCalls) ?? 0 })}
++            {t("unidentified", {
++              count:
++                (modelId ? activity?.unidentifiedSkillCalls : snapshot.unidentifiedSkillCalls) ?? 0,
++            })}
+           </p>
+         ) : null}
+       </div>
+diff --git a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+index e9341109efe16bf4a4fe9ccb0a42eb05086eaed7..a351d8dd0d511c92a3f780bd56c29004520735c7 100644
+--- a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+@@ -49,11 +49,18 @@ export function UsageAccountingHelp({
+                 {sources.map(({ modelId, urls }) => (
+                   <div key={modelId} className="flex flex-wrap items-center gap-x-2">
+                     <span className="min-w-0 truncate font-medium">{modelId}</span>
+-                    {urls.filter((url) => url.startsWith("https://")).map((url) => (
+-                      <Button key={url} variant="link" className="h-auto p-0 text-ui-sm" onClick={() => void platform.openExternal(url)}>
+-                        {new URL(url).hostname}
+-                      </Button>
+-                    ))}
++                    {urls
++                      .filter((url) => url.startsWith("https://"))
++                      .map((url) => (
++                        <Button
++                          key={url}
++                          variant="link"
++                          className="h-auto p-0 text-ui-sm"
++                          onClick={() => void platform.openExternal(url)}
++                        >
++                          {new URL(url).hostname}
++                        </Button>
++                      ))}
+                   </div>
+                 ))}
+               </div>
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+index 83d8e97415d7e92655d16a2eb48a131fbd7a34cc..369b1b7a15293565499c33c5378411a430ea6da8 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -1,5 +1,9 @@
+ import { useMemo, useState } from "react";
+-import { buildUsageCostReport, isRemoteWorkspaceIdentity, type AppUsageSnapshot } from "@zcode/shared";
++import {
++  buildUsageCostReport,
++  isRemoteWorkspaceIdentity,
++  type AppUsageSnapshot,
++} from "@zcode/shared";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { isWorkspaceTab } from "@/store/tabStore.js";
+ import { useTabStore } from "@/store/TabStoreProvider.js";
+@@ -9,7 +13,10 @@ import { AppUsageActivity } from "./AppUsageActivity.js";
+ import { UsageAccountingHelp } from "./UsageAccountingHelp.js";
+ import { UsageCostSourceBars } from "./UsageCostSourceBars.js";
+ import { buildUsageCostSourceRows, type UsageCostSource } from "./usageCostSourceViewModel.js";
+-import { USAGE_STATS_TABS_LIST_CLASS, USAGE_STATS_TABS_TRIGGER_CLASS } from "./usageStatsUiParts.js";
++import {
++  USAGE_STATS_TABS_LIST_CLASS,
++  USAGE_STATS_TABS_TRIGGER_CLASS,
++} from "./usageStatsUiParts.js";
+ 
+ /** One selected range and model focus own cost and activity; plan fees remain outside this view. */
+ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot }) {
+@@ -21,10 +28,20 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+   const tabs = useTabStore((state) => state.tabs);
+   const { settings } = useSettings();
+   const projectPaths = useMemo(
+-    () => [...new Set([...(settings?.recentProjects ?? []), ...tabs.filter(isWorkspaceTab).filter((tab) =>
+-      tab.workspacePurpose !== "conversation" && !tab.remoteSessionId &&
+-      (!tab.workspaceIdentity || !isRemoteWorkspaceIdentity(tab.workspaceIdentity)),
+-    ).map((tab) => tab.workspacePath)])],
++    () => [
++      ...new Set([
++        ...(settings?.recentProjects ?? []),
++        ...tabs
++          .filter(isWorkspaceTab)
++          .filter(
++            (tab) =>
++              tab.workspacePurpose !== "conversation" &&
++              !tab.remoteSessionId &&
++              (!tab.workspaceIdentity || !isRemoteWorkspaceIdentity(tab.workspaceIdentity)),
++          )
++          .map((tab) => tab.workspacePath),
++      ]),
++    ],
+     [settings?.recentProjects, tabs],
+   );
+   const accounting = (snapshot.accounting ?? []).filter((row) => row.requestCount > 0);
+@@ -36,15 +53,22 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+     () => buildUsageCostSourceRows(accounting, group, projectPaths),
+     [snapshot.accounting, group, projectPaths],
+   );
+-  const modelFocus = group === "models" && rows.some((row) => row.key === focusedModel)
+-    ? focusedModel : undefined;
+-  const money = (amount: number | null) => amount === null ? "—" : new Intl.NumberFormat(locale, {
+-    style: "currency", currency: "USD", maximumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2,
+-  }).format(amount);
++  const modelFocus =
++    group === "models" && rows.some((row) => row.key === focusedModel) ? focusedModel : undefined;
++  const money = (amount: number | null) =>
++    amount === null
++      ? "—"
++      : new Intl.NumberFormat(locale, {
++          style: "currency",
++          currency: "USD",
++          maximumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2,
++        }).format(amount);
+   const partial = report.summary.pricedCount < report.summary.requests;
+   const sourceLabels = Object.fromEntries(
+-    (["conversation", "tool", "delegate", "other"] as UsageCostSource[])
+-      .map((source) => [source, t(`source.${source}`)]),
++    (["conversation", "tool", "delegate", "other"] as UsageCostSource[]).map((source) => [
++      source,
++      t(`source.${source}`),
++    ]),
+   ) as Record<UsageCostSource, string>;
+   return (
+     <section className="space-y-4 rounded-xl bg-surface p-4">
+@@ -52,27 +76,44 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot })
+         <div className="space-y-1">
+           <div className="flex items-center gap-1">
+             <h3 className="text-ui-base font-medium">{t("title")}</h3>
+-            <UsageAccountingHelp metric="cost" sources={report.models.filter((item) => item.priceSources.length).map((item) => ({
+-              modelId: item.modelId, urls: item.priceSources,
+-            }))} />
++            <UsageAccountingHelp
++              metric="cost"
++              sources={report.models
++                .filter((item) => item.priceSources.length)
++                .map((item) => ({
++                  modelId: item.modelId,
++                  urls: item.priceSources,
++                }))}
++            />
+           </div>
+           <div className="text-ui-sm text-foreground-subtle">{t("apiReference")}</div>
+           <div className="font-mono text-ui-lg font-medium tabular-nums">
+-            {partial && report.summary.apiUsd !== null ? "≥ " : ""}{money(report.summary.apiUsd)}
++            {partial && report.summary.apiUsd !== null ? "≥ " : ""}
++            {money(report.summary.apiUsd)}
+           </div>
+           {partial && report.summary.requests > 0 ? (
+-            <p className="text-ui-sm text-foreground-subtle">{t("coverage", {
+-              priced: report.summary.pricedCount, total: report.summary.requests,
+-            })}</p>
++            <p className="text-ui-sm text-foreground-subtle">
++              {t("coverage", {
++                priced: report.summary.pricedCount,
++                total: report.summary.requests,
++              })}
++            </p>
+           ) : null}
+         </div>
+-        <Tabs value={group} onValueChange={(value) => {
+-          setGroup(value as typeof group);
+-          setFocusedModel(undefined);
+-        }}>
++        <Tabs
++          value={group}
++          onValueChange={(value) => {
++            setGroup(value as typeof group);
++            setFocusedModel(undefined);
++          }}
++        >
+           <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
+-            <TabsTrigger value="models" className={USAGE_STATS_TABS_TRIGGER_CLASS}>{t("models")}</TabsTrigger>
+-            <TabsTrigger value="projects" className={USAGE_STATS_TABS_TRIGGER_CLASS}>{t("projects")}</TabsTrigger>
++            <TabsTrigger value="models" className={USAGE_STATS_TABS_TRIGGER_CLASS}>
++              {t("models")}
++            </TabsTrigger>
++            <TabsTrigger value="projects" className={USAGE_STATS_TABS_TRIGGER_CLASS}>
++              {t("projects")}
++            </TabsTrigger>
+           </TabsList>
+         </Tabs>
+       </div>
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx b/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx
+index 415f8b2ca103b6bd357bc92457e9d63fe7e88a05..4c07e93eee208fe6b3a8c454ec179aeeca644297 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostSourceBars.tsx
+@@ -8,7 +8,12 @@ const COLORS = USAGE_PROGRESS_TONES;
+ 
+ /** Original segmented Progress treatment, applied to recorded request-source API estimates. */
+ export function UsageCostSourceBars({
+-  rows, focused, onFocus, money, label, otherLabel,
++  rows,
++  focused,
++  onFocus,
++  money,
++  label,
++  otherLabel,
+   sourceLabels,
+ }: {
+   rows: readonly UsageCostSourceRow[];
+@@ -31,10 +36,17 @@ export function UsageCostSourceBars({
+       <div className="max-h-80 space-y-1 overflow-y-auto" role="list" aria-label={label}>
+         {rows.map((row) => {
+           const total = row.total;
+-          const detail = total === null
+-            ? `${row.fullLabel} · ${money(null)}`
+-            : [row.fullLabel, money(total), ...SOURCES.filter((source) => row[source] > 0)
+-              .map((source) => `${sourceLabels[source]} ${Math.round(row[source] / total * 100)}%`)].join(" · ");
++          const detail =
++            total === null
++              ? `${row.fullLabel} · ${money(null)}`
++              : [
++                  row.fullLabel,
++                  money(total),
++                  ...SOURCES.filter((source) => row[source] > 0).map(
++                    (source) =>
++                      `${sourceLabels[source]} ${Math.round((row[source] / total) * 100)}%`,
++                  ),
++                ].join(" · ");
+           return (
+             <ControlHintTooltip key={row.key} title={detail}>
+               <div
+@@ -47,21 +59,30 @@ export function UsageCostSourceBars({
+                 className={`flex min-w-0 items-center gap-3 rounded-md px-2 py-1.5 text-ui-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${focused === row.key ? "bg-hover" : ""}`}
+                 aria-label={detail}
+               >
+-                <span className="w-28 shrink-0 truncate font-mono text-foreground sm:w-36" title={row.fullLabel}>
++                <span
++                  className="w-28 shrink-0 truncate font-mono text-foreground sm:w-36"
++                  title={row.fullLabel}
++                >
+                   {otherLabel && row.key === "other" ? otherLabel : row.label}
+                 </span>
+                 <Progress
+                   className="h-2 min-w-0 flex-1"
+                   indicatorClassName="min-w-2"
+-                  value={max > 0 && total !== null ? total / max * 100 : 0}
++                  value={max > 0 && total !== null ? (total / max) * 100 : 0}
+                   aria-label={row.fullLabel}
+-                  segments={total && total > 0 ? SOURCES.map((source, index) => ({
+-                    id: source, percent: row[source] / total,
+-                    style: { backgroundColor: COLORS[index] },
+-                  })) : undefined}
++                  segments={
++                    total && total > 0
++                      ? SOURCES.map((source, index) => ({
++                          id: source,
++                          percent: row[source] / total,
++                          style: { backgroundColor: COLORS[index] },
++                        }))
++                      : undefined
++                  }
+                 />
+                 <span className="w-20 shrink-0 text-right font-mono tabular-nums text-foreground-subtle">
+-                  {row.pricedCount < row.requestCount && total !== null ? "≥ " : ""}{money(total)}
++                  {row.pricedCount < row.requestCount && total !== null ? "≥ " : ""}
++                  {money(total)}
+                 </span>
+               </div>
+             </ControlHintTooltip>
+@@ -79,7 +100,7 @@ export function UsageCostSourceBars({
+               />
+               <span>{sourceLabels[source]}</span>
+               <span className="font-mono tabular-nums text-foreground">
+-                {money(amount)} · {Math.round(amount / pricedTotal * 100)}%
++                {money(amount)} · {Math.round((amount / pricedTotal) * 100)}%
+               </span>
+             </span>
+           ))}
+diff --git a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+index 81e77c73355be5a5cd5b78a3e9c8bc1f042b1785..18aa4c7768e76cf7bc472d13d61ba076fb3d80b8 100644
+--- a/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
++++ b/packages/ui/src/settings/usage-stats/usageCostSourceViewModel.ts
+@@ -16,7 +16,9 @@ export interface UsageCostSourceRow {
+ 
+ export function usageCostSource(querySource: string | undefined): UsageCostSource {
+   if (querySource === "main_turn") return "conversation";
+-  if (["web_search_tool", "web_fetch_processing", "read_session_context"].includes(querySource ?? ""))
++  if (
++    ["web_search_tool", "web_fetch_processing", "read_session_context"].includes(querySource ?? "")
++  )
+     return "tool";
+   if (querySource === "subagent" || querySource === "workflow_child") return "delegate";
+   return "other";
+@@ -33,14 +35,23 @@ export function buildUsageCostSourceRows(
+   for (const row of rows) {
+     if (row.requestCount <= 0) continue;
+     const path = row.workspacePath && projects.has(row.workspacePath) ? row.workspacePath : null;
+-    const key = group === "models" ? row.modelId : path ?? "other";
++    const key = group === "models" ? row.modelId : (path ?? "other");
+     let item = byKey.get(key);
+     if (!item) {
+       item = {
+-        key, label: group === "models" ? row.modelId : path?.split(/[/\\]/).filter(Boolean).at(-1) ?? "other",
+-        fullLabel: group === "models" ? row.modelId : path ?? "other",
+-        conversation: 0, tool: 0, delegate: 0, other: 0,
+-        total: null, pricedCount: 0, requestCount: 0,
++        key,
++        label:
++          group === "models"
++            ? row.modelId
++            : (path?.split(/[/\\]/).filter(Boolean).at(-1) ?? "other"),
++        fullLabel: group === "models" ? row.modelId : (path ?? "other"),
++        conversation: 0,
++        tool: 0,
++        delegate: 0,
++        other: 0,
++        total: null,
++        pricedCount: 0,
++        requestCount: 0,
+       };
+       byKey.set(key, item);
+     }
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 585829f1b3928f8eede7e09b50c1c8b9ded86d9b..0e537984e35ffd0f9b752bb1972017e146798547 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -919,37 +919,60 @@ function V4ComposerModelControlsImpl({
+   );
+   const selectedSubscription = selectedSubscriptionProvider?.config.access;
+   const supportsFast = modelSupportsFast(
+-    modelSelectionView, effectiveConfig?.provider, effectiveConfig?.model,
++    modelSelectionView,
++    effectiveConfig?.provider,
++    effectiveConfig?.model,
+   );
+   const fastEnabled = draftConfig?.modelSelection?.options?.speedMode === "fast";
+-  const fastBillingProvider = selectedSubscription?.type === "subscription"
+-    ? selectedSubscription.provider === "openai-codex" ? "openai" : selectedSubscription.provider
+-    : selectedSubscriptionProvider?.config.api?.baseUrl
+-      ? resolveUsageBillingProvider(selectedSubscriptionProvider.config.api.baseUrl)
+-      : undefined;
+-  const fastImpact = effectiveConfig?.model ? lookupFastModePriceImpact({
+-    billingProvider: fastBillingProvider,
+-    modelId: effectiveConfig.model,
+-    subscription: selectedSubscription?.type === "subscription",
+-  }) : undefined;
+-  const fastImpactNumber = fastImpact ? new Intl.NumberFormat(locale, {
+-    maximumFractionDigits: 1,
+-  }) : undefined;
+-  const fastImpactNote = fastImpact?.basis === "subscription-credits"
+-    ? intl.formatMessage({ id: "chat.toolbar.speed.creditImpact" }, {
+-        extra: fastImpactNumber!.format(fastImpact.multiplier - 1),
+-        total: fastImpactNumber!.format(fastImpact.multiplier),
++  const fastBillingProvider =
++    selectedSubscription?.type === "subscription"
++      ? selectedSubscription.provider === "openai-codex"
++        ? "openai"
++        : selectedSubscription.provider
++      : selectedSubscriptionProvider?.config.api?.baseUrl
++        ? resolveUsageBillingProvider(selectedSubscriptionProvider.config.api.baseUrl)
++        : undefined;
++  const fastImpact = effectiveConfig?.model
++    ? lookupFastModePriceImpact({
++        billingProvider: fastBillingProvider,
++        modelId: effectiveConfig.model,
++        subscription: selectedSubscription?.type === "subscription",
+       })
+-    : fastImpact?.basis === "api-list-price"
+-      ? intl.formatMessage({ id: fastBillingProvider === "xai"
+-          ? "chat.toolbar.speed.xaiApiImpact"
+-          : fastBillingProvider === "anthropic"
+-            ? "chat.toolbar.speed.claudeApiImpact"
+-            : "chat.toolbar.speed.apiImpact",
+-        }, { total: fastImpactNumber!.format(fastImpact.multiplier) })
+-      : intl.formatMessage({ id: "chat.toolbar.speed.description" });
++    : undefined;
++  const fastImpactNumber = fastImpact
++    ? new Intl.NumberFormat(locale, {
++        maximumFractionDigits: 1,
++      })
++    : undefined;
++  const fastImpactNote =
++    fastImpact?.basis === "subscription-credits"
++      ? intl.formatMessage(
++          { id: "chat.toolbar.speed.creditImpact" },
++          {
++            extra: fastImpactNumber!.format(fastImpact.multiplier - 1),
++            total: fastImpactNumber!.format(fastImpact.multiplier),
++          },
++        )
++      : fastImpact?.basis === "api-list-price"
++        ? intl.formatMessage(
++            {
++              id:
++                fastBillingProvider === "xai"
++                  ? "chat.toolbar.speed.xaiApiImpact"
++                  : fastBillingProvider === "anthropic"
++                    ? "chat.toolbar.speed.claudeApiImpact"
++                    : "chat.toolbar.speed.apiImpact",
++            },
++            { total: fastImpactNumber!.format(fastImpact.multiplier) },
++          )
++        : intl.formatMessage({ id: "chat.toolbar.speed.description" });
+   const lastUsageRequest = usage?.lastRequest;
+-  const matchingLastRequest = lastUsageRequest && lastUsageRequest.providerId === effectiveConfig?.provider && lastUsageRequest.modelId === effectiveConfig?.model ? lastUsageRequest : undefined;
++  const matchingLastRequest =
++    lastUsageRequest &&
++    lastUsageRequest.providerId === effectiveConfig?.provider &&
++    lastUsageRequest.modelId === effectiveConfig?.model
++      ? lastUsageRequest
++      : undefined;
+   const subscriptionConnection =
+     selectedSubscription?.type === "subscription" && selectedSubscriptionProvider
+       ? {
+diff --git a/packages/ui/test/ccSwitchImportViewModel.test.ts b/packages/ui/test/ccSwitchImportViewModel.test.ts
+index e26e0ed4a286408ad585f578d435b029d1f36838..5dd1616e4a4c3edf4022faf23b1d342666626534 100644
+--- a/packages/ui/test/ccSwitchImportViewModel.test.ts
++++ b/packages/ui/test/ccSwitchImportViewModel.test.ts
+@@ -10,7 +10,10 @@ test("preview groups only source-proven equivalent rows and keeps their model un
+     { id: "d", appType: "gemini", modelIds: [], eligible: false },
+   ];
+   const groups = groupCcSwitchImportRows(rows);
+-  assert.deepEqual(groups.map((group) => group.ids), [["a", "b"], ["c"], ["d"]]);
++  assert.deepEqual(
++    groups.map((group) => group.ids),
++    [["a", "b"], ["c"], ["d"]],
++  );
+   assert.deepEqual(groups[0]?.clients, ["claude", "claude-desktop"]);
+   assert.deepEqual(groups[0]?.modelIds, ["one", "two"]);
+   assert.equal(groups[2]?.row.eligible, false);
+diff --git a/packages/ui/test/modelEvidenceSelection.test.ts b/packages/ui/test/modelEvidenceSelection.test.ts
+index d16b4ec967f6bc41aaf123e9ac08e5217c0c5e2d..4d7a5330c543268f801006ec21bc96ff758ced36 100644
+--- a/packages/ui/test/modelEvidenceSelection.test.ts
++++ b/packages/ui/test/modelEvidenceSelection.test.ts
+@@ -11,33 +11,44 @@ const runtimeConfig = {
+ 
+ function view(evidenceConfig: object, config: object = runtimeConfig): ModelSelectionView {
+   return {
+-    providers: [{
+-      providerId: "synthetic-provider",
+-      models: [{ modelId: "unknown-model", config, evidenceConfig }],
+-    }],
++    providers: [
++      {
++        providerId: "synthetic-provider",
++        models: [{ modelId: "unknown-model", config, evidenceConfig }],
++      },
++    ],
+   } as unknown as ModelSelectionView;
+ }
+ 
+ test("unreported reasoning is absent from the control and invalidates a stale explicit effort", () => {
+   const catalog = view({});
+-  assert.equal(resolveModelThoughtOption({
+-    modelSelectionView: catalog,
+-    providerId: "synthetic-provider",
+-    modelId: "unknown-model",
+-  }), null);
+-  assert.deepEqual(resolveDraftInitialModelSelection(catalog, {
+-    providerId: "synthetic-provider",
+-    modelId: "unknown-model",
+-    options: { reasoningLevel: "high" },
+-  }), {
+-    selection: { providerId: "synthetic-provider", modelId: "unknown-model" },
+-    invalidated: true,
+-  });
+-  assert.equal(resolveDraftInitialModelSelection(catalog, {
+-    providerId: "synthetic-provider",
+-    modelId: "unknown-model",
+-    options: { reasoningLevel: "auto" },
+-  }).invalidated, false);
++  assert.equal(
++    resolveModelThoughtOption({
++      modelSelectionView: catalog,
++      providerId: "synthetic-provider",
++      modelId: "unknown-model",
++    }),
++    null,
++  );
++  assert.deepEqual(
++    resolveDraftInitialModelSelection(catalog, {
++      providerId: "synthetic-provider",
++      modelId: "unknown-model",
++      options: { reasoningLevel: "high" },
++    }),
++    {
++      selection: { providerId: "synthetic-provider", modelId: "unknown-model" },
++      invalidated: true,
++    },
++  );
++  assert.equal(
++    resolveDraftInitialModelSelection(catalog, {
++      providerId: "synthetic-provider",
++      modelId: "unknown-model",
++      options: { reasoningLevel: "auto" },
++    }).invalidated,
++    false,
++  );
+ });
+ 
+ test("reported reasoning is available without borrowing fallback-only levels", () => {
+@@ -47,22 +58,38 @@ test("reported reasoning is available without borrowing fallback-only levels", (
+     providerId: "synthetic-provider",
+     modelId: "unknown-model",
+   });
+-  assert.deepEqual(option?.options?.map((item) => item.value), ["low"]);
+-  assert.equal(resolveDraftInitialModelSelection(catalog, {
+-    providerId: "synthetic-provider",
+-    modelId: "unknown-model",
+-    options: { reasoningLevel: "high" },
+-  }).invalidated, true);
++  assert.deepEqual(
++    option?.options?.map((item) => item.value),
++    ["low"],
++  );
++  assert.equal(
++    resolveDraftInitialModelSelection(catalog, {
++      providerId: "synthetic-provider",
++      modelId: "unknown-model",
++      options: { reasoningLevel: "high" },
++    }).invalidated,
++    true,
++  );
+ });
+ 
+ test("Fast control follows sourced model capability, not the runtime fallback", () => {
+-  const runtime = { ...runtimeConfig, optionSpecs: {
+-    ...runtimeConfig.optionSpecs, speedMode: "openai-priority",
+-  } };
++  const runtime = {
++    ...runtimeConfig,
++    optionSpecs: {
++      ...runtimeConfig.optionSpecs,
++      speedMode: "openai-priority",
++    },
++  };
+   const catalog = view({}, runtime);
+   assert.equal(modelSupportsFast(catalog, "synthetic-provider", "unknown-model"), false);
+   const evidenced = view({ optionSpecs: { speedMode: "openai-priority" } }, runtime);
+   assert.equal(modelSupportsFast(evidenced, "synthetic-provider", "unknown-model"), true);
+-  assert.equal(modelSupportsFast(view({ optionSpecs: { speedMode: null } }),
+-    "synthetic-provider", "unknown-model"), false);
++  assert.equal(
++    modelSupportsFast(
++      view({ optionSpecs: { speedMode: null } }),
++      "synthetic-provider",
++      "unknown-model",
++    ),
++    false,
++  );
+ });
+diff --git a/packages/ui/test/providerStatus.test.ts b/packages/ui/test/providerStatus.test.ts
+index 9e9458ec545f00a0548ece422df6caaf7794916b..4ab53616ff3cc1a4c2b100ff19a441027135e330 100644
+--- a/packages/ui/test/providerStatus.test.ts
++++ b/packages/ui/test/providerStatus.test.ts
+@@ -1,6 +1,9 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { providerProbeScope, resolveProviderStatus } from "../src/settings/model-provider-section/providerStatus.js";
++import {
++  providerProbeScope,
++  resolveProviderStatus,
++} from "../src/settings/model-provider-section/providerStatus.js";
+ 
+ const configured = { enabled: true, executable: true };
+ 
+@@ -8,34 +11,82 @@ test("provider dot separates original configuration readiness from verified infe
+   assert.equal(resolveProviderStatus({ ...configured, enabled: false }), "disabled");
+   assert.equal(resolveProviderStatus({ ...configured, executable: false }), "unavailable");
+   assert.equal(resolveProviderStatus(configured), "configured");
+-  assert.equal(resolveProviderStatus({ ...configured, connectionTest: {
+-    modelId: "model-a", checkedAt: 1, result: { success: true },
+-  } }), "ready");
++  assert.equal(
++    resolveProviderStatus({
++      ...configured,
++      connectionTest: {
++        modelId: "model-a",
++        checkedAt: 1,
++        result: { success: true },
++      },
++    }),
++    "ready",
++  );
+ });
+ 
+ test("account or endpoint rejection needs attention, while model and local test failures do not condemn an account", () => {
+-  for (const kind of ["authentication", "access-denied", "subscription-expired", "subscription-access", "quota", "endpoint"] as const) {
+-    assert.equal(resolveProviderStatus({ ...configured, connectionTest: {
+-      modelId: "model-a", checkedAt: 1,
+-      result: { success: false, error: { kind, message: "failed" } },
+-    } }), "failed");
++  for (const kind of [
++    "authentication",
++    "access-denied",
++    "subscription-expired",
++    "subscription-access",
++    "quota",
++    "endpoint",
++  ] as const) {
++    assert.equal(
++      resolveProviderStatus({
++        ...configured,
++        connectionTest: {
++          modelId: "model-a",
++          checkedAt: 1,
++          result: { success: false, error: { kind, message: "failed" } },
++        },
++      }),
++      "failed",
++    );
+   }
+-  for (const kind of ["model", "request", "context", "network", "environment", "changed"] as const) {
+-    assert.equal(resolveProviderStatus({ ...configured, connectionTest: {
+-      modelId: "model-a", checkedAt: 1,
+-      result: { success: false, error: { kind, message: "failed" } },
+-    } }), "configured");
++  for (const kind of [
++    "model",
++    "request",
++    "context",
++    "network",
++    "environment",
++    "changed",
++  ] as const) {
++    assert.equal(
++      resolveProviderStatus({
++        ...configured,
++        connectionTest: {
++          modelId: "model-a",
++          checkedAt: 1,
++          result: { success: false, error: { kind, message: "failed" } },
++        },
++      }),
++      "configured",
++    );
+   }
+ });
+ 
+ test("probe evidence survives unrelated refreshes but not credential or model changes", () => {
+   const provider = {
+     ...configured,
+-    config: { api: { type: "anthropic-messages", baseUrl: "https://api.example.test" }, access: { type: "api-key", apiKey: "secret-a" } },
++    config: {
++      api: { type: "anthropic-messages", baseUrl: "https://api.example.test" },
++      access: { type: "api-key", apiKey: "secret-a" },
++    },
+     models: [{ modelId: "m", config: { contextWindow: 128000 }, executable: true }],
+   } as Parameters<typeof providerProbeScope>[0];
+   const first = providerProbeScope(provider);
+   assert.equal(providerProbeScope(structuredClone(provider)), first);
+-  assert.notEqual(providerProbeScope({ ...provider, config: { ...provider.config, access: { type: "api-key", apiKey: "secret-b" } } } as typeof provider), first);
+-  assert.notEqual(providerProbeScope({ ...provider, models: [{ ...provider.models[0]!, modelId: "different" }] }), first);
++  assert.notEqual(
++    providerProbeScope({
++      ...provider,
++      config: { ...provider.config, access: { type: "api-key", apiKey: "secret-b" } },
++    } as typeof provider),
++    first,
++  );
++  assert.notEqual(
++    providerProbeScope({ ...provider, models: [{ ...provider.models[0]!, modelId: "different" }] }),
++    first,
++  );
+ });
+diff --git a/packages/ui/test/subscriptionUiError.test.ts b/packages/ui/test/subscriptionUiError.test.ts
+index e37248cdb4660ab3e3e2f614dad33b216f906a26..f29a7666e612be281c63fd12d05822da3b67c77b 100644
+--- a/packages/ui/test/subscriptionUiError.test.ts
++++ b/packages/ui/test/subscriptionUiError.test.ts
+@@ -3,14 +3,22 @@ import test from "node:test";
+ import { subscriptionUiErrorKey } from "../src/settings/model-provider-section/subscriptionUiError.js";
+ 
+ test("subscription account errors map to actionable local copy without exposing provider bodies", () => {
+-  assert.equal(subscriptionUiErrorKey(new Error("Paste the complete localhost callback URL")),
+-    "callbackIncomplete");
+-  assert.equal(subscriptionUiErrorKey(new Error("This callback does not belong to the current login")),
+-    "callbackMismatch");
+-  assert.equal(subscriptionUiErrorKey(new Error("Remove an account before adding another")),
+-    "accountLimit");
+-  assert.equal(subscriptionUiErrorKey(new Error("Subscription account changed during refresh")),
+-    "accountChanged");
++  assert.equal(
++    subscriptionUiErrorKey(new Error("Paste the complete localhost callback URL")),
++    "callbackIncomplete",
++  );
++  assert.equal(
++    subscriptionUiErrorKey(new Error("This callback does not belong to the current login")),
++    "callbackMismatch",
++  );
++  assert.equal(
++    subscriptionUiErrorKey(new Error("Remove an account before adding another")),
++    "accountLimit",
++  );
++  assert.equal(
++    subscriptionUiErrorKey(new Error("Subscription account changed during refresh")),
++    "accountChanged",
++  );
+   assert.equal(subscriptionUiErrorKey(new TypeError("fetch failed")), "network");
+   assert.equal(subscriptionUiErrorKey(new Error("upstream included private token")), "generic");
+ });
+diff --git a/packages/ui/test/usageCostSourceViewModel.test.ts b/packages/ui/test/usageCostSourceViewModel.test.ts
+index c76304749422d53bbba1189a6382c8d85c871645..0e078e6d49ff7d856be524a8b7d2734ac1db1a28 100644
+--- a/packages/ui/test/usageCostSourceViewModel.test.ts
++++ b/packages/ui/test/usageCostSourceViewModel.test.ts
+@@ -1,17 +1,35 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ import type { UsageAccountingRow } from "@zcode/shared";
+-import { buildUsageCostSourceRows, usageCostSource } from "../src/settings/usage-stats/usageCostSourceViewModel.js";
++import {
++  buildUsageCostSourceRows,
++  usageCostSource,
++} from "../src/settings/usage-stats/usageCostSourceViewModel.js";
+ 
+-const usage = (querySource: string, modelId: string, estimatedUsd: number, workspacePath = "/project") => ({
+-  providerId: "provider", accountId: "account", workspacePath, modelId, querySource,
+-  requestCount: 1, pricedCount: 1, reportedCount: 1, estimatedUsd,
+-}) as UsageAccountingRow;
++const usage = (
++  querySource: string,
++  modelId: string,
++  estimatedUsd: number,
++  workspacePath = "/project",
++) =>
++  ({
++    providerId: "provider",
++    accountId: "account",
++    workspacePath,
++    modelId,
++    querySource,
++    requestCount: 1,
++    pricedCount: 1,
++    reportedCount: 1,
++    estimatedUsd,
++  }) as UsageAccountingRow;
+ 
+ test("cost composition uses recorded model request sources rather than tool-call counts", () => {
+   const rows = [
+-    usage("main_turn", "m", 6), usage("web_search_tool", "m", 2),
+-    usage("subagent", "m", 1), usage("compact", "m", 1),
++    usage("main_turn", "m", 6),
++    usage("web_search_tool", "m", 2),
++    usage("subagent", "m", 1),
++    usage("compact", "m", 1),
+     { ...usage("main_turn", "m", 0), pricedCount: 0 },
+   ];
+   const model = buildUsageCostSourceRows(rows, "models")[0]!;
+@@ -23,8 +41,11 @@ test("cost composition uses recorded model request sources rather than tool-call
+ });
+ 
+ test("project composition groups unregistered and projectless usage under Other without inventing cost", () => {
+-  const rows = [usage("main_turn", "m", 2), usage("main_turn", "m", 3, "/unregistered"),
+-    { ...usage("main_turn", "m", 0, "/project"), pricedCount: 0 }];
++  const rows = [
++    usage("main_turn", "m", 2),
++    usage("main_turn", "m", 3, "/unregistered"),
++    { ...usage("main_turn", "m", 0, "/project"), pricedCount: 0 },
++  ];
+   const projects = buildUsageCostSourceRows(rows, "projects", ["/project"]);
+   assert.equal(projects.find((row) => row.key === "/project")?.total, 2);
+   assert.equal(projects.find((row) => row.key === "other")?.total, 3);
+@@ -32,12 +53,23 @@ test("project composition groups unregistered and projectless usage under Other
+ });
+ 
+ test("model and project bars include only recorded requests", () => {
+-  const rows = [usage("main_turn", "used", 1), {
+-    ...usage("main_turn", "never-used", 0, "/unused-project"), requestCount: 0,
+-  }];
+-  assert.deepEqual(buildUsageCostSourceRows(rows, "models").map((row) => row.key), ["used"]);
+-  assert.deepEqual(buildUsageCostSourceRows(rows, "projects", ["/project", "/unused-project"])
+-    .map((row) => row.key), ["/project"]);
++  const rows = [
++    usage("main_turn", "used", 1),
++    {
++      ...usage("main_turn", "never-used", 0, "/unused-project"),
++      requestCount: 0,
++    },
++  ];
++  assert.deepEqual(
++    buildUsageCostSourceRows(rows, "models").map((row) => row.key),
++    ["used"],
++  );
++  assert.deepEqual(
++    buildUsageCostSourceRows(rows, "projects", ["/project", "/unused-project"]).map(
++      (row) => row.key,
++    ),
++    ["/project"],
++  );
+ });
+ 
+ test("cost bars omit unpriced and zero-cost models without hiding priced partial coverage", () => {
+@@ -48,9 +80,11 @@ test("cost bars omit unpriced and zero-cost models without hiding priced partial
+     usage("main_turn", "zero", 0),
+   ];
+   const models = buildUsageCostSourceRows(rows, "models");
+-  assert.deepEqual(models.map((row) => row.key), ["priced"]);
+-  assert.deepEqual([models[0]!.total, models[0]!.pricedCount, models[0]!.requestCount],
+-    [2, 1, 2]);
++  assert.deepEqual(
++    models.map((row) => row.key),
++    ["priced"],
++  );
++  assert.deepEqual([models[0]!.total, models[0]!.pricedCount, models[0]!.requestCount], [2, 1, 2]);
+   assert.deepEqual(
+     buildUsageCostSourceRows(rows.slice(2), "models").map((row) => row.key),
+     [],
+diff --git a/third-party/copied-components.json b/third-party/copied-components.json
+index 3d796feb5b8f32edda9c73014748e2540e808ab0..c7c932e8f01ae8fae6d7d47c5bf3f2964af1a68d 100644
+--- a/third-party/copied-components.json
++++ b/third-party/copied-components.json
+@@ -7,10 +7,7 @@
+     "sha256": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f",
+     "importRevision": null,
+     "provenance": "The original copy revision is not recorded in the current checkout; this pinned license reference is not asserted to be the original import version.",
+-    "roots": [
+-      "packages/ui/src/components/ui",
+-      "packages/ui/src/styles.css"
+-    ],
++    "roots": ["packages/ui/src/components/ui", "packages/ui/src/styles.css"],
+     "scope": "Upstream-derived portions only; ZCode-specific files in the same directory are not attributed to the upstream project.",
+     "license": "MIT"
+   },
+@@ -22,10 +19,7 @@
+     "sha256": "b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529",
+     "importRevision": null,
+     "provenance": "The original copy revision is not recorded in the current checkout; this pinned license reference is not asserted to be the original import version.",
+-    "roots": [
+-      "packages/ui/src/components/ai-elements",
+-      ".agents/skills/ai-elements"
+-    ],
++    "roots": ["packages/ui/src/components/ai-elements", ".agents/skills/ai-elements"],
+     "scope": "Upstream-derived UI components, skill instructions, reference documentation and example scripts only; locally adapted for ZCode imports, styling and agent workflow. Original import revision not recorded.",
+     "license": "Apache-2.0",
+     "modifiedFiles": [
+@@ -172,9 +166,7 @@
+   },
+   {
+     "id": "Fig autocomplete registry",
+-    "roots": [
+-      "apps/zcode-cli/packages/core/src/tool/handlers/generated/bash-command-registry.ts"
+-    ],
++    "roots": ["apps/zcode-cli/packages/core/src/tool/handlers/generated/bash-command-registry.ts"],
+     "license": "MIT",
+     "source": "https://raw.githubusercontent.com/withfig/autocomplete/aef52acff84c45edde61ae610cc2c964802b9a38/LICENSE",
+     "file": "third-party/upstream/5129f8779dca579cfcb235570688a2f15822b270575e04f27ef906aabbcc0355.txt",
+@@ -203,11 +195,7 @@
+     "sha256": "014bb31e83d5c2e76aea1cc6e82217346ab41362f32cb355ad0f5c10aa0aeaff",
+     "importRevision": null,
+     "provenance": "Original import revision is not recorded. This pinned upstream license/source reference is not asserted to be the original import version.",
+-    "roots": [
+-      ".agents/skills/agent-browser",
+-      ".agents/skills/dogfood",
+-      ".agents/skills/electron"
+-    ],
++    "roots": [".agents/skills/agent-browser", ".agents/skills/dogfood", ".agents/skills/electron"],
+     "scope": "Upstream-derived instructions, reference documents and shell templates; locally adapted for the ZCode workspace. Reference release v0.20.0 contains all three skills.",
+     "license": "Apache-2.0",
+     "modifiedFiles": [
+@@ -258,9 +246,7 @@
+     "referenceRevision": "063bee94c3f4df8453406c830b0a7df0f2860278",
+     "source": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278",
+     "importRevision": null,
+-    "roots": [
+-      ".agents/skills/react-best-practices"
+-    ],
++    "roots": [".agents/skills/react-best-practices"],
+     "license": "MIT",
+     "scope": "Vendored React/Next.js guidance and local adaptations; local README preserves Shu Ding / Vercel attribution.",
+     "reviewRequired": "Pinned upstream README and skill declare MIT, but a complete original copyright/license notice has not been obtained."
+@@ -272,9 +258,7 @@
+     "sha256": "dc2dc41c9fea2fd3c41c21c6f484844cab367800b88ff24781f980ad3a9d160a",
+     "importRevision": null,
+     "provenance": "Normalized public API data. The exact response SHA-256 and retrieval time are embedded in packages/shared/src/usage-price-catalog.json; this is not a claim of individually verified official rates.",
+-    "roots": [
+-      "packages/shared/src/usage-price-catalog.json"
+-    ],
++    "roots": ["packages/shared/src/usage-price-catalog.json"],
+     "scope": "Bundled price data only; calculator and sync script are independently implemented.",
+     "license": "MIT"
+   }

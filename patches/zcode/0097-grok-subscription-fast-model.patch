@@ -1,0 +1,709 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+index 45ddca1bf4e7db9e58cdd668c35644cf62e19112..2a78964145dab061c7862d6d56092e48cd0cfd60 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+@@ -1,5 +1,6 @@
+ import { portableSubscriptionPayload, toPiMessage, type SubscriptionReplayScope } from "./pi-transcript.js";
+ import { modelSpeedModePatch } from "@zcode/model-option-map";
++import { isGrokBuildFastModel } from "@zcode/shared";
+ import { createNetworkProxyFetch } from "../network/proxy-fetch.js";
+ import { createCredentialFailoverFetch } from "./credential-failover.js";
+ import { CREDENTIAL_POOL_STOPPED } from "./credential-rejection.js";
+@@ -51,6 +52,7 @@ export function createPiSubscriptionModel(
+   const subscriptionKind = access.provider;
+   const accounting = (scope:SubscriptionReplayScope) => ({accountId:scope.accountId,authKind:"subscription",
+     billingProvider:subscriptionKind === "openai-codex" ? "openai" : subscriptionKind,
++    ...(subscriptionKind === "xai" && isGrokBuildFastModel(options.modelId) ? { requestedSpeedMode: "fast" } : {}),
+   });
+   const provider =
+     providerOverride ??
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index b42684b7afdf6ede35235f68e7deb895bdb810ba..9b0485928572428ca3a4ec5cb5f94d01be2e2bf5 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -1,7 +1,7 @@
+ import type { DatabaseSync } from "node:sqlite";
+ import type { ModelUsageRecord } from "@zcode/contracts";
+ import type { UsageAccountingRow, UsagePriceEstimate, PriceCatalog } from "@zcode/shared";
+-import { estimateUsagePrice, BUILTIN_MODEL_PROVIDER_IDS } from "@zcode/shared";
++import { estimateUsagePrice, BUILTIN_MODEL_PROVIDER_IDS, isGrokBuildFastModel } from "@zcode/shared";
+ 
+ const object = (value: unknown): Record<string, unknown> =>
+   value && typeof value === "object" && !Array.isArray(value)
+@@ -36,7 +36,7 @@ function priceFacts(
+   // Keep the requested mode in the ledger for activity counts, but do not
+   // turn a missing response tier into a twofold price estimate.
+   const speed =
+-    facts.servedSpeedMode ??
++    billingProvider === "xai" && facts.authKind === "subscription" && isGrokBuildFastModel(modelId) ? "fast" : facts.servedSpeedMode ??
+     (billingProvider === "xai" && facts.requestedSpeedMode === "fast"
+       ? undefined
+       : facts.requestedSpeedMode);
+diff --git a/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts b/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
+index fddba9448053fad1478e192f384ebebce86f1e7c..6d0dec25819620c3414e25dbc35617bf352c916e 100644
+--- a/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
+@@ -578,10 +578,10 @@ test("Copilot rejects a Registry effort its native mapping would silently clamp"
+ });
+ 
+ 
+-test("new Grok catalog IDs use the real Pi Responses serializer with the subscription proxy", async () => {
++for (const modelId of ["grok-fixture-current", "grok-4.7-build-fast"]) test(`${modelId} uses the real Pi Responses serializer with the subscription proxy`, async () => {
+   let calls = 0;
+   const model = createPiSubscriptionModel({
+-    ...binding, modelId: "grok-fixture-current",
++    ...binding, modelId,
+     providerConfig: { access: { type: "subscription", provider: "xai", connected: true }, api: { type: "openai-responses", baseUrl: "https://untrusted.example" } },
+   }, async (input, init) => {
+     calls++;
+@@ -590,17 +590,21 @@ test("new Grok catalog IDs use the real Pi Responses serializer with the subscri
+     assert.equal(request.headers.get("authorization"), "Bearer grok-token");
+     assert.equal(request.headers.get("x-userid"), "fixture-account");
+     const payload = await request.json();
+-    assert.equal(payload.model, "grok-fixture-current");
++    assert.equal(payload.model, modelId);
++    assert.equal(payload.service_tier, undefined);
++    assert.equal(payload.speed, undefined);
+     assert.equal(payload.reasoning.effort, "high");
+     assert.equal(payload.tools[0].name, "read_file");
+     return new Response('data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2}}}\n\n', { headers: { "content-type": "text/event-stream" } });
+   });
+-  await runWithModelInvocationContext({
++  const result = await runWithModelInvocationContext({
+     async refreshRuntimeHeadersBeforeAttempt() {
+       return { headersApplied: true, requestAuth: { apiKey: "grok-token", baseUrl: "https://cli-chat-proxy.grok.com/v1", headers: { "x-userid": "fixture-account", "X-XAI-Token-Auth": "xai-grok-cli" } } };
+     },
+   }, () => model.generateText({ messages: [{ role: "user", content: "synthetic fixture" }], tools: [{ name: "read_file", inputSchema: { type: "object", properties: {} } }], options: binding.options }));
+   assert.equal(calls, 1);
++  assert.equal((result.providerMetadata?.fleetAccounting as Record<string, unknown>)?.requestedSpeedMode,
++    modelId === "grok-4.7-build-fast" ? "fast" : undefined);
+ });
+ 
+ 
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts b/apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts
+index 688003a23e42e4648f764a64c8733097e8621666..96d758155ac276f673fcccacf637f42e51298e87 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-price-catalog.test.ts
+@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { createUsagePriceCatalogReader } from "../src/storage/usage-price-catalog.js";
+ import { SqliteSessionStore } from "../src/storage/session-store/sqlite-session-store.js";
+-import { BUNDLED_USAGE_PRICE_CATALOG, estimateUsagePrice } from "@zcode/shared";
++import { BUNDLED_USAGE_PRICE_CATALOG, estimateUsagePrice, normalizeCatalog } from "@zcode/shared";
+ import type { HttpClientRequest, ModelUsageRecord, SessionId, ProjectId } from "@zcode/contracts";
+ 
+ const payload = (input = 1) => ({ fresh: { name: "Fresh", models: { "fresh-model": {
+@@ -17,6 +17,18 @@ const time = Date.UTC(2026, 9, 1);
+ const facts = { billingProvider: "fresh", modelId: "fresh-model", startedAt: time,
+   inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, speedMode: "standard" as const };
+ 
++test("a Grok Fast model uses its exact price, never an extra API Priority multiplier or a borrowed base price", () => {
++  const directory = normalizeCatalog({ xai: { name: "xAI", models: {
++    "grok-4.7-build-fast": { modalities: { output: ["text"] }, cost: { input: 4, output: 12, cache_read: 1 } },
++  } } }, new Date(time).toISOString(), "a".repeat(64));
++  const input = { ...facts, billingProvider: "xai", modelId: "grok-4.7-build-fast", speedMode: "fast" as const, subscription: true };
++  assert.equal(estimateUsagePrice(input, directory).estimatedUsd, 0.0052);
++  const ordinaryOnly = normalizeCatalog({ xai: { name: "xAI", models: {
++    "grok-4.7": { modalities: { output: ["text"] }, cost: { input: 2, output: 6 } },
++  } } }, new Date(time).toISOString(), "b".repeat(64));
++  assert.equal(estimateUsagePrice(input, ordinaryOnly).reason, "model-price-unavailable");
++});
++
+ test("public fetch coalesces concurrent readers, stays anonymous, and refreshes only after six hours", async () => {
+   let at = time;
+   const requests: HttpClientRequest[] = [];
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+index 9292dbdcd835c779aa6786f3a4f2c90fc140efd1..2cbf7357bce217050a8ff562740eec7871372a1a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/usage-observability.ts
+@@ -17,6 +17,7 @@ import type { RuntimeModelTextResult } from "../types.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import { toolUsageId } from "../usage-identity.js";
+ import { isModelContextExceededError } from "../helpers/index.js";
++import { isGrokBuildFastModel } from "@zcode/shared";
+ 
+ type ModelUsageQuerySource =
+   | "main_turn"
+@@ -60,6 +61,7 @@ export async function recordModelUsageFact(
+   if (!usageStore) return;
+ 
+   const completedAt = Date.now();
++  const accounting = input.result?.providerMetadata?.fleetAccounting as Record<string, unknown> | undefined;
+   const usage = input.result?.usage;
+   const networkEvents = modelNetworkEvents(input.events.slice(input.networkEventStartIndex));
+   const retryCount = networkEvents.filter((event) => event.type === "model_retry_scheduled").length;
+@@ -122,7 +124,8 @@ export async function recordModelUsageFact(
+             | Record<string, unknown>
+             | undefined),
+           workspacePath: runtime.workspaceRoot,
+-          requestedSpeedMode: input.model.options.speedMode ?? "standard",
++          requestedSpeedMode: accounting?.billingProvider === "xai" && accounting.authKind === "subscription" && isGrokBuildFastModel(input.model.modelId)
++            ? "fast" : input.model.options.speedMode ?? "standard",
+           executor: input.model.nativeExecutor?.kind ?? "pi",
+           // Link aggregate tool activity to this actual request, including mixed-model Guide turns.
+           toolUsageIds: input.result?.toolCalls?.map((call) =>
+diff --git a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+index 1b5233f24953a93c531dd51c311340ca66470874..063e5441afe2d80fbda6d050935b91f7602a04d2 100644
+--- a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+@@ -4,6 +4,26 @@ import { readFile, writeFile } from "node:fs/promises";
+ import { join } from "node:path";
+ import { fixture, selection, reply, call, usage } from "./helpers/pi-runtime-fixture.js";
+ 
++test("the Host ledger retains a native Grok Fast model as Fast without API priority intent", async () => {
++  const f = await fixture(undefined, false, { config: { modelSelection: selection("grok-4.7-build-fast") as never } });
++  try {
++    f.steps.push(() => ({ ...reply("completed"), providerMetadata: { fleetAccounting: {
++      billingProvider: "xai", authKind: "subscription", accountId: "fixture-grok-account", requestedSpeedMode: "fast",
++    } } }));
++    await f.runtime.executeTurn("synthetic fast-model check");
++    assert.equal(f.requests[0]?.selection.modelId, "grok-4.7-build-fast");
++    assert.notEqual(f.requests[0]?.selection.options.speedMode, "fast");
++    const query = () => f.store.queryAppUsage({ since: 0, until: Date.now() + 1, tzOffsetMs: 0 });
++    const check = async () => {
++      const rows = (await query()).accounting!;
++      assert.equal(rows[0]?.modelId, "grok-4.7-build-fast");
++      assert.equal(rows[0]?.speedMode, "fast");
++      assert.equal(rows[0]?.accountId, "fixture-grok-account");
++    };
++    await check(); await f.reopen(); await check();
++  } finally { await f.close(); }
++});
++
+ test(
+   "a compact private Pi receipt preserves the Host's full text and image tool result",
+   { timeout: 10000 },
+diff --git a/packages/services/src/model-provider/modelSettingsAssistant.ts b/packages/services/src/model-provider/modelSettingsAssistant.ts
+index 25eef0bb7ad3d189a7e44c26371e27f7a432e216..cffbabcb23a0b89650c52e9dd68c8f3faa4b3c20 100644
+--- a/packages/services/src/model-provider/modelSettingsAssistant.ts
++++ b/packages/services/src/model-provider/modelSettingsAssistant.ts
+@@ -1,5 +1,6 @@
+ import type { ProviderSettingsFacade } from "@zcode/provider";
+ import {
++  resolveGrokBuildSpeedPair,
+   modelSettingsAssistantTargetSchema,
+   modelSettingsAssistantOperationSchema,
+   modelSettingsAssistantViewSchema,
+@@ -57,16 +58,23 @@ export function createModelSettingsAssistantOperations(
+       providerEnabled: saved.enabled,
+       models: saved.models
+         .filter((model) => !submittedTarget.modelId || model.modelId === submittedTarget.modelId)
+-        .map((model) => ({
+-          modelId: model.modelId,
+-          enabled: model.enabled,
+-          contextWindow: model.evidenceConfig?.properties?.contextWindow ?? null,
+-          reasoningLevels: model.evidenceConfig?.optionSpecs?.reasoningLevel?.values ?? [],
+-          fastSupported:
+-            model.evidenceConfig?.optionSpecs?.speedMode === undefined
+-              ? null
+-              : Boolean(model.evidenceConfig?.optionSpecs?.speedMode),
+-        })),
++        .map((model) => {
++          const variant =
++            saved.enabled &&
++            resolveGrokBuildSpeedPair(saved.effectiveConfig.access, saved.models, model.modelId);
++          return {
++            modelId: model.modelId,
++            ...(variant ? { fastModelId: variant.fast } : {}),
++            enabled: model.enabled,
++            contextWindow: model.evidenceConfig?.properties?.contextWindow ?? null,
++            reasoningLevels: model.evidenceConfig?.optionSpecs?.reasoningLevel?.values ?? [],
++            fastSupported: variant
++              ? true
++              : model.evidenceConfig?.optionSpecs?.speedMode === undefined
++                ? null
++                : Boolean(model.evidenceConfig?.optionSpecs?.speedMode),
++          };
++        }),
+     });
+   };
+ }
+diff --git a/packages/shared/src/grok-model-variants.ts b/packages/shared/src/grok-model-variants.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..bb0e99e4ba8de0936f932e8e4e4830da5856b04a
+--- /dev/null
++++ b/packages/shared/src/grok-model-variants.ts
+@@ -0,0 +1,27 @@
++// Verified native subscription pair. Never derive routes by appending a name suffix.
++const GROK_BUILD_SPEED_PAIRS = [{ standard: "grok-4.7", fast: "grok-4.7-build-fast" }] as const;
++
++export function isGrokBuildFastModel(modelId: string): boolean {
++  return GROK_BUILD_SPEED_PAIRS.some((pair) => pair.fast === modelId);
++}
++
++/** Availability belongs to this connected catalog, not another account or a public API name. */
++export function resolveGrokBuildSpeedPair(
++  access: { type?: string; provider?: string; connected?: boolean } | null | undefined,
++  models: readonly { modelId: string; enabled?: boolean }[],
++  modelId: string | undefined,
++): { standard: string; fast: string; mode: "standard" | "fast" } | undefined {
++  if (access?.type !== "subscription" || access.provider !== "xai" || access.connected !== true)
++    return;
++  const pair = GROK_BUILD_SPEED_PAIRS.find(
++    (item) => item.standard === modelId || item.fast === modelId,
++  );
++  if (
++    !pair ||
++    ![pair.standard, pair.fast].every((id) =>
++      models.some((model) => model.modelId === id && model.enabled !== false),
++    )
++  )
++    return;
++  return { ...pair, mode: modelId === pair.fast ? "fast" : "standard" };
++}
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index c378bda8a57a0413d803d912450c603b96f7f036..adff8dbb811619e9ae30dc56243df1efcc5ec330 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -248,6 +248,7 @@ export * from "./custom-model-value.js";
+ export * from "./model-selection-types.js";
+ export * from "./model-selection-key.js";
+ export * from "./model-selection.js";
++export * from "./grok-model-variants.js";
+ export * from "./legacy-model-provider-identity.js";
+ export * from "./official-glm-model-id.js";
+ export * from "./skills-types.js";
+diff --git a/packages/shared/src/model-settings-assistant.ts b/packages/shared/src/model-settings-assistant.ts
+index dffbf2a4433f5bc70373a25a1c05e9accc15e45d..b3415c6b237fb88bbcdf9d094b6b6de6752ef8bd 100644
+--- a/packages/shared/src/model-settings-assistant.ts
++++ b/packages/shared/src/model-settings-assistant.ts
+@@ -27,6 +27,8 @@ export const modelSettingsAssistantViewSchema = z
+           contextWindow: z.number().positive().nullable(),
+           reasoningLevels: z.array(z.string()),
+           fastSupported: z.boolean().nullable(),
++          /** Native variants select this exact model; they are not a service-tier flag. */
++          fastModelId: z.string().optional(),
+         })
+         .strict(),
+     ),
+diff --git a/packages/shared/src/usage-price-directory.ts b/packages/shared/src/usage-price-directory.ts
+index 51129482865f45a000d7d6c625780939e1d25330..ee712cc43fe267329321ee70800a32cfa65c688d 100644
+--- a/packages/shared/src/usage-price-directory.ts
++++ b/packages/shared/src/usage-price-directory.ts
+@@ -1,6 +1,7 @@
+ import { lookupCatalogPrice } from "./usage-price-catalog.js";
+ import type { PriceCatalog } from "./usage-price-catalog.js";
+ import { lookupOfficialPrice } from "./usage-price-official.js";
++import { isGrokBuildFastModel } from "./grok-model-variants.js";
+ import type { UsagePriceEstimate, UsagePriceInput } from "./usage-price.js";
+ 
+ /** Current token-rate estimate; raw counters and provider identity are already validated by the owner. */
+@@ -15,7 +16,12 @@ export function estimateDirectoryUsagePrice(
+     input.inputTokens!,
+     catalog,
+   );
+-  const xaiPriority = input.billingProvider === "xai" && input.speedMode === "fast";
++  const grokFastVariant =
++    input.subscription === true &&
++    input.billingProvider === "xai" &&
++    isGrokBuildFastModel(input.modelId);
++  const xaiPriority =
++    !grokFastVariant && input.billingProvider === "xai" && input.speedMode === "fast";
+   const version = xaiPriority
+     ? `${entry?.version ?? "unpriced"}+xai-priority-2026-09-28`
+     : (official?.version ?? entry?.version ?? "unpriced");
+@@ -38,12 +44,17 @@ export function estimateDirectoryUsagePrice(
+     return missing("media-token-breakdown-missing");
+   // GLM 的 Flash/FlashX 是分别定价的模型 ID，没有同一 ID 的通用 Fast 计费档。
+   // 不为与该价目无关的历史速度字段阻断估算；也不把未知速度改写成 Standard。
+-  if (input.speedMode === undefined && !official?.rates.speedIndependent)
++  if (input.speedMode === undefined && !official?.rates.speedIndependent && !grokFastVariant)
+     return missing("speed-mode-missing");
+   if (input.speedMode !== undefined && input.speedMode !== "standard" && input.speedMode !== "fast")
+     return missing("speed-mode-unavailable");
+-  const multiplier =
+-    input.speedMode === "fast" ? (xaiPriority ? 2 : official?.rates.fastMultiplier) : 1;
++  const multiplier = grokFastVariant
++    ? 1
++    : input.speedMode === "fast"
++      ? xaiPriority
++        ? 2
++        : official?.rates.fastMultiplier
++      : 1;
+   if (multiplier === undefined) return missing("fast-price-unavailable");
+   const reads = input.cacheReadTokens!;
+   if (reads > 0 && rates.cacheRead === undefined) return missing("cache-read-price-unavailable");
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 7b48bc4c67ddc10e48f7a1904d12a2799e3a3110..6a7e14c0263ada5323c8d47c098fded47fb1aa2b 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -5253,6 +5253,7 @@ const enUS: Record<string, string> = {
+     "xAI Priority is about {total}× the Standard rate, billed only when the response confirms Priority.",
+   "chat.toolbar.options.thinking": "Reasoning",
+   "chat.toolbar.speed.label": "Fast",
++  "chat.toolbar.speed.grokModelVariant": "Uses this connection's Grok Fast model. Subscription allowance consumption follows Grok's actual usage.",
+   "chat.toolbar.speed.description":
+     "No verified rate multiplier for this connection. Check the provider's reported usage; reasoning is unchanged.",
+   "chat.toolbar.thoughtLevel.placeholder": "Select reasoning level",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index ef53bc79d954e33b93e57fe7c779056ca0b1b3c1..902155d2bf55c386769aed217c6706657ab39e5c 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -4894,6 +4894,7 @@ const zhCN: Record<string, string> = {
+     "xAI 优先处理约为标准价格的 {total} 倍；仅实际返回优先档位时按此计费。",
+   "chat.toolbar.options.thinking": "思考等级",
+   "chat.toolbar.speed.label": "快速",
++  "chat.toolbar.speed.grokModelVariant": "使用当前连接的 Grok 快速模型，订阅额度消耗以 Grok 实际用量为准。",
+   "chat.toolbar.speed.description":
+     "这个连接的加速倍率尚未核实；实际用量以服务商返回为准，思考等级不变。",
+   "chat.toolbar.thoughtLevel.placeholder": "选择思考档位",
+diff --git a/packages/ui/src/lib/composerRecent.ts b/packages/ui/src/lib/composerRecent.ts
+index b39a72d5f408c61d90787353b5d1cd4a8538cf8e..33ec3705f7585c70b595a695fc34584fd2bd2801 100644
+--- a/packages/ui/src/lib/composerRecent.ts
++++ b/packages/ui/src/lib/composerRecent.ts
+@@ -74,6 +74,7 @@ export function rememberComposerModelOptions(
+   workspacePath: string,
+   selection: ModelSelection,
+   workspaceIdentity?: string,
++  replacesModel?: Pick<ModelSelection, "providerId" | "modelId">,
+ ): void {
+   writeComposerModelPreference(
+     workspacePath,
+@@ -81,6 +82,7 @@ export function rememberComposerModelOptions(
+     workspaceIdentity,
+     browserStorage(),
+     false,
++    replacesModel,
+   );
+ }
+ 
+@@ -111,6 +113,7 @@ function writeComposerModelPreference(
+   workspaceIdentity: string | undefined,
+   storage: StorageLike | null,
+   rememberChoice: boolean,
++  replacesModel?: Pick<ModelSelection, "providerId" | "modelId">,
+ ): void {
+   if (!storage) return;
+   const modelSelection = normalizeSparseModelSelection(selection);
+@@ -131,7 +134,8 @@ function writeComposerModelPreference(
+   const updateChoice =
+     rememberChoice ||
+     !previous?.modelSelection ||
+-    sameModel(previous.modelSelection, modelSelection);
++    sameModel(previous.modelSelection, modelSelection) ||
++    (replacesModel && sameModel(previous.modelSelection, replacesModel));
+   try {
+     storage.setItem(
+       key,
+diff --git a/packages/ui/src/lib/modelThoughtOption.ts b/packages/ui/src/lib/modelThoughtOption.ts
+index ca36d1a46fa88a3d7c70ae025c98a264abb907d1..02f643a543cc11e33cd665d5499893d7eab8348c 100644
+--- a/packages/ui/src/lib/modelThoughtOption.ts
++++ b/packages/ui/src/lib/modelThoughtOption.ts
+@@ -1,5 +1,5 @@
+ import { selectableReasoningLevels } from "@zcode/provider";
+-import type { ZCodeConfigOption } from "@zcode/shared";
++import { resolveGrokBuildSpeedPair, type ZCodeConfigOption } from "@zcode/shared";
+ import type { ModelSelectionView } from "@zcode/services";
+ 
+ /** 从 Registry 的 ModelConfig Option Specs 读取思考档位。 */
+@@ -42,9 +42,10 @@ export function modelSupportsFast(
+   providerId: string | undefined,
+   modelId: string | undefined,
+ ): boolean {
+-  const model = view?.providers
+-    .find((provider) => provider.providerId === providerId)
+-    ?.models.find((candidate) => candidate.modelId === modelId);
++  const provider = view?.providers.find((provider) => provider.providerId === providerId);
++  if (provider && resolveGrokBuildSpeedPair(provider.config?.access, provider.models, modelId))
++    return true;
++  const model = provider?.models.find((candidate) => candidate.modelId === modelId);
+   return Boolean(
+     model?.evidenceConfig
+       ? model.evidenceConfig.optionSpecs?.speedMode
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 731f0927521474c07423cff7a4c0f9e2e7989a27..4239129944c520c4acaf1be1ef04eb3685384661 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -20,6 +20,7 @@ import {
+   BUILTIN_MODEL_PROVIDER_IDS,
+   getModelProviderFamilySpec,
+   lookupFastModePriceImpact,
++  resolveGrokBuildSpeedPair,
+   resolveUsageBillingProvider,
+   resolveModelProviderFamilySpecByProviderId,
+   TID_V4_MODEL_CONFIG,
+@@ -933,7 +934,15 @@ function V4ComposerModelControlsImpl({
+     effectiveConfig?.provider,
+     effectiveConfig?.model,
+   );
+-  const fastEnabled = draftConfig?.modelSelection?.options?.speedMode === "fast";
++  const grokSpeedPair =
++    selectedSubscriptionProvider &&
++    resolveGrokBuildSpeedPair(
++      selectedSubscriptionProvider.config.access,
++      selectedSubscriptionProvider.models,
++      effectiveConfig?.model,
++    );
++  const fastEnabled =
++    grokSpeedPair?.mode === "fast" || draftConfig?.modelSelection?.options?.speedMode === "fast";
+   const fastBillingProvider =
+     selectedSubscription?.type === "subscription"
+       ? selectedSubscription.provider === "openai-codex"
+@@ -954,8 +963,9 @@ function V4ComposerModelControlsImpl({
+         maximumFractionDigits: 1,
+       })
+     : undefined;
+-  const fastImpactNote =
+-    fastImpact?.basis === "subscription-allowance"
++  const fastImpactNote = grokSpeedPair
++    ? intl.formatMessage({ id: "chat.toolbar.speed.grokModelVariant" })
++    : fastImpact?.basis === "subscription-allowance"
+       ? intl.formatMessage(
+           { id: "chat.toolbar.speed.creditImpact" },
+           {
+diff --git a/packages/ui/src/v4/composer/useDraftConfigControl.ts b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+index af4bf15d29e944c3f9d13b9e037fa603c6beed34..a71ac78ffa4e3b844dca0f6889975d34914843cf 100644
+--- a/packages/ui/src/v4/composer/useDraftConfigControl.ts
++++ b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+@@ -6,7 +6,11 @@ import { applyComposerPermissionGrant } from "@/v4/composer/composerPermissionGr
+ // Workspace presentation 水合只提供 mode 与 slash commands；模型候选、能力和首选值
+ // 统一来自目标 Host ModelSelectionView。
+ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+-import { ZCODE_AGENT_PROVIDER, resolveExecutionState } from "@zcode/shared";
++import {
++  ZCODE_AGENT_PROVIDER,
++  resolveExecutionState,
++  resolveGrokBuildSpeedPair,
++} from "@zcode/shared";
+ import { applyComposerPlanTransition } from "@/v4/composer/composerPlanTransition.js";
+ import type {
+   ZCodeConfigOption,
+@@ -526,6 +530,28 @@ export function useDraftConfigControl(params: {
+ 
+   const handleDraftSelectSpeed = useCallback(
+     (speedMode: "standard" | "fast") => {
++      const current = draftConfigRef.current.modelSelection;
++      const connection = modelSelectionView?.providers.find(
++        (provider) => provider.providerId === current?.providerId,
++      );
++      const pair =
++        connection &&
++        resolveGrokBuildSpeedPair(connection.config.access, connection.models, current?.modelId);
++      if (pair && current && modelSelectionView) {
++        const targetId = pair[speedMode];
++        if (targetId === current.modelId || stateRef.current.scopeKey !== scopeKey) return;
++        const options = { ...current.options };
++        delete options.speedMode; // The wire model expresses Fast; this is not API Priority.
++        const target = resolveNewTaskModelChoice(modelSelectionView, {
++          ...current,
++          modelId: targetId,
++          options,
++        });
++        if (target?.providerId !== current.providerId || target.modelId !== targetId) return;
++        updateDraftConfig((config) => applyDraftModelSelection(config, target));
++        rememberComposerModelOptions(workspacePath, target, workspaceIdentity, current);
++        return;
++      }
+       updateDraftModelOptions((current) => {
+         if (!current.modelSelection) return current;
+         return {
+@@ -537,7 +563,14 @@ export function useDraftConfigControl(params: {
+         };
+       });
+     },
+-    [updateDraftModelOptions],
++    [
++      modelSelectionView,
++      scopeKey,
++      updateDraftConfig,
++      updateDraftModelOptions,
++      workspacePath,
++      workspaceIdentity,
++    ],
+   );
+ 
+   const handleDraftSelectContext = useCallback(
+diff --git a/packages/ui/test/draftModelDefaults.browser.test.tsx b/packages/ui/test/draftModelDefaults.browser.test.tsx
+index 6014b153f62d3cfeccffd0d70a9f361dfecdb11f..d503bf71f4283bcaa0c24f4715ecb7ee24d9d0cf 100644
+--- a/packages/ui/test/draftModelDefaults.browser.test.tsx
++++ b/packages/ui/test/draftModelDefaults.browser.test.tsx
+@@ -158,6 +158,103 @@ async function test(name: string, run: () => Promise<void>) {
+ }
+ 
+ (window as any).__draftModelDefaultTests = (async () => {
++  await test("changing an old conversation's Grok speed does not replace another model's default", async () => {
++    const f = await fixture();
++    const path = "/defaults/grok-old-speed";
++    try {
++      await f.catalog({
++        ...f.view,
++        providers: [
++          {
++            ...f.view.providers[0],
++            config: { access: { type: "subscription", provider: "xai", connected: true } },
++            models: ["grok-4.7", "grok-4.7-build-fast", "grok-4.6"].map((modelId) => ({
++              ...models[0],
++              modelId,
++            })),
++          },
++        ],
++        preferredSelection: auto("grok-4.7"),
++      });
++      await f.render(path);
++      await f.choose("grok-4.6");
++      persistV4ComposerDraft(path, undefined, "old-grok", {
++        text: "keep older input",
++        mode: "build",
++        modelSelection: auto("grok-4.7"),
++      });
++      await f.render(path, "old-grok", { mode: "build", modelSelection: auto("grok-4.7") });
++      await act(async () => f.latest.handleDraftSelectSpeed("fast"));
++      check(
++        f.latest.draftConfig.model === "grok-4.7-build-fast",
++        "Old conversation speed did not change its actual model",
++      );
++      check(
++        readComposerRecent(path)?.modelSelection?.modelId === "grok-4.6",
++        "An old speed edit replaced the active default model",
++      );
++      check(f.latest.composerDraft.text === "keep older input", "Speed edit lost the draft");
++    } finally {
++      await f.close();
++    }
++  });
++  await test("Grok Fast changes the actual model ID and preserves compatible effort without a priority tier", async () => {
++    const f = await fixture();
++    const grokModels = ["grok-4.7", "grok-4.7-build-fast"].map((modelId) => ({
++      ...models[0],
++      modelId,
++    }));
++    try {
++      await f.catalog({
++        ...f.view,
++        providers: [
++          {
++            ...f.view.providers[0],
++            config: { access: { type: "subscription", provider: "xai", connected: true } },
++            models: grokModels.map((model) => ({
++              ...model,
++              config: {
++                ...model.config,
++                optionSpecs: { reasoningLevel: model.config.optionSpecs.reasoningLevel },
++              },
++            })),
++          },
++        ],
++        preferredSelection: auto("grok-4.7"),
++      });
++      await f.render("/defaults/grok-fast");
++      await act(async () => f.latest.handleDraftSelectThought("high"));
++      await act(async () => f.latest.handleDraftSelectSpeed("fast"));
++      check(
++        f.latest.draftConfig.model === "grok-4.7-build-fast",
++        "Fast never selected its executable model",
++      );
++      check(
++        readComposerRecent("/defaults/grok-fast")?.modelSelection?.modelId ===
++          "grok-4.7-build-fast",
++        "Fast was not remembered for its active model",
++      );
++      check(
++        f.latest.draftConfig.modelSelection?.options?.reasoningLevel === "high",
++        "Fast changed compatible effort",
++      );
++      check(
++        f.latest.draftConfig.modelSelection?.options?.speedMode !== "fast",
++        "A model variant became API priority intent",
++      );
++      check(
++        createComposerSubmissionConfig(f.latest.draftConfig, f.view as never),
++        "The actual fast model cannot be submitted",
++      );
++      await act(async () => f.latest.handleDraftSelectSpeed("standard"));
++      check(
++        f.latest.draftConfig.model === "grok-4.7",
++        "Disabling Fast did not return to the paired model",
++      );
++    } finally {
++      await f.close();
++    }
++  });
+   await test("identical model IDs on different connections retain independent parameters", async () => {
+     const f = await fixture();
+     try {
+diff --git a/packages/ui/test/modelEvidenceSelection.test.ts b/packages/ui/test/modelEvidenceSelection.test.ts
+index 91065c35cb4b29325effe80e3aaa15f584860c98..e1c6b3e6321e77653247351001db20f77682724d 100644
+--- a/packages/ui/test/modelEvidenceSelection.test.ts
++++ b/packages/ui/test/modelEvidenceSelection.test.ts
+@@ -5,12 +5,81 @@ import type { ModelSelectionView } from "@zcode/services";
+ import { ZCODE_AGENT_PROVIDER } from "@zcode/shared";
+ import { resolveDraftInitialModelSelection } from "../src/lib/composerRecent.js";
+ import { modelSupportsFast, resolveModelThoughtOption } from "../src/lib/modelThoughtOption.js";
++import { createModelSettingsAssistantOperations } from "../../services/src/model-provider/modelSettingsAssistant.js";
+ 
+ const runtimeConfig = {
+   properties: { contextWindow: 200_000 },
+   optionSpecs: { reasoningLevel: { values: ["low", "high"] } },
+ };
+ 
++test("Agent diagnostics identify the exact Fast model rather than a generic speed flag", async () => {
++  const models = ["grok-4.7", "grok-4.7-build-fast"].map((modelId) => ({
++    modelId,
++    enabled: true,
++    evidenceConfig: {},
++  }));
++  const facade = {
++    getView: () => ({
++      revision: 1,
++      providers: [
++        {
++          providerId: "native-grok",
++          providerName: "Grok",
++          enabled: true,
++          effectiveConfig: { access: { type: "subscription", provider: "xai", connected: true } },
++          models,
++        },
++      ],
++    }),
++  };
++  const read = createModelSettingsAssistantOperations(facade as never, async () => {});
++  const target = {
++    feature: "model-settings" as const,
++    openingRevision: 1,
++    providerId: "native-grok",
++    modelId: "grok-4.7",
++  };
++  const view = await read(target, { operation: "read" });
++  assert.equal(view.models[0]?.fastSupported, true);
++  assert.equal(view.models[0]?.fastModelId, "grok-4.7-build-fast");
++  models[1]!.enabled = false;
++  assert.equal((await read(target, { operation: "read" })).models[0]?.fastModelId, undefined);
++});
++
++test("Grok Fast requires the paired models in the same connected subscription", () => {
++  const catalog = {
++    providers: [
++      {
++        providerId: "grok-one",
++        config: { access: { type: "subscription", provider: "xai", connected: true } },
++        models: ["grok-4.7", "grok-4.7-build-fast"].map((modelId) => ({
++          modelId,
++          config: runtimeConfig,
++          evidenceConfig: {},
++        })),
++      },
++      {
++        providerId: "grok-two",
++        config: { access: { type: "subscription", provider: "xai", connected: true } },
++        models: [{ modelId: "grok-4.7", config: runtimeConfig, evidenceConfig: {} }],
++      },
++      {
++        providerId: "api",
++        config: { access: { type: "api-key" } },
++        models: ["grok-4.7", "grok-4.7-build-fast"].map((modelId) => ({
++          modelId,
++          config: runtimeConfig,
++          evidenceConfig: {},
++        })),
++      },
++    ],
++  } as unknown as ModelSelectionView;
++  assert.equal(modelSupportsFast(catalog, "grok-one", "grok-4.7"), true);
++  assert.equal(modelSupportsFast(catalog, "grok-one", "grok-4.7-build-fast"), true);
++  assert.equal(modelSupportsFast(catalog, "grok-two", "grok-4.7"), false);
++  assert.equal(modelSupportsFast(catalog, "api", "grok-4.7"), false);
++});
++
+ test("the composer retains a registry-admitted native subscription without an API address", () => {
+   const catalog = {
+     providers: [

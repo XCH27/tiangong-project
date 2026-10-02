@@ -36,6 +36,24 @@ class ExecutionContracts(unittest.TestCase):
     def test_valid_current_path_and_contract(self):
         self.assertEqual(self.check(), [])
 
+    def test_wrapped_contract_fields_do_not_require_giant_single_line_paragraphs(self):
+        self.packet.write_text(self.body.replace('[owner]', '[source\nowner]').replace(
+            'regression/probe target:', 'regression/probe\ntarget:').replace(
+            '[reference registry]', '[reference\nregistry]'))
+        self.assertEqual(self.check(), [])
+
+    def test_active_candidate_sources_and_existing_regressions_are_checked_in_their_own_scope(self):
+        candidate = self.root / '.fleet/zcode'
+        candidate.mkdir(parents=True)
+        (candidate / 'owner.ts').write_text('// active source')
+        (candidate / 'owner.test.ts').write_text('// real regression')
+        body = self.body.replace('../../app/owner.ts', '../../.fleet/zcode/owner.ts').replace(
+            'Planned regression/probe target:', 'Existing regression target relative to `.fleet/zcode/`:')
+        self.packet.write_text(body)
+        self.assertEqual(self.check(), [])
+        (candidate / 'owner.test.ts').unlink()
+        self.assertTrue(any('existing regression target missing' in error for error in self.check()))
+
     def test_future_path_cannot_claim_current_entry(self):
         (self.root / 'app/owner.ts').unlink()
         self.assertTrue(any('source missing' in e for e in self.check()))

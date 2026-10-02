@@ -1,0 +1,668 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index e038419..3749dd5 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -42,6 +42,13 @@ cache usage have offline fixtures; unsupported native tools, structured output a
+ fail explicitly. Inference uses the existing proxy fetch; OAuth driver networking still follows Pi.
+ Live paid inference, actual subscription authorization and owner acceptance remain separate checks.
+ 
++The host must register Pi's public static OAuth loaders before creating subscription connections.
++Pi's default variable-relative imports are not discoverable by the desktop/remote bundler and must
++not resolve against `out/host`. Bundle regression checks run real pinned drivers from an isolated
++artifact, with synthetic device-code/refresh responses and no external network. Both Codex and
++Copilot must reach authorization, cancel cleanly, refresh and resolve request credentials; source
++tests with injected provider mocks alone do not prove this packaging boundary.
++
+ ## Account allowance
+ 
+ The existing connection owner reads allowance for its selected account, using the existing host
+@@ -58,6 +65,15 @@ files are read. A pinned adapter model catalog remains labelled as such, not acc
+ 
+ Kimi Code membership uses its official third-party API-key endpoint, not a copied official-client OAuth identity.
+ 
++The existing template registry distinguishes subscription accounts, subscription plan keys and
++ordinary API services. Optional `category: subscription-plan` is presentation metadata on a
++template, not a credential type or another connection store. Plan templates retain regional
++endpoints and explicit API-key authentication: GLM, Kimi Code, MiniMax Token Plan, Alibaba Coding
++Plan / Token Plan, MiMo Token Plan and OpenCode Go. China/global keys are not interchangeable;
++existing saved instances are never rewritten by template updates. Empty catalogs remain manual
++discovery, not fabricated entitlements. All three API formats and same-model key recovery use
++the existing runtime. Adding templates does not certify subscription allowance or live inference.
++
+ ## Multiple credentials — implementation contract
+ 
+ The owner confirmed automatic switching only within the same service and exact model. Keep the
+diff --git a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+index 9eab4ff..f3edc62 100644
+--- a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+@@ -1,5 +1,6 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import { readFile } from "node:fs/promises";
+ import { generateText, streamText } from "ai";
+ import {
+   ProviderConfig,
+@@ -7,6 +8,7 @@ import {
+   ApiKeyAccessConfig,
+   ZhipuAccountAccessConfig,
+   createRegistryProviderConfig,
++  parseProviderTemplateMap,
+ } from "@zcode/provider";
+ import { AiSdkModelExecution } from "../src/model/model-execution.js";
+ 
+@@ -18,6 +20,21 @@ const GATEWAY = "https://gateway.example";
+ const ENDPOINTS = ["https://api.z.ai/api/anthropic", "https://open.bigmodel.cn/api/anthropic"];
+ const OPTIONS = { reasoningLevel: "default", maxOutputTokens: 256 };
+ const SPECS = { reasoningLevel: { map: "{}" }, maxOutputTokens: { map: "{}" } };
++const builtin = JSON.parse(await readFile(new URL("../../../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"));
++const templates = parseProviderTemplateMap(builtin.config.providerConfigRules.templateRules);
++
++test("plan-key classification survives template serialization without changing authentication", () => {
++  const roundtrip = parseProviderTemplateMap(templates.toJSON());
++  for (const id of ["zai-api", "bigmodel-api", "fleet-kimi-coding", "fleet-kimi-coding-global",
++    "fleet-minimax-token-plan", "fleet-minimax-token-plan-cn", "fleet-qwen-coding-plan",
++    "fleet-qwen-coding-plan-cn", "fleet-qwen-token-plan", "fleet-qwen-token-plan-cn",
++    "fleet-xiaomi-token-plan-cn", "opencode-go-chat", "opencode-go-messages", "opencode-go-responses"]) {
++    assert.equal(roundtrip.get(id)?.category, "subscription-plan", id);
++    assert.notEqual(roundtrip.get(id)?.config.access?.type, "subscription", id);
++  }
++  for (const id of ["openai", "anthropic", "minimax", "moonshot-kimi", "deepseek"])
++    assert.equal(roundtrip.get(id)?.category, undefined, id);
++});
+ type Captured = { url: string; headers: Headers; body: Record<string, unknown> };
+ 
+ function fixture(rejections: number[] = []) {
+@@ -162,6 +179,33 @@ async function run(binding: ReturnType<typeof bind>, requestKey?: string) {
+   assert.equal(result.text, "OK");
+ }
+ 
++for (const [id, endpoint] of [
++  ["fleet-minimax-token-plan-cn", "https://api.minimaxi.com/anthropic/v1/messages"],
++  ["fleet-minimax-token-plan", "https://api.minimax.io/anthropic/v1/messages"],
++  ["fleet-kimi-coding-global", "https://api.kimi.ai/coding/v1/messages"],
++  ["fleet-qwen-coding-plan-cn", "https://coding.dashscope.aliyuncs.com/v1/chat/completions"],
++  ["fleet-qwen-coding-plan", "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"],
++]) {
++  test(`${id} uses its regional plan route and retains the model during key recovery`, async () => {
++    const template = templates.get(id!)!;
++    const config = template.config.toJSON();
++    assert.equal(config.access?.type, "api-key");
++    const { execution, requests } = fixture([401]);
++    await run(bind(execution, {
++      providerId: id,
++      baseUrl: config.api!.baseUrl!,
++      api: config.api!.type!,
++      additionalApiKeys: ["synthetic-backup"],
++      autoSwitchCredentials: true,
++    }));
++    assert.deepEqual(requests.map(request => request.url), [endpoint, endpoint]);
++    assert.deepEqual(requests.map(request => request.body.model), [MODEL, MODEL]);
++    const authHeader = config.api!.type === "anthropic-messages" ? "x-api-key" : "authorization";
++    const prefix = authHeader === "authorization" ? "Bearer " : "";
++    assert.deepEqual(requests.map(request => request.headers.get(authHeader)), [prefix + KEY, prefix + "synthetic-backup"]);
++  });
++}
++
+ for (const baseUrl of ENDPOINTS) {
+   for (const access of ["api-key", "zhipu-coding-plan-api-key"] as const) {
+     test(`${access} keeps configured endpoint ${baseUrl}`, async () => {
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index f274e32..6a49835 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -24,7 +24,8 @@
+               "type": "builtin",
+               "key": "zai"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "zai-standard-api",
+@@ -93,7 +94,8 @@
+               "type": "builtin",
+               "key": "bigmodel"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "bigmodel-standard-api",
+@@ -520,7 +522,8 @@
+               "type": "builtin",
+               "key": "opencode"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "opencode-go-messages",
+@@ -551,7 +554,8 @@
+               "type": "builtin",
+               "key": "opencode"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "opencode-go-responses",
+@@ -573,7 +577,8 @@
+               "type": "builtin",
+               "key": "opencode"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "opencode-zen-responses",
+@@ -863,7 +868,8 @@
+               "type": "builtin",
+               "key": "moonshot-kimi"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "fleet-qwen-token-plan-cn",
+@@ -885,7 +891,8 @@
+               "type": "builtin",
+               "key": "alibaba-model-studio"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "fleet-qwen-token-plan",
+@@ -907,7 +914,8 @@
+               "type": "builtin",
+               "key": "alibaba-model-studio"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "fleet-xiaomi-token-plan-cn",
+@@ -929,7 +937,8 @@
+               "type": "builtin",
+               "key": "xiaomi-mimo"
+             }
+-          }
++          },
++          "category": "subscription-plan"
+         },
+         {
+           "templateId": "fleet-google",
+@@ -996,6 +1005,121 @@
+               "key": "minimax"
+             }
+           }
++        },
++        {
++          "templateId": "fleet-minimax-token-plan-cn",
++          "templateNameMap": {
++            "zh-CN": "MiniMax Token Plan 中国",
++            "en-US": "MiniMax Token Plan China"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://platform.minimaxi.com/subscribe/token-plan"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://api.minimaxi.com/anthropic"
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "minimax"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-minimax-token-plan",
++          "templateNameMap": {
++            "zh-CN": "MiniMax Token Plan 国际",
++            "en-US": "MiniMax Token Plan Global"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://platform.minimax.io/subscribe/token-plan"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://api.minimax.io/anthropic"
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "minimax"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-kimi-coding-global",
++          "templateNameMap": {
++            "zh-CN": "Kimi Code 国际",
++            "en-US": "Kimi Code Global"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://www.kimi.com/code/console"
++            },
++            "api": {
++              "type": "anthropic-messages",
++              "baseUrl": "https://api.kimi.ai/coding"
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "moonshot-kimi"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-qwen-coding-plan-cn",
++          "templateNameMap": {
++            "zh-CN": "阿里云 Coding Plan 中国",
++            "en-US": "Alibaba Coding Plan China"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://bailian.console.aliyun.com"
++            },
++            "api": {
++              "type": "openai-chat-completions",
++              "baseUrl": "https://coding.dashscope.aliyuncs.com/v1"
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "alibaba-model-studio"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-qwen-coding-plan",
++          "templateNameMap": {
++            "zh-CN": "阿里云 Coding Plan 国际",
++            "en-US": "Alibaba Coding Plan Global"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://bailian.console.alibabacloud.com"
++            },
++            "api": {
++              "type": "openai-chat-completions",
++              "baseUrl": "https://coding-intl.dashscope.aliyuncs.com/v1"
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "alibaba-model-studio"
++            }
++          }
+         }
+       ],
+       "providerRules": [
+diff --git a/package.json b/package.json
+index 03f80a7..98d2b0a 100644
+--- a/package.json
++++ b/package.json
+@@ -46,7 +46,7 @@
+     "architecture:report": "node scripts/architecture/architecture-check.mjs report",
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+-    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
++    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts"
+   },
+   "dependencies": {
+diff --git a/packages/provider/src/config/provider-config.ts b/packages/provider/src/config/provider-config.ts
+index d447aee..17449da 100644
+--- a/packages/provider/src/config/provider-config.ts
++++ b/packages/provider/src/config/provider-config.ts
+@@ -323,11 +323,13 @@ export type ProviderTemplateObject = Readonly<z.infer<typeof providerTemplateDat
+ export class ProviderTemplate {
+   readonly templateId: ProviderTemplateId;
+   readonly templateNameMap: ProviderTemplateNameMap;
++  readonly category?: "subscription-plan";
+   readonly config: ProviderConfig;
+ 
+   constructor(input: ProviderTemplateInput) {
+     this.templateId = input.templateId;
+     this.templateNameMap = Object.freeze({ ...input.templateNameMap });
++    this.category = input.category;
+     this.config = input.config;
+     Object.freeze(this);
+   }
+@@ -336,6 +338,7 @@ export class ProviderTemplate {
+     return {
+       templateId: this.templateId,
+       templateNameMap: this.templateNameMap,
++      ...(this.category ? { category: this.category } : {}),
+       config: this.config.toJSON(),
+     };
+   }
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index 3f26cee..130d59c 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -122,6 +122,7 @@ export const providerTemplateDataSchema = z
+   .object({
+     templateId: z.string().min(1),
+     templateNameMap: providerTemplateNameMapDataSchema,
++    category: z.literal("subscription-plan").optional(),
+     config: providerConfigDataSchema,
+   })
+   .strict();
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 015acca..7ce96c3 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -165,6 +165,7 @@ export interface ProviderSettingsProviderView extends Pick<
+ export interface ProviderSettingsTemplateView {
+   readonly templateId: ProviderTemplateId;
+   readonly templateNameMap: ProviderTemplateNameMap;
++  readonly category?: "subscription-plan";
+   readonly config: ProviderConfigObject;
+ }
+ 
+@@ -674,6 +675,7 @@ function createProviderSettingsView(input: {
+           Object.freeze({
+             templateId,
+             templateNameMap: template.templateNameMap,
++            ...(template.category ? { category: template.category } : {}),
+             config: template.config.toJSON(),
+           }),
+         ),
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+index 6942144..0a493c2 100644
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -9,6 +9,7 @@ import {
+ } from "@earendil-works/pi-ai";
+ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+ import { githubCopilotProvider } from "@earendil-works/pi-ai/providers/github-copilot";
++import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
+ import type { ICredentialService } from "../credential/credential.js";
+ import type { ProviderSettingsView } from "@zcode/provider";
+ 
+@@ -21,6 +22,9 @@ import type {
+   SubscriptionAccountsView,
+   SubscriptionLogin,
+ } from "./subscriptionConnectionTypes.js";
++
++// Pi 的默认相对动态导入在打包后指向 out/host；公开静态注册入口也兼容 Node/Electron。
++registerBunOAuthFlows();
+ export type {
+   SubscriptionLogin,
+   SubscriptionAccountsView,
+diff --git a/packages/services/test/subscription-bundle.test.ts b/packages/services/test/subscription-bundle.test.ts
+new file mode 100644
+index 0000000..ea64b21
+--- /dev/null
++++ b/packages/services/test/subscription-bundle.test.ts
+@@ -0,0 +1,100 @@
++import assert from "node:assert/strict";
++import { execFile } from "node:child_process";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import { promisify } from "node:util";
++import test from "node:test";
++import { build } from "esbuild";
++
++const run = promisify(execFile);
++const fixture = `
++import assert from "node:assert/strict";
++import { createSubscriptionConnections } from "./packages/services/src/model-provider/subscriptionConnections.ts";
++const requests = [];
++const jwt = "test." + Buffer.from(JSON.stringify({
++  "https://api.openai.com/auth": { chatgpt_account_id: "fixture-account" }
++})).toString("base64url") + ".signature";
++globalThis.fetch = async (input, init) => {
++  const url = String(input);
++  requests.push(url);
++  init?.signal?.throwIfAborted();
++  if (url === "https://auth.openai.com/api/accounts/deviceauth/usercode")
++    return Response.json({ device_auth_id: "fixture-device", user_code: "CODEX", interval: 60 });
++  if (url === "https://github.com/login/device/code")
++    return Response.json({ device_code: "fixture-device", user_code: "COPILOT", verification_uri: "https://github.com/login/device", interval: 60, expires_in: 900 });
++  if (url === "https://auth.openai.com/api/accounts/deviceauth/token")
++    return new Response(null, { status: 403 });
++  if (url === "https://auth.openai.com/oauth/token") {
++    assert.equal(new URLSearchParams(init.body).get("grant_type"), "refresh_token");
++    return Response.json({ access_token: jwt, refresh_token: "refreshed", expires_in: 3600 });
++  }
++  if (url === "https://api.github.com/copilot_internal/v2/token")
++    return Response.json({ token: "fixture;proxy-ep=proxy.individual.githubcopilot.com", expires_at: Math.floor(Date.now()/1000) + 3600 });
++  if (url === "https://api.individual.githubcopilot.com/models")
++    return Response.json({ data: [{ id: "gpt-4.1", model_picker_enabled: true, policy: { state: "enabled" } }] });
++  throw new Error("Unexpected network request: " + url);
++};
++const records = new Map();
++const owner = createSubscriptionConnections({
++  credentials: {
++    load: async id => records.get(id) ?? null,
++    save: async (id, data) => { records.set(id, data); },
++    delete: async id => { records.delete(id); },
++  },
++  getView: async () => ({ providers: ["openai-codex", "github-copilot"].map(providerId => ({
++    providerId, effectiveConfig: { access: { type: "subscription", provider: providerId } }
++  })) }),
++  setConnected: async () => {},
++  withConnectionLock: async (_id, operation) => operation(),
++});
++for (const kind of ["openai-codex", "github-copilot"]) {
++  const flow = await owner.begin(kind);
++  assert.equal(flow.userCode, kind === "openai-codex" ? "CODEX" : "COPILOT");
++  const finished = assert.rejects(owner.finish(kind, flow.flowId), /cancel|abort/i);
++  await owner.cancel(kind, flow.flowId);
++  await finished;
++  assert.equal(JSON.parse(records.get("model-subscription:" + kind)).pendingFlowId, undefined);
++  records.set("model-subscription:" + kind, JSON.stringify({
++    kind, credential: { type: "oauth", access: "expired", refresh: "fixture-refresh", expires: 1, accountId: "fixture-account" }
++  }));
++  const auth = await owner.resolve(kind);
++  assert.notEqual(auth.apiKey, "expired");
++  if (kind === "openai-codex") assert.equal(auth.headers["chatgpt-account-id"], "fixture-account");
++  else assert.equal(auth.baseUrl, "https://api.individual.githubcopilot.com");
++}
++assert.equal(requests.length, 6);
++console.log("Bundled Codex and Copilot device flow, cancellation, refresh and request auth passed");
++`;
++
++for (const minify of [false, true]) {
++  test(`isolated ${minify ? "production" : "development"} bundle loads real OAuth drivers`, async () => {
++    const directory = await mkdtemp(join(tmpdir(), "fleet-subscription-bundle-"));
++    try {
++      const entry = join(directory, "index.mjs");
++      await build({
++        stdin: {
++          contents: fixture,
++          loader: "ts",
++          resolveDir: resolve(import.meta.dirname, "../../.."),
++        },
++        bundle: true,
++        platform: "node",
++        format: "esm",
++        target: "node22",
++        minify,
++        outfile: entry,
++        logLevel: "silent",
++      });
++      // 在仓库外启动真实产物：不能意外从源码树/node_modules 补回漏打包的 OAuth 文件。
++      const result = await run(process.execPath, [entry], {
++        cwd: directory,
++        env: { PATH: process.env.PATH },
++        timeout: 20_000,
++      });
++      assert.match(result.stdout, /Bundled Codex and Copilot/);
++    } finally {
++      await rm(directory, { recursive: true, force: true });
++    }
++  });
++}
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 9b8b80f..f1273fa 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -2831,7 +2831,8 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.addProviderAction": "Add provider",
+   "settings.modelProvider.templatePickerTitle": "Add provider",
+   "settings.modelProvider.templateGroup.zhipu": "Zhipu",
+-  "settings.modelProvider.templateGroup.other": "API and plan keys",
++  "settings.modelProvider.templateGroup.plan": "Subscription plans (plan keys)",
++  "settings.modelProvider.templateGroup.other": "API services",
+   "settings.modelProvider.templatePickerBack": "Back to provider details",
+   "settings.modelProvider.addProviderModelReminder":
+     "Add at least one model before adding the provider.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 9164c38..173d129 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2645,7 +2645,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.addProviderAction": "添加供应商",
+   "settings.modelProvider.templatePickerTitle": "添加供应商",
+   "settings.modelProvider.templateGroup.zhipu": "智谱",
+-  "settings.modelProvider.templateGroup.other": "API 与套餐密钥",
++  "settings.modelProvider.templateGroup.plan": "订阅套餐（会员密钥）",
++  "settings.modelProvider.templateGroup.other": "API 服务",
+   "settings.modelProvider.templatePickerBack": "返回供应商详情",
+   "settings.modelProvider.addProviderModelReminder": "添加供应商前，请至少添加一个模型。",
+   "settings.modelProvider.baseUrl": "Base URL",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+index 9047643..fa8b3a2 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+@@ -39,9 +39,17 @@ export function ProviderTemplatePicker({
+       id: "subscription",
+       templates: templates.filter((template) => template.config.access?.type === "subscription"),
+     },
++    {
++      id: "plan",
++      templates: templates.filter((template) => template.category === "subscription-plan"),
++    },
+     {
+       id: "other",
+-      templates: templates.filter((template) => template.config.access?.type !== "subscription"),
++      templates: templates.filter(
++        (template) =>
++          template.config.access?.type !== "subscription" &&
++          template.category !== "subscription-plan",
++      ),
+     },
+   ] as const;
+   const createWithFeedback = async (create: () => Promise<void>) => {
+diff --git a/scripts/sync-fleet-provider-catalog.mjs b/scripts/sync-fleet-provider-catalog.mjs
+index db45c87..1451666 100644
+--- a/scripts/sync-fleet-provider-catalog.mjs
++++ b/scripts/sync-fleet-provider-catalog.mjs
+@@ -96,7 +96,87 @@ for (const t of [google, silicon]) {
+   if (i < 0) r.push(t);
+   else r[i] = t;
+ }
++
++// 套餐计费和认证方式是两个维度；会员密钥必须指向套餐/地域端点，不能被普通 API 模板代替。
++const planEntries = [
++  [
++    "minimax-token-plan-cn",
++    "MiniMax Token Plan 中国",
++    "MiniMax Token Plan China",
++    "https://api.minimaxi.com/anthropic",
++    "https://platform.minimaxi.com/subscribe/token-plan",
++    "minimax",
++    "anthropic-messages",
++  ],
++  [
++    "minimax-token-plan",
++    "MiniMax Token Plan 国际",
++    "MiniMax Token Plan Global",
++    "https://api.minimax.io/anthropic",
++    "https://platform.minimax.io/subscribe/token-plan",
++    "minimax",
++    "anthropic-messages",
++  ],
++  [
++    "kimi-coding-global",
++    "Kimi Code 国际",
++    "Kimi Code Global",
++    "https://api.kimi.ai/coding",
++    "https://www.kimi.com/code/console",
++    "moonshot-kimi",
++    "anthropic-messages",
++  ],
++  [
++    "qwen-coding-plan-cn",
++    "阿里云 Coding Plan 中国",
++    "Alibaba Coding Plan China",
++    "https://coding.dashscope.aliyuncs.com/v1",
++    "https://bailian.console.aliyun.com",
++    "alibaba-model-studio",
++    "openai-chat-completions",
++  ],
++  [
++    "qwen-coding-plan",
++    "阿里云 Coding Plan 国际",
++    "Alibaba Coding Plan Global",
++    "https://coding-intl.dashscope.aliyuncs.com/v1",
++    "https://bailian.console.alibabacloud.com",
++    "alibaba-model-studio",
++    "openai-chat-completions",
++  ],
++];
++const rules = data.config.providerConfigRules.templateRules;
++for (const [id, zh, en, baseUrl, keyUrl, logo, api] of planEntries) {
++  const template = {
++    templateId: `fleet-${id}`,
++    templateNameMap: { "zh-CN": zh, "en-US": en },
++    category: "subscription-plan",
++    config: {
++      access: { type: "api-key", apiKeyManagementUrl: keyUrl },
++      api: { type: api, baseUrl },
++      builtinModelIds: [],
++      logo: { type: "builtin", key: logo },
++    },
++  };
++  const index = rules.findIndex((rule) => rule.templateId === template.templateId);
++  if (index < 0) rules.push(template);
++  else rules[index] = template;
++}
++const planIds = new Set([
++  "zai-api",
++  "bigmodel-api",
++  "fleet-kimi-coding",
++  "fleet-qwen-token-plan-cn",
++  "fleet-qwen-token-plan",
++  "fleet-xiaomi-token-plan-cn",
++  "opencode-go-chat",
++  "opencode-go-messages",
++  "opencode-go-responses",
++]);
++for (const template of rules) {
++  if (planIds.has(template.templateId)) template.category = "subscription-plan";
++}
+ await writeFile(file, JSON.stringify(data, null, 2) + "\n");
+ console.log(
+-  `Updated ${entries.length + 2} Fleet templates; ${data.config.providerConfigRules.templateRules.length} total.`,
++  `Updated ${entries.length + planEntries.length + 2} Fleet templates; ${rules.length} total.`,
+ );

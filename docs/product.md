@@ -1,15 +1,39 @@
 # Product — what Fleet is and is not
 
-> **The single authority on what Fleet is and is not.** Read it before designing anything.
-> Where any other document disagrees with this one, this one wins and the other is wrong.
->
-> Owner definition, 2026-09-10. Everything below is either the owner's stated intent or a
-> consequence of it that is named as such.
+This is the authority on product meaning and scope. Current owner instructions take precedence.
+Implementation status is in [Capabilities](capabilities.md), work order in [TODO](../TODO.md),
+contracts in the owning [module](modules/), and historical choices in [Decisions](decisions.md).
 
 ## One sentence
 
-**A workbench a person and their agents operate together, where the work itself lives inside the
-software** — not a chat window that drives other applications from the outside.
+**A workbench a person and their Agents operate together, where the work itself lives inside the
+software.** Native documents, design, canvas, browser evidence and media are first-class work.
+
+## Baseline reassessment
+
+OV-027 selects ZCode as the reconstruction direction. The active candidate is `.fleet/zcode`,
+using ZCode `AgentRuntime` as Host with a Pi AgentSession loop (OV-069). `app/` preserves the Craft branch
+and its uncommitted work. Neither has completed all Fleet requirements; choosing the product base
+does not approve replacing runtime, credentials or user data.
+
+OV-066 selects one Fleet Host evolved from the existing ZCode owners. OV-069 integrates Pi AgentSession
+as its default loop executor; supported native vendor routes remain separate adapters. Pi durable/Chord is
+retained mechanism evidence, not a planned whole-runtime replacement. Shared page operations,
+native editing and plugin lifecycle drive requirements; OV-067 first verifies their kernel
+boundaries, then acceptance tests prove those operations
+on the selected implementation. [Decision](decisions.md#ov-066--close-foundation-choices-and-deliver-in-dependency-order-2026-09-29),
+[source evidence](references.md#kernel-choice-against-fleets-complete-product).
+
+The requirements that survive every implementation choice are:
+
+- Human controls and Agent tools operate the same native object through its domain operations.
+- Every functional page offers contextual Agent assistance, with exact target and state.
+- Projects choose installed suites; plugins can add genuine work surfaces and Agent operations.
+- Native files, editor undo/drafts and domain data keep their own owners; one authority does not
+  mean one database or a universal document format.
+- The model receives the useful, permitted context for the task rather than the entire catalogue.
+- Local work has no mandatory Fleet/vendor account; declared platform, format and provider support
+  must be verified on its real path.
 
 ## Platform scope
 
@@ -26,11 +50,6 @@ push delivery and cross-network transport are not selected by this statement. In
 pairing, revocation and mixed-version protocol before selecting mechanisms; its relay is not
 implicitly admitted as a required Fleet-operated service.
 
-The current owner order is **documentation and preparation → joint walkthrough of original Craft
-→ approval of concrete rectification slices → implementation and acceptance → added capabilities**.
-The app reset withdrew the prior Fleet implementation. A surviving draft or passing historical
-check is neither current implementation nor permission to resume those patches.
-
 ## Conversation, Project and Workspace boundary
 
 **Owner decision (OV-024, 2026-09-26): they are one thing.** A **Project is a folder** — local, or
@@ -41,13 +60,8 @@ project on first use), remote connection and Work outside a project. There is no
 Project form and no New Workspace wizard; mainstream agent desktops (ZCode, Codex, Claude Code,
 Cursor) and Cindy/OpenChamber all bind work to a folder the same way.
 
-**Implemented so far:** choosing a folder binds (or creates) its project; changing the folder
-rebinds; choosing a project moves the conversation into its folder; the composer's picker follows
-ZCode's layout on Craft's styles; the Agent has `list_projects`, `open_project_folder`,
-`update_project` and `set_session_project`. **Not yet:** hiding the Workspace switcher and wizard,
-the project-grouped sidebar, and Project-scoped suites. Craft still stores everything under one
-default Workspace, which becomes an internal container for the installed catalog (Sources,
-Skills, labels, statuses, automations, Pages); existing records stay readable.
+Implementation status and migration gaps belong in the [register](capabilities.md) and
+[current workflow](../TODO.md), not in product definitions. Existing records remain recoverable.
 
 **Suites (OV-023):** Fleet is a general Agent foundation. Each Project chooses the suites it needs —
 Skills, Sources/MCP and right-side tools — from the installed catalog, stored in the project's own
@@ -55,19 +69,21 @@ files so a person or an Agent can change them.
 
 **Agent-operable by construction (OV-024):** every feature's operations are defined once and
 reached by buttons, the Agent's built-in tools and config-as-files alike, under the one
-permission path; every page keeps Craft's "describe the change" entry for handing edits to the
-Agent.
+permission path; every functional page must provide Craft-style contextual Agent assistance for its own target.
+This is the required product contract; delivery status belongs to the capability register.
 
-## The four sources, and what each one is for
+## Reference roles and current implementation
 
-Fleet is assembled deliberately, not blended. Each reference answers one question and is not
-consulted on the others.
+Reference roles guide comparisons, not ownership of separate pieces of the running application.
+One selected baseline must own the coherent task lifecycle. The historical Craft-first assignment
+below is revised under OV-025; consulting a better mechanism does not admit its whole runtime.
 
 | Source | What it decides | What it does **not** decide |
 |---|---|---|
-| **Craft Agents** (Apache-2.0; current `app/` tracks **v0.13.4**) | The **look** and the **agent/runtime base** we fork. Spacing, type, colour, motion, tokens, session/agent SDK, connections, and Craft's own capabilities (including Pages). Not Fleet's product concepts | Product concepts, capability ownership, pane vs page |
-| **Cindy** (Apache-2.0) | **Feature implementation and front/back interaction logic** — how a capability is actually built and how the surface talks to the backend | Visual style |
-| **OpenChamber** (MIT) | **Git and GitHub**: which PR belongs to a branch, review, and the browser-control seam | Everything else |
+| **Craft Agents** (Apache-2.0; current `app/` tracks **v0.13.4**) | Contextual Agent-assisted editing/configuration, conversation bubbles and conversation-linked Board; preserve useful Pages/document mechanisms | Mandatory retention of its frontend/runtime, Project hierarchy or blanket permission defaults |
+| **Cindy** (Apache-2.0) | Application-plugin lifecycle, human/Agent operations and Pi host integration reference | A second host/runtime, mandatory cloud services or its visual style |
+| **ZCode** (Apache-2.0) | Selected complete-product reconstruction direction (OV-027); current candidate's AgentRuntime and conversation shell are preserved through kernel proof | Mandatory coding-only scope, vendor accounts, or automatic approval of a storage/security migration |
+| **OpenChamber** (MIT) | Git/GitHub reference and complete-host challenger; compare its extension SDK and browser-control seam | Automatic adoption of OpenCode's product shape or a second Agent runtime |
 | **Fleet's own** | The product boundary and integration of the **built-in production surfaces**: infinite canvas, document editing, video and animation. Reference projects may supply bounded mechanisms | — |
 
 **QoderWork CN and TRAE SOLO CN are interface reference only.** Their layout and interaction
@@ -77,7 +93,8 @@ grafting it onto Craft's label store is exactly the mistake this line exists to 
 **Absorb only a demonstrated improvement, in both frontend and backend work.** The named references
 provide starting points and responsibilities, not a presumption that their implementation is better.
 Start with a concrete Fleet need and compare the current path, a small local correction, the target
-software's own facilities, and a relevant alternative. Reuse a bounded mechanism only when the
+software's own facilities, and a relevant alternative. Whole-baseline selection also compares
+complete end-to-end paths without presuming the current base wins. Reuse a bounded mechanism only when the
 benefit survives its integration and maintenance cost. A better interface does not qualify its backend,
 and a better backend does not qualify its interface. Keep the existing implementation on a tie or
 insufficient evidence; partial superiority warrants partial reuse, not a product transplant.
@@ -90,61 +107,31 @@ GitHub discovery starts from a gap; reference count and feature count are not su
 The comparison evidence belongs in the existing
 [`reference registry`](references.md#required-promotion-record), not a new plan.
 
-**Implementation boundary:** the 2026-09-21 rebuild replaced `app/` with the v0.13.4 base.
-The earlier Fleet extensions are preserved at `snapshot/pre-rebuild-2026-09-21`, not running in
-this tree. Product requirements below survive; their presence in this document does not establish
-implementation. R0 must also account for inherited hosted services before any Fleet release.
-
 ### Components, assistants and conversation loadouts
 
-Fleet's installable unit is a **Component**: a bounded capability bundle that may contain a native
-panel or surface, domain commands and storage, Skills, MCP server/tool declarations, default
-knowledge sources, and suggested Assistant settings. Components add tool entries and workbench
-panels; left tools and right workbench are the default placement, not permanent position locks.
-The user may resize, move, reorder and float supported panels through the one host, including the
-conversation view. A component cannot take over the shell or create a new navigation authority.
-Every component uses Fleet's Craft-derived tokens,
-typography, spacing, motion and shared primitives. A Component is not an Assistant and never owns
-Workspace, Session, Task, Permission, Timeline, Settings, or file ownership.
+A **Component** is an installable capability bundle: native views, domain operations/data, Skills,
+MCP declarations, optional dependencies and suggested Assistant settings. The user-facing term is
+**plugin**. A **Skill** describes a procedure; an **Assistant** is the identity/model/requested
+loadout performing work. These are different roles, not interchangeable configuration stores.
 
-A Component may be intentionally thin. Its panel can declare optional capability packages, such as
-a renderer, transcription provider, media codec, Skill pack, MCP server, or knowledge connector;
-those dependencies are installed and activated only when a user invokes the corresponding feature.
-Fleet's local core therefore stays small and provides the host, permission path, session/task
-lifecycle, file boundary and component loader, while heavy domain implementations remain lazy,
-replaceable component dependencies. A component must expose a useful basic state when an optional
-dependency is absent and explain the missing capability with an actionable install/configure path.
+Installed packages are global; a Project selects its suite. Vendor defaults remain immutable and
+user/Project settings are overrides. The effective set is fixed at an admitted turn boundary;
+changing a suite does not change a running request or grant permissions. A folderless conversation
+uses explicitly supported defaults without inventing a Project. That default policy remains open.
 
-An **Assistant** is the identity that performs work (persona, model, prompt, requested loadout and
-permission request). The owner is reconsidering the former **Workspace Composition** design in
-favor of a per-Conversation loadout. No Workspace-scoped Component resolver exists in the current
-app, and the former specification is not an implementation instruction. A sound future resolver
-would distinguish installed catalog entries, defaults, a Conversation's explicit choices and live
-permissions; a turn would use one accepted snapshot so its tools cannot change mid-execution.
-Removing a Component must leave core data and artifacts intact. The exact default precedence and
-storage migration remain open until the Conversation/Project boundary is reviewed.
+Plugins can add main views and right-tool entries without editing host source. People can resize,
+move and restore supported panels; layout stores positions, not native documents. One Fleet visual
+language covers host chrome and common controls while a professional editor retains its domain
+operations. Agents may author and maintain packages through the same installation path as people.
 
-**Correct the inherited baseline before adding capabilities.** The owner's current order is:
-classify and correct Craft's existing capabilities and services → verify and accept the corrected
-baseline → build the Component/panel host → add domain Components → close external distribution.
-The baseline exit is defined once in [`modules/baseline.md`](modules/baseline.md).
-Passing tests or upstream equivalence alone does not authorize feature expansion. This supersedes
-the earlier permission to build the host while baseline corrections remained open.
+Keep Core limited to shared host/runtime, identity, permission, lifecycle, file and installation
+mechanisms. Load heavy editors/codecs/workers only when used. Missing optional dependencies degrade
+the affected feature with a recovery path. Closing a view does not cancel its accepted work;
+disable/uninstall preserves user artifacts and revokes availability through the owning lifecycle.
 
-**Build the host before distributing components.** After baseline exit, the foundation slice connects
-the mounted Files surface and surviving Notes RPC (with a real Notes consumer) to a registry,
-scoped activation and user-controlled layout
-before new domain components. It does not depend on R6 delegation, R9 memory or a public catalog.
-R15 closes distribution and update safety; R18 closes advanced/multi-window layout beyond the
-foundation. The executable contract is [`modules/components.md`](modules/components.md#release-contract--r18-component-and-panel-foundation).
-
-**Test content is not product intent, but an explicit Component proposal is.** Stock-trading content
-already present in Sessions came from chat and feature testing; it is not a required default Project
-name and must not be renamed or deleted as framework cleanup. Separately, the owner has proposed a
-future **Trading/Market Analysis Component**: an optional Workspace capability that may provide
-market data, research, simulation/backtesting, strategy notes and (only after a separate safety
-contract) broker actions. It is not part of Fleet Core and is `not implemented`. P6 must work for
-arbitrary folders and names; this clarification is not permission to change live/test records.
+[Components](modules/components.md) owns activation and shared-operation details;
+[Marketplace](modules/marketplace.md) owns packaging/compatibility/distribution. A package format's
+recognition does not imply its executable extensions or UI are compatible.
 
 ## The rule that decides scope
 
@@ -189,8 +176,9 @@ Named so nobody designs them again:
   a production binary/signing dependency still requires the existing admission checkpoint.
 - **3D scene authoring, panorama relighting, multi-camera shot grids.** Modelling belongs to
   Blender, outside.
-- **A second OS sandbox.** Fleet's permission path and process boundary already do what the
-  candidates enforce on the platform it ships on.
+- **An additional sandbox platform without a demonstrated need.** Permission checks and subprocess
+  separation do not establish OS isolation. Verify the selected host's actual boundary before
+  admitting executable plugins; the old exclusion is not evidence that isolation is already adequate.
 - **Online sharing, collaboration invites, hosted accounts.** Local-first: nothing that requires an
   operator-run service to work.
 - **Telemetry.** Same reason.
@@ -233,11 +221,8 @@ Three consequences:
    changed. Any session may delegate (H28); there is no captain mode.
 2. **Determinism belongs in code.** Branching, validation, state machines, permission control, error
    handling and retry are written; the prompt carries only what genuinely needs language.
-3. **Do not patch Craft's `AppShell` to express a new surface.** A surface belongs to the one
-   registered pane host required by R18. The former `packages/shared/src/layout` model is absent;
-   extend the current host seam with real consumers rather than assuming that model is mounted.
-   Adding an unrelated `isXNavigation` branch, sidebar row or second-level page is the discarded
-   window model.
+3. **New surfaces register through the chosen host.** Reuse a concrete host contribution path;
+   do not add a second navigation or Session owner to mount a plugin.
 
 ## How the interface behaves
 
@@ -282,28 +267,9 @@ checkouts are separate from obsolete project documentation and keep their own re
 
 ## Vision
 
-Status: product vision and decision synthesis. [`product.md`](product.md) is the authority on what
-Fleet is and is not; [`decisions.md`](decisions.md) and [`architecture.md`](architecture.md)
-own binding decisions and invariants; active specs and the capability map own executable scope and
-status. This document explains what Fleet is trying to become so an Agent can choose the best
-engineering route for a new request instead of reacting to one isolated feature description at a
-time.
-
-### 1. The product bet
-
-Most agent products are chat-first shells. They provide a conversation, a browser and a generic MCP
-bridge, then ask the Agent to look at an external application and operate it through screenshots,
-coordinate actions or a large collection of tools and instructions. That works for simple coding
-tasks, but becomes slow, fragile and context-heavy for design, documents, media, research and other
-structured work.
-
-Fleet is a different kind of Harness: **the work surface and the Agent operate on the same native
-artifact inside the same product**. When a domain is important enough to deserve a structured model,
-undoable commands, human editing and Agent editing, Fleet provides that surface as a first-class
-Component instead of asking an Agent to remote-control an unrelated application.
-
-The result is not a collection of mini-apps glued beside a chat. It is one workbench with one shared
-spine and many selectively activated production capabilities.
+The work surface is part of the Agent's working environment. A person and an Agent can inspect,
+revise and continue the same work. The native surface owns its semantics; the host coordinates
+identity, permission, work evidence and handoffs. A coding harness is one execution mechanism.
 
 ### 2. What Fleet changes about Agent work
 
@@ -333,73 +299,6 @@ The model is not given every Skill, MCP schema, component manual and connector d
 turn. A catalog may be large; the active task context must be small. Fleet resolves the minimum
 authorized capability set for the current task, loads heavy implementations only when needed, and
 keeps the full raw evidence recoverable.
-
-### 3. One shared spine, many native surfaces
-
-The product has one authority for each cross-cutting concern:
-
-```text
-Craft shell and visual system
-        │
-        ├── Workspace / Project boundary
-        ├── Session and conversation history
-        ├── Task and Job lifecycle
-        ├── Permission / trust / approval path
-        ├── Timeline and attributed evidence
-        ├── Files and ArtifactRef provenance
-        ├── Settings / credentials / Sources / Skills
-        └── Agent + provider runtime adapters
-                │
-                └── active Component composition
-                        ├── conversation tools
-                        ├── document surface
-                        ├── design surface
-                        ├── canvas surface
-                        ├── video/media surface
-                        └── browser/evidence surface
-```
-
-Native surfaces own their domain model, not a second Session, Task, Permission, Settings, timeline
-or file-byte store. A surface's human commands and Agent tools converge on one governed executor so
-the two callers cannot silently diverge.
-
-### 4. Everything is composable, not everything is global
-
-Fleet adopts the implementation principles proven in DeepSeek Harness, Cindy and Open Design:
-
-- Components declare their contributions, dependencies, scopes and requested effects.
-- The host validates the declaration before rendering or executing it.
-- A Component activation owns its listeners, workers, services, tools and panels.
-- Deactivation disposes the entire owned subtree, including asynchronous cleanup.
-- A failed or denied Component remains visibly unavailable; it does not half-register.
-- Vendor manifests are immutable. User and Workspace preferences are overrides.
-- A Session may receive a snapshot of the effective composition, and that composition change is
-  evidence in the Session history when it changes what the Agent can see or do.
-
-This does **not** mean Fleet imports Cordis as a second kernel or splits itself into hundreds of
-packages. Fleet keeps Craft's shell, SessionManager, permission path, settings and runtime seams.
-The plugin principle is applied at the Component Host boundary.
-
-### 6. Progressive disclosure and context economy
-
-Fleet treats context as a product resource, but does not shrink the capability catalog to save
-tokens. The system separates:
-
-1. **Catalog:** every installed and discoverable Component, Skill, MCP and connector.
-2. **Active composition:** what the current Workspace and task are allowed to use.
-3. **Effective projection:** the small prompt/tool/context slice actually sent to the model.
-4. **Native surface state:** the structured artifact and panel state the person operates.
-
-The default host stays light. A thin Component can expose its basic panel without optional
-dependencies. A video renderer, OCR model, transcription engine or heavy document converter loads
-only when its feature is invoked or explicitly preloaded. Failed optional dependencies degrade one
-feature with a named recovery action; they do not brick the host.
-
-Strong models should not be burdened with a giant “super Skill” that repeats generic reasoning they
-already perform. Weaker models may benefit from more prescriptive Skills, checklists and staged
-workflows. Therefore the same Component can expose progressive loadouts: concise defaults, optional
-guided procedures, and explicit workflow Skills for difficult or repeatable processes. The model's
-strength changes the projection policy, not the Component authority or permission path.
 
 ### 7. Human and Agent iteration
 
@@ -451,109 +350,30 @@ The poster example “generate → vectorize text → remove raster text → com
 with four immutable result identities, not one overwritten image and not an ambiguous prompt
 transcript.
 
-### 8. Interface direction
+### Native formats and reproducibility
 
-Craft Agents supplies Fleet's visual language: typography, colours, spacing, elevation, motion,
-icons and shared primitives. Cindy supplies the information architecture and feature implementation
-patterns. OpenChamber supplies Git/GitHub and browser-control mechanisms.
+Opening, generating or previewing a file does not establish direct editing or save-back. Native
+owners must demonstrate open → human edit → Agent edit → save → reopen, including conflicts,
+undo, unsupported features and recovery. Preserve originals; export creates a versioned result
+with an honest fidelity report. The [format matrix](modules/canvas.md#format-proof-matrix) owns
+feature-specific claims for Office/PDF/SVG/FIG/PSD/AI and named conversion paths. Proprietary
+formats may remain unsupported or use approved external-app/export routes.
 
-The interface is panel-first rather than page-first:
+The [media contract](modules/media.md) owns frame/sample accuracy, preview/render differences,
+provider receipts, cancellation and unknown outcomes. Without provider idempotency or queryable
+receipts, the host cannot promise exactly-once external effects: stop and reconcile rather than
+blindly retry. Native generated bytes, editable projects and previews remain distinct.
 
-- one Conversation surface and one Session list;
-- Project, label, status and archive are predicates or context, not duplicate conversation homes;
-- Project resources open in the workbench and never repeat the Session list;
-- installed Components add discoverable tool entries or panels without replacing the shell;
-- the person may resize, move, reorder, float and restore supported conversation/tool panels through
-  one host;
-- a panel's position is user state, while its domain data remains owned by its Component/native
-  authority.
-
-The MiniMax Design pattern is useful **future canvas evidence** for this direction: a persistent
-project rail, a conversation/production-surface split, a reversible conversation position, a canvas
-toolbar, minimap, asset access and explicit “conversation only / canvas only / both” layout modes.
-Fleet must rebuild that interaction through Craft tokens and Fleet authorities, not copy a product
-shell. The current Component/panel foundation promises only the generic in-window host contract;
-canvas-specific modes wait for the R7 production surface.
-
-### 9. Reproducibility, migration and real-format compatibility
-
-An Agent-native surface is not complete if it can generate an artifact once but cannot reopen,
-inspect, revise, revert or move it to another tool. Every production Component therefore declares
-its format adapters and fidelity honestly:
-
-```text
-format adapter → inspect/parse → ImportReceipt + original ArtifactRef
-                 → native editable representation
-                 → governed edits + immutable versions
-                 → fidelity report → export adapter → Delivery ArtifactRef
-```
-
-The original file is preserved as the source artifact. Import creates a derived native document or
-canvas projection and records the adapter version, source hash, unsupported features, fonts/assets,
-coordinate transforms and fidelity class. An import never silently overwrites the source.
-
-Fidelity classes are explicit:
-
-- **lossless round-trip:** the native format and all supported semantics survive export/import;
-- **structured with limits:** layers/objects/data remain editable, but named features may change;
-- **visual reference:** appearance is preserved as an image/PDF/reference layer, not falsely claimed
-  to be fully editable;
-- **unsupported:** the Component refuses with a named alternative or conversion path.
-
-For the common design formats in scope:
-
-- Figma `.fig` is not assumed to be a portable open format. The first adapters should use approved
-  Figma export/API/plugin paths (SVG, PDF, PNG and a structured exchange representation where
-  available), with a fidelity report; direct `.fig` editing is not promised without a verified
-  parser and license path.
-- Photoshop PSD/PSB and Illustrator AI are adapter targets. Layer/text/mask/vector preservation is
-  claimed only per tested feature subset. A flattened image is a visual fallback. PDF/SVG may retain an editable subset when an adapter
-  proves it; the extension alone does not decide fidelity.
-- Documents use the real format owner and a narrow-patch/save-back path. A preview or conversion is
-  not an editing claim.
-
-Reproducibility is first-class: every generation, import, edit, render and export carries a stable
-input version, Component/adapter revision, Action sequence and output version. Restore creates a new
-lineage head or applies an inverse transaction; it never silently rewrites history. Failed exports
-are quarantined, resumable work is reconciled, and retries cannot duplicate a file, charge or
-provenance record.
-
-Format support is a Component capability, not a promise made by Fleet Core. Fleet should not
-reimplement every parser or exporter from zero. The reference pool exists to find an already-tested
-engine or adapter, compare its real source path and tests, then wrap the smallest useful part behind
-Fleet's Component/Artifact/Permission seams. A Component manifest must declare `formatsIn`,
-`formatsOut`, fidelity classes, platform/runtime dependencies and recovery behavior. Users can
-install a better adapter later without replacing the native artifact authority.
-
-Reference-source reuse follows the license boundary: permissive MIT/Apache/BSD code may be ported
-with notices and dependency review; MPL code needs file-level obligations; AGPL or proprietary code
-requires an explicit adapter/process or owner license checkpoint. A product README never overrides a
-subdirectory or bundled dependency license. Heavy format engines run in a lazy worker or controlled
-process so the core remains light and a parser failure cannot damage the host.
-
-### 10. Trust, permissions and failure radius
-
-Component installation and activation are transactions:
-
-```text
-discover → inspect manifest/dependencies/license → trust decision
-→ permission decision → stage → activate → health audit → publish
-```
-
-Updates create a new revision and reopen review when tools, MCPs, dependencies or requested effects
-change. Failed activation rolls back the Component runtime while preserving core records and native
-artifacts. Uninstall revokes runtime availability and package-owned grants/credentials before removing staged
-files; shared connections remain while referenced.
-
-Failure recovery stays at or below the radius of the failure: one panel failure does not tear down
-the Session; one Component failure does not disable the Workspace; a Workspace transport failure
-does not corrupt local history. Every refusal names its reason and recovery path.
+The original [scope rule](#the-rule-that-decides-scope) governs what belongs inside Fleet.
+An optional Trading/Market Analysis Component may provide research, paper trading and backtests;
+live broker actions require a separate explicit contract. Existing test conversations are data,
+not default Projects or product requirements.
 
 ## Glossary
 
 > Project vocabulary with exact meanings, subordinate to [`product.md`](product.md). These
 > definitions clarify other documents; they never override the product authority or establish
-> implementation. Current capability status belongs in `architecture.md`.
+> implementation. Current capability status belongs in `capabilities.md`.
 
 ### Terminology rules
 
@@ -589,9 +409,9 @@ does not corrupt local history. Every refusal names its reason and recovery path
 | **Component** | An installable bounded capability bundle: UI/panels, domain commands, Skills, MCP declarations, defaults, and optional knowledge resources. It consumes Fleet authorities and owns only its native domain. |
 | **Plugin** | Distribution packaging that bundles existing Skill/Source capabilities and the planned Component capability. Compatibility adapters map package contents to those authorities; a Plugin is never a fourth authority or a separate permission, connection or skill store (P11). The former Fleet `ComponentManifest` implementation is absent after the rebuild. |
 | **Assistant** | The identity that performs work: persona, model, prompt, requested loadout and permission request. It is distinct from a Component or Session; requests never grant permission. Fleet's independent Assistant store and Session binding are targets, `not implemented` ([`product.md`](product.md)). |
-| **Session** | The existing Craft conversation and execution record owned by SessionManager, with its transcript, context, permissions and events. Child Sessions may link through `parentSessionId`; an Assistant identity is not another conversation store. |
+| **Session** | The logical conversation/run record owned by the selected host. Current ZCode and retained Craft implementations have different owners; private native executor continuation is a bound implementation detail. |
 | **Task** | A unit of work. The user-facing **New Task** action starts work through the Session authority and does not require a duplicate structured Task record (P10). Craft's explicit structured Task is separately represented by a TaskSpec DAG and run log, executed through child Sessions by TaskRunner. |
-| **Conversation loadout (proposal)** | The Component/Skill/MCP choices accepted for one Conversation, derived from installed availability and defaults; it cannot grant permissions. Storage and migration are not yet selected. |
+| **Effective turn loadout** | The Component/Skill/MCP projection derived from the Project suite or permitted folderless defaults and bound to one admitted turn. OV-023/024 supersede a separate persistent per-Conversation composition; selection cannot grant permissions. |
 | **Component default** | A vendor-provided value shipped by a Component. It is immutable package input; user and workspace changes are stored as overrides. |
 | **Frontend track** | Pages may be spec'd, mocked behind typed adapters and built preview-gated ahead of their backend behavior, reported `display-only` until wired ([`capabilities.md`](capabilities.md#page-structure) §5, Decision G6). New feature work remains subject to the baseline exit in `TODO.md`; preview gating does not bypass it. |
 | **Preview gate** | The developer/preview toggle behind which unwired pages live; the default user surface never shows controls without real behavior. |
@@ -602,7 +422,7 @@ does not corrupt local history. Every refusal names its reason and recovery path
 | **Workflow promotion** | Explicitly converting a completed chain of reference/input edges into a versioned finite DAG definition — history is never rewritten to pretend it was a workflow ([`agent-core.md`](modules/agent-core.md#orchestration) §4.3). |
 | **Duty to dissent** | G1's second half: an agent must state the better technical route, its reasons, and both costs before executing an owner suggestion it believes suboptimal. |
 | **Token ROI** | The token-economy metric: cost per *accepted* outcome — never raw tokens per request (`modules/context.md` §5, Decision E12). |
-| **Context rot** | The measured non-uniform accuracy drop (often 30–50%) as input context grows, with mid-context information under-attended ("lost in the middle"). The scientific reason leaner context raises capability. |
+| **Context degradation** | Task- and model-dependent loss of useful information or accuracy as context grows. A shorter prompt is not inherently better; measure accepted outcomes and evidence retention. |
 | **Prefix stability** | Engineering the prompt so system + tool definitions stay byte-identical across turns (three-zone layout), maximizing provider prompt-cache hits — pure cost/latency win (`modules/context.md` L1). |
 | **Harness / execution profile** | Harness is the model-facing prompt, tools, context assembly and call loop around a runtime. An execution profile is one measured configuration of that harness (for example Pi-light); it never owns Session, permission, task or cost state (E13). |
 | **Effective projection** | The smallest prompt/tool/Skill/Source/environment view for one model call, computed from task need ∩ installed capability ∩ runtime availability ∩ caller policy ∩ live grant. It is a derived view, not an authority (E13). |
@@ -622,7 +442,7 @@ does not corrupt local history. Every refusal names its reason and recovery path
 | **TaskBrief / RunReport** | The target bounded delegation envelope in and result envelope out for supporting agents (Decision C3; roadmap R6). These Fleet runtime contracts are `not implemented`; no template or type alone establishes the delegation path. |
 | **Owner checkpoint** | A decision class the agent must never take alone: money, irreversible/public effects, production dependencies, new/replaced authorities, product forks ([`AGENTS.md`](../AGENTS.md#owner-protocol)). |
 | **Owner** | The human product owner. States intent in plain language; owns final acceptance and checkpoints. Agents choose technical routes (Decision G1). |
-| **Workspace / Project** | Current Craft: Workspace scopes Project and Session records. Proposed UI: no visible Workspace tier; Host identifies local/remote execution, Project identifies an optional folder on that Host, and Conversation keeps its own history and loadout. No data migration is approved. |
+| **Workspace / Project** | Project is a folder on a local or remote host (OV-024). Craft Workspace remains a legacy compatibility container. A conversation can be folderless; no automatic migration of older records is implied. |
 | **BrowserPane** | Craft's in-app governed browser surface; in Fleet, an evidence-capture input, never a stealth browser (Decision E6). |
 | **Native surface / module** | A production surface owning its own document/job model (Markdown editor, video editor…), registering capabilities on the spine instead of becoming a separate app (Decision E4). |
 | **Loadout** | The scoped set of capabilities/tools enabled for a given agent/task, narrower than what is installed (Decision E2). It contributes to effective projection but does not replace permission or the governed Action seam. |

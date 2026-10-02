@@ -1,5 +1,8 @@
 # SYS-06 — AIGC and media production
 
+**Code scope:** `app/` paths and unqualified Craft observations describe the retained branch;
+`.fleet/zcode` sections describe the active candidate. [Current order](../../TODO.md) overrides old branch sequencing.
+
 **Rows:** CREATE-02..05, CREATE-08..10, CREATE-12, ORCH-05, INFO-02, INFO-04, INFO-07.
 **Owner:** native sequence/deck models and media/render Job adapters. **Depends on:** SYS-01 JobRef, actions and permissions.
 **Development order:** R11–R13.
@@ -15,14 +18,14 @@ new.
 | ID | Capability | Status | Release / acceptance | Surfaces |
 |---|---|---|---|---|
 | CREATE-02 | Video and media editing | not implemented | R12 / VID-001..004 | P-35 |
-| CREATE-03 | Image generation and editing | not implemented | R11 / CREATE-03-A | P-36 |
+| CREATE-03 | Image generation and editing | xAI/OpenAI API image generation/editing wired but not visually checked; subscription media and full Job path not implemented | R11 / CREATE-03-A | P-36 |
 | CREATE-04 | Audio, voice and music | not implemented | R12 / CREATE-04-A | P-37 |
 | CREATE-05 | Captions, transcript and translation | not implemented | R12 / CREATE-05-A | P-38 |
 | CREATE-08 | Deck and presentation | not implemented | R13 / DECK-001..004 | P-41 |
 | CREATE-09 | Motion graphics and animation | not implemented | R13 / CREATE-09-A | P-42 |
 | CREATE-10 | Storyboard and shot planning | not implemented | R12 / CREATE-10-A | P-43 |
 | CREATE-12 | Export, render and delivery profiles | not implemented | R5,R8,R10-R14 / CREATE-12-A | P-45 |
-| ORCH-05 | Jobs, queues and resource scheduling | not implemented | R11-R13 / JOB-001..004 | P-49 |
+| ORCH-05 | Jobs, queues and resource scheduling | candidate media receipt/retrieval wired but not visually checked; general queues and resource scheduling not implemented | R11-R13 / JOB-001..004 | P-49 |
 <!-- /module-card -->
 
 ## Closed loop
@@ -32,6 +35,29 @@ sequence/document → cancellable render Job → ArtifactRef → delivery. Nativ
 and multi-camera shot grids are excluded by PRODUCT; a research catalogue does not reopen them.
 
 ## Model pairing and Agent dispatch
+
+### Generation workflow versus provider execution
+
+Codex's Imagegen Skill describes the creative workflow: inspect references, preserve requested
+details, choose generate versus edit, then save and inspect the result. The actual image request
+is a separate `image_gen.imagegen` tool. In the inspected Codex source,
+`codex-rs/ext/image-generation/src/{tool,backend}.rs` validates local/history references and
+dispatches through the active provider/authentication and `ImagesClient`. Reading a Skill does
+not supply a media endpoint or make a chat subscription token usable for that endpoint.
+
+Fleet retains one `MediaGenerationPort` for provider execution, with the existing Session tool,
+permission, artifact and usage owners. A future creative Skill consumes that tool; it does not
+reimplement HTTP/credentials through shell commands. The current released Pi 0.99.2 image
+registry supplies one built-in `openrouter-images` adapter. Its OpenRouter route may be reused
+when that provider is admitted, but the interface alone supplies neither xAI/OpenAI adapters,
+video execution nor ChatGPT media entitlement. Keep the already-tested xAI adapter until a
+replacement proves the same account binding, cancellation, saved bytes and accounting behavior.
+
+Generation tools are advertised only while the current Host media port reports their executable
+route. The read-only `ListMediaModels` remains discoverable for explaining missing capabilities.
+This filtering uses the same live port
+without a second capability cache. It removes an unavailable schema from the model's context,
+and does not claim measured token savings or task-quality improvement.
 
 One existing connection may authenticate chat, image, video and audio models, but each model's
 membership, input/output mode, endpoint, credential scope and allowance are separate facts. The
@@ -45,15 +71,139 @@ preflight (`src/agents/tools/media-generate-background.ts`). These paths are rel
 (`src/main/ai/tools/painting.ts`) is behavior evidence only
 (AGPL-3.0), not code to import. An image result can become a later video reference through its
 ArtifactRef; speech-to-text is an input path distinct from text-to-speech output. The existing
-Session permission/action path owns the tool call, and the shared Job path owns progress,
-cancellation and persisted output. Until a real adapter and those paths exist, media models remain
-`not implemented` even when account discovery advertises them.
-Codex's native `images/generations` and `images/edits` endpoints and Hermes's OAuth image adapter
-are the ChatGPT subscription transport reference. A Settings row for this documented route does
-not establish account entitlement or implement Fleet's generation Job. Cindy's subscription image
-projection is useful for presenting the capability, while its pinned chat-model image-tool request
-must not replace the native Codex route. The backend may return a different effective image model
-or quality than requested, so a future Job records both requested and reported values.
+Session permission/action path owns the tool call, and the shared Job path owns deferred progress,
+cancellation and persisted output. Catalog presence does not establish an executable path.
+Cindy's Codex image proxy and Hermes's OAuth image adapter demonstrate two subscription transports.
+The [Codex image guide](https://learn.chatgpt.com/docs/image-generation) says built-in image
+generation uses the ChatGPT plan's Codex allowance; using an OpenAI API key for larger batches is a
+separate, API-priced path. The [official Codex source](../../源码参考/software/codex/codex-rs/ext/image-generation/src/backend.rs)
+resolves the active provider and authentication for standalone `images/generations` and
+`images/edits` requests. The standalone Codex route is evidence for a separate media adapter, not proof that Fleet's public
+Sign in with ChatGPT grant can call it. The [official preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
+exclude hosted image generation on public plan Responses. Legacy Codex and public grants have
+separate audiences/routes; never reuse one as the other or advertise image eligibility from chat
+login alone. A future subscription adapter must resolve the selected saved account through the
+existing owner and prove that route's eligibility, image/edit result and usage. API-key Images
+remain a separately priced route. The
+[Sora service/API sunset](https://help.openai.com/en/articles/20001152-what-to-know-about-the-sora-discontinuation)
+also rules out presenting old Sora video routes as current ChatGPT subscription support. A Settings
+row never establishes entitlement. A backend may return a different effective model or quality,
+so a Job records requested and reported values.
+
+The ZCode candidate retains exact modality, output, tool and limit fields when an API catalog
+actually reports them; an ID-only row remains unknown. Subscription catalogs project only the
+fields their native adapters carry. Its composer serializes image/video/PDF attachments, while
+audio falls through to a generic file reference. This is not a native audio-input path. Do not
+treat successful upload or a vision badge as proof of generation or tool-call support. Preserve
+input-limit, prerequisite and failure/recovery copy.
+
+### Candidate generation and recovery contract
+
+Generation output is separate from a chat model's image/video **input** flag. The active candidate
+uses `bootstrap/src/app/api-media-generation-port.ts` (paths in this subsection start under
+`.fleet/zcode/apps/zcode-cli/packages/`). It consumes the existing Provider registry and HTTP owner;
+there is no second account store, shell-based media client or new production dependency.
+Approval bindings retain at most 64 MiB of image-reference bytes per media kind; one image-edit
+request is limited to five references / 24 MiB combined. Evicted bindings fail before payment.
+
+| Route | Acquisition and execution | Current limit |
+|---|---|---|
+| xAI global API image | Authenticated language/image/video catalogs classify only returned models. Recheck the dedicated image model with the selected enabled key before approval; freeze model, prompt, references and key. Generate uses base64 JSON; edit uses one `image` or up to five ordered `images`. | Generation/edit transport has local fixtures; no paid entitlement or quality proof. |
+| OpenAI global API image | Combine authenticated `/models` membership with the exact published GPT Image list in `packages/provider/src/media-models.ts`. Recheck membership before approval. Generate requests PNG without legacy `response_format`; edit uses multipart. | Unknown name variants and retired DALL-E IDs do not gain this adapter. Images returned without a model/cost keep those facts unknown. |
+| xAI global API video | Recheck the dedicated video model before approval. Submit once, retain `request_id`, then query the original request and download a bounded MP4 from `vidgen.x.ai` without credentials or redirects. Optional image-to-video reuses a current-Session image artifact. | This is generation/retrieval, not a timeline editor, video edit/extension adapter or universal regional route. |
+| Subscription media | Grok Build side-call auth, Codex standalone Images and Cindy/Hermes transports are compared independently. | No subscription media executor is enabled by this API work; Claude, Grok and public ChatGPT chat readiness do not establish media access. |
+
+`GenerateImage` and `GenerateVideo` enter the existing Session permission path and are exposed only
+when the live port reports the corresponding executable route. `ListMediaModels` can also return
+this Session's recent receipts; `ResumeMediaJob` queries/retrieves a saved request without generating
+again. A creative Skill orchestrates these tools and result inspection; it never supplies credentials
+or a competing executor. Media-only models stay out of the conversation picker.
+
+`core/src/tool/handlers/{media-generation,generate-video,media-jobs}.ts` stores immutable intent,
+provider acceptance and terminal receipts through `ToolArtifactStorePort`. The intent is durably
+saved before the paid POST. Its identity includes Session, turn and assistant request, so reused
+upstream tool-call IDs do not collapse different charges. A stopped/crashed request after possible
+dispatch with no known provider ID remains unknown and is never automatically resubmitted. A local
+refusal before dispatch is retained as failed with its specific reason, rather than reported as
+an uncertain paid submission. Unconfirmed remote errors retain their receipt and safe HTTP status
+where available. A known video retains its original credential reference, including configured project/organization headers. Unrelated Provider edits and a new default key do not invalidate that confirmation or replace its original enabled key. Removing
+or disabling that connection prevents retrieval until the original route is restored. Stop ends
+waiting; it does not claim remote cancellation or a refund.
+
+Once output bytes return, local commit continues despite surrounding turn cancellation. Images
+are real PNG/JPEG/WebP artifacts, replacing the earlier text data-URL file; videos are real MP4
+artifacts. Video download publication keeps a stable native artifact URI and refuses conflicting
+bytes. Reopen can query a known video or restore its missing local file without another POST.
+Receipt recovery repairs a failed ledger write using the same physical request ID. The existing
+ledger retains reported money and raw provider usage separately from text-token estimates; unreported media cost is unknown,
+never zero or a text-token invoice. Requested and actually reported models remain separate.
+
+The existing tool-result FilePart and attachment viewers own result display; no replacement media
+page is introduced. Successful generation tools publish exact attachment refs through V4 live
+events and cold transcript replay. The ref remains bound to its Session, assistant, tool call and
+original attachment index; repeated upstream tool IDs cannot authorize another result. The
+conversation and current-turn status panel render those saved outputs even without Git changes.
+Read observations, screenshots, pending and failed calls are not advertised as generated results.
+Image thumbnails are loaded only when visible; videos are read on open, and missing files show
+an explicit error rather than regenerating. A video preview is a user-visible artifact plus a short text reference in model
+history, not an automatic injection of the entire movie into context. Cold hydration skips binary
+reads for reference-only results and reconstructs image data from binary artifacts when an image
+belongs in the model's history. Reference-image reads are
+limited to this Session and resolved before approval. Human-provided images from arbitrary paths,
+masks, dimensions/quality controls, broader vendor/subscription adapters and the general resource-aware
+Job queue still require their own complete paths. This receipt implementation does not satisfy
+ORCH-05's queue/fairness/platform acceptance or CREATE-02's native editing acceptance. See the
+[verification entry](../engineering.md#zcode-candidate) and [source comparison](../references.md#media-acquisition-and-recovery-comparison).
+
+For the requested vision bridge, use one optional pre-dispatch input adapter in the existing
+Session. The composer offers an explicit vision-model choice only with an image attached; a model
+with confirmed image support keeps the original path. For a confirmed text-only main model, the
+first-party composer requires a confirmed vision-capable backend before submission; direct/legacy
+clients retain the existing unsupported-image validation without a silent paid bridge. Unknown capability
+never starts a paid second model without the user's choice. The chosen backend is frozen in the
+same `sendText` intent as the main model, attachments and delivery mode. Queue, edit and retry keep
+that choice; a new model or account choice affects only a later submission. The target Host
+validates both models and resolves credentials at execution, including remote workspaces.
+
+After attachment resolution and before the main model request, the Session asks the selected
+vision model to describe each image with a bounded, cancellable auxiliary call. The request
+includes a bounded copy of the current user question as a focus hint; the composer names that
+transfer to the selected backend before submission. Its usage fact uses `vision_bridge` and the
+same session/turn; a backend failure yields an explicit
+unavailable marker, never a guessed caption or raw image sent to the text-only model. Cancellation
+stops the turn. The original file part remains in the user-visible Session. The derived description
+and status are stored on that same message with image order/digest and backend provider/model; the
+actual account and cost belong to the existing per-request usage fact when the adapter reports them.
+Only the provider-visible history substitutes the description. Cold hydration and rewind must apply
+the same substitution; if bridge intent exists but a description is missing or invalid, they fail
+closed to the unavailable marker. The description is untrusted image content, not a user instruction.
+This does not create a second attachment, queue, credential or usage authority. Tool-result images,
+legacy image history predating the bridge and fallback backends have separate acceptance.
+
+Source comparison sharpens that boundary. Qwen-MM-Plugins `core/readers/image.py` returns an MCP
+image block only for an image-capable main model; `shared/native_mode.py` calls a separately
+configured VL API to caption it for a text-only main model. Qwen Code's
+`services/visionBridge/tool-result-vision-bridge.ts` converts nested tool-result images before the
+next model request, retaining tool text as untrusted data. Fleet's current
+`runtime/helpers/media-capability.ts` already replaces unsupported image/video blocks with an
+unavailable marker at final request assembly, including generated tool results and cold history.
+It does not make those results visible to a text-only model. Extend the existing chosen vision
+backend to tool-result images only with explicit egress/usage attribution and durable description
+evidence; never silently switch the main model or claim an image was seen after bridge failure.
+Pi's `pi-multimodal-proxy` demonstrates provider-scoped first-use egress consent and tool-result
+captions, but its hooks write Pi Session entries and require `pi-coding-agent`. The candidate embeds
+Pi AgentSession under OV-069, with explicit Host resources: installing that extension does not activate it here. The equivalent Fleet slice must
+reuse its existing input intent, permission check and usage row, keep the user's explicit vision
+backend, and fail closed for tool-result images when no approved backend is available.
+
+Official Grok Build keeps consumer OAuth and xAI API-key bearers separate for Imagine side calls;
+its image/video tools recheck a request bearer, with video using submit, poll and download. The
+candidate's xAI API image path does not thereby gain Grok subscription media access. Adapt the
+wire shape and tier/issuer checks through the existing credential owner. Candidate Session receipts
+outlive the bounded tool wait; the general scheduled Job path remains separate unfinished work. Qwen-Live-Harness
+uses a regional DashScope API key and a separate realtime WebSocket/receipt loop; it does not prove
+Qwen Coding Plan subscription access. Its call-epoch and uncertain-tool-result handling inform a
+future Fleet voice adapter without adding another Session, permission or memory authority.
 
 ## Live voice conversation boundary
 
@@ -146,15 +296,17 @@ by a generic job criterion.
 
 #### Reality and activation sequence
 
-No Fleet Job queue or ArtifactRef authority is present (`rg -n "Job|job queue|ArtifactRef|retry"
-app/packages app/apps`). Activation is: define the Job adapter over one existing TaskRunner seam,
-add a deterministic fixture and resource limits, prove progress/cancel/retry/failure and restart,
-then expose P-49/P-45. Placeholder progress cannot be reported as wired.
+The retained Craft inspection found no Fleet Job queue or ArtifactRef authority (`rg -n
+"Job|job queue|ArtifactRef|retry" app/packages app/apps`). The active candidate has the bounded
+media receipts and native artifact path above, while general queue/progress/resource scheduling
+and P-49/P-45 remain absent. Extend those existing candidate owners with actual consumers and
+prove progress/cancel/recovery, fairness and resource limits before exposing the general panel.
+Placeholder progress cannot be reported as wired.
 
-This is a Fleet seam to extend, not permission to import a reference job system. The first
-implementation must bind to `app/packages/server-core/src/tasks/TaskRunner.ts` and the existing
-SessionManager cancellation path, then prove restart, resource-limit and ArtifactRef behavior
-before any external queue is considered.
+The retained Craft TaskRunner is comparison material. Active candidate work extends ZCode's
+existing RuntimeTaskRegistry, Session cancellation, native artifacts and ledger; it must not
+create a second Task/Job authority or route new production work into `app/`. The current media
+receipts prove a bounded submission/retrieval seam, not the general queue/resource-limit contract.
 
 ---
 
@@ -294,13 +446,13 @@ implementation has added them; extend a matching existing behavioral test instea
 
 **Jobs, queues and resource scheduling**
 
-- **Next:** `IMPLEMENT` — R11 first real image producer; extend R12/R13.
-- **Sources:** [`packages/server-core/src/tasks/TaskRunner.ts`](../../app/packages/server-core/src/tasks/TaskRunner.ts); [`packages/server-core/src/sessions/SessionManager.ts`](../../app/packages/server-core/src/sessions/SessionManager.ts); [`packages/shared/src/protocol/dto.ts`](../../app/packages/shared/src/protocol/dto.ts).
-- **Deliver:** Extract a cancellable Job adapter from one real producer through TaskRunner: queue → submit → observe → validate output → commit ArtifactRef. Add resource classes only for actual consumers.
-- **Data:** Job identity correlates Task, operation/attempt, pinned inputs/adapter revision and provider receipt. Existing execution owner persists lifecycle; high-rate progress is derived.
-- **Failure:** Persist submission identity before dispatch; unknown remote outcome reconciles before retry. Queued cancel differs from remote best-effort cancel; charged late outputs remain attributable.
-- **Proof:** ORCH-05-A — Queue fairness, timeout after submit, provider retry/cancel, worker crash and restart; no duplicate charged work, output receipt or terminal result. Planned regression/probe target relative to `app/`: `packages/server-core/src/tasks/__tests__/fleet-orch-05.test.ts`. After adding the target, run from `app/`: `bun test packages/server-core/src/tasks/__tests__/fleet-orch-05.test.ts`; apply the isolated-profile rule for configuration writes.
-- **Reference:** Craft TaskRunner first; Hyperframes ArtifactTransaction/cancellation and OpenReel backpressure only. No imported queue/runtime authority. Source locks and limits: [reference registry](../references.md#bounded-source-review--2026-09-21).
+- **Next:** `IMPLEMENT` — complete R11 over the candidate's existing media receipts, then extend R12/R13.
+- **Sources:** [`RuntimeTaskRegistry`](../../.fleet/zcode/apps/zcode-cli/packages/core/src/subagent/runtime-task-registry.ts); [`media receipts`](../../.fleet/zcode/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts); [`native artifact store`](../../.fleet/zcode/apps/zcode-cli/packages/adapters/src/storage/index.ts).
+- **Deliver:** Extend one actual producer's submit/observe/output path with scoped scheduling, resource limits and visible progress; keep Session admission and artifacts canonical.
+- **Data:** Correlate the existing Task, physical operation, pinned inputs and provider receipt. Durable boundary receipts remain native Session artifacts; high-rate progress is derived.
+- **Failure:** Save intent before dispatch, retain unknown submissions without blind retry, query known request IDs through the original account, and preserve charged late output. Waiting cancellation is distinct from provider cancellation.
+- **Proof:** ORCH-05-A — Existing regression target relative to `.fleet/zcode/`: `apps/zcode-cli/packages/core/test/media-video-recovery.test.ts`; run with `node --import tsx --test` from the candidate. Add real-process crash, queue fairness, simultaneous resource limits and unsupported-platform cases before claiming the general Job capability.
+- **Reference:** [reference registry](../references.md#media-acquisition-and-recovery-comparison) — official/client recovery comparison, plus Hyperframes transaction/cancellation and OpenReel backpressure. Retained Craft TaskRunner informs semantics only; no imported queue/runtime authority.
 
 ### Execution CREATE-02
 
@@ -318,13 +470,13 @@ implementation has added them; extend a matching existing behavioral test instea
 
 **Image generation and editing**
 
-- **Next:** `IMPLEMENT` — R11 after R4/R5 and Job first slice.
-- **Sources:** [`packages/server-core/src/tasks/TaskRunner.ts`](../../app/packages/server-core/src/tasks/TaskRunner.ts); [`packages/shared/src/sources/storage.ts`](../../app/packages/shared/src/sources/storage.ts); [`packages/shared/src/resources/resource-bundle.ts`](../../app/packages/shared/src/resources/resource-bundle.ts).
-- **Deliver:** Implement one explicitly configured image generation/edit provider via the shared Job path, with prompt/reference/region inputs and result review on the board.
-- **Data:** Request pins model/provider, parameters, input image versions and optional mask; output ArtifactRef records dimensions, seed when returned, prompt and actual/unknown cost.
-- **Failure:** Uncertain submission/charge reconciles; cancel does not imply refund. Invalid/partial output is not a completed image; preserve originals and prior accepted result.
-- **Proof:** CREATE-03-A — Fixture provider success/invalid-image/rate-limit/timeout-after-submit/cancel and deterministic local image edit; a paid live generation needs explicit authorized scope. Planned regression/probe target relative to `app/`: `packages/server-core/src/tasks/__tests__/fleet-create-03.test.ts`. After adding the target, run from `app/`: `bun test packages/server-core/src/tasks/__tests__/fleet-create-03.test.ts`; apply the isolated-profile rule for configuration writes.
-- **Reference:** Craft Sources/Jobs; Cowart generation placeholder and replacement interaction; provider-specific APIs before another AIGC framework. Source locks and limits: [reference registry](../references.md#bounded-source-review--2026-09-21).
+- **Next:** `IMPLEMENT` — complete the candidate generation/edit/recovery path under R11; subscription adapters remain a separate exact-account proof.
+- **Sources:** [`media tools`](../../.fleet/zcode/apps/zcode-cli/packages/core/src/tool/handlers/media-generation.ts); [`API adapter`](../../.fleet/zcode/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts); [`model discovery`](../../.fleet/zcode/packages/services/src/model-provider/modelDiscovery.ts).
+- **Deliver:** Generate/edit through the current Provider owner, Session approval and binary artifact path; inspect/reuse the result in the original attachment viewer. Add authorized subscription routes without borrowing API or unrelated login credentials.
+- **Data:** Preserve exact provider/model, prompt/reference identity in the admitted tool call, secret-free operation receipts, original/source artifacts and returned model/cost separately. The existing Session artifact/usage owners retain output and one physical charge.
+- **Failure:** Unknown submission forbids automatic regeneration; local save/ledger failure cannot erase a returned charge. Stop does not discard returned bytes or imply refund. Unsupported masks/parameters/routes remain explicit.
+- **Proof:** CREATE-03-A — Existing regression target relative to `.fleet/zcode/`: `apps/zcode-cli/packages/core/test/media-generation-tool.test.ts`; run with `node --import tsx --test` from the candidate. Include provider/edit wire fixtures, denial, late result, storage failure, restart and input scope; paid quality/entitlement and owner visual acceptance remain separate.
+- **Reference:** [reference registry](../references.md#media-acquisition-and-recovery-comparison) — official/client acquisition, Codex's Skill/tool/backend split and the existing ZCode artifact viewers. Pi's image registry is an adapter seam, not universal provider coverage.
 
 ### Execution CREATE-04
 

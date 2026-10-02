@@ -1,0 +1,2376 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 7a4e147..ceef422 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -5,6 +5,13 @@ connections are personal provider instances, never the global ZCode login. Each
+ its credentials in the existing CredentialService. No tokens enter provider JSON or renderer.
+ 
+ ChatGPT/Codex and GitHub Copilot authorization use the corresponding pinned Pi OAuth drivers.
++Codex defaults to browser PKCE login, with device-code login as an explicit inline alternative.
++The browser callback and optional pasted localhost redirect use the same pending flow and state;
++leaving, retrying, expiry and failure clear that flow without deleting already connected accounts.
++Grok subscription authorization uses Pi's xAI OAuth driver, but its account, catalog and inference
++requests target Grok Build's subscription proxy, never the xAI API-key endpoint. OAuth completion
++alone does not prove model entitlement. Live account catalogs are read with renewed credentials;
++stale replies after an account change are rejected. No external application's credentials are read.
+ Starting again cancels the old flow. The renderer sees only the verification URL/code and flow
+ ID; polling, cancellation, expiration and refresh belong to the host. Disconnect invalidates
+ in-flight work before deleting credentials. Refresh is coalesced per connection. Late replies
+@@ -17,8 +24,8 @@ API templates remain independently instantiable. One internal model contract dis
+ protocol adapters; it does not convert all traffic through Chat Completions. Presets supply their
+ declared protocol automatically. Custom endpoints retain explicit protocol configuration.
+ API discovery reads the selected connection's authenticated catalog, imports exact model IDs
+-through the existing model mutations and preserves manual overrides. Subscription discovery uses
+-the pinned Pi adapter catalog, not a live account entitlement response. Catalog availability is
++through the existing model mutations and preserves manual overrides. Codex and Grok discovery read their native account catalogs; Copilot uses Pi's catalog filtered by account metadata refreshed by its OAuth driver. A list response alone
++is not a successful inference test. Catalog availability is
+ not proof of successful inference or entitlement; a model's connection test is a separate action.
+ 
+ UI retains upstream ZCode provider picker, inline editor, model list and feedback patterns.
+@@ -26,7 +33,7 @@ Model discovery is part of the existing model list, with no fetch button or sele
+ Cindy's `UnifiedModelList` supplies the single searchable list and inline refresh; Cherry Studio's
+ `ModelListSyncContent` supplies the distinction between configured and available models. The
+ existing ZCode model rows retain their edit, enable, test and reorder operations. Available rows
+-are selected and added in place; manual model-ID addition remains available. The address and API
++have an inline Add action in the same list; manual model-ID addition remains available. The address and API
+ format remain above credentials, as the owner requested.
+ 
+ On entry and after a committed connection/account change, load the catalog read-only. Unsaved
+@@ -35,7 +42,7 @@ draft or run inference. A connection edit, account change or navigation invalida
+ Model additions/reordering do not trigger repeated discovery. Search spans configured and available
+ models; reordering is disabled while filtering to preserve hidden rows. Refresh/loading/error/retry
+ remain in the list. Imports re-read the existing provider snapshot, skip existing IDs, preserve
+-completed additions on partial failure and leave remaining selections available for retry. A failed
++completed additions on failure and leave unconfigured rows available for retry. A failed
+ refresh retains the current connection's previous catalog and all configured models; a changed
+ connection never reuses another connection's catalog.
+ Official catalog display names are shown alongside exact IDs; the existing model identity remains
+@@ -45,21 +52,25 @@ Subscription login occupies the API-key section; no extra settings route or app
+ and OAuth drivers, not the Pi Agent execution loop, tools, Session or permission storage. Native Pi
+ stream events are converted at the existing model seam. Text, images, tools, reasoning replay and
+ cache usage have offline fixtures; unsupported native tools, structured output and raw file inputs
+-fail explicitly. Inference uses the existing proxy fetch; OAuth driver networking still follows Pi.
++fail explicitly. Inference, OAuth login, refresh and account discovery use the existing Host network settings.
++A narrow pinned Pi patch binds OAuth fetch per async operation with AsyncLocalStorage,
++without changing global fetch. Its packaging declaration lives in pnpm-workspace.yaml;
++current pnpm ignores the former package.json patchedDependencies location.
+ Live paid inference, actual subscription authorization and owner acceptance remain separate checks.
+ 
+ The host must register Pi's public static OAuth loaders before creating subscription connections.
+ Pi's default variable-relative imports are not discoverable by the desktop/remote bundler and must
+ not resolve against `out/host`. Bundle regression checks run real pinned drivers from an isolated
+-artifact, with synthetic device-code/refresh responses and no external network. Both Codex and
+-Copilot must reach authorization, cancel cleanly, refresh and resolve request credentials; source
++artifact, with synthetic device-code/refresh responses and no external network. Codex and
++Copilot must reach authorization, cancel cleanly, refresh and resolve request credentials; Codex
++also proves browser PKCE/manual callback state checks and Grok proves device login plus identity; source
+ tests with injected provider mocks alone do not prove this packaging boundary.
+ 
+ ## Account allowance
+ 
+ The existing connection owner reads allowance for its selected account, using the existing host
+ network transport and OAuth refresh. Cindy/cc-switch's Codex WHAM reader and cc-switch's Copilot
+-user reader are acquisition references; these vendor-private endpoints can change. Orca's native
++user reader and Grok Build's `extensions/billing.rs` GET `/v1/billing?format=credits` are acquisition references; these vendor-private endpoints can change. Orca's native
+ Codex RPC is not present in Pi and does not justify adding another Agent runtime. Cockpit Tools
+ is comparison evidence only. Reads are explicit/manual, bounded, redirect-free and account-bound;
+ they never enable paid overage or change account/model selection. Account/revision changes while
+@@ -145,6 +156,8 @@ encrypted credential entry; legacy single credentials are read as one account wi
+ migration. Account selection/removal/login mutations use the existing connection file lock and
+ invalidate pending flows. UI receives account metadata, never OAuth refresh/access tokens.
+ 
++Codex/Grok recovery also rereads the backup account's native catalog before releasing its
++credentials for that model; configured rows are not entitlement evidence.
+ Every admitted attempt must retain provider, endpoint, protocol and model; only its eligible
+ credential can change. Distinguish authentication failure from model entitlement, rate limiting,
+ policy rejection and transport uncertainty. Never turn a generic 403 into unconditional rotation.
+@@ -160,3 +173,26 @@ NewMax's Antigravity path has its own OAuth/account/catalog and request-conversi
+ presence is not evidence of supported third-party consumer access: Google's current Antigravity
+ terms explicitly restrict that OAuth usage. The documented API-key/enterprise SDK is a distinct
+ Agent harness. Neither an Antigravity subscription preset nor an additional executor is added here.
++
++
++## Official CLI integration decision
++
++Device-code OAuth inside Pi and actual execution by an official CLI are different paths.
++The candidate currently implements the former; it does not execute an official CLI as an Agent.
++Cindy's `claude-native-cli.ts` delegates sign-in and status to the unmodified Claude Code binary,
++then executes it through its SDK. Its former independent Claude OAuth account path is retired.
++Anthropic's current authentication policy allows users to sign into the unmodified CLI and excludes
++third-party token handling; copying Craft's old OAuth form into Pi is not the selected solution.
++Gemini CLI exposes Google AI Pro/Ultra sign-in and ACP. Antigravity's consumer OAuth is restricted;
++its documented enterprise/API SDK is a separate route, not that consumer subscription.
++
++The owner delegated source-backed selection and expanded it to the whole Agent kernel (OV-036).
++The engineering recommendation keeps the current direct-model adapter during comparison and
++evaluates complete native executors, first Claude Code, then Gemini ACP. Fleet would retain one UI Session
++and permission presentation, with each external run attached by identity; no concurrent second
++executor for the same turn, credential scraping or hidden runtime/model switch. Completion requires
++stream, tool permission denial, cancellation, restart/resume, model discovery and native error
++fixtures before the option becomes connectable. Native authentication/multi-account support must
++follow each CLI's documented mechanisms; the current encrypted API/OAuth account pool must not
++pretend to rotate a CLI login. No native executor or kernel migration is implemented by this slice.
++The root Agent-core contract owns promotion criteria; do not add a disconnected login-only entry.
+diff --git a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+index c01198e..c2a0d4b 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/pi-subscription.ts
+@@ -16,6 +16,7 @@ import type {
+   Tool,
+   Usage,
+ } from "@earendil-works/pi-ai";
++import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
+ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+ import { githubCopilotProvider } from "@earendil-works/pi-ai/providers/github-copilot";
+ import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
+@@ -52,10 +53,24 @@ export function createPiSubscriptionModel(
+   const subscriptionKind = access.provider;
+   const provider =
+     providerOverride ??
+-    (access.provider === "openai-codex" ? openaiCodexProvider() : githubCopilotProvider());
+-  const catalogModel = provider.getModels().find((model) => model.id === options.modelId);
+-  if (!catalogModel)
++    (access.provider === "openai-codex" ? openaiCodexProvider() : access.provider === "xai" ? xaiProvider() : githubCopilotProvider());
++  const known = provider.getModels().find((model) => model.id === options.modelId);
++  const config = options.modelConfig;
++  if (!known && access.provider === "github-copilot")
+     throw new Error(`Model is not in this subscription catalog: ${options.modelId}`);
++  // Newly discovered models already use the existing Registry's validated metadata. A stale
++  // Pi ID list must not prevent them from using the same native protocol adapter.
++  const catalogModel = known ?? {
++    id: options.modelId, name: options.displayName ?? options.modelId,
++    provider: access.provider,
++    api: access.provider === "openai-codex" ? "openai-codex-responses" : "openai-responses",
++    baseUrl: access.provider === "xai" ? "https://cli-chat-proxy.grok.com/v1" : "https://chatgpt.com/backend-api",
++    reasoning: config.optionSpecs.reasoningLevel.values.some((v) => v !== "off"),
++    input: config.properties.inputFormat.supportsImage ? ["text", "image"] : ["text"],
++    contextWindow: config.properties.contextWindow,
++    maxTokens: config.optionSpecs.maxOutputTokens.max,
++    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
++  } as PiModel<string>;
+   async function* events(request: ModelExecutionRequest): AsyncGenerator<AssistantMessageEvent> {
+     const linked = createLinkedAbortController(request.abortSignal);
+     const invocation = getCurrentModelInvocationContext();
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner-runtime.ts b/apps/zcode-cli/packages/adapters/src/model/runner-runtime.ts
+index 23a2362..2288ef3 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner-runtime.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner-runtime.ts
+@@ -16,7 +16,7 @@ export type ResolvedAiSdkModel = AiSdkResolvedModel & {
+   properties: ModelProperties;
+   accountAccess?: ZCodeProviderAccountAccess;
+   subscriptionAccess?: {
+-    provider: "openai-codex" | "github-copilot";
++    provider: "openai-codex" | "github-copilot" | "xai";
+     recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery;
+   };
+ };
+@@ -34,7 +34,7 @@ export interface AiSdkModelTextRequest extends ModelTextRequest {
+   refreshRuntimeHeadersBeforeAttempt?: (input: {
+     accountAccess?: ZCodeProviderAccountAccess;
+     subscriptionAccess?: {
+-      provider: "openai-codex" | "github-copilot";
++      provider: "openai-codex" | "github-copilot" | "xai";
+       recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery;
+     };
+     attempt: number;
+diff --git a/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts b/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
+index fbcd488..aca5552 100644
+--- a/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts
+@@ -380,3 +380,29 @@ test("real Pi request changes account headers only after rejection, never model
+   assert.equal(requests[1]!.headers.get("authorization"), `Bearer ${tokenFor("second")}`);
+   assert.equal(requests[1]!.headers.get("chatgpt-account-id"), "second");
+ });
++
++
++test("new Grok catalog IDs use the real Pi Responses serializer with the subscription proxy", async () => {
++  let calls = 0;
++  const model = createPiSubscriptionModel({
++    ...binding, modelId: "grok-fixture-current",
++    providerConfig: { access: { type: "subscription", provider: "xai", connected: true }, api: { type: "openai-responses", baseUrl: "https://untrusted.example" } },
++  }, async (input, init) => {
++    calls++;
++    const request = new Request(input, init);
++    assert.equal(request.url, "https://cli-chat-proxy.grok.com/v1/responses");
++    assert.equal(request.headers.get("authorization"), "Bearer grok-token");
++    assert.equal(request.headers.get("x-userid"), "fixture-account");
++    const payload = await request.json();
++    assert.equal(payload.model, "grok-fixture-current");
++    assert.equal(payload.reasoning.effort, "high");
++    assert.equal(payload.tools[0].name, "read_file");
++    return new Response('data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2}}}\n\n', { headers: { "content-type": "text/event-stream" } });
++  });
++  await runWithModelInvocationContext({
++    async refreshRuntimeHeadersBeforeAttempt() {
++      return { headersApplied: true, requestAuth: { apiKey: "grok-token", baseUrl: "https://cli-chat-proxy.grok.com/v1", headers: { "x-userid": "fixture-account", "X-XAI-Token-Auth": "xai-grok-cli" } } };
++    },
++  }, () => model.generateText({ messages: [{ role: "user", content: "synthetic fixture" }], tools: [{ name: "read_file", inputSchema: { type: "object", properties: {} } }], options: binding.options }));
++  assert.equal(calls, 1);
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts b/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
+index 76ee3b7..a155a94 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/invocation-context.ts
+@@ -32,7 +32,7 @@ export interface ModelInvocationContext {
+   refreshRuntimeHeadersBeforeAttempt?: (input: {
+     accountAccess?: ZCodeProviderAccountAccess;
+     subscriptionAccess?: {
+-      provider: "openai-codex" | "github-copilot";
++      provider: "openai-codex" | "github-copilot" | "xai";
+       recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery;
+     };
+     attempt: number;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts b/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
+index ae8e802..1da3564 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
+@@ -15,7 +15,7 @@ export function createRefreshRuntimeHeadersBeforeModelAttempt(
+   | ((attemptInput: {
+       accountAccess?: ZCodeProviderAccountAccess;
+       subscriptionAccess?: {
+-        provider: "openai-codex" | "github-copilot";
++        provider: "openai-codex" | "github-copilot" | "xai";
+         recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery;
+       };
+       attempt: number;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index ad882d9..9f39cf2 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -397,7 +397,7 @@ export interface ProviderRuntimeHeadersPort {
+   refreshBeforeModelRequest(input: {
+     accountAccess?: ZCodeProviderAccountAccess;
+     subscriptionAccess?: {
+-      provider: "openai-codex" | "github-copilot";
++      provider: "openai-codex" | "github-copilot" | "xai";
+       recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery;
+     };
+     abortSignal?: AbortSignal;
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index e93248f..3e740ca 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -1606,6 +1606,41 @@
+             },
+             "region": "global"
+           }
++        },
++        {
++          "templateId": "fleet-xai",
++          "templateNameMap": {
++            "zh-CN": "Grok 订阅",
++            "en-US": "Grok subscription"
++          },
++          "config": {
++            "access": {
++              "type": "subscription",
++              "provider": "xai",
++              "connected": false
++            },
++            "api": {
++              "type": "openai-responses",
++              "baseUrl": "https://cli-chat-proxy.grok.com/v1"
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "xai"
++            }
++          },
++          "catalog": {
++            "vendorId": "xai",
++            "vendorNameMap": {
++              "zh-CN": "xAI",
++              "en-US": "xAI"
++            },
++            "serviceId": "grok",
++            "serviceNameMap": {
++              "zh-CN": "Grok 订阅",
++              "en-US": "Grok subscription"
++            }
++          }
+         }
+       ],
+       "providerRules": [
+diff --git a/package.json b/package.json
+index adc42ab..9682afa 100644
+--- a/package.json
++++ b/package.json
+@@ -46,7 +46,7 @@
+     "architecture:report": "node scripts/architecture/architecture-check.mjs report",
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+-    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
++    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts"
+   },
+@@ -82,16 +82,5 @@
+   "engines": {
+     "node": ">=24.0.0"
+   },
+-  "packageManager": "pnpm@10.33.2",
+-  "pnpm": {
+-    "overrides": {
+-      "react": "19.2.7",
+-      "react-dom": "19.2.7"
+-    },
+-    "patchedDependencies": {
+-      "@arms/rum-electron@0.0.3": "patches/@arms__rum-electron@0.0.3.patch",
+-      "@ai-sdk/openai-compatible@2.0.60": "patches/@ai-sdk__openai-compatible@2.0.60.patch",
+-      "@ai-sdk/anthropic@3.0.81": "patches/@ai-sdk__anthropic@3.0.81.patch"
+-    }
+-  }
++  "packageManager": "pnpm@10.33.2"
+ }
+diff --git a/packages/provider/src/config/provider-config.ts b/packages/provider/src/config/provider-config.ts
+index 54e497e..bdef66b 100644
+--- a/packages/provider/src/config/provider-config.ts
++++ b/packages/provider/src/config/provider-config.ts
+@@ -130,7 +130,7 @@ export class ZhipuAccountAccessConfig extends ConfigOverlay<ZhipuAccountAccessCo
+ export type SubscriptionAccessConfigObject = Readonly<z.infer<typeof subscriptionAccessDataSchema>>;
+ export class SubscriptionAccessConfig extends ConfigOverlay<SubscriptionAccessConfig> {
+   readonly type = "subscription" as const;
+-  readonly provider: "openai-codex" | "github-copilot";
++  readonly provider: "openai-codex" | "github-copilot" | "xai";
+   readonly connected?: boolean;
+   constructor(input: Omit<SubscriptionAccessConfigObject, "type">) {
+     super();
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index 9a06ad7..37a197d 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -57,7 +57,7 @@ export const zhipuAccountAccessDataSchema = z
+ export const subscriptionAccessDataSchema = z
+   .object({
+     type: z.literal("subscription"),
+-    provider: z.enum(["openai-codex", "github-copilot"]),
++    provider: z.enum(["openai-codex", "github-copilot", "xai"]),
+     connected: z.boolean().optional(),
+   })
+   .strict();
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+index d445d6e..994a1fb 100644
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -45,16 +45,19 @@ export async function discoverConnectionModels(
+   }
+   const url = new URL(`${base.origin}${path}/models`);
+   const models = new Map<string, DiscoveredModel>();
++  const deadline = AbortSignal.timeout(20_000);
+   for (let page = 0; page < 20; page++) {
+     const response = await fetch(url, {
+       headers,
+-      signal: AbortSignal.timeout(20_000),
++      signal: deadline,
+       redirect: "error",
+     });
+-    if (!response.ok)
++    if (!response.ok) {
++      await response.body?.cancel();
+       throw new Error(
+         `Model list request failed (${response.status}); you can still add a model manually`,
+       );
++    }
+     const body = (await response.json()) as {
+       data?: unknown;
+       has_more?: boolean;
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 06062e7..db9c25b 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -4,6 +4,7 @@ import type {
+   SubscriptionAccountsView,
+   SubscriptionConnectionOwner,
+   SubscriptionLogin,
++  SubscriptionLoginMethod,
+ } from "./subscriptionConnections.js";
+ import type { Event } from "@zcode/rpc";
+ import { ServiceChannels } from "@zcode/shared";
+@@ -44,7 +45,11 @@ export interface IProviderSettingsService {
+     providerId: string,
+     change: { select?: string; remove?: string; autoSwitch?: boolean },
+   ): Promise<SubscriptionAccountsView>;
+-  beginSubscriptionLogin(providerId: string): Promise<SubscriptionLogin>;
++  beginSubscriptionLogin(
++    providerId: string,
++    method?: SubscriptionLoginMethod,
++  ): Promise<SubscriptionLogin>;
++  submitSubscriptionLogin(providerId: string, flowId: string, callbackUrl: string): Promise<void>;
+   finishSubscriptionLogin(providerId: string, flowId: string): Promise<ProviderSettingsView>;
+   cancelSubscriptionLogin(providerId: string, flowId: string): Promise<void>;
+   disconnectSubscription(providerId: string): Promise<ProviderSettingsView>;
+@@ -155,10 +160,14 @@ export function createProviderSettingsService(
+       await facade.refresh("subscription-accounts");
+       return result;
+     },
+-    async beginSubscriptionLogin(id) {
++    async beginSubscriptionLogin(id, method) {
+       await ensureReady();
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+-      return subscriptions.begin(id);
++      return subscriptions.begin(id, method);
++    },
++    async submitSubscriptionLogin(id, flowId, callbackUrl) {
++      if (!subscriptions) throw new Error("Subscription login unavailable on this host");
++      await subscriptions.submit(id, flowId, callbackUrl);
+     },
+     async finishSubscriptionLogin(id, flowId) {
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+diff --git a/packages/services/src/model-provider/subscriptionAccountLabel.ts b/packages/services/src/model-provider/subscriptionAccountLabel.ts
+index 3757973..13be676 100644
+--- a/packages/services/src/model-provider/subscriptionAccountLabel.ts
++++ b/packages/services/src/model-provider/subscriptionAccountLabel.ts
+@@ -2,6 +2,12 @@ import type { OAuthCredential } from "@earendil-works/pi-ai";
+ 
+ /** 只投影同一凭据里的展示邮箱；JWT 内容不参与鉴权、套餐或额度判断。 */
+ export function subscriptionAccountLabel(credential: OAuthCredential): string | undefined {
++  if (
++    typeof credential.email === "string" &&
++    credential.email.length <= 254 &&
++    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(credential.email)
++  )
++    return credential.email;
+   for (const token of [credential.idToken, credential.access]) {
+     if (typeof token !== "string" || token.length > 64 * 1024) continue;
+     try {
+diff --git a/packages/services/src/model-provider/subscriptionCatalog.ts b/packages/services/src/model-provider/subscriptionCatalog.ts
+new file mode 100644
+index 0000000..ffa5a5d
+--- /dev/null
++++ b/packages/services/src/model-provider/subscriptionCatalog.ts
+@@ -0,0 +1,218 @@
++import {
++  getSupportedThinkingLevels,
++  type Provider,
++  type OAuthCredential,
++} from "@earendil-works/pi-ai";
++import type { ModelConfigObject } from "@zcode/provider";
++import type { ModelDiscoveryResult } from "./modelDiscovery.js";
++
++export const GROK_SUBSCRIPTION_BASE_URL = "https://cli-chat-proxy.grok.com/v1";
++// Grok Build's client-version header, pinned to Cindy's verified compatibility baseline.
++export function grokSubscriptionHeaders(credential: OAuthCredential): Record<string, string> {
++  return {
++    Authorization: `Bearer ${credential.access}`,
++    Accept: "application/json",
++    "X-XAI-Token-Auth": "xai-grok-cli",
++    "x-grok-client-version": "1.0.3",
++    ...(typeof credential.accountId === "string" ? { "x-userid": credential.accountId } : {}),
++  };
++}
++export async function readSubscriptionJson(
++  url: string,
++  headers: Record<string, string>,
++  fetcher: typeof fetch,
++): Promise<unknown> {
++  const response = await fetcher(url, {
++    headers,
++    redirect: "error",
++    signal: AbortSignal.timeout(15_000),
++  });
++  if (!response.ok) {
++    await response.body?.cancel();
++    // Never echo a vendor response body: it can contain credentials or account data.
++    throw new Error(`Subscription request failed (HTTP ${response.status})`);
++  }
++  const reader = response.body?.getReader();
++  if (!reader) throw new Error("Subscription response is empty");
++  const chunks: Uint8Array[] = [];
++  let size = 0;
++  try {
++    for (;;) {
++      const part = await reader.read();
++      if (part.done) break;
++      size += part.value.byteLength;
++      if (size > 2 * 1024 * 1024) {
++        await reader.cancel();
++        throw new Error("Subscription response is too large");
++      }
++      chunks.push(part.value);
++    }
++  } finally {
++    reader.releaseLock();
++  }
++  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
++}
++function record(value: unknown): Record<string, unknown> {
++  return value !== null && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : {};
++}
++function text(value: unknown): string | undefined {
++  return typeof value === "string" &&
++    value.length > 0 &&
++    value.length <= 512 &&
++    !/[\r\n]/.test(value)
++    ? value
++    : undefined;
++}
++function positive(value: unknown): number | undefined {
++  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
++}
++export async function identifyGrokSubscription(
++  credential: OAuthCredential,
++  fetcher: typeof fetch,
++): Promise<OAuthCredential> {
++  const user = record(
++    await readSubscriptionJson(
++      `${GROK_SUBSCRIPTION_BASE_URL}/user?include=subscription`,
++      grokSubscriptionHeaders(credential),
++      fetcher,
++    ),
++  );
++  const accountId = text(user.userId);
++  if (!accountId) throw new Error("Grok did not return an account identity");
++  return { ...credential, accountId, email: text(user.email) };
++}
++// Account catalogs expose native IDs/capabilities. Do not substitute a baked-in catalog when
++// the request fails: that would look like the selected account had been checked.
++export async function readNativeSubscriptionCatalog(
++  kind: "openai-codex" | "xai",
++  credential: OAuthCredential,
++  fetcher: typeof fetch,
++): Promise<ModelDiscoveryResult> {
++  if (typeof credential.accountId !== "string")
++    throw new Error("Sign in to this subscription again");
++  const payload = await readSubscriptionJson(
++    kind === "xai"
++      ? `${GROK_SUBSCRIPTION_BASE_URL}/models`
++      : "https://chatgpt.com/backend-api/codex/models?client_version=0.155.0",
++    kind === "xai"
++      ? grokSubscriptionHeaders(credential)
++      : {
++          Accept: "application/json",
++          Authorization: `Bearer ${credential.access}`,
++          "ChatGPT-Account-Id": credential.accountId,
++        },
++    fetcher,
++  );
++  return parseNativeSubscriptionCatalog(kind, payload);
++}
++export function parseNativeSubscriptionCatalog(
++  kind: "openai-codex" | "xai",
++  payload: unknown,
++): ModelDiscoveryResult {
++  const body = record(payload);
++  const list = kind === "xai" ? body.data : body.models;
++  if (!Array.isArray(list)) throw new Error("Unsupported subscription model catalog");
++  const models = new Map<string, ModelDiscoveryResult["models"][number]>();
++  for (const value of list.slice(0, 2000)) {
++    const item = record(value);
++    const meta = record(item._meta);
++    if (item.hidden === true || meta.hidden === true || item.visibility === "hide") continue;
++    // Grok's native catalog can also advertise Messages/Chat routes. This adapter is Responses.
++    if (kind === "xai" && (item.api_backend ?? item.apiBackend) !== "responses") continue;
++    const id = text(
++      kind === "xai"
++        ? (item.model ?? item.modelId ?? item.id ?? meta.model ?? meta.modelId)
++        : item.slug,
++    );
++    if (!id) continue;
++    const context = positive(item.context_window ?? item.contextWindow ?? meta.totalContextTokens);
++    const output = positive(
++      item.max_output_tokens ?? item.max_completion_tokens ?? item.maxCompletionTokens,
++    );
++    const rawEfforts =
++      kind === "xai"
++        ? (item.reasoning_efforts ?? item.reasoningEfforts ?? meta.reasoningEfforts)
++        : item.supported_reasoning_levels;
++    const levels = Array.isArray(rawEfforts)
++      ? rawEfforts.map((value) =>
++          typeof value === "string"
++            ? value
++            : (record(value).reasoning_effort ?? record(value).value),
++        )
++      : [];
++    const allowed = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
++    const efforts = allowed.filter((level) => levels.includes(level));
++    const modalities = Array.isArray(item.input_modalities) ? item.input_modalities : undefined;
++    const config: ModelConfigObject = {
++      ...(context || modalities
++        ? {
++            properties: {
++              ...(context ? { contextWindow: context } : {}),
++              ...(modalities
++                ? {
++                    inputFormat: {
++                      supportsText: modalities.includes("text"),
++                      supportsImage: modalities.includes("image"),
++                      supportsAudio: false,
++                      supportsVideo: false,
++                      supportsPdf: false,
++                    },
++                  }
++                : {}),
++            },
++          }
++        : {}),
++      optionSpecs: {
++        ...(output ? { maxOutputTokens: { max: output, map: "{}" } } : {}),
++        ...(Array.isArray(rawEfforts)
++          ? { reasoningLevel: { values: efforts.length ? efforts : ["off"], map: "{}" } }
++          : {}),
++      },
++    };
++    models.set(id, { id, name: text(item.display_name ?? item.name) ?? id, config });
++  }
++  return { source: "provider", models: [...models.values()] };
++}
++
++export function readAdapterSubscriptionCatalog(
++  provider: Provider,
++  credential: OAuthCredential,
++): ModelDiscoveryResult {
++  const models = provider.filterModels
++    ? provider.filterModels(provider.getModels(), credential)
++    : provider.getModels();
++  return {
++    source: "catalog",
++    models: models.map((model) => ({
++      id: model.id,
++      name: model.name,
++      config: {
++        properties: {
++          contextWindow: model.contextWindow,
++          requiresMfjsToolSchema: false,
++          inputFormat: {
++            supportsText: true,
++            supportsImage: model.input.includes("image"),
++            supportsPdf: false,
++            supportsAudio: false,
++            supportsVideo: false,
++          },
++          outputFormat: { supportsText: true },
++          supportsToolCall: true,
++          supportsJsonSchemaOutput: false,
++          supportsNativeWebSearch: false,
++          supportsMidConversationSystem:
++            (model.compat && "supportsMidConvoSystemMessages" in model.compat
++              ? model.compat.supportsMidConvoSystemMessages
++              : false) ?? false,
++        },
++        optionSpecs: {
++          maxOutputTokens: { max: model.maxTokens, map: "{}" },
++          reasoningLevel: { values: getSupportedThinkingLevels(model), map: "{}" },
++        },
++      },
++    })),
++  };
++}
+diff --git a/packages/services/src/model-provider/subscriptionConnectionTypes.ts b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+index eca8e2f..a35af4c 100644
+--- a/packages/services/src/model-provider/subscriptionConnectionTypes.ts
++++ b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+@@ -2,10 +2,12 @@ import type { OAuthCredential } from "@earendil-works/pi-ai";
+ import type { ModelDiscoveryResult } from "./modelDiscovery.js";
+ import type { SubscriptionUsageResult } from "./subscriptionUsage.js";
+ 
++export type SubscriptionLoginMethod = "browser" | "device_code";
+ export interface SubscriptionLogin {
++  method: SubscriptionLoginMethod;
+   flowId: string;
+   verificationUrl: string;
+-  userCode: string;
++  userCode?: string;
+ }
+ export interface SubscriptionRequestAuth {
+   apiKey: string;
+@@ -13,7 +15,7 @@ export interface SubscriptionRequestAuth {
+   baseUrl?: string;
+   credentialSelection?: { accountId: string; revision: string };
+ }
+-export type SubscriptionKind = "openai-codex" | "github-copilot";
++export type SubscriptionKind = "openai-codex" | "github-copilot" | "xai";
+ export interface SubscriptionAccountsView {
+   accounts: { id: string; label?: string; active: boolean }[];
+   autoSwitch: boolean;
+@@ -32,7 +34,8 @@ export interface SubscriptionConnectionOwner {
+     change: { select?: string; remove?: string; autoSwitch?: boolean },
+   ): Promise<SubscriptionAccountsView>;
+   models(providerId: string): Promise<ModelDiscoveryResult>;
+-  begin(providerId: string): Promise<SubscriptionLogin>;
++  begin(providerId: string, method?: SubscriptionLoginMethod): Promise<SubscriptionLogin>;
++  submit(providerId: string, flowId: string, callbackUrl: string): Promise<void>;
+   finish(providerId: string, flowId: string): Promise<void>;
+   disconnect(providerId: string): Promise<void>;
+   cancel(providerId: string, flowId: string): Promise<void>;
+@@ -47,6 +50,7 @@ export interface Flow {
+   id: string;
+   controller: AbortController;
+   done: Promise<void>;
++  submit(value: string): void;
+ }
+ export interface SavedConnection {
+   kind: SubscriptionKind;
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+index 0a493c2..ff4f4c8 100644
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -1,15 +1,20 @@
+-import { subscriptionAccountLabel } from "./subscriptionAccountLabel.js";
++import {
++  GROK_SUBSCRIPTION_BASE_URL,
++  grokSubscriptionHeaders,
++  identifyGrokSubscription,
++  readNativeSubscriptionCatalog,
++  readAdapterSubscriptionCatalog,
++} from "./subscriptionCatalog.js";
++import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
++import { subscriptionLoginInteraction } from "./subscriptionLoginInteraction.js";
++import { accountsView, parseSavedConnection, requestAuth } from "./subscriptionRecords.js";
+ import { readSubscriptionUsage } from "./subscriptionUsage.js";
+ import { createHash, randomUUID } from "node:crypto";
+-import {
+-  getSupportedThinkingLevels,
+-  type OAuthCredential,
+-  type Provider,
+-  type ModelAuth,
+-} from "@earendil-works/pi-ai";
++import { type OAuthCredential, type Provider } from "@earendil-works/pi-ai";
+ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+ import { githubCopilotProvider } from "@earendil-works/pi-ai/providers/github-copilot";
+ import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
++import { withOAuthFetch } from "@earendil-works/pi-ai/utils/oauth-fetch";
+ import type { ICredentialService } from "../credential/credential.js";
+ import type { ProviderSettingsView } from "@zcode/provider";
+ 
+@@ -19,15 +24,15 @@ import type {
+   SubscriptionKind,
+   SubscriptionRequestAuth,
+   SubscriptionConnectionOwner,
+-  SubscriptionAccountsView,
+   SubscriptionLogin,
+ } from "./subscriptionConnectionTypes.js";
+ 
+ // Pi 的默认相对动态导入在打包后指向 out/host；公开静态注册入口也兼容 Node/Electron。
+ registerBunOAuthFlows();
+ export type {
+-  SubscriptionLogin,
+   SubscriptionAccountsView,
++  SubscriptionLoginMethod,
++  SubscriptionLogin,
+   SubscriptionConnectionOwner,
+   SubscriptionRequestAuth,
+   SubscriptionKind,
+@@ -40,14 +45,16 @@ export function createSubscriptionConnections(options: {
+   getView(): Promise<ProviderSettingsView>;
+   setConnected(providerId: string, connected: boolean): Promise<void>;
+   withConnectionLock<T>(providerId: string, operation: () => Promise<T>): Promise<T>;
+-  providers?: Record<SubscriptionKind, Provider>;
++  providers?: Partial<Record<SubscriptionKind, Provider>>;
+   now?: () => number;
+   fetch?: typeof globalThis.fetch;
+ }): SubscriptionConnectionOwner {
+   const now = options.now ?? Date.now;
+-  const providers = options.providers ?? {
++  const providers = {
+     "openai-codex": openaiCodexProvider(),
+     "github-copilot": githubCopilotProvider(),
++    xai: xaiProvider(),
++    ...options.providers,
+   };
+   const flows = new Map<string, Flow>();
+   const generations = new Map<string, number>();
+@@ -68,29 +75,9 @@ export function createSubscriptionConnections(options: {
+   async function load(id: string, kind: SubscriptionKind): Promise<SavedConnection | undefined> {
+     const raw = await options.credentials.load(key(id));
+     if (!raw) return undefined;
+-    const saved = JSON.parse(raw) as SavedConnection;
+-    if (saved.kind !== kind) throw new Error("Subscription connection changed; sign in again");
+-    // Legacy single-account records are read in place; the next explicit edit upgrades this entry.
+-    saved.accounts ??= saved.credential ? [{ id: "legacy", credential: saved.credential }] : [];
+-    saved.activeAccountId ??= saved.accounts[0]?.id;
+-    saved.revision ??= "legacy";
+-    if (
+-      saved.accounts.length > 10 ||
+-      new Set(saved.accounts.map((a) => a.id)).size !== saved.accounts.length
+-    )
+-      throw new Error("Subscription account list is invalid");
+-    for (const { credential } of saved.accounts) {
+-      if (
+-        credential.type !== "oauth" ||
+-        !credential.access ||
+-        !credential.refresh ||
+-        !Number.isFinite(credential.expires)
+-      )
+-        throw new Error("Subscription credentials are invalid; sign in again");
+-    }
+-    delete saved.credential;
+-    return saved;
++    return parseSavedConnection(raw, kind);
+   }
++
+   function invalidate(id: string) {
+     generations.set(id, generation(id) + 1);
+     flows.get(id)?.controller.abort();
+@@ -98,17 +85,7 @@ export function createSubscriptionConnections(options: {
+     for (const requestKey of refreshing.keys())
+       if (requestKey.startsWith(`${id}:`)) refreshing.delete(requestKey);
+   }
+-  function accountsView(saved?: SavedConnection): SubscriptionAccountsView {
+-    return {
+-      accounts: (saved?.accounts ?? []).map((a) => ({
+-        id: a.id,
+-        label: a.label ?? subscriptionAccountLabel(a.credential),
+-        active: a.id === saved?.activeAccountId,
+-      })),
+-      autoSwitch: saved?.autoSwitch === true && (saved.accounts?.length ?? 0) > 1,
+-      revision: saved?.revision ?? "empty",
+-    };
+-  }
++
+   return {
+     async usage(id) {
+       const { kind } = await driver(id);
+@@ -180,46 +157,30 @@ export function createSubscriptionConnections(options: {
+     async models(id) {
+       const { kind } = await driver(id);
+       const provider = providers[kind];
++      await this.resolve(id, kind);
+       const saved = await load(id, kind);
+       const account = saved?.accounts?.find((a) => a.id === saved.activeAccountId);
+       if (!account) throw new Error("Connect this subscription first");
+-      const models = provider.filterModels
+-        ? provider.filterModels(provider.getModels(), account.credential)
+-        : provider.getModels();
+-      return {
+-        source: "catalog",
+-        models: models.map((model) => ({
+-          id: model.id,
+-          name: model.name,
+-          config: {
+-            properties: {
+-              contextWindow: model.contextWindow,
+-              requiresMfjsToolSchema: false,
+-              inputFormat: {
+-                supportsText: true,
+-                supportsImage: model.input.includes("image"),
+-                supportsPdf: false,
+-                supportsAudio: false,
+-                supportsVideo: false,
+-              },
+-              outputFormat: { supportsText: true },
+-              supportsToolCall: true,
+-              supportsJsonSchemaOutput: false,
+-              supportsNativeWebSearch: false,
+-              supportsMidConversationSystem:
+-                (model.compat && "supportsMidConvoSystemMessages" in model.compat
+-                  ? model.compat.supportsMidConvoSystemMessages
+-                  : false) ?? false,
+-            },
+-            optionSpecs: {
+-              maxOutputTokens: { max: model.maxTokens, map: "{}" },
+-              reasoningLevel: { values: getSupportedThinkingLevels(model), map: "{}" },
+-            },
+-          },
+-        })),
+-      };
++      if (kind === "openai-codex" || kind === "xai") {
++        const catalog = await readNativeSubscriptionCatalog(
++          kind,
++          account.credential,
++          options.fetch ?? globalThis.fetch,
++        );
++        await driver(id, kind);
++        const current = await load(id, kind);
++        const selected = current?.accounts?.find((a) => a.id === current.activeAccountId);
++        if (
++          current?.revision !== saved?.revision ||
++          selected?.id !== account.id ||
++          selected?.credential.access !== account.credential.access
++        )
++          throw new Error("Subscription account changed; reload its model list");
++        return catalog;
++      }
++      return readAdapterSubscriptionCatalog(provider, account.credential);
+     },
+-    async begin(id) {
++    async begin(id, method = "browser") {
+       const { oauth, kind } = await driver(id);
+       invalidate(id);
+       const version = generation(id);
+@@ -234,23 +195,27 @@ export function createSubscriptionConnections(options: {
+         );
+       });
+       const ready = Promise.withResolvers<SubscriptionLogin>();
++      const bridge = subscriptionLoginInteraction({
++        kind,
++        method,
++        flowId,
++        signal: controller.signal,
++        notify: ready.resolve,
++      });
++      const expire = setTimeout(() => controller.abort(), 10 * 60_000);
++      expire.unref?.();
++      const preparationTimeout = setTimeout(() => controller.abort(), 30_000);
++      preparationTimeout.unref?.();
+       const done = Promise.resolve().then(async () => {
+-        const credential = await oauth.login({
+-          signal: controller.signal,
+-          async prompt(prompt) {
+-            if (kind === "openai-codex" && prompt.type === "select") return "device_code";
+-            if (kind === "github-copilot" && prompt.type === "text") return "";
+-            throw new Error("This authorization method requires a supported device flow");
+-          },
+-          notify(event) {
+-            if (event.type === "device_code")
+-              ready.resolve({
+-                flowId,
+-                verificationUrl: event.verificationUri,
+-                userCode: event.userCode,
+-              });
+-          },
+-        });
++        let credential = await withOAuthFetch(options.fetch ?? globalThis.fetch, () =>
++          oauth.login(bridge.interaction),
++        );
++        if (kind === "xai")
++          credential = await identifyGrokSubscription(
++            credential,
++            options.fetch ?? globalThis.fetch,
++          );
++        if (controller.signal.aborted) throw new Error("Subscription operation cancelled");
+         await options.withConnectionLock(id, async () => {
+           const current = await load(id, kind);
+           if (
+@@ -279,22 +244,41 @@ export function createSubscriptionConnections(options: {
+           await options.setConnected(id, true);
+         });
+       });
+-      const flow = { id: flowId, controller, done };
++      const settled = done.finally(async () => {
++        clearTimeout(expire);
++        clearTimeout(preparationTimeout);
++        await options.withConnectionLock(id, async () => {
++          const raw = await options.credentials.load(key(id));
++          if (!raw) return;
++          const current = JSON.parse(raw) as SavedConnection;
++          if (current.pendingFlowId !== flowId) return;
++          delete current.pendingFlowId;
++          await options.credentials.save(key(id), JSON.stringify(current));
++        });
++      });
++      const flow = { id: flowId, controller, done: settled, submit: bridge.submit };
+       flows.set(id, flow);
+       // Attach immediately: login may fail before the renderer receives a flow ID.
+-      void done.catch((error: unknown) => ready.reject(error));
++      void settled.catch((error: unknown) => ready.reject(error));
+       controller.signal.addEventListener(
+         "abort",
+         () => ready.reject(new Error("Subscription login cancelled")),
+         { once: true },
+       );
+       try {
+-        return await ready.promise;
++        const login = await ready.promise;
++        clearTimeout(preparationTimeout);
++        return login;
+       } catch (error) {
+         if (flows.get(id) === flow) flows.delete(id);
+         throw error;
+       }
+     },
++    async submit(id, flowId, callbackUrl) {
++      const flow = flows.get(id);
++      if (!flow || flow.id !== flowId) throw new Error("Subscription login expired or cancelled");
++      flow.submit(callbackUrl);
++    },
+     async finish(id, flowId) {
+       const flow = flows.get(id);
+       if (!flow || flow.id !== flowId) throw new Error("Subscription login expired or cancelled");
+@@ -348,8 +332,12 @@ export function createSubscriptionConnections(options: {
+         )
+           throw new Error("No eligible subscription recovery account");
+         const provider = providers[kind];
++        const configuredModels =
++          (await options.getView()).providers.find((p) => p.providerId === id)?.models ?? [];
+         const eligible = (credential: OAuthCredential) =>
+           !modelId ||
++          ((kind === "openai-codex" || kind === "xai") &&
++            configuredModels.some((m) => m.modelId === modelId)) ||
+           (provider.filterModels
+             ? provider.filterModels(provider.getModels(), credential)
+             : provider.getModels()
+@@ -365,16 +353,36 @@ export function createSubscriptionConnections(options: {
+         if (credential.expires <= now() + 60_000) {
+           credential = {
+             ...credential,
+-            ...(await oauth.refresh(credential, AbortSignal.timeout(30_000))),
++            ...(await withOAuthFetch(options.fetch ?? globalThis.fetch, () =>
++              oauth.refresh(credential, AbortSignal.timeout(30_000)),
++            )),
+           };
+           if (generation(id) !== version) throw new Error("Subscription operation cancelled");
+           account.credential = credential;
+           await options.credentials.save(key(id), JSON.stringify(saved));
+         }
+         if (!eligible(credential)) throw new Error("This account cannot use the selected model");
+-        const auth = await oauth.toAuth(credential);
++        if (recovery && modelId && (kind === "openai-codex" || kind === "xai")) {
++          // Configured rows and Pi's static catalog are not proof of another account's
++          // allowance. Check the candidate account before sending any conversation to it.
++          const catalog = await readNativeSubscriptionCatalog(
++            kind,
++            credential,
++            options.fetch ?? globalThis.fetch,
++          );
++          if (!catalog.models.some((model) => model.id === modelId))
++            throw new Error("No eligible subscription account for this model");
++        }
++        const auth = await withOAuthFetch(options.fetch ?? globalThis.fetch, () =>
++          oauth.toAuth(credential),
++        );
+         if (generation(id) !== version) throw new Error("Subscription operation cancelled");
+         const material = requestAuth(auth);
++        if (kind === "xai") {
++          if (typeof credential.accountId !== "string") throw new Error("Sign in to Grok again");
++          material.baseUrl = GROK_SUBSCRIPTION_BASE_URL;
++          material.headers = grokSubscriptionHeaders(credential);
++        }
+         if (kind === "openai-codex" && typeof credential.accountId === "string")
+           material.headers["chatgpt-account-id"] = credential.accountId;
+         return {
+@@ -391,15 +399,3 @@ export function createSubscriptionConnections(options: {
+     },
+   };
+ }
+-function requestAuth(auth: ModelAuth): SubscriptionRequestAuth {
+-  if (!auth.apiKey) throw new Error("Subscription token is unavailable; sign in again");
+-  return {
+-    apiKey: auth.apiKey,
+-    headers: Object.fromEntries(
+-      Object.entries(auth.headers ?? {}).filter(
+-        (pair): pair is [string, string] => typeof pair[1] === "string",
+-      ),
+-    ),
+-    ...(auth.baseUrl ? { baseUrl: auth.baseUrl } : {}),
+-  };
+-}
+diff --git a/packages/services/src/model-provider/subscriptionLoginInteraction.ts b/packages/services/src/model-provider/subscriptionLoginInteraction.ts
+new file mode 100644
+index 0000000..d71e81a
+--- /dev/null
++++ b/packages/services/src/model-provider/subscriptionLoginInteraction.ts
+@@ -0,0 +1,82 @@
++import type { AuthInteraction, AuthPrompt } from "@earendil-works/pi-ai";
++import type {
++  SubscriptionKind,
++  SubscriptionLogin,
++  SubscriptionLoginMethod,
++} from "./subscriptionConnectionTypes.js";
++
++// Pi owns PKCE, callback listener, polling and token exchange. This bridges its prompts to
++// the existing settings RPC without exposing token material or starting another auth store.
++export function subscriptionLoginInteraction(options: {
++  kind: SubscriptionKind;
++  method: SubscriptionLoginMethod;
++  flowId: string;
++  signal: AbortSignal;
++  notify(login: SubscriptionLogin): void;
++}) {
++  let state: string | undefined;
++  let reply: ((value: string) => void) | undefined;
++  const interaction: AuthInteraction & { signal: AbortSignal } = {
++    signal: options.signal,
++    async prompt(prompt: AuthPrompt) {
++      if (options.kind === "openai-codex" && prompt.type === "select") return options.method;
++      if (options.kind === "github-copilot" && prompt.type === "text") return "";
++      if (prompt.type !== "manual_code") throw new Error("Unsupported authorization step");
++      const signal = prompt.signal
++        ? AbortSignal.any([prompt.signal, options.signal])
++        : options.signal;
++      signal.throwIfAborted();
++      return new Promise<string>((resolve, reject) => {
++        const abort = () => {
++          reply = undefined;
++          reject(new Error("Subscription login cancelled"));
++        };
++        signal.addEventListener("abort", abort, { once: true });
++        reply = (value) => {
++          reply = undefined;
++          signal.removeEventListener("abort", abort);
++          resolve(value);
++        };
++      });
++    },
++    notify(event) {
++      if (event.type === "auth_url") {
++        const url = new URL(event.url);
++        if (url.protocol !== "https:" || url.hostname !== "auth.openai.com")
++          throw new Error("Unexpected authorization address");
++        state = url.searchParams.get("state") ?? undefined;
++        options.notify({ flowId: options.flowId, method: "browser", verificationUrl: event.url });
++      } else if (event.type === "device_code") {
++        const url = new URL(event.verificationUri);
++        if (url.protocol !== "https:") throw new Error("Unexpected authorization address");
++        options.notify({
++          flowId: options.flowId,
++          method: "device_code",
++          verificationUrl: event.verificationUri,
++          userCode: event.userCode,
++        });
++      }
++    },
++  };
++  return {
++    interaction,
++    submit(value: string) {
++      options.signal.throwIfAborted();
++      if (!reply || !state) throw new Error("Subscription login expired or cancelled");
++      let url: URL;
++      try {
++        url = new URL(value.trim());
++      } catch {
++        throw new Error("Paste the complete localhost callback URL");
++      }
++      if (
++        url.origin !== "http://localhost:1455" ||
++        url.pathname !== "/auth/callback" ||
++        url.searchParams.get("state") !== state ||
++        !url.searchParams.get("code")
++      )
++        throw new Error("This callback does not belong to the current login");
++      reply(url.href);
++    },
++  };
++}
+diff --git a/packages/services/src/model-provider/subscriptionRecords.ts b/packages/services/src/model-provider/subscriptionRecords.ts
+new file mode 100644
+index 0000000..79e7247
+--- /dev/null
++++ b/packages/services/src/model-provider/subscriptionRecords.ts
+@@ -0,0 +1,58 @@
++import type { ModelAuth } from "@earendil-works/pi-ai";
++import type {
++  SavedConnection,
++  SubscriptionKind,
++  SubscriptionAccountsView,
++  SubscriptionRequestAuth,
++} from "./subscriptionConnectionTypes.js";
++import { subscriptionAccountLabel } from "./subscriptionAccountLabel.js";
++
++export function parseSavedConnection(raw: string, kind: SubscriptionKind): SavedConnection {
++  const saved = JSON.parse(raw) as SavedConnection;
++  if (saved.kind !== kind) throw new Error("Subscription connection changed; sign in again");
++  // Legacy single-account records are read in place; the next explicit edit upgrades this entry.
++  saved.accounts ??= saved.credential ? [{ id: "legacy", credential: saved.credential }] : [];
++  saved.activeAccountId ??= saved.accounts[0]?.id;
++  saved.revision ??= "legacy";
++  if (
++    saved.accounts.length > 10 ||
++    new Set(saved.accounts.map((a) => a.id)).size !== saved.accounts.length
++  )
++    throw new Error("Subscription account list is invalid");
++  for (const { credential } of saved.accounts) {
++    if (
++      credential.type !== "oauth" ||
++      !credential.access ||
++      !credential.refresh ||
++      !Number.isFinite(credential.expires)
++    )
++      throw new Error("Subscription credentials are invalid; sign in again");
++  }
++  delete saved.credential;
++  return saved;
++}
++
++export function accountsView(saved?: SavedConnection): SubscriptionAccountsView {
++  return {
++    accounts: (saved?.accounts ?? []).map((a) => ({
++      id: a.id,
++      label: a.label ?? subscriptionAccountLabel(a.credential),
++      active: a.id === saved?.activeAccountId,
++    })),
++    autoSwitch: saved?.autoSwitch === true && (saved.accounts?.length ?? 0) > 1,
++    revision: saved?.revision ?? "empty",
++  };
++}
++
++export function requestAuth(auth: ModelAuth): SubscriptionRequestAuth {
++  if (!auth.apiKey) throw new Error("Subscription token is unavailable; sign in again");
++  return {
++    apiKey: auth.apiKey,
++    headers: Object.fromEntries(
++      Object.entries(auth.headers ?? {}).filter(
++        (pair): pair is [string, string] => typeof pair[1] === "string",
++      ),
++    ),
++    ...(auth.baseUrl ? { baseUrl: auth.baseUrl } : {}),
++  };
++}
+diff --git a/packages/services/src/model-provider/subscriptionUsage.ts b/packages/services/src/model-provider/subscriptionUsage.ts
+index 112198e..95665ef 100644
+--- a/packages/services/src/model-provider/subscriptionUsage.ts
++++ b/packages/services/src/model-provider/subscriptionUsage.ts
+@@ -1,5 +1,6 @@
+ import type { OAuthCredential } from "@earendil-works/pi-ai";
+ import type { SubscriptionKind } from "./subscriptionConnectionTypes.js";
++import { GROK_SUBSCRIPTION_BASE_URL, grokSubscriptionHeaders } from "./subscriptionCatalog.js";
+ 
+ export interface SubscriptionUsageWindow {
+   id: string;
+@@ -39,7 +40,24 @@ export function parseSubscriptionUsage(
+   const body = record(payload);
+   if (!body) return { status: "unavailable" };
+   const windows: SubscriptionUsageWindow[] = [];
+-  if (kind === "openai-codex") {
++  if (kind === "xai") {
++    // Grok Build reads /v1/billing?format=credits. Use its reported percentage;
++    // legacy monthly monetary amounts are not interchangeable with credits.
++    const config = record(body.config);
++    if (percent(config?.creditUsagePercent)) {
++      const period = record(config.currentPeriod);
++      const start = typeof period?.start === "string" ? Date.parse(period.start) : NaN;
++      const end = typeof period?.end === "string" ? Date.parse(period.end) : NaN;
++      windows.push({
++        id: "credits",
++        usedPercent: config.creditUsagePercent,
++        ...(Number.isFinite(end) ? { resetAt: end } : {}),
++        ...(Number.isFinite(start) && Number.isFinite(end) && end > start
++          ? { windowMinutes: (end - start) / 60_000 }
++          : {}),
++      });
++    }
++  } else if (kind === "openai-codex") {
+     const limits = [{ id: "default", value: body.rate_limit }];
+     if (Array.isArray(body.additional_rate_limits)) {
+       for (const raw of body.additional_rate_limits.slice(0, 32)) {
+@@ -91,8 +109,19 @@ export function parseSubscriptionUsage(
+         status: "available",
+         observedAt,
+         windows,
+-        source: kind === "openai-codex" ? "ChatGPT / WHAM" : "GitHub Copilot",
+-        plan: text(kind === "openai-codex" ? body.plan_type : body.copilot_plan),
++        source:
++          kind === "openai-codex"
++            ? "ChatGPT / WHAM"
++            : kind === "xai"
++              ? "Grok credits"
++              : "GitHub Copilot",
++        plan: text(
++          kind === "openai-codex"
++            ? body.plan_type
++            : kind === "xai"
++              ? body.subscriptionTier
++              : body.copilot_plan,
++        ),
+       }
+     : { status: "unavailable" };
+ }
+@@ -103,25 +132,30 @@ export async function readSubscriptionUsage(
+   fetcher: typeof fetch,
+   now = Date.now,
+ ): Promise<SubscriptionUsageResult> {
+-  if (kind === "openai-codex" && !text(credential.accountId)) return { status: "auth-required" };
++  if (kind !== "github-copilot" && !text(credential.accountId)) return { status: "auth-required" };
+   // 企业实例的目标域名须单独核实，不能把其凭据发给 github.com。
+   if (kind === "github-copilot" && credential.enterpriseUrl) return { status: "unsupported" };
+   const codex = kind === "openai-codex";
+   const url = codex
+     ? "https://chatgpt.com/backend-api/wham/usage"
+-    : "https://api.github.com/copilot_internal/user";
++    : kind === "xai"
++      ? `${GROK_SUBSCRIPTION_BASE_URL}/billing?format=credits`
++      : "https://api.github.com/copilot_internal/user";
+   try {
+     const response = await fetcher(url, {
+       method: "GET",
+       redirect: "error",
+       signal: AbortSignal.timeout(10_000),
+-      headers: {
+-        Accept: "application/json",
+-        Authorization: `Bearer ${codex ? credential.access : credential.refresh}`,
+-        ...(codex
+-          ? { "ChatGPT-Account-Id": credential.accountId as string }
+-          : { "User-Agent": "Fleet", "X-GitHub-Api-Version": "2022-11-28" }),
+-      },
++      headers:
++        kind === "xai"
++          ? grokSubscriptionHeaders(credential)
++          : {
++              Accept: "application/json",
++              Authorization: `Bearer ${codex ? credential.access : credential.refresh}`,
++              ...(codex
++                ? { "ChatGPT-Account-Id": credential.accountId as string }
++                : { "User-Agent": "Fleet", "X-GitHub-Api-Version": "2022-11-28" }),
++            },
+     });
+     if (!response.ok) {
+       await response.body?.cancel();
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index 725bf09..a3e6b71 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -868,7 +868,7 @@ interface CreateZCodeAgentServiceOptions extends Omit<
+   accountRequestAuthService?: IAccountRequestAuthService;
+   resolveSubscriptionAuth?: (
+     providerId: string,
+-    kind: "openai-codex" | "github-copilot",
++    kind: "openai-codex" | "github-copilot" | "xai",
+     modelId: string,
+     recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery,
+   ) => Promise<AccountRequestAuthMaterial>;
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index d79ec34..c8f718a 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -33,12 +33,12 @@ const vendors = groupProviderTemplates(templates, "zh-CN");
+ const family = (id: string) => vendors.find((vendor) => vendor.id === `vendor:${id}`)!.templates;
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 39);
++  assert.equal(templates.length, 40);
+   assert.equal(vendors.length, 19);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    39,
++    40,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+@@ -254,3 +254,15 @@ test("subscription setup cannot persist an API key or overridden endpoint into i
+     {},
+   );
+ });
++
++test("Grok subscription and xAI API remain distinct under one vendor", () => {
++  const routes = family("xai");
++  const subscription = selectProviderTemplate(routes, "xai", { serviceId: "grok" });
++  assert.equal(subscription?.config.access?.type, "subscription");
++  assert.equal(subscription?.config.api?.baseUrl, "https://cli-chat-proxy.grok.com/v1");
++  assert.equal(subscription?.config.api?.type, "openai-responses");
++  assert.equal(
++    selectProviderTemplate(routes, subscription!.templateId, { serviceId: "api" })?.templateId,
++    "xai",
++  );
++});
+diff --git a/packages/services/test/subscription-bundle.test.ts b/packages/services/test/subscription-bundle.test.ts
+index ea64b21..3a6fcec 100644
+--- a/packages/services/test/subscription-bundle.test.ts
++++ b/packages/services/test/subscription-bundle.test.ts
+@@ -15,18 +15,25 @@ const requests = [];
+ const jwt = "test." + Buffer.from(JSON.stringify({
+   "https://api.openai.com/auth": { chatgpt_account_id: "fixture-account" }
+ })).toString("base64url") + ".signature";
+-globalThis.fetch = async (input, init) => {
++globalThis.fetch = async () => { throw new Error("OAuth bypassed the Host network transport"); };
++const hostFetch = async (input, init) => {
+   const url = String(input);
+   requests.push(url);
+   init?.signal?.throwIfAborted();
+   if (url === "https://auth.openai.com/api/accounts/deviceauth/usercode")
+     return Response.json({ device_auth_id: "fixture-device", user_code: "CODEX", interval: 60 });
++  if (url === "https://auth.x.ai/oauth2/device/code")
++    return Response.json({ device_code: "fixture-device", user_code: "GROK", verification_uri: "https://auth.x.ai/activate", interval: 0.01, expires_in: 900 });
++  if (url === "https://auth.x.ai/oauth2/token")
++    return Response.json({ access_token: "xai-access", refresh_token: "xai-refresh", expires_in: 3600 });
++  if (url === "https://cli-chat-proxy.grok.com/v1/user?include=subscription")
++    return Response.json({ userId: "grok-account", email: "test@example.com" });
+   if (url === "https://github.com/login/device/code")
+     return Response.json({ device_code: "fixture-device", user_code: "COPILOT", verification_uri: "https://github.com/login/device", interval: 60, expires_in: 900 });
+   if (url === "https://auth.openai.com/api/accounts/deviceauth/token")
+     return new Response(null, { status: 403 });
+   if (url === "https://auth.openai.com/oauth/token") {
+-    assert.equal(new URLSearchParams(init.body).get("grant_type"), "refresh_token");
++    assert.ok(["refresh_token", "authorization_code"].includes(new URLSearchParams(init.body).get("grant_type")));
+     return Response.json({ access_token: jwt, refresh_token: "refreshed", expires_in: 3600 });
+   }
+   if (url === "https://api.github.com/copilot_internal/v2/token")
+@@ -37,19 +44,20 @@ globalThis.fetch = async (input, init) => {
+ };
+ const records = new Map();
+ const owner = createSubscriptionConnections({
++  fetch: hostFetch,
+   credentials: {
+     load: async id => records.get(id) ?? null,
+     save: async (id, data) => { records.set(id, data); },
+     delete: async id => { records.delete(id); },
+   },
+-  getView: async () => ({ providers: ["openai-codex", "github-copilot"].map(providerId => ({
++  getView: async () => ({ providers: ["openai-codex", "github-copilot", "xai"].map(providerId => ({
+     providerId, effectiveConfig: { access: { type: "subscription", provider: providerId } }
+   })) }),
+   setConnected: async () => {},
+   withConnectionLock: async (_id, operation) => operation(),
+ });
+ for (const kind of ["openai-codex", "github-copilot"]) {
+-  const flow = await owner.begin(kind);
++  const flow = await owner.begin(kind, "device_code");
+   assert.equal(flow.userCode, kind === "openai-codex" ? "CODEX" : "COPILOT");
+   const finished = assert.rejects(owner.finish(kind, flow.flowId), /cancel|abort/i);
+   await owner.cancel(kind, flow.flowId);
+@@ -64,6 +72,22 @@ for (const kind of ["openai-codex", "github-copilot"]) {
+   else assert.equal(auth.baseUrl, "https://api.individual.githubcopilot.com");
+ }
+ assert.equal(requests.length, 6);
++const browser = await owner.begin("openai-codex");
++assert.equal(browser.method, "browser");
++const state = new URL(browser.verificationUrl).searchParams.get("state");
++await assert.rejects(owner.submit("openai-codex", browser.flowId, "http://localhost:1455/auth/callback?code=fixture&state=wrong"), /current login/);
++await owner.submit("openai-codex", browser.flowId, "http://localhost:1455/auth/callback?code=fixture&state=" + state);
++await owner.finish("openai-codex", browser.flowId);
++assert.equal((await owner.accounts("openai-codex")).accounts.length, 1);
++assert.equal(JSON.parse(records.get("model-subscription:openai-codex")).pendingFlowId, undefined);
++const grok = await owner.begin("xai");
++assert.equal(grok.userCode, "GROK");
++await owner.finish("xai", grok.flowId);
++const grokAuth = await owner.resolve("xai");
++assert.equal(grokAuth.baseUrl, "https://cli-chat-proxy.grok.com/v1");
++assert.equal(grokAuth.headers["x-userid"], "grok-account");
++assert.equal(grokAuth.apiKey, "xai-access");
++assert.equal((await owner.accounts("xai")).accounts[0].label, "test@example.com");
+ console.log("Bundled Codex and Copilot device flow, cancellation, refresh and request auth passed");
+ `;
+ 
+diff --git a/packages/services/test/subscription-catalog.test.ts b/packages/services/test/subscription-catalog.test.ts
+new file mode 100644
+index 0000000..d0ba833
+--- /dev/null
++++ b/packages/services/test/subscription-catalog.test.ts
+@@ -0,0 +1,71 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import {
++  identifyGrokSubscription,
++  parseNativeSubscriptionCatalog,
++  readNativeSubscriptionCatalog,
++} from "../src/model-provider/subscriptionCatalog.js";
++
++test("Codex account catalog preserves current IDs and only server-declared metadata", () => {
++  const result = parseNativeSubscriptionCatalog("openai-codex", {
++    models: [
++      {
++        slug: "new-model",
++        display_name: "New",
++        context_window: 300000,
++        supported_reasoning_levels: [{ reasoning_effort: "high" }, { reasoning_effort: "low" }],
++      },
++      { slug: "hidden", visibility: "hide" },
++      { slug: "unknown" },
++    ],
++  });
++  assert.equal(result.source, "provider");
++  assert.deepEqual(
++    result.models.map((m) => m.id),
++    ["new-model", "unknown"],
++  );
++  assert.equal(result.models[0]?.config.properties?.contextWindow, 300000);
++  assert.deepEqual(result.models[0]?.config.optionSpecs?.reasoningLevel?.values, ["low", "high"]);
++  assert.equal(result.models[1]?.config.properties, undefined);
++});
++test("Grok catalog excludes unsupported protocols and does not infer capabilities from names", () => {
++  const result = parseNativeSubscriptionCatalog("xai", {
++    data: [
++      { model: "grok-new", api_backend: "responses", context_window: 200000 },
++      { model: "grok-messages", api_backend: "messages" },
++      { model: "grok-chat", api_backend: "chat_completions" },
++      { model: "grok-image", hidden: true, api_backend: "responses" },
++    ],
++  });
++  assert.deepEqual(
++    result.models.map((m) => m.id),
++    ["grok-new"],
++  );
++  assert.equal(result.models[0]?.config.properties?.inputFormat, undefined);
++});
++test("Grok identity/catalog requests stay on the official subscription proxy and fail closed", async () => {
++  const requests: Request[] = [];
++  const fetcher: typeof fetch = async (url, init) => {
++    const request = new Request(url, init);
++    requests.push(request);
++    return Response.json(
++      request.url.includes("/user?") ? { userId: "one", email: "one@example.com" } : { data: [] },
++    );
++  };
++  const credential = await identifyGrokSubscription(
++    { type: "oauth", access: "secret", refresh: "refresh", expires: 999 },
++    fetcher,
++  );
++  await readNativeSubscriptionCatalog("xai", credential, fetcher);
++  assert.equal(requests[0]?.url, "https://cli-chat-proxy.grok.com/v1/user?include=subscription");
++  assert.equal(requests[1]?.headers.get("x-userid"), "one");
++  assert.equal(requests[1]?.redirect, "error");
++  await assert.rejects(
++    readNativeSubscriptionCatalog(
++      "xai",
++      credential,
++      async () => new Response("secret should not leak", { status: 403 }),
++    ),
++    /HTTP 403/,
++  );
++});
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index 3ce0ff0..ceaf716 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -388,7 +388,7 @@ test("multiple subscription accounts keep a default and never expose tokens in m
+   assert.equal((await f.owner.resolve("one")).apiKey, "alice");
+ });
+ test("account recovery is opt-in, exact model, bounded, and invalidated by another window", async () => {
+-  const f = fixture();
++  const f = fixture(undefined, async () => Response.json({ models: [{ slug: "model-one" }] }));
+   await addAccount(f, "alice");
+   await addAccount(f, "bob");
+   const first = await f.owner.resolve("one", "openai-codex", "model-one");
+@@ -466,3 +466,42 @@ test("allowance response is discarded after another host switches or removes its
+   );
+   assert.deepEqual(await usage, { status: "unavailable" });
+ });
++
++test("recovery does not send a conversation when the backup account catalog lacks the model", async () => {
++  let catalogs = 0;
++  const f = fixture(undefined, async () => {
++    catalogs++;
++    return Response.json({ models: [] });
++  });
++  await addAccount(f, "alice");
++  await addAccount(f, "bob");
++  await f.owner.updateAccounts("one", { autoSwitch: true });
++  const first = await f.owner.resolve("one", "openai-codex", "model-one");
++  await assert.rejects(
++    f.owner.resolve("one", "openai-codex", "model-one", {
++      revision: first.credentialSelection!.revision,
++      attemptedAccountIds: [first.credentialSelection!.accountId],
++      status: 429,
++    }),
++    /No eligible/,
++  );
++  assert.equal(catalogs, 1);
++  assert.equal((await f.owner.resolve("one")).apiKey, "alice");
++});
++
++test("an account switch discards an in-flight subscription catalog", async () => {
++  const pending = Promise.withResolvers<Response>();
++  const started = Promise.withResolvers<void>();
++  const f = fixture(undefined, async () => {
++    started.resolve();
++    return pending.promise;
++  });
++  await addAccount(f, "alice");
++  await addAccount(f, "bob");
++  const result = f.owner.models("one");
++  await started.promise;
++  const accounts = await f.owner.accounts("one");
++  await f.owner.updateAccounts("one", { select: accounts.accounts[1]!.id });
++  pending.resolve(Response.json({ models: [{ slug: "alice-model" }] }));
++  await assert.rejects(result, /account changed/);
++});
+diff --git a/packages/services/test/subscription-usage.test.ts b/packages/services/test/subscription-usage.test.ts
+index 305f1da..4f26ecc 100644
+--- a/packages/services/test/subscription-usage.test.ts
++++ b/packages/services/test/subscription-usage.test.ts
+@@ -173,3 +173,44 @@ test("account display metadata contains the email only, never opaque tokens or p
+   assert.equal(subscriptionAccountLabel({ ...credential, access }), "fixture@example.test");
+   assert.equal(subscriptionAccountLabel(credential), undefined);
+ });
++
++test("Grok credits preserve the official percentage and period, not legacy monetary amounts", async () => {
++  const payload = {
++    config: {
++      creditUsagePercent: 37,
++      currentPeriod: { start: "2026-09-20T00:00:00Z", end: "2026-09-27T00:00:00Z" },
++    },
++  };
++  const result = await readSubscriptionUsage(
++    "xai",
++    credential,
++    async (url, init) => {
++      assert.equal(url, "https://cli-chat-proxy.grok.com/v1/billing?format=credits");
++      const headers = new Headers(init?.headers);
++      assert.equal(headers.get("authorization"), "Bearer fixture-access");
++      assert.equal(headers.get("x-userid"), "account-a");
++      assert.equal(headers.get("X-XAI-Token-Auth"), "xai-grok-cli");
++      return Response.json(payload);
++    },
++    () => 99,
++  );
++  assert.equal(result.status, "available");
++  if (result.status === "available")
++    assert.deepEqual(result.windows, [
++      {
++        id: "credits",
++        usedPercent: 37,
++        windowMinutes: 10080,
++        resetAt: Date.parse("2026-09-27T00:00:00Z"),
++      },
++    ]);
++  for (const value of [null, -1, 101, "20"])
++    assert.deepEqual(
++      parseSubscriptionUsage(
++        "xai",
++        { config: { creditUsagePercent: value, monthlyLimit: { val: 100 }, used: { val: 25 } } },
++        99,
++      ),
++      { status: "unavailable" },
++    );
++});
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index 0300cdd..14a9167 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -2398,7 +2398,7 @@ export const zcodeProviderRuntimeHeadersRequestParamsSchema = z
+     accountAccess: zcodeProviderAccountAccessSchema.optional(),
+     subscriptionAccess: z
+       .object({
+-        provider: z.enum(["openai-codex", "github-copilot"]),
++        provider: z.enum(["openai-codex", "github-copilot", "xai"]),
+         recovery: zcodeSubscriptionRecoverySchema.optional(),
+       })
+       .strict()
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 8723b04..3637156 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -60,6 +60,15 @@ const enUS: Record<string, string> = {
+     "Sign in with this provider subscription. Each connection has its own account.",
+   "settings.modelProvider.subscription.connected": "Subscription connected",
+   "settings.modelProvider.subscription.failed": "Subscription authorization failed",
++  "settings.modelProvider.subscription.method": "Sign-in method",
++  "settings.modelProvider.subscription.browser": "Browser sign-in",
++  "settings.modelProvider.subscription.device_code": "Device code",
++  "settings.modelProvider.subscription.waitBrowser":
++    "Complete authorization in your browser. This page will continue automatically.",
++  "settings.modelProvider.subscription.manual": "Browser finished but this page did not continue?",
++  "settings.modelProvider.subscription.callback":
++    "Paste the complete callback URL from the browser address bar",
++  "settings.modelProvider.subscription.continue": "Continue",
+   "settings.modelProvider.subscription.enterCode":
+     "Open the authorization page and enter this code:",
+   "settings.modelProvider.subscription.open": "Open authorization page",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 9bee774..65dde5b 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -51,6 +51,13 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.subscription.description": "使用该厂商的订阅登录，每条连接独立绑定账号。",
+   "settings.modelProvider.subscription.connected": "订阅已连接",
+   "settings.modelProvider.subscription.failed": "订阅授权失败",
++  "settings.modelProvider.subscription.method": "登录方式",
++  "settings.modelProvider.subscription.browser": "浏览器登录",
++  "settings.modelProvider.subscription.device_code": "设备码登录",
++  "settings.modelProvider.subscription.waitBrowser": "在浏览器中完成授权，此处会自动继续。",
++  "settings.modelProvider.subscription.manual": "浏览器完成后没有返回？",
++  "settings.modelProvider.subscription.callback": "粘贴浏览器地址栏中的完整回调地址",
++  "settings.modelProvider.subscription.continue": "继续",
+   "settings.modelProvider.subscription.enterCode": "打开授权页面并输入此代码：",
+   "settings.modelProvider.subscription.open": "打开授权页面",
+   "settings.modelProvider.subscription.connectFirst": "请先连接订阅账号",
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index b4a602d..72f8394 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -896,6 +896,7 @@ export function InlineEditableProviderCard({
+           <SubscriptionConnectionSection
+             key={`subscription:${provider.providerId}`}
+             providerId={provider.providerId}
++            kind={provider.config.access.provider}
+             connected={provider.config.access.connected === true}
+             onRevision={setSubscriptionRevision}
+             connectOnMount={connectOnMount}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index 21796d0..1697565 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -1,7 +1,6 @@
+ import { useCallback, useRef, useEffect, useState, type ReactNode } from "react";
+-import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
++import { RefreshCwIcon, Plus } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+-import { Checkbox } from "@/components/ui/checkbox.js";
+ import { Input } from "@/components/ui/input.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+@@ -23,14 +22,12 @@ export function ModelDiscoverySection({
+   disabledReason?: string;
+   existingIds: string[];
+   connectionIdentity?: object;
+-  renderConfiguredModels: (query: string) => ReactNode;
++  renderConfiguredModels: (query: string, additionalRows?: ReactNode) => ReactNode;
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl } = useZCodeIntl();
+   const t = (id: string) => intl.formatMessage({ id: `settings.modelProvider.discovery.${id}` });
+   const [catalog, setCatalog] = useState<DiscoveredCatalog>();
+-  const [selected, setSelected] = useState<Set<string>>(new Set());
+-  const [added, setAdded] = useState<Set<string>>(new Set());
+   const [query, setQuery] = useState("");
+   const [busy, setBusy] = useState<"fetch" | "import" | null>(null);
+   const [error, setError] = useState<string>();
+@@ -49,15 +46,7 @@ export function ModelDiscoverySection({
+         service: providerSettingsService,
+         isCurrent,
+       });
+-      if (result) {
+-        setCatalog(result);
+-        setSelected(
+-          (previous) =>
+-            new Set(
+-              result.models.filter((model) => previous.has(model.id)).map((model) => model.id),
+-            ),
+-        );
+-      }
++      if (result) setCatalog(result);
+     } catch (reason) {
+       if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+     } finally {
+@@ -74,8 +63,6 @@ export function ModelDiscoverySection({
+     busyRef.current = false;
+     setBusy(null);
+     setCatalog(undefined);
+-    setSelected(new Set());
+-    setAdded(new Set());
+     setError(undefined);
+     void loadCatalog();
+     return () => {
+@@ -83,7 +70,7 @@ export function ModelDiscoverySection({
+     };
+   }, [connectionIdentity, loadCatalog]);
+ 
+-  const importSelected = async () => {
++  const importModel = async (id: string) => {
+     if (busyRef.current || disabledReason || !catalog) return;
+     busyRef.current = true;
+     const version = ++generation.current;
+@@ -94,17 +81,10 @@ export function ModelDiscoverySection({
+       await addDiscoveredModels({
+         providerId,
+         catalog,
+-        selected,
++        selected: new Set([id]),
+         service: providerSettingsService,
+         isCurrent,
+-        onAdded(id) {
+-          setAdded((previous) => new Set(previous).add(id));
+-          setSelected((previous) => {
+-            const next = new Set(previous);
+-            next.delete(id);
+-            return next;
+-          });
+-        },
++        onAdded() {},
+       });
+     } catch (reason) {
+       if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+@@ -120,23 +100,12 @@ export function ModelDiscoverySection({
+       }
+     }
+   };
+-  const existing = new Set([...existingIds, ...added]);
++  const existing = new Set(existingIds);
+   const search = query.trim().toLocaleLowerCase();
+   const available = (catalog?.models ?? []).filter((model) => !existing.has(model.id));
+   const visible = available.filter((model) =>
+     `${model.name} ${model.id}`.toLocaleLowerCase().includes(search),
+   );
+-  const selectedCount = available.filter((model) => selected.has(model.id)).length;
+-  const allSelected = visible.length > 0 && visible.every((model) => selected.has(model.id));
+-  const toggle = (ids: string[], checked: boolean) =>
+-    setSelected((previous) => {
+-      const next = new Set(previous);
+-      for (const id of ids) {
+-        if (checked) next.add(id);
+-        else next.delete(id);
+-      }
+-      return next;
+-    });
+ 
+   return (
+     <div className="space-y-3" data-testid="model-discovery">
+@@ -152,126 +121,69 @@ export function ModelDiscoverySection({
+           variant="ghost"
+           size="icon-sm"
+           disabled={busy !== null || Boolean(disabledReason)}
+-          aria-label={intl.formatMessage({ id: "common.refresh" })}
++          aria-label={
++            busy === "fetch" ? t("loading") : intl.formatMessage({ id: "common.refresh" })
++          }
+           title={disabledReason ?? intl.formatMessage({ id: "common.refresh" })}
+           onClick={() => void loadCatalog()}
+         >
+           <RefreshCwIcon className={busy === "fetch" ? "size-4 animate-spin" : "size-4"} />
+         </Button>
+       </div>
+-      {renderConfiguredModels(query)}
++      {renderConfiguredModels(
++        query,
++        visible.length ? (
++          <div className={existingIds.length ? "border-t border-input-border" : undefined}>
++            {visible.map((model) => (
++              <div
++                key={model.id}
++                className="flex items-center gap-3 border-b border-input-border px-3 py-2 last:border-b-0"
++              >
++                <span className="min-w-0 flex-1 text-ui-base break-all">
++                  {model.name}
++                  {model.name !== model.id ? (
++                    <span className="block text-ui-caption text-foreground-subtle">{model.id}</span>
++                  ) : null}
++                </span>
++                <Button
++                  type="button"
++                  variant="ghost"
++                  size="icon-sm"
++                  disabled={busy !== null || Boolean(disabledReason)}
++                  aria-label={`${intl.formatMessage({ id: "settings.modelProvider.addModel" })} ${model.id}`}
++                  onClick={() => void importModel(model.id)}
++                >
++                  <Plus className="size-4" />
++                </Button>
++              </div>
++            ))}
++          </div>
++        ) : null,
++      )}
+       {disabledReason ? (
+         <p role="status" className="text-ui-caption text-foreground-subtle">
+           {disabledReason}
+         </p>
+-      ) : (
+-        <div className="space-y-2">
+-          <div className="flex flex-wrap items-center justify-between gap-2 text-ui-caption text-foreground-subtle">
+-            <span>
+-              {t("available")} {catalog ? available.length : ""}
+-            </span>
+-            {catalog ? (
+-              <span>{t(catalog.source === "catalog" ? "catalog" : "provider")}</span>
+-            ) : null}
+-          </div>
+-          {busy === "fetch" ? (
+-            <p
+-              className="flex items-center gap-2 text-ui-caption text-foreground-subtle"
+-              role="status"
+-            >
+-              <LoaderCircleIcon className="size-4 animate-spin" />
+-              {t("loading")}
+-            </p>
+-          ) : null}
+-          {error ? (
+-            <div className="flex flex-wrap items-center justify-between gap-2">
+-              <p className="min-w-0 text-ui-base text-destructive" role="alert">
+-                {error}
+-              </p>
+-              <Button
+-                type="button"
+-                variant="ghost"
+-                size="sm"
+-                disabled={busy !== null}
+-                onClick={() => void loadCatalog()}
+-              >
+-                {intl.formatMessage({ id: "common.retry" })}
+-              </Button>
+-            </div>
+-          ) : null}
+-          {catalog ? (
+-            visible.length === 0 ? (
+-              <p className="text-ui-caption text-foreground-subtle">
+-                {t(
+-                  available.length && search
+-                    ? "noMatches"
+-                    : catalog.models.length
+-                      ? "allAdded"
+-                      : "empty",
+-                )}
+-              </p>
+-            ) : (
+-              <div className="max-h-72 overflow-y-auto rounded-lg border border-input-border bg-input">
+-                {visible.map((model) => (
+-                  <label
+-                    key={model.id}
+-                    className="flex items-center gap-3 border-b border-input-border px-3 py-2 last:border-b-0 hover:bg-hover"
+-                  >
+-                    <Checkbox
+-                      checked={selected.has(model.id)}
+-                      disabled={busy !== null}
+-                      onCheckedChange={(checked) => toggle([model.id], checked === true)}
+-                    />
+-                    <span className="min-w-0 flex-1 text-ui-base break-all">
+-                      {model.name}
+-                      {model.name !== model.id ? (
+-                        <span className="block text-ui-caption text-foreground-subtle">
+-                          {model.id}
+-                        </span>
+-                      ) : null}
+-                    </span>
+-                  </label>
+-                ))}
+-              </div>
+-            )
+-          ) : null}
+-          {visible.length > 0 || selectedCount > 0 ? (
+-            <div className="flex flex-wrap items-center justify-between gap-2">
+-              <label className="flex items-center gap-2 text-ui-base">
+-                <Checkbox
+-                  disabled={busy !== null || visible.length === 0}
+-                  checked={
+-                    allSelected
+-                      ? true
+-                      : visible.some((model) => selected.has(model.id))
+-                        ? "indeterminate"
+-                        : false
+-                  }
+-                  onCheckedChange={(checked) =>
+-                    toggle(
+-                      visible.map((model) => model.id),
+-                      checked === true,
+-                    )
+-                  }
+-                />
+-                {t("selectVisible")}
+-              </label>
+-              <Button
+-                type="button"
+-                size="sm"
+-                disabled={busy !== null || selectedCount === 0}
+-                onClick={() => void importSelected()}
+-              >
+-                {busy === "import" ? <LoaderCircleIcon className="size-4 animate-spin" /> : null}
+-                {intl.formatMessage(
+-                  { id: "settings.modelProvider.discovery.import" },
+-                  { count: selectedCount },
+-                )}
+-              </Button>
+-            </div>
+-          ) : null}
++      ) : null}
++      {error ? (
++        <div className="flex items-center justify-between gap-2">
++          <p className="min-w-0 text-ui-caption text-destructive" role="alert">
++            {error}
++          </p>
++          <Button
++            type="button"
++            variant="ghost"
++            size="sm"
++            disabled={busy !== null}
++            onClick={() => void loadCatalog()}
++          >
++            {intl.formatMessage({ id: "common.retry" })}
++          </Button>
+         </div>
+-      )}
++      ) : null}
++      {catalog?.source === "catalog" ? (
++        <p className="text-ui-caption text-foreground-subtle">{t("catalog")}</p>
++      ) : null}
+     </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 1d60c03..8d7ae48 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -571,14 +571,14 @@ export function ProviderModelsSection({
+       })
+     : null;
+ 
+-  const renderConfiguredModels = (query: string) => {
++  const renderConfiguredModels = (query: string, additionalRows?: ReactNode) => {
+     const search = query.trim().toLocaleLowerCase();
+     const visibleModels = models.filter((model) =>
+       model.modelId.toLocaleLowerCase().includes(search),
+     );
+     return (
+       <div>
+-        {visibleModels.length > 0 ? (
++        {visibleModels.length > 0 || additionalRows ? (
+           <div className="overflow-hidden rounded-lg border border-input-border bg-input">
+             <SortableProviderModelList
+               modelIds={visibleModels.map((model) => model.modelId)}
+@@ -639,6 +639,7 @@ export function ProviderModelsSection({
+                 );
+               }}
+             />
++            {additionalRows}
+           </div>
+         ) : (
+           <div className="mt-1 flex h-12 items-center justify-start gap-2 rounded-lg border border-dashed border-border px-4 text-left text-ui-base text-foreground-subtle">
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index 9c5f775..6a9228c 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
+ import { ExternalLinkIcon, LoaderCircleIcon, Plus, Check, ArrowUp, Trash2 } from "lucide-react";
+ import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
+ import { CredentialAutoSwitchSection } from "./CredentialAutoSwitchSection.js";
++import { Input } from "@/components/ui/input.js";
+ import { Button } from "@/components/ui/button.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { usePlatform } from "@/hooks/usePlatform.js";
+@@ -12,12 +13,14 @@ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
+ // Cindy's provider-scoped device flow: leaving this connection cancels only its own attempt.
+ export function SubscriptionConnectionSection({
+   providerId,
++  kind,
+   connected,
+   onRevision,
+   connectOnMount = false,
+   onConnectConsumed,
+ }: {
+   providerId: string;
++  kind: "openai-codex" | "github-copilot" | "xai";
+   connected: boolean;
+   onRevision: (revision: string) => void;
+   connectOnMount?: boolean;
+@@ -60,7 +63,11 @@ export function SubscriptionConnectionSection({
+   }, [providerId, providerSettingsService, showFeedback]);
+   const [busy, setBusy] = useState(false);
+   const [connecting, setConnecting] = useState(false);
+-  const [flow, setFlow] = useState<{ flowId: string; verificationUrl: string; userCode: string }>();
++  const [flow, setFlow] =
++    useState<Awaited<ReturnType<typeof providerSettingsService.beginSubscriptionLogin>>>();
++  const [method, setMethod] = useState<"browser" | "device_code">("browser");
++  const [callbackUrl, setCallbackUrl] = useState("");
++  const [callbackError, setCallbackError] = useState<string>();
+   const attempt = useRef(0);
+   const activeFlow = useRef<string | undefined>(undefined);
+   useEffect(
+@@ -106,15 +113,20 @@ export function SubscriptionConnectionSection({
+     const version = ++attempt.current;
+     setBusy(true);
+     setConnecting(true);
++    setCallbackUrl("");
++    setCallbackError(undefined);
+     try {
+       {
+-        const next = await providerSettingsService.beginSubscriptionLogin(providerId);
++        const next = await providerSettingsService.beginSubscriptionLogin(providerId, method);
+         if (attempt.current !== version) {
+           await providerSettingsService.cancelSubscriptionLogin(providerId, next.flowId);
+           return;
+         }
+         activeFlow.current = next.flowId;
+         setFlow(next);
++        // Native browser sign-in follows the user's Connect action. Keep a reopen link if
++        // the OS cannot launch a browser; device codes remain visible before confirmation.
++        if (next.method === "browser") platform.openExternal(next.verificationUrl);
+         await providerSettingsService.finishSubscriptionLogin(providerId, next.flowId);
+       }
+       if (attempt.current !== version) return;
+@@ -205,14 +217,41 @@ export function SubscriptionConnectionSection({
+           revision={accounts.revision}
+         />
+       ) : null}
++      {kind === "openai-codex" && !connecting ? (
++        <div
++          className="flex flex-wrap gap-2"
++          role="group"
++          aria-label={intl.formatMessage({ id: "settings.modelProvider.subscription.method" })}
++        >
++          {(["browser", "device_code"] as const).map((value) => (
++            <Button
++              key={value}
++              variant={method === value ? "secondary" : "ghost"}
++              size="sm"
++              disabled={busy}
++              aria-pressed={method === value}
++              onClick={() => setMethod(value)}
++            >
++              {intl.formatMessage({ id: `settings.modelProvider.subscription.${value}` })}
++            </Button>
++          ))}
++        </div>
++      ) : null}
+       {flow ? (
+         <div className="space-y-3 rounded-lg border border-border bg-surface p-4" role="status">
+           <p className="text-ui-base">
+-            {intl.formatMessage({ id: "settings.modelProvider.subscription.enterCode" })}
++            {intl.formatMessage({
++              id:
++                flow.method === "browser"
++                  ? "settings.modelProvider.subscription.waitBrowser"
++                  : "settings.modelProvider.subscription.enterCode",
++            })}
+           </p>
+-          <code className="block select-all text-ui-lg font-semibold tracking-widest">
+-            {flow.userCode}
+-          </code>
++          {flow.userCode ? (
++            <code className="block select-all text-ui-lg font-semibold tracking-widest">
++              {flow.userCode}
++            </code>
++          ) : null}
+           <Button
+             variant="outline"
+             onClick={() => void platform.openExternal(flow.verificationUrl)}
+@@ -220,6 +259,45 @@ export function SubscriptionConnectionSection({
+             <ExternalLinkIcon className="size-4" />
+             {intl.formatMessage({ id: "settings.modelProvider.subscription.open" })}
+           </Button>
++          {flow.method === "browser" ? (
++            <details className="space-y-2 text-ui-caption">
++              <summary className="cursor-pointer text-foreground-subtle">
++                {intl.formatMessage({ id: "settings.modelProvider.subscription.manual" })}
++              </summary>
++              <form
++                className="flex gap-2"
++                onSubmit={(event) => {
++                  event.preventDefault();
++                  setCallbackError(undefined);
++                  void providerSettingsService
++                    .submitSubscriptionLogin(providerId, flow.flowId, callbackUrl)
++                    .then(() => setCallbackUrl(""))
++                    .catch((error) =>
++                      setCallbackError(error instanceof Error ? error.message : String(error)),
++                    );
++                }}
++              >
++                <Input
++                  type="password"
++                  autoComplete="off"
++                  value={callbackUrl}
++                  onChange={(event) => setCallbackUrl(event.target.value)}
++                  placeholder="http://localhost:1455/auth/callback?..."
++                  aria-label={intl.formatMessage({
++                    id: "settings.modelProvider.subscription.callback",
++                  })}
++                />
++                <Button type="submit" variant="outline" disabled={!callbackUrl.trim()}>
++                  {intl.formatMessage({ id: "settings.modelProvider.subscription.continue" })}
++                </Button>
++              </form>
++              {callbackError ? (
++                <p role="alert" className="text-destructive">
++                  {callbackError}
++                </p>
++              ) : null}
++            </details>
++          ) : null}
+         </div>
+       ) : null}
+       <div className="flex items-center gap-2">
+diff --git a/patches/@earendil-works__pi-ai@0.87.1.patch b/patches/@earendil-works__pi-ai@0.87.1.patch
+new file mode 100644
+index 0000000..e394c44
+--- /dev/null
++++ b/patches/@earendil-works__pi-ai@0.87.1.patch
+@@ -0,0 +1,95 @@
++diff --git a/dist/auth/oauth/github-copilot.js b/dist/auth/oauth/github-copilot.js
++index 09e54941f456ab1b5cedd23710711c2c2a40db39..88e6ebf8dd42e43d42c3677bed414242362dc2c9 100644
++--- a/dist/auth/oauth/github-copilot.js
+++++ b/dist/auth/oauth/github-copilot.js
++@@ -1,3 +1,4 @@
+++import { oauthFetch } from "../../utils/oauth-fetch.js";
++ /**
++  * GitHub Copilot OAuth flow
++  */
++@@ -104,7 +105,7 @@ async function fetchWithRateLimitRetry(url, init, signal, retryPolicy) {
++     const requestSignal = retryBudgetSignal ? AbortSignal.any([signal, retryBudgetSignal]) : signal;
++     const retryDeadline = retryBudgetSignal ? Date.now() + retryPolicy.maxElapsedMs : undefined;
++     for (let retry = 0;; retry++) {
++-        const response = await fetch(url, {
+++        const response = await oauthFetch(url, {
++             ...init,
++             signal: AbortSignal.any([requestSignal, AbortSignal.timeout(5000)]),
++         });
++@@ -144,7 +145,7 @@ async function fetchGitHubCopilotModels(copilotToken, enterpriseDomain, signal,
++     return parseGitHubCopilotModelCatalog(await response.json(), allowPolicyFallback);
++ }
++ async function fetchJson(url, init) {
++-    const response = await fetch(url, init);
+++    const response = await oauthFetch(url, init);
++     if (!response.ok) {
++         const text = await response.text();
++         throw new Error(`${response.status} ${response.statusText}: ${text}`);
++diff --git a/dist/auth/oauth/openai-codex.js b/dist/auth/oauth/openai-codex.js
++index 04813e44dde0d5cd2a828aa0a2fbc0ed1dfc2df9..ee6cbf5ede2f73b76e482d4894cf80b5a386c6d7 100644
++--- a/dist/auth/oauth/openai-codex.js
+++++ b/dist/auth/oauth/openai-codex.js
++@@ -1,3 +1,4 @@
+++import { oauthFetch } from "../../utils/oauth-fetch.js";
++ /**
++  * OpenAI Codex (ChatGPT OAuth) flow
++  *
++@@ -84,7 +85,7 @@ function decodeJwt(token) {
++ }
++ async function fetchWithLoginCancellation(input, init) {
++     try {
++-        return await fetch(input, init);
+++        return await oauthFetch(input, init);
++     }
++     catch (error) {
++         if (init.signal?.aborted) {
++@@ -127,7 +128,7 @@ async function exchangeAuthorizationCode(code, verifier, redirectUri, signal) {
++ async function refreshAccessToken(refreshToken, signal) {
++     let response;
++     try {
++-        response = await fetch(TOKEN_URL, {
+++        response = await oauthFetch(TOKEN_URL, {
++             method: "POST",
++             headers: { "Content-Type": "application/x-www-form-urlencoded" },
++             body: new URLSearchParams({
++diff --git a/dist/auth/oauth/xai.js b/dist/auth/oauth/xai.js
++index f70a3beaf50222a12006d8f4ffc951397d1a9b62..5dd8051aed33b0552d9c1dc93590d75263c03400 100644
++--- a/dist/auth/oauth/xai.js
+++++ b/dist/auth/oauth/xai.js
++@@ -1,3 +1,4 @@
+++import { oauthFetch } from "../../utils/oauth-fetch.js";
++ /**
++  * xAI OAuth device-code flow.
++  */
++@@ -41,7 +42,7 @@ function validateVerificationUri(raw) {
++ async function postForm(url, fields, signal) {
++     let response;
++     try {
++-        response = await fetch(url, {
+++        response = await oauthFetch(url, {
++             method: "POST",
++             headers: {
++                 Accept: "application/json",
++diff --git a/dist/utils/oauth-fetch.d.ts b/dist/utils/oauth-fetch.d.ts
++new file mode 100644
++index 0000000000000000000000000000000000000000..0d3bd3b737d59e8521a92dfb4bf38ae871c5c1d1
++--- /dev/null
+++++ b/dist/utils/oauth-fetch.d.ts
++@@ -0,0 +1,2 @@
+++export declare function withOAuthFetch<T>(fetcher: typeof globalThis.fetch, operation: () => T): T;
+++export declare const oauthFetch: typeof globalThis.fetch;
++diff --git a/dist/utils/oauth-fetch.js b/dist/utils/oauth-fetch.js
++new file mode 100644
++index 0000000000000000000000000000000000000000..c69983a66798218ce465072083aaf51ae5d87d7f
++--- /dev/null
+++++ b/dist/utils/oauth-fetch.js
++@@ -0,0 +1,9 @@
+++// Fleet transport seam: OAuth remains owned by Pi; each async request uses its Host network.
+++import { AsyncLocalStorage } from "node:async_hooks";
+++const transports = new AsyncLocalStorage();
+++export function withOAuthFetch(fetcher, operation) {
+++  return transports.run(fetcher, operation);
+++}
+++export function oauthFetch(input, init) {
+++  return (transports.getStore() ?? globalThis.fetch)(input, init);
+++}
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index c7ec020..f251e80 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -18,6 +18,9 @@ patchedDependencies:
+   '@arms/rum-electron@0.0.3':
+     hash: 36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97
+     path: patches/@arms__rum-electron@0.0.3.patch
++  '@earendil-works/pi-ai@0.87.1':
++    hash: 1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9
++    path: patches/@earendil-works__pi-ai@0.87.1.patch
+ 
+ importers:
+ 
+@@ -144,7 +147,7 @@ importers:
+         version: 2.0.60(patch_hash=9632fe9d821b3dc20939ae509cc35b968d90d018bbd1d812390718898182a38b)(zod@4.6.5)
+       '@earendil-works/pi-ai':
+         specifier: 0.87.1
+-        version: 0.87.1(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)
++        version: 0.87.1(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)
+       '@modelcontextprotocol/client':
+         specifier: 2.0.0
+         version: 2.0.0
+@@ -958,7 +961,7 @@ importers:
+     dependencies:
+       '@earendil-works/pi-ai':
+         specifier: 0.87.1
+-        version: 0.87.1(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)
++        version: 0.87.1(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)
+       '@larksuiteoapi/node-sdk':
+         specifier: 1.64.0
+         version: 1.64.0
+@@ -10801,7 +10804,7 @@ snapshots:
+ 
+   '@dukelib/sheets-wasm@0.1.21': {}
+ 
+-  '@earendil-works/pi-ai@0.87.1(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)':
++  '@earendil-works/pi-ai@0.87.1(patch_hash=1e943ef3a34ef25608501209330618561c180d80a3952e5e32d44336f830edd9)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(ws@8.20.0)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.124.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 5dd49e4..b1b1568 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -29,3 +29,13 @@ allowBuilds:
+   protobufjs: true
+   ssh2: true
+   unsafe-pointer: true
++
++overrides:
++  "react": "19.2.7"
++  "react-dom": "19.2.7"
++
++patchedDependencies:
++  "@arms/rum-electron@0.0.3": "patches/@arms__rum-electron@0.0.3.patch"
++  "@ai-sdk/openai-compatible@2.0.60": "patches/@ai-sdk__openai-compatible@2.0.60.patch"
++  "@ai-sdk/anthropic@3.0.81": "patches/@ai-sdk__anthropic@3.0.81.patch"
++  "@earendil-works/pi-ai@0.87.1": "patches/@earendil-works__pi-ai@0.87.1.patch"
+diff --git a/scripts/provider-catalog-metadata.mjs b/scripts/provider-catalog-metadata.mjs
+index d5f9dda..81e88a3 100644
+--- a/scripts/provider-catalog-metadata.mjs
++++ b/scripts/provider-catalog-metadata.mjs
+@@ -1,5 +1,6 @@
+ // 显式声明品牌与接入选项；不能把协议后缀、地域或相同 logo 猜成供应商身份。
+ const services = {
++  grok: ["Grok 订阅", "Grok subscription"],
+   api: ["API", "API"],
+   coding: ["Coding Plan", "Coding Plan"],
+   token: ["Token Plan", "Token Plan"],
+@@ -88,7 +89,15 @@ const vendors = [
+   ],
+   ["deepseek", "DeepSeek", "DeepSeek", [["deepseek", "api"]]],
+   ["anthropic", "Anthropic", "Anthropic", [["anthropic", "api"]]],
+-  ["xai", "xAI", "xAI", [["xai", "api"]]],
++  [
++    "xai",
++    "xAI",
++    "xAI",
++    [
++      ["xai", "api"],
++      ["fleet-xai", "grok"],
++    ],
++  ],
+   ["openrouter", "OpenRouter", "OpenRouter", [["openrouter", "api"]]],
+   ["github", "GitHub Copilot", "GitHub Copilot", [["fleet-github-copilot", "copilot"]]],
+   ["groq", "Groq", "Groq", [["fleet-groq", "api"]]],
+diff --git a/scripts/sync-fleet-provider-catalog.mjs b/scripts/sync-fleet-provider-catalog.mjs
+index ff4a9dd..5e682d1 100644
+--- a/scripts/sync-fleet-provider-catalog.mjs
++++ b/scripts/sync-fleet-provider-catalog.mjs
+@@ -9,6 +9,7 @@ data.config.providerConfigRules.templateRules =
+ const providers = new Map(builtinProviders().map((p) => [p.id, p]));
+ const entries = [
+   ["openai-codex", "ChatGPT / Codex", "https://chatgpt.com", "openai"],
++  ["xai", "Grok 订阅", "https://grok.com", "xai"],
+   ["github-copilot", "GitHub Copilot", "https://github.com/settings/copilot", "github"],
+   ["groq", "Groq", "https://console.groq.com/keys", "groq"],
+   ["cerebras", "Cerebras", "https://cloud.cerebras.ai", "cerebras"],
+@@ -39,24 +40,29 @@ const entries = [
+ for (const [id, name, keyUrl, logo] of entries) {
+   const provider = providers.get(id);
+   if (!provider?.baseUrl) throw new Error(`Missing Pi provider ${id}`);
+-  const subscription = id === "openai-codex" || id === "github-copilot";
++  const subscription = id === "openai-codex" || id === "github-copilot" || id === "xai";
+   const api = provider.getModels()[0]?.api;
+   const apiType =
+     api === "anthropic-messages"
+       ? "anthropic-messages"
+-      : api === "openai-codex-responses"
++      : api === "openai-codex-responses" || api === "openai-responses"
+         ? "openai-responses"
+         : "openai-chat-completions";
+   const template = {
+     templateId: `fleet-${id}`,
+-    templateNameMap: { "zh-CN": name, "en-US": name },
++    templateNameMap: { "zh-CN": name, "en-US": id === "xai" ? "Grok subscription" : name },
+     config: {
+       access: subscription
+         ? { type: "subscription", provider: id, connected: false }
+         : { type: "api-key", apiKeyManagementUrl: keyUrl },
+       api: {
+         type: apiType,
+-        baseUrl: id === "mistral" ? "https://api.mistral.ai/v1" : provider.baseUrl,
++        baseUrl:
++          id === "xai"
++            ? "https://cli-chat-proxy.grok.com/v1"
++            : id === "mistral"
++              ? "https://api.mistral.ai/v1"
++              : provider.baseUrl,
+       },
+       builtinModelIds: [],
+       logo: { type: "builtin", key: logo },

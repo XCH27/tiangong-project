@@ -1,0 +1,655 @@
+diff --git a/package.json b/package.json
+index 62ea6dc30d8c3a1674e91d30724d7d72069b445a..aad382c4c1d69eceac9bffb0a214f04ccf23a28e 100644
+--- a/package.json
++++ b/package.json
+@@ -67,6 +67,7 @@
+     "test:model-settings-tool-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/modelSettingsTool.browser.test.tsx __modelSettingsToolTests --desktop-styles",
+     "test:context-capacity-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/contextCapacity.browser.test.tsx __contextCapacityTests --desktop-styles",
+     "test:combined-model-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/combinedModelControl.browser.test.tsx __combinedModelTests --desktop-styles",
++    "test:draft-model-defaults": "node scripts/test-usage-hooks.mjs packages/ui/test/draftModelDefaults.browser.test.tsx __draftModelDefaultTests --desktop-styles",
+     "test:settings-typography": "node scripts/test-usage-hooks.mjs packages/ui/test/settingsTypography.browser.test.tsx __settingsTypographyTests --desktop-styles"
+   },
+   "dependencies": {
+diff --git a/packages/ui/src/lib/composerRecent.ts b/packages/ui/src/lib/composerRecent.ts
+index c1efeba62cbb97f2163ccbe209bb8012ba0186d4..84cce7ae778a9911e8cbb66bb786d5699513980d 100644
+--- a/packages/ui/src/lib/composerRecent.ts
++++ b/packages/ui/src/lib/composerRecent.ts
+@@ -50,6 +50,32 @@ export function readComposerRecent(
+   }
+ }
+ 
++/** A picker choice is a scoped preference, not an accepted execution or another Session writer. */
++export function rememberComposerModelChoice(
++  workspacePath: string,
++  selection: ModelSelection,
++  workspaceIdentity?: string,
++  storage: StorageLike | null = browserStorage(),
++): void {
++  if (!storage) return;
++  const modelSelection = normalizeSparseModelSelection(selection);
++  if (!modelSelection) return;
++  const key = resolveComposerRecentKey(workspacePath, workspaceIdentity);
++  let accepted = acceptedSequences.get(storage);
++  if (!accepted) {
++    accepted = new Map();
++    acceptedSequences.set(storage, accepted);
++  }
++  // A pending older send must not roll back a later human choice on its eventual ACK.
++  accepted.set(key, ++submissionSequence);
++  const previous = readComposerRecent(workspacePath, workspaceIdentity, storage);
++  try {
++    storage.setItem(key, JSON.stringify({ ...previous, modelSelection }));
++  } catch (error) {
++    logger.warn("[ComposerRecent] 保存模型偏好失败", { workspacePath, workspaceIdentity, error });
++  }
++}
++
+ /** 发起真实 Submission 时捕获；返回函数只在 accepted ACK 后调用。 */
+ export function captureComposerRecentSubmission(
+   workspacePath: string,
+@@ -151,8 +177,7 @@ function normalizeSparseModelSelection(selection: ModelSelection): ModelSelectio
+   const candidate =
+     selection && typeof selection === "object" && !Array.isArray(selection) ? selection : null;
+   const options = candidate?.options;
+-  const normalizedOptions =
+-    options?.reasoningLevel !== undefined ? { reasoningLevel: options.reasoningLevel } : {};
++  const normalizedOptions = options ? { ...options } : {};
+   const parsed = modelSelectionSchema.safeParse({
+     providerId: candidate?.providerId,
+     modelId: candidate?.modelId,
+diff --git a/packages/ui/src/store/zcodeSessionStoreWorkspaceSlice.ts b/packages/ui/src/store/zcodeSessionStoreWorkspaceSlice.ts
+index 6902578df59d5130513586d76461401ef9ed8179..e41b803f7acc5515d23439841e04cf1d48551293 100644
+--- a/packages/ui/src/store/zcodeSessionStoreWorkspaceSlice.ts
++++ b/packages/ui/src/store/zcodeSessionStoreWorkspaceSlice.ts
+@@ -15,6 +15,7 @@ import { areConfigOptionsEquivalent } from "@/lib/configOptionsEquality.js";
+ import type { ZCodeUiError } from "@/lib/zcodeUiError.js";
+ import { pushNavEntry } from "@/lib/taskNavigationHistory.js";
+ import { resolveTaskRestorePreloadConfigOptions } from "@/lib/taskModelRecovery.js";
++import { resetEmptyV4DraftModel } from "@/v4/composer/composerDraftStore.js";
+ import type {
+   ZCodeSessionStoreState,
+   ConfigOptionsStatus,
+@@ -516,6 +517,7 @@ export function createWorkspaceSlice(set: SetFn) {
+         createSource?: SessionCreateSource;
+       },
+     ) => {
++      resetEmptyV4DraftModel(workspacePath, workspaceIdentity);
+       const normalizedProvider = provider
+         ? normalizeAgentProviderToZCodeAgent(provider)
+         : undefined;
+diff --git a/packages/ui/src/v4/composer/composerDraftStore.ts b/packages/ui/src/v4/composer/composerDraftStore.ts
+index 6b3f205d3fa7a3e712db2aaee48eedeb4d0b384c..47cb283b66a84b901e645b9f62d36c21dc93755c 100644
+--- a/packages/ui/src/v4/composer/composerDraftStore.ts
++++ b/packages/ui/src/v4/composer/composerDraftStore.ts
+@@ -17,7 +17,7 @@ export interface V4ComposerDraft {
+   text: string;
+   editorStateJson?: string;
+   mention?: ComposerMentionPrefill;
+-  /** 有合法 mode 表示已经初始化；没有模型仍是明确空态，不能按旧文本草稿补默认。 */
++  /** Mode initialization is independent of catalog readiness; new chats may acquire a default later. */
+   mode?: SubmissionMode;
+   planEnabled?: boolean;
+   /** 已处理的工具变更，防止重连快照再次覆盖用户选择。 */
+@@ -174,6 +174,29 @@ export function readV4ComposerDraft(
+   return draft;
+ }
+ 
++/** An empty reused composer is a new-chat preference, not unfinished user input. */
++export function resetEmptyV4DraftModel(workspacePath: string, workspaceIdentity?: string): void {
++  const draft = readV4ComposerDraft(workspacePath, workspaceIdentity, V4_DRAFT_SCOPE_ROOT);
++  if (!draft?.modelSelection || draft.text.trim() || draft.mention) return;
++  if (draft.editorStateJson) {
++    try {
++      const hasContent = (node: unknown): boolean => {
++        if (!isRecord(node)) return true;
++        if (typeof node.text === "string" && node.text.trim()) return true;
++        if (!["root", "paragraph", "text", "linebreak"].includes(String(node.type))) return true;
++        return Array.isArray(node.children) && node.children.some(hasContent);
++      };
++      if (hasContent(JSON.parse(draft.editorStateJson).root)) return;
++    } catch {
++      return;
++    } // Unknown editor data is retained, never discarded as an empty draft.
++  }
++  persistV4ComposerDraft(workspacePath, workspaceIdentity, V4_DRAFT_SCOPE_ROOT, {
++    ...draft,
++    modelSelection: undefined,
++  });
++}
++
+ export function persistV4ComposerDraft(
+   workspacePath: string,
+   workspaceIdentity: string | undefined,
+diff --git a/packages/ui/src/v4/composer/newTaskDraft.ts b/packages/ui/src/v4/composer/newTaskDraft.ts
+index 0d085ae904bb87547d62565689f6a1876ce0bcff..7a637810ae3ccd72ba087fc298a000e93caa7b57 100644
+--- a/packages/ui/src/v4/composer/newTaskDraft.ts
++++ b/packages/ui/src/v4/composer/newTaskDraft.ts
+@@ -1,5 +1,7 @@
+ import type { ModelSelectionView } from "@zcode/services";
+-import { readComposerRecent, resolveDraftInitialModelSelection } from "@/lib/composerRecent.js";
++import { readComposerRecent } from "@/lib/composerRecent.js";
++import { normalizeModelSelection, validateModelSelectionOptions } from "@zcode/provider";
++import type { ModelSelection } from "@zcode/shared";
+ import {
+   persistV4ComposerDraft,
+   readV4ComposerDraft,
+@@ -7,7 +9,43 @@ import {
+   type V4ComposerDraft,
+ } from "@/v4/composer/composerDraftStore.js";
+ 
+-/** 普通新任务与首次分享导入共用初始化；保留 Recent 原意图，由公共 View 解析有效选择。 */
++/** New defaults may fall back; a saved conversation's explicit binding never enters this path. */
++export function resolveNewTaskModelChoice(
++  view: ModelSelectionView,
++  recent?: ModelSelection,
++): ModelSelection | undefined {
++  for (const preference of [recent, view.preferredSelection]) {
++    if (!preference) continue;
++    const model = view.providers
++      .find((provider) => provider.providerId === preference.providerId)
++      ?.models.find((model) => model.modelId === preference.modelId);
++    if (!model) continue;
++    const evidence = model.evidenceConfig?.optionSpecs?.reasoningLevel;
++    const source =
++      model.evidenceConfig && !evidence?.values?.length
++        ? { ...preference, options: { ...preference.options, reasoningLevel: "auto" } }
++        : preference;
++    let selection = normalizeModelSelection(view, source);
++    if (!selection) continue;
++    // Withdrawn Fast/context preferences are not a required second setup step in a new chat.
++    for (const option of ["speedMode", "contextWindow"] as const) {
++      const checked = validateModelSelectionOptions(model, selection);
++      if (
++        !checked.ok &&
++        checked.code ===
++          (option === "speedMode" ? "speed-mode-not-supported" : "context-window-not-supported")
++      ) {
++        const options: NonNullable<ModelSelection["options"]> = { ...selection.options };
++        delete options[option];
++        selection = { ...selection, options };
++      }
++    }
++    if (validateModelSelectionOptions(model, selection).ok) return selection;
++  }
++  return undefined;
++}
++
++/** New tasks and first imports share initialization; the Host view supplies executable defaults. */
+ export function initializeNewTaskDraft(
+   draft: V4ComposerDraft,
+   workspacePath: string,
+@@ -20,10 +58,7 @@ export function initializeNewTaskDraft(
+     initializeFromNewTask: undefined,
+     mode: recent?.mode === "plan" ? "build" : (recent?.mode ?? "build"),
+     planEnabled: false,
+-    modelSelection:
+-      recent?.modelSelection ??
+-      resolveDraftInitialModelSelection(view, null).selection ??
+-      undefined,
++    modelSelection: resolveNewTaskModelChoice(view, recent?.modelSelection),
+   };
+ }
+ 
+diff --git a/packages/ui/src/v4/composer/useDraftConfigControl.ts b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+index 4fd9a12656a3ee62c8764def1efe16a5e0d0e3d8..a309709dafdaa913648c06c42552d94bab3c02e6 100644
+--- a/packages/ui/src/v4/composer/useDraftConfigControl.ts
++++ b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+@@ -26,7 +26,8 @@ import { prepareWorkspaceWithZCodeSessionService } from "@/hooks/useWorkspacePre
+ import { useZCodeSessionService } from "@/hooks/useZCodeSessionService.js";
+ import { useSettings } from "@/hooks/useSettingService.js";
+ import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
+-import { initializeNewTaskDraft } from "@/v4/composer/newTaskDraft.js";
++import { initializeNewTaskDraft, resolveNewTaskModelChoice } from "@/v4/composer/newTaskDraft.js";
++import { readComposerRecent, rememberComposerModelChoice } from "@/lib/composerRecent.js";
+ import {
+   clearV4ComposerDraft,
+   persistV4ComposerDraft,
+@@ -131,7 +132,16 @@ export function useDraftConfigControl(params: {
+   const { settings: sharedSettings } = useSettings();
+   const appFollowupMode = resolveAppFollowupMode(sharedSettings);
+   const scopeId = sessionId ?? V4_DRAFT_SCOPE_ROOT;
+-  const scopeKey = JSON.stringify([workspaceKey, scopeId]);
++  const newDraftVersion = useZCodeSessionStore(
++    (state) => state.getWorkspaceState(workspacePath, workspaceIdentity).draftFocusVersion,
++  );
++  // New Conversation can reuse the same root slot; its existing entry generation
++  // reloads the scoped preference without leaving an old empty composer in memory.
++  const scopeKey = JSON.stringify([
++    workspaceKey,
++    scopeId,
++    sessionId === null ? newDraftVersion : 0,
++  ]);
+   const loadedScope = useMemo(
+     () => ({
+       scopeKey,
+@@ -160,7 +170,8 @@ export function useDraftConfigControl(params: {
+     const mode = submissionModeSchema.safeParse(sessionConfig?.mode);
+     // Recent 是初始化原意图，不先按旧 Provider 是否仍在候选中删掉；下一次输入读取
+     // 由同一解析入口对应当前账号，或暂时留空。否则冷启动会绕过统一账号对应规则。
+-    // mode 是已初始化标记：历史恢复给出的空选择也是确定结果，后续 Snapshot 不得填满。
++    // Mode is initialized once. Historical empty bindings remain explicit; a new
++    // draft without a model can still receive its first connected catalog below.
+     draft =
+       initializeAsNewTask && modelSelectionView
+         ? initializeNewTaskDraft(draft, workspacePath, workspaceIdentity, modelSelectionView)
+@@ -175,6 +186,15 @@ export function useDraftConfigControl(params: {
+     draft = applyComposerPlanTransition(draft, sessionConfig.planTransition);
+     draft = applyComposerPermissionGrant(draft, sessionConfig.permissionGrant);
+   }
++  // Mode initialization can precede the first connected catalog. Fill only a missing
++  // new-chat model; preserve body, permission/plan state and every explicit binding.
++  if (sessionId === null && !draft.modelSelection && modelSelectionView) {
++    const choice = resolveNewTaskModelChoice(
++      modelSelectionView,
++      readComposerRecent(workspacePath, workspaceIdentity)?.modelSelection,
++    );
++    if (choice) draft = { ...draft, modelSelection: choice };
++  }
+   if (draft !== currentState.draft) currentState = { ...currentState, draft };
+   if (currentState !== storedState) setStoredState(currentState);
+   const stateRef = useRef(currentState);
+@@ -437,9 +457,11 @@ export function useDraftConfigControl(params: {
+         workspacePath,
+         workspaceIdentity: workspaceIdentity ?? null,
+       });
++      if (stateRef.current.scopeKey !== scopeKey) return;
+       updateDraftConfig((current) => applyDraftModelSelection(current, modelSelection));
++      rememberComposerModelChoice(workspacePath, modelSelection, workspaceIdentity);
+     },
+-    [modelSelectionView, updateDraftConfig, workspaceIdentity, workspacePath],
++    [modelSelectionView, updateDraftConfig, workspaceIdentity, workspacePath, scopeKey],
+   );
+ 
+   const handleDraftSelectThought = useCallback(
+diff --git a/packages/ui/test/draftModelDefaults.browser.test.tsx b/packages/ui/test/draftModelDefaults.browser.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..83df39b53734838f57058a1c71fe21b8986a405c
+--- /dev/null
++++ b/packages/ui/test/draftModelDefaults.browser.test.tsx
+@@ -0,0 +1,386 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { PlatformProvider } from "../src/hooks/usePlatform.js";
++import { TabStoreProvider } from "../src/store/TabStoreProvider.js";
++import { useDraftConfigControl } from "../src/v4/composer/useDraftConfigControl.js";
++import {
++  persistV4ComposerDraft,
++  clearV4ComposerDraft,
++  readV4ComposerDraft,
++  V4_DRAFT_SCOPE_ROOT,
++} from "../src/v4/composer/composerDraftStore.js";
++import { resolveEffectiveModelSelection } from "@zcode/provider";
++import {
++  readComposerRecent,
++  captureComposerRecentSubmission,
++  rememberComposerModelChoice,
++} from "../src/lib/composerRecent.js";
++import { createComposerSubmissionConfig } from "../src/v4/composer/composerSubmissionConfig.js";
++import { useZCodeSessionStore } from "../src/store/zcodeSessionStore.js";
++import { resolveNewTaskModelChoice } from "../src/v4/composer/newTaskDraft.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++const results: Array<{ name: string; error?: string }> = [];
++const auto = (modelId: string) => ({
++  providerId: "connected",
++  modelId,
++  options: { reasoningLevel: "auto" },
++});
++const models = ["a", "b"].map((modelId) => ({
++  modelId,
++  config: {
++    properties: { contextWindow: 200000, contextWindows: [200000, 400000] },
++    optionSpecs: {
++      reasoningLevel: { values: ["auto", "low", "high"], defaultValue: "auto", map: "{}" },
++      speedMode: "openai-priority",
++    },
++  },
++  evidenceConfig: {
++    optionSpecs: {
++      reasoningLevel: { values: ["auto", "low", "high"], defaultValue: "auto", map: "{}" },
++    },
++  },
++}));
++
++async function fixture() {
++  const node = document.createElement("div");
++  document.body.append(node);
++  const root = createRoot(node);
++  let catalog = {
++    revision: 1,
++    providers: [
++      {
++        providerId: "connected",
++        providerName: "Connected",
++        config: { access: { type: "api-key" }, api: { type: "openai-responses" } },
++        models,
++      },
++    ],
++    preferredSelection: auto("a"),
++  };
++  const listeners = new Set<(view: any) => void>();
++  const service = {
++    onDidChange: (listener: (view: any) => void) => {
++      listeners.add(listener);
++      return {
++        dispose() {
++          listeners.delete(listener);
++        },
++      };
++    },
++    async getView(input?: any) {
++      return {
++        ...catalog,
++        ...(input
++          ? resolveEffectiveModelSelection({
++              selection: input.selection,
++              registry: catalog as never,
++              classifyProvider: () => "ordinary",
++            })
++          : {}),
++      };
++    },
++  };
++  const services = {
++    modelSelectionService: service,
++    settingService: { get: async () => ({}) },
++    broadcastService: {},
++    botsService: {},
++    zcodeAgentService: {},
++    zcodeSessionService: {},
++  };
++  let latest: ReturnType<typeof useDraftConfigControl>;
++  function Probe({
++    path,
++    session,
++    config,
++  }: {
++    path: string;
++    session: string | null;
++    config?: any;
++  }) {
++    latest = useDraftConfigControl({
++      workspacePath: path,
++      sessionId: session,
++      sessionConfig: config,
++      modelSelectionService: service as never,
++      agentStartupAllowed: false,
++    });
++    return <output>{latest.draftConfig.model ?? "none"}</output>;
++  }
++  return {
++    node,
++    get latest() {
++      return latest!;
++    },
++    get view() {
++      return catalog;
++    },
++    async render(path: string, session: string | null = null, config?: any) {
++      await act(async () =>
++        root.render(
++          <ServiceProvider services={services as never}>
++            <PlatformProvider platform={{} as never}>
++              <TabStoreProvider>
++                <Probe path={path} session={session} config={config} />
++              </TabStoreProvider>
++            </PlatformProvider>
++          </ServiceProvider>,
++        ),
++      );
++    },
++    async catalog(next: any) {
++      catalog = next;
++      await act(async () => {
++        for (const listener of listeners) listener(catalog);
++      });
++    },
++    async choose(model: string) {
++      await act(async () => latest.handleDraftSelectModel("connected", model));
++    },
++    async close() {
++      await act(async () => root.unmount());
++      node.remove();
++    },
++  };
++}
++async function test(name: string, run: () => Promise<void>) {
++  try {
++    await run();
++    results.push({ name });
++  } catch (error) {
++    results.push({ name, error: String(error) });
++  }
++}
++
++(window as any).__draftModelDefaultTests = (async () => {
++  await test("configured models initialize a new conversation without a manual selection", async () => {
++    const f = await fixture();
++    try {
++      await f.render("/defaults/new");
++      check(f.latest.draftConfig.model === "a", "The connected default model was not selected");
++      check(
++        createComposerSubmissionConfig(f.latest.draftConfig, f.view as never),
++        "The automatically selected model cannot be submitted",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("connecting after an empty catalog fills only the missing model and retains the user's draft and mode", async () => {
++    const path = "/defaults/late";
++    persistV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT, {
++      text: "keep my input",
++      mode: "yolo",
++      planEnabled: true,
++    });
++    const f = await fixture();
++    const ready = f.view;
++    try {
++      await f.catalog({ ...ready, providers: [], preferredSelection: undefined });
++      await f.render(path);
++      check(!f.latest.draftConfig.model, "Empty catalog fabricated a model");
++      await f.catalog({ ...ready, revision: 2 });
++      check(
++        f.latest.draftConfig.model === "a",
++        "The initialized empty draft remained permanently unselected",
++      );
++      check(
++        f.latest.composerDraft.text === "keep my input" &&
++          f.latest.composerDraft.mode === "yolo" &&
++          f.latest.composerDraft.planEnabled,
++        "Default selection overwrote input or permissions",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("explicit model choices are remembered independently for project A, project B and ordinary conversations", async () => {
++    const f = await fixture();
++    try {
++      await f.render("/defaults/project-a");
++      await f.choose("b");
++      check(
++        readComposerRecent("/defaults/project-a")?.modelSelection?.modelId === "b",
++        "A model choice was not remembered before sending",
++      );
++      await f.render("/defaults/project-b");
++      check(f.latest.draftConfig.model === "a", "Project A replaced B's starting default");
++      await f.choose("a");
++      await f.render("/defaults/ordinary");
++      await f.choose("a");
++      clearV4ComposerDraft("/defaults/project-a", undefined, V4_DRAFT_SCOPE_ROOT);
++      await f.render("/defaults/project-a");
++      check(f.latest.draftConfig.model === "b", "New A conversation did not reuse A's model");
++      check(
++        readComposerRecent("/defaults/ordinary")?.modelSelection?.modelId === "a",
++        "A model choice changed the ordinary conversation default",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("a late accepted submission cannot replace a newer explicit model choice", async () => {
++    const path = "/defaults/ack";
++    const f = await fixture();
++    try {
++      await f.render(path);
++      const accept = captureComposerRecentSubmission(path, {
++        modelSelection: auto("a"),
++        mode: "build",
++      });
++      await f.choose("b");
++      accept();
++      check(
++        readComposerRecent(path)?.modelSelection?.modelId === "b",
++        "Late ACK replaced the newer model choice",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("New Conversation reuses the latest project choice instead of a stale empty root, retaining actual unfinished input", async () => {
++    const path = "/defaults/reuse";
++    persistV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT, {
++      text: "",
++      mode: "edit",
++      modelSelection: auto("a"),
++      editorStateJson: JSON.stringify({
++        root: { type: "root", children: [{ type: "paragraph", children: [] }] },
++      }),
++    });
++    const f = await fixture();
++    try {
++      await f.render(path, "previous", { mode: "build", modelSelection: auto("a") });
++      await f.choose("b");
++      useZCodeSessionStore.getState().startDraft(path);
++      await f.render(path);
++      check(f.latest.draftConfig.model === "b", "New chat kept the old empty-root model");
++      check(
++        f.latest.draftConfig.mode === "edit",
++        "Refreshing a model preference changed permission mode",
++      );
++      persistV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT, {
++        text: "unfinished",
++        mode: "build",
++        modelSelection: auto("a"),
++      });
++      useZCodeSessionStore.getState().startDraft(path);
++      check(
++        readV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT)?.modelSelection?.modelId === "a",
++        "New chat changed an unfinished draft's model",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("New Conversation refreshes an already-open blank composer from the same project preference", async () => {
++    const path = "/defaults/open-root";
++    const f = await fixture();
++    try {
++      await f.render(path);
++      check(f.latest.draftConfig.model === "a", "Initial model mismatch");
++      rememberComposerModelChoice(path, auto("b"));
++      await act(async () => useZCodeSessionStore.getState().startDraft(path));
++      check(
++        f.latest.draftConfig.model === "b",
++        "The reused root did not reload the newer project preference",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("an existing conversation with no model keeps its historical state", async () => {
++    const f = await fixture();
++    try {
++      await f.render("/defaults/history", "history", { mode: "build" });
++      check(
++        !f.latest.draftConfig.model,
++        "A new default silently rebound a historical conversation",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("catalog refresh never replaces an explicit draft model", async () => {
++    const path = "/defaults/explicit";
++    persistV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT, {
++      text: "pending",
++      mode: "build",
++      modelSelection: auto("b"),
++    });
++    const f = await fixture();
++    try {
++      await f.render(path);
++      await f.catalog({ ...f.view, revision: 3 });
++      check(f.latest.draftConfig.model === "b", "Refresh replaced the explicit model");
++      check(
++        readV4ComposerDraft(path, undefined, V4_DRAFT_SCOPE_ROOT)?.text === "pending",
++        "Refresh lost the draft",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("a new conversation falls back from an unavailable remembered model while retaining its saved preference", async () => {
++    const path = "/defaults/withdrawn";
++    rememberComposerModelChoice(path, auto("removed"));
++    const f = await fixture();
++    try {
++      await f.render(path);
++      check(
++        f.latest.draftConfig.model === "a",
++        "Unavailable recent model prevented the new-chat default",
++      );
++      check(
++        readComposerRecent(path)?.modelSelection?.modelId === "removed",
++        "Temporary unavailability erased the saved preference",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("new defaults use automatic reasoning for an ID-only model and retire withdrawn option preferences", async () => {
++    const f = await fixture();
++    try {
++      const unknown = {
++        ...f.view,
++        providers: f.view.providers.map((provider) => ({
++          ...provider,
++          models: provider.models.map((model) => ({ ...model, evidenceConfig: {} })),
++        })),
++        preferredSelection: { ...auto("a"), options: { reasoningLevel: "off" } },
++      };
++      check(
++        resolveNewTaskModelChoice(unknown as never)?.options?.reasoningLevel === "auto",
++        "A fallback-only Off level became a provider default",
++      );
++      const restored = resolveNewTaskModelChoice(f.view as never, {
++        ...auto("a"),
++        options: { reasoningLevel: "high", contextWindow: 999999 },
++      });
++      check(
++        restored?.options?.reasoningLevel === "high" &&
++          restored.options.contextWindow === undefined,
++        "A withdrawn context prevented or changed the valid model/effort preference",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("equal folder paths on different hosts cannot share a model preference", async () => {
++    const path = "/defaults/shared-path";
++    rememberComposerModelChoice(path, auto("a"), "host-a");
++    rememberComposerModelChoice(path, auto("b"), "host-b");
++    check(
++      readComposerRecent(path, "host-a")?.modelSelection?.modelId === "a" &&
++        readComposerRecent(path, "host-b")?.modelSelection?.modelId === "b",
++      "Remote host preference crossed its identity boundary",
++    );
++  });
++  return results;
++})();

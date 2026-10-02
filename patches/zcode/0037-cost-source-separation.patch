@@ -1,0 +1,1731 @@
+diff --git a/package.json b/package.json
+index 9b9685e..454b368 100644
+--- a/package.json
++++ b/package.json
+@@ -51,7 +51,7 @@
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts",
+-    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionPaymentAccounts.test.ts packages/ui/test/usageAccountingViewModel.test.ts"
++    "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/subscriptionListPrice.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/services/src/setting/settingService.ts b/packages/services/src/setting/settingService.ts
+index 21340a7..e9e5c40 100644
+--- a/packages/services/src/setting/settingService.ts
++++ b/packages/services/src/setting/settingService.ts
+@@ -316,6 +316,7 @@ export function createSettingServiceWithMigrations(): {
+           ...current,
+           ...validatedPatch,
+           ...(validatedPatch.subscriptionPayments ? {subscriptionPayments:{...current.subscriptionPayments,...validatedPatch.subscriptionPayments}} : {}),
++          ...(validatedPatch.subscriptionPriceOverrides ? {subscriptionPriceOverrides:{...current.subscriptionPriceOverrides,...validatedPatch.subscriptionPriceOverrides}} : {}),
+         });
+ 
+         // 打开工作区后会几乎同时写 recentProjects 和 lastWorkspaceSession。
+diff --git a/packages/services/test/subscription-payment-settings.test.ts b/packages/services/test/subscription-payment-settings.test.ts
+index b67d0e2..150e7ca 100644
+--- a/packages/services/test/subscription-payment-settings.test.ts
++++ b/packages/services/test/subscription-payment-settings.test.ts
+@@ -18,3 +18,22 @@ test("payment records persist/reopen and concurrent per-key updates cannot erase
+   assert.deepEqual((await createSettingService().get()).subscriptionPayments,{one:null,two});
+  }finally{if(previous===undefined)delete process.env.ZCODE_DESKTOP_HOME_DIR;else process.env.ZCODE_DESKTOP_HOME_DIR=previous;await rm(dir,{recursive:true,force:true});}
+ });
++
++test("monthly price corrections persist per account without altering historical payments", async () => {
++ const dir=await mkdtemp(join(tmpdir(),"fleet-price-correction-"));const previous=process.env.ZCODE_DESKTOP_HOME_DIR;process.env.ZCODE_DESKTOP_HOME_DIR=dir;
++ try{
++  const service=createSettingService();
++  const a={providerId:"chat",accountId:"a",planKey:"team",amountUsd:25};
++  const b={providerId:"chat",accountId:"b",planKey:"team",amountUsd:40};
++  const keyA=JSON.stringify([a.providerId,a.accountId]);
++  const keyB=JSON.stringify([b.providerId,b.accountId]);
++  await Promise.all([
++   service.update({subscriptionPriceOverrides:{[keyA]:a}}),
++   service.update({subscriptionPriceOverrides:{[keyB]:b}}),
++  ]);
++  assert.deepEqual((await createSettingService().get()).subscriptionPriceOverrides,{[keyA]:a,[keyB]:b});
++  await assert.rejects(service.update({subscriptionPriceOverrides:{wrong:a}}),/identity mismatch/);
++  await service.update({subscriptionPriceOverrides:{[keyA]:null}});
++  assert.deepEqual((await createSettingService().get()).subscriptionPriceOverrides,{[keyA]:null,[keyB]:b});
++ }finally{if(previous===undefined)delete process.env.ZCODE_DESKTOP_HOME_DIR;else process.env.ZCODE_DESKTOP_HOME_DIR=previous;await rm(dir,{recursive:true,force:true});}
++});
+diff --git a/packages/shared/src/protocol.ts b/packages/shared/src/protocol.ts
+index 0ad808a..51c6d06 100644
+--- a/packages/shared/src/protocol.ts
++++ b/packages/shared/src/protocol.ts
+@@ -236,6 +236,7 @@ export interface ResourceUsageSnapshot {
+ 
+ export interface AppSettings {
+   subscriptionPayments?: Record<string, import("./usage-accounting.js").SubscriptionPayment | null>;
++  subscriptionPriceOverrides?: Record<string, import("./usage-accounting.js").SubscriptionPriceOverride | null>;
+   /** Local display preferences; never an authenticated account or Agent permission. */
+   localProfileName?: string;
+   localProfileAvatar?: string;
+diff --git a/packages/shared/src/usage-accounting.ts b/packages/shared/src/usage-accounting.ts
+index e850742..1886cfc 100644
+--- a/packages/shared/src/usage-accounting.ts
++++ b/packages/shared/src/usage-accounting.ts
+@@ -1,5 +1,20 @@
+ import { z } from "zod";
+ 
++/** User correction to a public monthly list price, scoped to the same saved account and plan. */
++export const subscriptionPriceOverrideSchema = z.object({
++  providerId: z.string().min(1),
++  accountId: z.string().min(1),
++  planKey: z.string().max(128).nullable(),
++  amountUsd: z.number().finite().nonnegative().max(10_000_000),
++}).strict();
++export const subscriptionPriceOverridesSchema = z.record(z.string(), subscriptionPriceOverrideSchema.nullable())
++  .superRefine((values, context) => {
++    for (const [key, value] of Object.entries(values))
++      if (value && key !== JSON.stringify([value.providerId, value.accountId]))
++        context.addIssue({ code: "custom", path: [key], message: "Price account identity mismatch" });
++  });
++export type SubscriptionPriceOverride = z.infer<typeof subscriptionPriceOverrideSchema>;
++
+ export const subscriptionPaymentSchema = z
+   .object({
+     id: z.string().min(1),
+diff --git a/packages/shared/src/validationAppSettings.ts b/packages/shared/src/validationAppSettings.ts
+index fe4b790..7ab6471 100644
+--- a/packages/shared/src/validationAppSettings.ts
++++ b/packages/shared/src/validationAppSettings.ts
+@@ -1,5 +1,5 @@
+ /* oxlint-disable eslint(max-lines) -- AppSettings schema 聚合历史迁移、默认值和 patch 校验，拆分会削弱设置迁移的单一入口。 */
+-import { subscriptionPaymentsSchema } from "./usage-accounting.js";
++import { subscriptionPaymentsSchema, subscriptionPriceOverridesSchema } from "./usage-accounting.js";
+ import { z } from "zod";
+ import type { AppSettings } from "./protocol.js";
+ import { REMOTE_ASSET_INSTALL_MODES } from "./remoteAssetInstallMode.js";
+@@ -429,6 +429,7 @@ const localProfileAvatarSchema = z.union([
+ 
+ const appSettingsObjectSchema = z.object({
+   subscriptionPayments: subscriptionPaymentsSchema.optional(),
++  subscriptionPriceOverrides: subscriptionPriceOverridesSchema.optional(),
+   localProfileName: localProfileNameSchema.optional(),
+   localProfileAvatar: localProfileAvatarSchema.optional(),
+   recentProjects: z.array(z.string()).default([]),
+@@ -505,6 +506,7 @@ export const appSettingsSchema = z.preprocess(
+ 
+ export const appSettingsPatchSchema = z.object({
+   subscriptionPayments: subscriptionPaymentsSchema.optional(),
++  subscriptionPriceOverrides: subscriptionPriceOverridesSchema.optional(),
+   localProfileName: localProfileNameSchema.optional(),
+   localProfileAvatar: localProfileAvatarSchema.optional(),
+   recentProjects: z.array(z.string()).optional(),
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index ea8d317..8905ee0 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -47,9 +47,6 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.testPassedStatus": "Test passed: {model} · {time}",
+   "settings.modelProvider.testFailedStatus": "Test failed: {model} · {time}",
+ 
+-  "settings.usage.costAnalysis.total": "Total cost",
+-  "settings.usage.costAnalysis.unitChoice": "Cost unit",
+-
+   "settings.usage.activity.title": "Activity insights",
+   "settings.usage.activity.conversations": "Conversations",
+   "settings.usage.activity.toolCalls": "Tool calls",
+@@ -65,8 +62,6 @@ const enUS: Record<string, string> = {
+   "settings.usage.activity.unidentified": "{count} older skill calls have no recorded identity.",
+ 
+   "settings.modelProvider.import.boundExisting": "Already connected: {name}",
+-  "settings.usage.payments.billingRead":
+-    "Billing dates and currency loaded; the provider did not return an amount paid.",
+   "settings.modelProvider.import.completeExisting": "Complete existing connection: {name}",
+   "settings.modelProvider.discovery.noCatalog":
+     "No model-list endpoint is available here. Saved models are retained; you can also add IDs manually.",
+@@ -193,6 +188,21 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.subscription.reauthorized":
+     "This account was already added; authorization updated.",
+   "settings.modelProvider.credentials.viewAccountAllowance": "View allowance for {account}",
++  "settings.modelProvider.listPrice.label": "Official plan reference price",
++  "settings.modelProvider.listPrice.correct": "Edit reference price",
++  "settings.modelProvider.listPrice.corrected": "Manually corrected",
++  "settings.modelProvider.listPrice.perSeat": "/ seat · month",
++  "settings.modelProvider.listPrice.perMonth": "/ month",
++  "settings.modelProvider.listPrice.unknown": "Not listed",
++  "settings.modelProvider.listPrice.multiple": "Multiple prices; check plan",
++  "settings.modelProvider.listPrice.source": "Official pricing",
++  "settings.modelProvider.listPrice.monthlyUsd": "Reference monthly price (USD)",
++  "settings.modelProvider.listPrice.seatMonthlyUsd": "Monthly price per seat (USD)",
++  "settings.modelProvider.listPrice.save": "Save",
++  "settings.modelProvider.listPrice.reset": "Restore official price",
++  "settings.modelProvider.listPrice.cancel": "Cancel",
++  "settings.modelProvider.listPrice.invalid": "Enter a valid USD reference price.",
++  "settings.modelProvider.listPrice.saveFailed": "Could not save the reference price. Retry.",
+   "settings.modelProvider.credentials.accounts": "Subscription accounts",
+   "settings.modelProvider.subscription.description":
+     "Sign in with this provider subscription. Each connection has its own account.",
+@@ -3733,27 +3743,6 @@ const enUS: Record<string, string> = {
+   "settings.usage.accounting.fast": "Fast / known requests",
+   "settings.usage.accounting.partial": "Reported",
+   "settings.usage.accounting.priced": "Priced",
+-  "settings.usage.payments.noAccounts": "Connect a subscription account in Model settings first.",
+-  "settings.usage.payments.connection": "Entire connection",
+-  "settings.usage.payments.title": "Actual subscription spend",
+-  "settings.usage.payments.add": "Record payment",
+-  "settings.usage.payments.edit": "Edit payment",
+-  "settings.usage.payments.remove": "Remove payment record",
+-  "settings.usage.payments.required": "Select an account and enter the amount paid.",
+-  "settings.usage.payments.overlap":
+-    "This account already has an overlapping period. Edit its existing payment.",
+-  "settings.usage.payments.invalid": "Check the billing period and amount.",
+-  "settings.usage.payments.loading": "Loading billing-period usage…",
+-  "settings.usage.payments.credits": "Allocated by official credit consumption",
+-  "settings.usage.payments.api": "Allocated by official API-equivalent value",
+-  "settings.usage.payments.unavailable":
+-    "Usage or pricing is incomplete for this period; payment is not allocated.",
+-  "settings.usage.payments.provisional": "Period in progress; allocation changes with usage",
+-  "settings.usage.payments.account": "Subscription account",
+-  "settings.usage.payments.start": "Period starts",
+-  "settings.usage.payments.end": "Period ends (inclusive)",
+-  "settings.usage.payments.amount": "Amount paid",
+-  "settings.usage.payments.currency": "Currency",
+   "settings.usage.sectionTitle": "Usage stats",
+   "settings.usage.sectionDescription": "Built from local app session history.",
+   "settings.usage.tab.appUsage": "App usage",
+@@ -7179,45 +7168,17 @@ const enUS: Record<string, string> = {
+   "settings.usage.accounting.cacheHelp":
+     "Cache hit rate divides cached input by input with reported cache data. * marks partial coverage. Hover or focus a model to see its coverage.",
+   "settings.usage.accounting.costHelp":
+-    "Uses public API rates, including Fast pricing. Saved prices stay fixed; unpriced records with sufficient usage use the current catalog. * marks partially priced requests; — means unknown. These are not actual bills. Hover or focus a model for coverage.",
+-  "settings.usage.accounting.paymentHelp":
+-    "Allocates the payment across this account’s recorded model usage in the billing period, using official credit weights where available. Usage outside this app is excluded. Open periods remain provisional.",
+-  "settings.usage.payments.period": "Account and billing period",
+-  "settings.usage.payments.actions": "Payment actions",
+-  "settings.usage.payments.empty": "No payments recorded",
+-  "settings.usage.payments.formDescription":
+-    "Record your subscription payment for an account and billing period.",
+-  "settings.usage.payments.unallocated": "Not yet allocated",
+-  "settings.usage.costAnalysis.title": "Cost analysis",
+-  "settings.usage.costAnalysis.recordPayment": "Record subscription payment",
+-  "settings.usage.costAnalysis.scope": "Usage scope or billing period",
+-  "settings.usage.costAnalysis.allUsage": "All usage",
+-  "settings.usage.costAnalysis.paymentActions": "Payment actions",
+-  "settings.usage.costAnalysis.editPayment": "Edit payment",
+-  "settings.usage.costAnalysis.removePayment": "Remove payment record",
+-  "settings.usage.costAnalysis.loading": "Loading billing-period usage…",
+-  "settings.usage.costAnalysis.paid": "Paid this period",
+-  "settings.usage.costAnalysis.apiEquivalent": "Same-usage API estimate",
+-  "settings.usage.costAnalysis.actualUnit": "Paid cost / 1M tokens",
+-  "settings.usage.costAnalysis.recordedTokens": "Recorded tokens",
+-  "settings.usage.costAnalysis.unit": "Cost per 1M tokens",
+-  "settings.usage.costAnalysis.models": "Model costs",
+-  "settings.usage.costAnalysis.projects": "Project costs",
+-  "settings.usage.costAnalysis.unassigned": "Other",
+-  "settings.usage.costAnalysis.priced": "priced",
+-  "settings.usage.costAnalysis.api": "API",
+-  "settings.usage.costAnalysis.actual": "Paid",
+-  "settings.usage.costAnalysis.priceSources": "View pricing sources",
+-  "settings.usage.costAnalysis.empty": "No accountable usage in this scope",
+-  "settings.usage.costAnalysis.allocationPending": "Allocation pending",
+-  "settings.usage.costAnalysis.periodOpen": "Period to date",
+-  "settings.usage.costAnalysis.unknownAccounts":
+-    "{count} historical requests have no confirmed account. The payment is not yet allocated.",
++    "Estimated from this app's recorded tokens and public API rates. Missing usage or prices are not guessed. This is not an API bill and excludes subscription fees.",
++  "settings.usage.apiEstimate.title": "API list-price reference",
++  "settings.usage.apiEstimate.models": "By model",
++  "settings.usage.apiEstimate.projects": "By project",
++  "settings.usage.apiEstimate.other": "Other",
++  "settings.usage.apiEstimate.coverage": "Priced {priced}/{total} requests",
++  "settings.usage.apiEstimate.loading": "Reading local usage…",
++  "settings.usage.apiEstimate.empty": "No usage with known pricing",
+   "chat.allowance.lastUsed": "Last used",
+   "chat.allowance.inspect": "View:",
+   "chat.allowance.autoSwitch": "Auto switch",
+-  "settings.usage.accounting.analysisHelp":
+-    "Compare the public API value of the same account-period usage with your subscription payment. Unit cost divides allocated spend by input plus output tokens, per million. Project shares are taken after the whole-period allocation. Missing usage is not reconstructed; currencies are not mixed.",
+ };
+ 
+ export default enUS;
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 0f52477..a5c98f8 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -37,9 +37,6 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.testPassedStatus": "测试通过：{model} · {time}",
+   "settings.modelProvider.testFailedStatus": "测试失败：{model} · {time}",
+ 
+-  "settings.usage.costAnalysis.total": "总费用",
+-  "settings.usage.costAnalysis.unitChoice": "费用单位",
+-
+   "settings.usage.activity.title": "活动洞察",
+   "settings.usage.activity.conversations": "对话数",
+   "settings.usage.activity.toolCalls": "工具调用",
+@@ -55,7 +52,6 @@ const zhCN: Record<string, string> = {
+   "settings.usage.activity.unidentified": "另有 {count} 次历史技能调用未记录名称。",
+ 
+   "settings.modelProvider.import.boundExisting": "已绑定：{name}",
+-  "settings.usage.payments.billingRead": "已读取账期与币种；服务商未返回实付金额。",
+   "settings.modelProvider.import.completeExisting": "补全已有连接：{name}",
+   "settings.modelProvider.discovery.noCatalog":
+     "此地址未提供模型列表。已保存的模型仍保留，也可手动添加。",
+@@ -165,6 +161,21 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.credentials.removeAccount": "移除此账号",
+   "settings.modelProvider.subscription.reauthorized": "该账号已添加，本次已更新授权。",
+   "settings.modelProvider.credentials.viewAccountAllowance": "查看 {account} 的订阅额度",
++  "settings.modelProvider.listPrice.label": "官网套餐参考价",
++  "settings.modelProvider.listPrice.correct": "修改参考价",
++  "settings.modelProvider.listPrice.corrected": "已手动修正",
++  "settings.modelProvider.listPrice.perSeat": "/席位·月",
++  "settings.modelProvider.listPrice.perMonth": "/月",
++  "settings.modelProvider.listPrice.unknown": "未收录",
++  "settings.modelProvider.listPrice.multiple": "多档价格，需确认",
++  "settings.modelProvider.listPrice.source": "官网价格",
++  "settings.modelProvider.listPrice.monthlyUsd": "参考月价（USD）",
++  "settings.modelProvider.listPrice.seatMonthlyUsd": "单席位月价（USD）",
++  "settings.modelProvider.listPrice.save": "保存",
++  "settings.modelProvider.listPrice.reset": "恢复官网价",
++  "settings.modelProvider.listPrice.cancel": "取消",
++  "settings.modelProvider.listPrice.invalid": "请输入有效的 USD 参考月价。",
++  "settings.modelProvider.listPrice.saveFailed": "参考价保存失败，请重试。",
+   "settings.modelProvider.credentials.accounts": "订阅账号",
+   "settings.modelProvider.subscription.description": "使用该厂商的订阅登录，每条连接独立绑定账号。",
+   "settings.modelProvider.subscription.connected": "订阅已连接",
+@@ -3492,25 +3503,6 @@ const zhCN: Record<string, string> = {
+   "settings.usage.accounting.fast": "快速 / 已知请求",
+   "settings.usage.accounting.partial": "已报告",
+   "settings.usage.accounting.priced": "已计价",
+-  "settings.usage.payments.noAccounts": "请先在模型设置中连接订阅账号。",
+-  "settings.usage.payments.connection": "连接合计",
+-  "settings.usage.payments.title": "订阅实际花费",
+-  "settings.usage.payments.add": "记录花费",
+-  "settings.usage.payments.edit": "修改花费",
+-  "settings.usage.payments.remove": "移除花费记录",
+-  "settings.usage.payments.required": "请选择账号并填写实付金额。",
+-  "settings.usage.payments.overlap": "该账号已有重叠账期，请修改现有记录。",
+-  "settings.usage.payments.invalid": "请检查账期和金额。",
+-  "settings.usage.payments.loading": "正在读取账期用量…",
+-  "settings.usage.payments.credits": "按官方额度消耗比例分摊",
+-  "settings.usage.payments.api": "按官方 API 等价费用比例分摊",
+-  "settings.usage.payments.unavailable": "该账期用量或计价信息不完整，暂不分摊。",
+-  "settings.usage.payments.provisional": "本期未结束，分摊结果会随用量变化",
+-  "settings.usage.payments.account": "订阅账号",
+-  "settings.usage.payments.start": "账期开始",
+-  "settings.usage.payments.end": "账期结束（含当天）",
+-  "settings.usage.payments.amount": "实际支付",
+-  "settings.usage.payments.currency": "币种",
+   "settings.usage.sectionTitle": "使用统计",
+   "settings.usage.sectionDescription": "来自本地应用会话历史。",
+   "settings.usage.tab.appUsage": "应用用量",
+@@ -6812,44 +6804,17 @@ const zhCN: Record<string, string> = {
+   "settings.usage.accounting.cacheHelp":
+     "缓存命中率 = 命中的输入 Tokens ÷ 已报告缓存信息的输入 Tokens。* 表示部分请求缺少数据；悬停或聚焦模型可查看统计范围。",
+   "settings.usage.accounting.costHelp":
+-    "按公开 API 价目估算，包含快速模式差异。已记录的价格优先；缺价记录有足够用量信息时，参考当前目录。* 表示仅有部分请求能计价，— 表示未知；均不代表实际账单。悬停或聚焦模型可查看统计范围。",
+-  "settings.usage.accounting.paymentHelp":
+-    "将实付会员费用按该账号、该账期内记录的模型消耗分摊，优先采用官方额度权重。本软件之外的使用未计入；账期未结束时结果会变化。",
+-  "settings.usage.payments.period": "账号与账期",
+-  "settings.usage.payments.actions": "花费记录操作",
+-  "settings.usage.payments.empty": "暂无花费记录",
+-  "settings.usage.payments.formDescription": "按账号和账期记录已支付的会员费用。",
+-  "settings.usage.payments.unallocated": "暂无法分摊",
+-  "settings.usage.costAnalysis.title": "费用分析",
+-  "settings.usage.costAnalysis.recordPayment": "记录会员花费",
+-  "settings.usage.costAnalysis.scope": "用量范围或会员账期",
+-  "settings.usage.costAnalysis.allUsage": "全部用量",
+-  "settings.usage.costAnalysis.paymentActions": "账单操作",
+-  "settings.usage.costAnalysis.editPayment": "修改实付金额",
+-  "settings.usage.costAnalysis.removePayment": "移除花费记录",
+-  "settings.usage.costAnalysis.loading": "正在读取账期用量…",
+-  "settings.usage.costAnalysis.paid": "本期实付",
+-  "settings.usage.costAnalysis.apiEquivalent": "同量 API 估算",
+-  "settings.usage.costAnalysis.actualUnit": "实付折算 / 百万 Tokens",
+-  "settings.usage.costAnalysis.recordedTokens": "已记录 Tokens",
+-  "settings.usage.costAnalysis.unit": "百万 Token 单价",
+-  "settings.usage.costAnalysis.models": "模型费用",
+-  "settings.usage.costAnalysis.projects": "项目费用",
+-  "settings.usage.costAnalysis.unassigned": "其他",
+-  "settings.usage.costAnalysis.priced": "已计价",
+-  "settings.usage.costAnalysis.api": "API",
+-  "settings.usage.costAnalysis.actual": "实付",
+-  "settings.usage.costAnalysis.priceSources": "查看定价来源",
+-  "settings.usage.costAnalysis.empty": "该范围暂无可核算用量",
+-  "settings.usage.costAnalysis.allocationPending": "待分摊",
+-  "settings.usage.costAnalysis.periodOpen": "本期截至目前",
+-  "settings.usage.costAnalysis.unknownAccounts":
+-    "有 {count} 条历史请求无法确认账号归属，暂不将整笔会员费分摊。",
++    "仅按本软件记录的 Token 和公开 API 单价估算；缺少价格或用量的请求不补猜。这不是 API 账单，也不包含会员费用。",
++  "settings.usage.apiEstimate.title": "API 原价参考",
++  "settings.usage.apiEstimate.models": "按模型",
++  "settings.usage.apiEstimate.projects": "按项目",
++  "settings.usage.apiEstimate.other": "其他",
++  "settings.usage.apiEstimate.coverage": "已计价 {priced}/{total} 次请求",
++  "settings.usage.apiEstimate.loading": "正在读取本地用量…",
++  "settings.usage.apiEstimate.empty": "暂无可估价的用量",
+   "chat.allowance.lastUsed": "上次使用",
+   "chat.allowance.inspect": "查看：",
+   "chat.allowance.autoSwitch": "自动切换",
+-  "settings.usage.accounting.analysisHelp":
+-    "同一账号、同一账期内，用公开 API 定价估算相同用量，再按模型消耗分摊你的实付会员费。单价为分摊费用 ÷ 输入与输出 Tokens × 100 万。项目费用先用完整账期分摊，再取各项目的份额；未记录的用量不补猜，跨币种不合并比较。",
+ };
+ 
+ export default zhCN;
+diff --git a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+index 98adec6..326fbdf 100644
+--- a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
++++ b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+@@ -1,4 +1,5 @@
+ import type { ReactNode } from "react";
++import { cn } from "@/components/lib/utils.js";
+ 
+ // 原版账号状态卡共用外壳；订阅接入只提供内容与操作，不引入新的账号状态。
+ export function PlanStatusCardSurface({
+@@ -7,24 +8,26 @@ export function PlanStatusCardSurface({
+   statusMeta,
+   trailingAction,
+   usageContent,
++  compact = false,
+ }: {
+   planTitle: string;
+   titleAccessory?: ReactNode;
+   statusMeta: ReactNode;
+   trailingAction?: ReactNode;
+   usageContent?: ReactNode;
++  compact?: boolean;
+ }) {
+   return (
+-    <div className="rounded-xl border border-border bg-surface p-4">
++    <div className={cn("rounded-xl border border-border bg-surface", compact ? "px-3 py-2.5" : "p-4")}>
+       <div className="flex min-w-0 items-center justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
+-        <div className="min-w-0 space-y-1">
+-          <div className="flex min-w-0 flex-wrap items-center gap-1">
+-            <h3 className="min-w-0 truncate text-ui-lg font-semibold leading-5 text-foreground">
++        <div className={cn("min-w-0", compact ? "flex flex-1 flex-wrap items-center gap-x-3 gap-y-1" : "space-y-1")}>
++          <div className="flex min-w-0 items-center gap-1">
++            <h3 className={cn("min-w-0 truncate leading-5 text-foreground", compact ? "text-ui-base font-medium" : "text-ui-lg font-semibold")}>
+               {planTitle}
+             </h3>
+             {titleAccessory}
+           </div>
+-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
++          <div className={cn("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1", !compact && "mt-1")}>
+             {statusMeta}
+           </div>
+         </div>
+@@ -36,7 +39,7 @@ export function PlanStatusCardSurface({
+       </div>
+       {usageContent ? (
+         <>
+-          <div className="my-4 border-t border-border" />
++          <div className={cn("border-t border-border", compact ? "my-3" : "my-4")} />
+           {usageContent}
+         </>
+       ) : null}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+index 2444820..dd13725 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+@@ -12,6 +12,7 @@ import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
+ import { Badge } from "@/components/ui/badge.js";
+ import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
+ import { subscriptionPlanPresentation } from "@/lib/subscriptionPlanPresentation.js";
++import { SubscriptionListPrice } from "./SubscriptionListPrice.js";
+ 
+ export function SubscriptionAccountRow({
+   account,
+@@ -63,6 +64,7 @@ export function SubscriptionAccountRow({
+   return (
+     <Collapsible open={open} onOpenChange={onOpenChange} role="group" aria-label={label}>
+       <PlanStatusCardSurface
++        compact
+         planTitle={label}
+         titleAccessory={
+           tier ? (
+@@ -129,6 +131,12 @@ export function SubscriptionAccountRow({
+                   onScopeChanged={onScopeChanged}
+                   showReset={account.active}
+                 />
++                <SubscriptionListPrice
++                  providerId={providerId}
++                  accountId={account.id}
++                  kind={kind}
++                  plan={plan}
++                />
+                 {!canRemove ? (
+                   <Button
+                     variant="link"
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index 67a374d..5eff20f 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -223,7 +223,7 @@ export function SubscriptionConnectionSection({
+         <span>{intl.formatMessage({ id: "settings.modelProvider.credentials.accounts" })}</span>
+       </div>
+       {accounts?.accounts.length ? (
+-        <div className="space-y-3">
++        <div className="space-y-2">
+           {accounts.accounts.map((account, index) => (
+             <SubscriptionAccountRow
+               key={account.id}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionListPrice.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionListPrice.tsx
+new file mode 100644
+index 0000000..34f986f
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionListPrice.tsx
+@@ -0,0 +1,96 @@
++import { useState } from "react";
++import { Button } from "@/components/ui/button.js";
++import { Input } from "@/components/ui/input.js";
++import { useSettings } from "@/hooks/useSettingService.js";
++import { usePlatform } from "@/hooks/usePlatform.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import {
++  normalizeSubscriptionPlanKey,
++  officialSubscriptionPrices,
++} from "@/settings/usage-stats/officialSubscriptionPrices.js";
++import { accountMonthlyPrice } from "./subscriptionListPriceModel.js";
++
++/** List-price metadata belongs to the account; local API estimates belong to Usage. */
++export function SubscriptionListPrice({
++  providerId, accountId, kind, plan,
++}: {
++  providerId: string;
++  accountId: string;
++  kind: "openai-codex" | "github-copilot" | "xai";
++  plan?: string;
++}) {
++  const { intl, locale } = useZCodeIntl();
++  const t = (key: string) => intl.formatMessage({ id: `settings.modelProvider.listPrice.${key}` });
++  const { settings, update } = useSettings();
++  const platform = usePlatform();
++  const key = JSON.stringify([providerId, accountId]);
++  const planKey = normalizeSubscriptionPlanKey(plan);
++  const official = officialSubscriptionPrices(kind, plan);
++  const { correction, exact, perSeat } = accountMonthlyPrice(
++    official, settings?.subscriptionPriceOverrides?.[key], planKey,
++  );
++  const [editing, setEditing] = useState(false);
++  const [draft, setDraft] = useState("");
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string>();
++  const money = (amount: number) => new Intl.NumberFormat(locale, {
++    style: "currency", currency: "USD", maximumFractionDigits: 2,
++  }).format(amount);
++  const amount = exact !== undefined ? money(exact)
++    : official.length > 1 ? t("multiple") : t("unknown");
++  const save = async () => {
++    const value = Number(draft);
++    if (!draft.trim() || !Number.isFinite(value) || value < 0 || value > 10_000_000) {
++      setError(t("invalid"));
++      return;
++    }
++    setBusy(true);
++    try {
++      await update({ subscriptionPriceOverrides: { [key]: {
++        providerId, accountId, planKey, amountUsd: value,
++      } } });
++      setEditing(false);
++      setError(undefined);
++    } catch {
++      setError(t("saveFailed"));
++    } finally {
++      setBusy(false);
++    }
++  };
++  const reset = async () => {
++    setBusy(true);
++    try {
++      await update({ subscriptionPriceOverrides: { [key]: null } });
++      setEditing(false);
++      setError(undefined);
++    } catch {
++      setError(t("saveFailed"));
++    } finally {
++      setBusy(false);
++    }
++  };
++  if (!planKey) return null;
++  return (
++    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-ui-sm" data-testid="subscription-list-price">
++      <span className="text-foreground-subtle">{t("label")}</span>
++      <span className="font-mono tabular-nums">{amount}{exact !== undefined ? ` ${perSeat ? t("perSeat") : t("perMonth")}` : ""}</span>
++      {correction ? <span className="text-foreground-subtle">{t("corrected")}</span> : null}
++      <Button variant="link" className="h-auto p-0 text-ui-sm" onClick={() => {
++        setDraft(String(exact ?? "")); setEditing(true); setError(undefined);
++      }}>{t("correct")}</Button>
++      {official[0]?.sourceUrl ? (
++        <Button variant="link" className="h-auto p-0 text-ui-sm" onClick={() => void platform.openExternal(official[0]!.sourceUrl)}>{t("source")}</Button>
++      ) : null}
++      {editing ? (
++        <div className="flex w-full flex-wrap items-center gap-2 pt-2">
++          <label htmlFor={`subscription-price-${accountId}`}>{t(perSeat ? "seatMonthlyUsd" : "monthlyUsd")}</label>
++          <Input id={`subscription-price-${accountId}`} className="w-28" type="number" min="0" step="0.01" value={draft} onChange={(event) => setDraft(event.target.value)} />
++          <Button size="sm" disabled={busy} onClick={() => void save()}>{t("save")}</Button>
++          {correction ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void reset()}>{t("reset")}</Button> : null}
++          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(false)}>{t("cancel")}</Button>
++          {error ? <span role="alert" className="text-destructive">{error}</span> : null}
++        </div>
++      ) : null}
++    </div>
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/subscriptionListPriceModel.ts b/packages/ui/src/settings/model-provider-section/subscriptionListPriceModel.ts
+new file mode 100644
+index 0000000..2dcbdcf
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/subscriptionListPriceModel.ts
+@@ -0,0 +1,19 @@
++import type { SubscriptionPriceOverride } from "@zcode/shared";
++import type { OfficialSubscriptionPrice } from "@/settings/usage-stats/officialSubscriptionPrices.js";
++
++export function accountMonthlyPrice(
++  prices: readonly OfficialSubscriptionPrice[],
++  override: SubscriptionPriceOverride | null | undefined,
++  planKey: string | null,
++) {
++  const correction = override?.planKey === planKey ? override : undefined;
++  const exactOfficial = prices.length === 1 && !prices[0]!.perSeat ? prices[0] : undefined;
++  const amounts = prices.map((item) => item.amount);
++  return {
++    correction,
++    exact: correction?.amountUsd ?? exactOfficial?.amount,
++    low: amounts.length ? Math.min(...amounts) : null,
++    high: amounts.length ? Math.max(...amounts) : null,
++    perSeat: prices.length > 0 && prices.every((item) => item.perSeat),
++  };
++}
+diff --git a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+index 078a781..f9c3f06 100644
+--- a/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
++++ b/packages/ui/src/settings/usage-stats/AppUsagePanel.tsx
+@@ -56,7 +56,6 @@ export function AppUsagePanel() {
+             id: "settings.usage.appUsageLoadingDescription",
+           })}
+         />
+-        <UsageCostAnalysis snapshot={snapshot} />
+       </div>
+     );
+   }
+@@ -78,7 +77,6 @@ export function AppUsagePanel() {
+             id: "settings.usage.emptyDescription",
+           })}
+         />
+-        <UsageCostAnalysis snapshot={snapshot} />
+       </div>
+     );
+   }
+diff --git a/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx b/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx
+deleted file mode 100644
+index 6babfe1..0000000
+--- a/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx
++++ /dev/null
+@@ -1,330 +0,0 @@
+-import { useEffect, useRef, useState } from "react";
+-import { subscriptionPaymentSchema, type SubscriptionPayment } from "@zcode/shared";
+-import { readPaymentAccounts, type PaymentAccount } from "./subscriptionPaymentAccounts.js";
+-import { useServices } from "@/hooks/useServices.js";
+-import { useSettings } from "@/hooks/useSettingService.js";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { Button } from "@/components/ui/button.js";
+-import { Input } from "@/components/ui/input.js";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogHeader,
+-  DialogTitle,
+-  DialogFooter,
+-  DialogDescription,
+-} from "@/components/ui/dialog.js";
+-import {
+-  Select,
+-  SelectTrigger,
+-  SelectContent,
+-  SelectItem,
+-  SelectValue,
+-} from "@/components/ui/select.js";
+-
+-export const paymentDateText = (time: number) => {
+-  const d = new Date(time);
+-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+-};
+-const dateText = paymentDateText;
+-const nextDay = (value: string) => {
+-  const date = new Date(`${value}T00:00:00`);
+-  date.setDate(date.getDate() + 1);
+-  return date.getTime();
+-};
+-
+-export function SubscriptionPaymentEditor({
+-  payment: editing,
+-  payments,
+-  onSaved,
+-  onClose,
+-}: {
+-  payment?: SubscriptionPayment;
+-  payments: readonly SubscriptionPayment[];
+-  onSaved(id: string): void;
+-  onClose(): void;
+-}) {
+-  const { intl } = useZCodeIntl();
+-  const t = (key: string) => intl.formatMessage({ id: `settings.usage.payments.${key}` });
+-  const { update } = useSettings();
+-  const { providerSettingsService } = useServices();
+-  const open = true;
+-  const [accounts, setAccounts] = useState<PaymentAccount[]>();
+-  const [accountKey, setAccountKey] = useState(
+-    editing ? JSON.stringify([editing.providerId, editing.accountId]) : "",
+-  );
+-  const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
+-  const [currency, setCurrency] = useState<SubscriptionPayment["currency"]>(
+-    editing?.currency ?? "CNY",
+-  );
+-  const [start, setStart] = useState(() =>
+-    dateText(
+-      editing?.start ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
+-    ),
+-  );
+-  const [end, setEnd] = useState(() =>
+-    dateText(
+-      editing
+-        ? editing.end - 1
+-        : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getTime(),
+-    ),
+-  );
+-  const [busy, setBusy] = useState(false);
+-  const [error, setError] = useState<string>();
+-  const billingTouched = useRef(false);
+-  const [billing, setBilling] = useState<{
+-    accountKey: string;
+-    start: number;
+-    end: number;
+-    currency: SubscriptionPayment["currency"];
+-  }>();
+-  useEffect(() => {
+-    if (!open) return;
+-    let active = true;
+-    setError(undefined);
+-    setAccounts(undefined);
+-    void readPaymentAccounts(
+-      providerSettingsService,
+-      intl.formatMessage({ id: "settings.usage.payments.connection" }),
+-    )
+-      .then((result) => {
+-        if (active) setAccounts(result);
+-      })
+-      .catch((reason) => {
+-        if (active) {
+-          setAccounts([]);
+-          setError(String(reason));
+-        }
+-      });
+-    return () => {
+-      active = false;
+-    };
+-  }, [open, providerSettingsService, intl]);
+-  useEffect(() => {
+-    if (editing || !accountKey) return;
+-    const account = accounts?.find(
+-      (a) => JSON.stringify([a.providerId, a.accountId]) === accountKey,
+-    );
+-    if (!account || account.accountId === "connection") return;
+-    let current = true;
+-    void providerSettingsService
+-      .getSubscriptionUsage(account.providerId, false, account.accountId)
+-      .then((usage) => {
+-        if (
+-          !current ||
+-          billingTouched.current ||
+-          usage.status !== "available" ||
+-          usage.refreshError ||
+-          !usage.billing
+-        )
+-          return;
+-        setBilling({ accountKey, ...usage.billing });
+-        setStart(dateText(usage.billing.start));
+-        setEnd(dateText(usage.billing.end - 1));
+-        setCurrency(usage.billing.currency);
+-      })
+-      .catch(() => {});
+-    return () => {
+-      current = false;
+-    };
+-  }, [editing, accountKey, accounts, providerSettingsService]);
+-  const options = [...(accounts ?? [])];
+-  if (
+-    editing &&
+-    !options.some((a) => a.providerId === editing.providerId && a.accountId === editing.accountId)
+-  )
+-    options.push({
+-      providerId: editing.providerId,
+-      accountId: editing.accountId,
+-      label: editing.accountLabel,
+-    });
+-  const save = async () => {
+-    const account = options.find((a) => JSON.stringify([a.providerId, a.accountId]) === accountKey);
+-    if (!account || !amount.trim()) {
+-      setError(t("required"));
+-      return;
+-    }
+-    const reported = billing?.accountKey === accountKey ? billing : undefined;
+-    const parsed = subscriptionPaymentSchema.safeParse({
+-      id: editing?.id ?? crypto.randomUUID(),
+-      providerId: account.providerId,
+-      accountId: account.accountId,
+-      accountLabel: account.label,
+-      // 只修改金额时保留原来的绝对账期边界，不能因设备时区改变悄悄改写旧账。
+-      start:
+-        editing && start === dateText(editing.start)
+-          ? editing.start
+-          : reported && start === dateText(reported.start)
+-            ? reported.start
+-            : new Date(`${start}T00:00:00`).getTime(),
+-      end:
+-        editing && end === dateText(editing.end - 1)
+-          ? editing.end
+-          : reported && end === dateText(reported.end - 1)
+-            ? reported.end
+-            : nextDay(end),
+-      amount: Number(amount),
+-      currency,
+-    });
+-    if (!parsed.success) {
+-      setError(t("invalid"));
+-      return;
+-    }
+-    if (
+-      payments.some(
+-        (p) =>
+-          p.id !== parsed.data.id &&
+-          p.providerId === parsed.data.providerId &&
+-          p.accountId === parsed.data.accountId &&
+-          p.start < parsed.data.end &&
+-          parsed.data.start < p.end,
+-      )
+-    ) {
+-      setError(t("overlap"));
+-      return;
+-    }
+-    setBusy(true);
+-    try {
+-      await update({ subscriptionPayments: { [parsed.data.id]: parsed.data } });
+-      onSaved(parsed.data.id);
+-      onClose();
+-    } catch (reason) {
+-      setError(String(reason));
+-    } finally {
+-      setBusy(false);
+-    }
+-  };
+-  return (
+-    <Dialog
+-      open={open}
+-      onOpenChange={(value) => {
+-        if (!busy && !value) onClose();
+-      }}
+-    >
+-      <DialogContent className="sm:max-w-[480px]">
+-        <DialogHeader>
+-          <DialogTitle>{t(editing ? "edit" : "add")}</DialogTitle>
+-          <DialogDescription>{t("formDescription")}</DialogDescription>
+-        </DialogHeader>
+-        <div className="space-y-3">
+-          <label className="block space-y-1 text-ui-sm">
+-            <span>{t("account")}</span>
+-            <Select
+-              value={accountKey}
+-              onValueChange={(value) => {
+-                billingTouched.current = false;
+-                setBilling(undefined);
+-                setAmount("");
+-                setStart(
+-                  dateText(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()),
+-                );
+-                setEnd(
+-                  dateText(
+-                    new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getTime(),
+-                  ),
+-                );
+-                setAccountKey(value);
+-              }}
+-              disabled={accounts === undefined}
+-            >
+-              <SelectTrigger className="w-full">
+-                <SelectValue
+-                  placeholder={
+-                    accounts === undefined
+-                      ? intl.formatMessage({ id: "common.loading" })
+-                      : t("account")
+-                  }
+-                />
+-              </SelectTrigger>
+-              <SelectContent>
+-                {options.map((a) => (
+-                  <SelectItem
+-                    key={JSON.stringify([a.providerId, a.accountId])}
+-                    value={JSON.stringify([a.providerId, a.accountId])}
+-                  >
+-                    {a.label}
+-                  </SelectItem>
+-                ))}
+-              </SelectContent>
+-            </Select>
+-            {accounts?.length === 0 && !editing && !error ? (
+-              <span className="text-foreground-subtle">{t("noAccounts")}</span>
+-            ) : null}
+-          </label>
+-          <div className="grid grid-cols-2 gap-3">
+-            <label className="space-y-1 text-ui-sm">
+-              {t("start")}
+-              <Input
+-                className="[color-scheme:light] dark:[color-scheme:dark]"
+-                type="date"
+-                value={start}
+-                onChange={(e) => {
+-                  billingTouched.current = true;
+-                  setStart(e.target.value);
+-                }}
+-              />
+-            </label>
+-            <label className="space-y-1 text-ui-sm">
+-              {t("end")}
+-              <Input
+-                className="[color-scheme:light] dark:[color-scheme:dark]"
+-                type="date"
+-                value={end}
+-                onChange={(e) => {
+-                  billingTouched.current = true;
+-                  setEnd(e.target.value);
+-                }}
+-              />
+-            </label>
+-          </div>
+-          <div className="flex items-end gap-3">
+-            <label className="min-w-0 flex-1 space-y-1 text-ui-sm">
+-              {t("amount")}
+-              <Input
+-                type="number"
+-                min="0"
+-                step="0.01"
+-                value={amount}
+-                onChange={(e) => setAmount(e.target.value)}
+-              />
+-            </label>
+-            <Select
+-              value={currency}
+-              onValueChange={(v) => {
+-                billingTouched.current = true;
+-                setCurrency(v as SubscriptionPayment["currency"]);
+-              }}
+-            >
+-              <SelectTrigger className="w-24" aria-label={t("currency")}>
+-                <SelectValue />
+-              </SelectTrigger>
+-              <SelectContent>
+-                {["CNY", "USD", "EUR", "GBP", "JPY"].map((c) => (
+-                  <SelectItem key={c} value={c}>
+-                    {c}
+-                  </SelectItem>
+-                ))}
+-              </SelectContent>
+-            </Select>
+-          </div>
+-          {billing?.accountKey === accountKey ? (
+-            <p className="text-ui-sm text-foreground-subtle">{t("billingRead")}</p>
+-          ) : null}
+-          {error ? (
+-            <p role="alert" className="text-ui-sm text-destructive">
+-              {error}
+-            </p>
+-          ) : null}
+-        </div>
+-        <DialogFooter>
+-          <Button variant="ghost" disabled={busy} onClick={onClose}>
+-            {intl.formatMessage({ id: "common.cancel" })}
+-          </Button>
+-          <Button disabled={busy} onClick={() => void save()}>
+-            {intl.formatMessage({ id: "common.save" })}
+-          </Button>
+-        </DialogFooter>
+-      </DialogContent>
+-    </Dialog>
+-  );
+-}
+diff --git a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+index 358de10..e934110 100644
+--- a/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageAccountingHelp.tsx
+@@ -5,7 +5,13 @@ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { USAGE_PRICE_CATALOG_INFO } from "@zcode/shared";
+ 
+-export function UsageAccountingHelp({ metric }: { metric: "cache" | "cost" | "payment" | "analysis" }) {
++export function UsageAccountingHelp({
++  metric,
++  sources,
++}: {
++  metric: "cache" | "cost";
++  sources?: readonly { modelId: string; urls: readonly string[] }[];
++}) {
+   const { intl } = useZCodeIntl();
+   const platform = usePlatform();
+   const t = (key: string) => intl.formatMessage({ id: `settings.usage.accounting.${key}` });
+@@ -26,7 +32,7 @@ export function UsageAccountingHelp({ metric }: { metric: "cache" | "cost" | "pa
+         className="w-80 max-w-[calc(100vw-1.5rem)] space-y-3 p-3 text-ui-sm leading-relaxed"
+       >
+         <p>{t(`${metric}Help`)}</p>
+-        {metric === "cost" || metric === "analysis" ? (
++        {metric === "cost" ? (
+           <>
+             <p className="text-foreground-subtle">
+               {intl.formatMessage(
+@@ -38,25 +44,20 @@ export function UsageAccountingHelp({ metric }: { metric: "cache" | "cost" | "pa
+                 },
+               )}
+             </p>
+-            <div className="flex flex-wrap gap-3">
+-              {[
+-                ["OpenAI", "https://developers.openai.com/api/docs/pricing"],
+-                ["ChatGPT", "https://learn.chatgpt.com/docs/pricing"],
+-                ["DeepSeek", "https://api-docs.deepseek.com/quick_start/pricing"],
+-                ["Anthropic", "https://platform.claude.com/docs/en/about-claude/pricing"],
+-                ["Z.AI", "https://docs.z.ai/guides/overview/pricing"],
+-                ["models.dev", "https://models.dev"],
+-              ].map(([name, url]) => (
+-                <Button
+-                  key={name}
+-                  variant="link"
+-                  className="h-auto p-0 text-ui-sm"
+-                  onClick={() => void platform.openExternal(url!)}
+-                >
+-                  {name}
+-                </Button>
+-              ))}
+-            </div>
++            {sources?.length ? (
++              <div className="max-h-48 space-y-2 overflow-y-auto">
++                {sources.map(({ modelId, urls }) => (
++                  <div key={modelId} className="flex flex-wrap items-center gap-x-2">
++                    <span className="min-w-0 truncate font-medium">{modelId}</span>
++                    {urls.filter((url) => url.startsWith("https://")).map((url) => (
++                      <Button key={url} variant="link" className="h-auto p-0 text-ui-sm" onClick={() => void platform.openExternal(url)}>
++                        {new URL(url).hostname}
++                      </Button>
++                    ))}
++                  </div>
++                ))}
++              </div>
++            ) : null}
+           </>
+         ) : null}
+       </PopoverContent>
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+index a676910..3e4754b 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -1,208 +1,92 @@
+-import { lazy, useEffect, useMemo, useState } from "react";
+-import { MoreHorizontal, Plus } from "lucide-react";
+-import {
+-  buildUsageCostReport,
+-  isRemoteWorkspaceIdentity,
+-  type AppUsageSnapshot,
+-  type SubscriptionPayment,
+-  type UsageAccountingRow,
+-} from "@zcode/shared";
+-import { useServices } from "@/hooks/useServices.js";
++import { lazy, useMemo, useState } from "react";
++import { buildUsageCostReport, isRemoteWorkspaceIdentity, type AppUsageSnapshot } from "@zcode/shared";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { isWorkspaceTab } from "@/store/tabStore.js";
+ import { useTabStore } from "@/store/TabStoreProvider.js";
+-import { useSettings } from "@/hooks/useSettingService.js";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { Button } from "@/components/ui/button.js";
+-import {
+-  Select,
+-  SelectTrigger,
+-  SelectValue,
+-  SelectContent,
+-  SelectItem,
+-} from "@/components/ui/select.js";
+-import {
+-  DropdownMenu,
+-  DropdownMenuTrigger,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-} from "@/components/ui/dropdown-menu.js";
+-import { SubscriptionPaymentEditor, paymentDateText } from "./SubscriptionPaymentEditor.js";
++import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
+ import { UsageAccountingHelp } from "./UsageAccountingHelp.js";
+ import { UsageChartLoadBoundary } from "./UsageChartLoadBoundary.js";
++import { USAGE_STATS_TABS_LIST_CLASS, USAGE_STATS_TABS_TRIGGER_CLASS } from "./usageStatsUiParts.js";
+ 
+-const UsageCostComparison = lazy(() =>
+-  import("./UsageCostComparison.js").then((module) => ({ default: module.UsageCostComparison })),
++const UsageCostBarChart = lazy(() =>
++  import("./UsageCostBarChart.js").then((module) => ({ default: module.UsageCostBarChart })),
+ );
+ 
+-/** One billing scope owns the reference estimate and paid allocation shown together. */
+-export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot | null }) {
+-  const { intl } = useZCodeIntl();
+-  const t = (key: string) => intl.formatMessage({ id: `settings.usage.costAnalysis.${key}` });
+-  const { settings, update } = useSettings();
++/** Local recorded usage priced at API list rates; a subscription bill is not inferred. */
++export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot }) {
++  const { intl, locale } = useZCodeIntl();
++  const t = (key: string, values?: Record<string, number>) =>
++    intl.formatMessage({ id: `settings.usage.apiEstimate.${key}` }, values);
++  const [group, setGroup] = useState<"models" | "projects">("models");
+   const tabs = useTabStore((state) => state.tabs);
+   const projectPaths = useMemo(
+-    () =>
+-      tabs
+-        .filter(isWorkspaceTab)
+-        .filter(
+-          (tab) =>
+-            tab.workspacePurpose !== "conversation" &&
+-            !tab.remoteSessionId &&
+-            (!tab.workspaceIdentity || !isRemoteWorkspaceIdentity(tab.workspaceIdentity)),
+-        )
+-        .map((tab) => tab.workspacePath),
++    () => tabs.filter(isWorkspaceTab).filter((tab) =>
++      tab.workspacePurpose !== "conversation" && !tab.remoteSessionId &&
++      (!tab.workspaceIdentity || !isRemoteWorkspaceIdentity(tab.workspaceIdentity)),
++    ).map((tab) => tab.workspacePath),
+     [tabs],
+   );
+-  const { usageStatsService } = useServices();
+-  const payments = useMemo(
+-    () =>
+-      Object.values(settings?.subscriptionPayments ?? {})
+-        .filter((item): item is SubscriptionPayment => item !== null)
+-        .sort((a, b) => b.start - a.start),
+-    [settings?.subscriptionPayments],
+-  );
+-  const [choice, setChoice] = useState<string>();
+-  const [editor, setEditor] = useState<{ payment?: SubscriptionPayment }>();
+-  const [error, setError] = useState<string>();
+-  const selected = choice ?? (payments[0] ? `payment:${payments[0].id}` : "all");
+-  const payment = payments.find((item) => `payment:${item.id}` === selected);
+-  const start = payment?.start,
+-    end = payment?.end;
+-  const key = payment
+-    ? JSON.stringify([payment.providerId, payment.accountId, start, end])
+-    : selected;
+-  const scope = useMemo(() => ({ service: usageStatsService, key }), [usageStatsService, key]);
+-  const [reading, setReading] = useState<{
+-    scope: typeof scope;
+-    rows?: UsageAccountingRow[];
+-    error?: string;
+-  }>();
+-  const refreshVersion = snapshot?.generatedAt;
+-  useEffect(() => {
+-    if (start === undefined || end === undefined) return;
+-    let active = true;
+-    setReading({ scope });
+-    if (start > Date.now()) {
+-      setReading({ scope, rows: [] });
+-      return;
+-    }
+-    void usageStatsService
+-      .getAppUsageSnapshot({
+-        range: "all",
+-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+-        since: start,
+-        until: end,
+-      })
+-      .then((value) => {
+-        if (active) setReading({ scope, rows: value.accounting ?? [] });
+-      })
+-      .catch((reason) => {
+-        if (active) setReading({ scope, error: String(reason) });
+-      });
+-    return () => {
+-      active = false;
+-    };
+-  }, [scope, start, end, usageStatsService, refreshVersion]);
+-  const periodReading = reading?.scope === scope ? reading : undefined;
+-  const rows =
+-    selected === "all" ? (snapshot ? (snapshot.accounting ?? []) : undefined) : periodReading?.rows;
+   const report = useMemo(
+-    () => (rows ? buildUsageCostReport(rows, { payment, projectPaths }) : undefined),
+-    [rows, payment, projectPaths],
++    () => buildUsageCostReport(snapshot.accounting ?? [], { projectPaths }),
++    [snapshot.accounting, projectPaths],
+   );
+-  const remove = async () => {
+-    if (!payment) return;
+-    try {
+-      await update({ subscriptionPayments: { [payment.id]: null } });
+-      setChoice("all");
+-      setError(undefined);
+-    } catch (reason) {
+-      setError(String(reason));
+-    }
+-  };
++  const money = (amount: number | null) => amount === null ? "—" : new Intl.NumberFormat(locale, {
++    style: "currency", currency: "USD", maximumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2,
++  }).format(amount);
++  const rows = group === "models"
++    ? report.models.filter((item) => item.apiUsd !== null).map((item) => ({ key: item.modelId, label: item.modelId, api: item.apiUsd, actual: null }))
++    : report.projects.filter((item) => item.apiUsd !== null).map((item) => ({
++      key: item.workspacePath ?? "other",
++      label: item.workspacePath?.split(/[/\\]/).filter(Boolean).at(-1) ?? t("other"),
++      fullLabel: item.workspacePath ?? t("other"),
++      api: item.apiUsd,
++      actual: null,
++    }));
++  const partial = report.summary.pricedCount < report.summary.requests;
+   return (
+     <section className="space-y-3 rounded-xl bg-surface p-4">
+-      <div className="flex flex-wrap items-center justify-between gap-2">
+-        <div className="flex items-center gap-1">
+-          <h3 className="text-ui-base font-medium">{t("title")}</h3>
+-          <UsageAccountingHelp metric="analysis" />
++      <div className="flex flex-wrap items-start justify-between gap-3">
++        <div>
++          <div className="flex items-center gap-1">
++            <h3 className="text-ui-base font-medium">{t("title")}</h3>
++            <UsageAccountingHelp metric="cost" sources={report.models.filter((item) => item.priceSources.length).map((item) => ({
++              modelId: item.modelId,
++              urls: item.priceSources,
++            }))} />
++          </div>
++          <div className="mt-1 font-mono text-ui-lg font-medium tabular-nums">
++            {partial && report.summary.apiUsd !== null ? "≥ " : ""}{money(report.summary.apiUsd)}
++          </div>
++          {partial && report.summary.requests > 0 ? (
++            <p className="text-ui-sm text-foreground-subtle">{t("coverage", {
++              priced: report.summary.pricedCount, total: report.summary.requests,
++            })}</p>
++          ) : null}
+         </div>
+-        <Button variant="outline" size="sm" onClick={() => setEditor({})}>
+-          <Plus className="size-3.5" />
+-          {t("recordPayment")}
+-        </Button>
+-      </div>
+-      <div className="flex items-center gap-2">
+-        <Select
+-          value={selected}
+-          onValueChange={(value) => {
+-            setChoice(value);
+-            setError(undefined);
+-          }}
+-        >
+-          <SelectTrigger className="min-w-0 flex-1" aria-label={t("scope")}>
+-            <SelectValue />
+-          </SelectTrigger>
+-          <SelectContent>
+-            <SelectItem value="all">
+-              {t("allUsage")}
+-              {snapshot
+-                ? ` · ${intl.formatMessage({ id: `settings.usage.range.${snapshot.range}` })}`
+-                : ""}
+-            </SelectItem>
+-            {payments.map((item) => (
+-              <SelectItem key={item.id} value={`payment:${item.id}`}>
+-                {item.accountLabel} · {paymentDateText(item.start)} —{" "}
+-                {paymentDateText(item.end - 1)}
+-              </SelectItem>
+-            ))}
+-          </SelectContent>
+-        </Select>
+-        {payment ? (
+-          <DropdownMenu>
+-            <DropdownMenuTrigger asChild>
+-              <Button variant="ghost" size="icon-sm" aria-label={t("paymentActions")}>
+-                <MoreHorizontal className="size-4" />
+-              </Button>
+-            </DropdownMenuTrigger>
+-            <DropdownMenuContent align="end">
+-              <DropdownMenuItem onSelect={() => setEditor({ payment })}>
+-                {t("editPayment")}
+-              </DropdownMenuItem>
+-              <DropdownMenuItem variant="destructive" onSelect={() => void remove()}>
+-                {t("removePayment")}
+-              </DropdownMenuItem>
+-            </DropdownMenuContent>
+-          </DropdownMenu>
+-        ) : null}
++        <Tabs value={group} onValueChange={(value) => setGroup(value as typeof group)}>
++          <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
++            <TabsTrigger value="models" className={USAGE_STATS_TABS_TRIGGER_CLASS}>{t("models")}</TabsTrigger>
++            <TabsTrigger value="projects" className={USAGE_STATS_TABS_TRIGGER_CLASS}>{t("projects")}</TabsTrigger>
++          </TabsList>
++        </Tabs>
+       </div>
+-      {error || periodReading?.error ? (
+-        <p role="alert" className="text-ui-sm text-destructive">
+-          {error ?? periodReading?.error}
+-        </p>
+-      ) : null}
+-      {report ? (
++      {rows.length ? (
+         <UsageChartLoadBoundary
+-          scope="settings.usage.cost-analysis"
+-          resetKeys={[scope, refreshVersion]}
++          scope="settings.usage.api-estimate"
++          resetKeys={[snapshot.generatedAt, group]}
+           loadingDescription={t("loading")}
+         >
+-          <UsageCostComparison report={report} payment={payment} />
++          <UsageCostBarChart
++            rows={rows}
++            series={[{ key: "api", label: t("title"), color: "var(--color-usage-chart-1)" }]}
++            currency="USD"
++            money={money}
++            title={t(group)}
++          />
+         </UsageChartLoadBoundary>
+-      ) : !periodReading?.error ? (
+-        <p role="status" className="text-ui-sm text-foreground-subtle">
+-          {t("loading")}
+-        </p>
+-      ) : null}
+-      {editor ? (
+-        <SubscriptionPaymentEditor
+-          key={editor.payment?.id ?? "new"}
+-          payment={editor.payment}
+-          payments={payments}
+-          onClose={() => setEditor(undefined)}
+-          onSaved={(id) => setChoice(`payment:${id}`)}
+-        />
+-      ) : null}
++      ) : (
++        <p className="text-ui-sm text-foreground-subtle">{t("empty")}</p>
++      )}
+     </section>
+   );
+ }
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx b/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx
+deleted file mode 100644
+index e7d0f2e..0000000
+--- a/packages/ui/src/settings/usage-stats/UsageCostComparison.tsx
++++ /dev/null
+@@ -1,193 +0,0 @@
+-import { Fragment, useState } from "react";
+-import { ExternalLink } from "lucide-react";
+-import type { SubscriptionPayment, UsageCostReport } from "@zcode/shared";
+-import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { usePlatform } from "@/hooks/usePlatform.js";
+-import { Button } from "@/components/ui/button.js";
+-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
+-import {
+-  Select,
+-  SelectContent,
+-  SelectItem,
+-  SelectTrigger,
+-  SelectValue,
+-} from "@/components/ui/select.js";
+-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover.js";
+-import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+-import { UsageCostBarChart } from "./UsageCostBarChart.js";
+-import {
+-  USAGE_STATS_TABS_LIST_CLASS,
+-  USAGE_STATS_TABS_TRIGGER_CLASS,
+-} from "./usageStatsUiParts.js";
+-
+-const API_COLOR = "var(--color-usage-chart-1)",
+-  PAID_COLOR = "var(--color-usage-chart-2)";
+-
+-/** Shared account-period facts; reference value and actual payment are compared, never stacked. */
+-export function UsageCostComparison({
+-  report,
+-  payment,
+-}: {
+-  report: UsageCostReport;
+-  payment?: SubscriptionPayment;
+-}) {
+-  const { intl, locale } = useZCodeIntl();
+-  const platform = usePlatform();
+-  const t = (key: string) => intl.formatMessage({ id: `settings.usage.costAnalysis.${key}` });
+-  const [group, setGroup] = useState<"models" | "projects">("models");
+-  const [unit, setUnit] = useState<"total" | "unit">("total");
+-  const currency = payment?.currency ?? "USD";
+-  const money = (value: number | null, c = "USD") =>
+-    value === null
+-      ? "—"
+-      : new Intl.NumberFormat(locale, {
+-          style: "currency",
+-          currency: c,
+-          maximumFractionDigits: Math.abs(value) > 0 && Math.abs(value) < 0.0001 ? 8 : 4,
+-        }).format(value);
+-  const summary = report.summary;
+-  const partial = summary.pricedCount < summary.requests || summary.unknownAccountRequests > 0;
+-  const stats = [
+-    ...(payment ? [{ label: t("paid"), value: money(payment.amount, currency) }] : []),
+-    {
+-      label: t("apiEquivalent"),
+-      value: money(summary.apiUsd) + (partial && summary.apiUsd !== null ? " *" : ""),
+-    },
+-  ];
+-  const perMillion = group === "models" && unit === "unit";
+-  const rows =
+-    group === "projects"
+-      ? report.projects.map((p) => ({
+-          key: p.workspacePath ?? "other",
+-          fullLabel: p.workspacePath ?? t("unassigned"),
+-          label: p.workspacePath?.split(/[/\\]/).filter(Boolean).at(-1) ?? t("unassigned"),
+-          api: p.apiUsd,
+-          actual: p.actualAmount,
+-        }))
+-      : report.models.map((m) => ({
+-          key: m.modelId,
+-          label: m.modelId,
+-          api: perMillion ? m.apiPerMillion : m.apiUsd,
+-          actual: perMillion ? m.actualPerMillion : m.actualAmount,
+-        }));
+-  const api = { key: "api" as const, label: t("api"), color: API_COLOR };
+-  const paid = { key: "actual" as const, label: t("actual"), color: PAID_COLOR };
+-  const charts =
+-    payment && currency !== "USD"
+-      ? [
+-          { currency: "USD", series: [api] },
+-          { currency, series: [paid] },
+-        ]
+-      : [{ currency: "USD", series: payment ? [api, paid] : [api] }];
+-  return (
+-    <div className="space-y-4">
+-      <div className="flex flex-wrap items-center gap-y-3">
+-        {stats.map((stat, i) => (
+-          <Fragment key={stat.label}>
+-            {i ? <div aria-hidden className="mx-4 h-9 w-px bg-border" /> : null}
+-            <div className="min-w-0 py-2">
+-              <div className="text-ui-sm text-foreground-subtle">{stat.label}</div>
+-              <div className="mt-1 font-mono text-ui-lg font-medium tabular-nums">{stat.value}</div>
+-            </div>
+-          </Fragment>
+-        ))}
+-      </div>
+-      <div className="flex flex-wrap items-center justify-between gap-2">
+-        <Tabs value={group} onValueChange={(v) => setGroup(v as typeof group)}>
+-          <TabsList className={USAGE_STATS_TABS_LIST_CLASS}>
+-            {(["models", "projects"] as const).map((v) => (
+-              <TabsTrigger key={v} value={v} className={USAGE_STATS_TABS_TRIGGER_CLASS}>
+-                {t(v)}
+-              </TabsTrigger>
+-            ))}
+-          </TabsList>
+-        </Tabs>
+-        {group === "models" ? (
+-          <Select value={unit} onValueChange={(v) => setUnit(v as typeof unit)}>
+-            <SelectTrigger className="w-auto min-w-36" aria-label={t("unitChoice")}>
+-              <SelectValue />
+-            </SelectTrigger>
+-            <SelectContent>
+-              <SelectItem value="total">{t("total")}</SelectItem>
+-              <SelectItem value="unit">{t("unit")}</SelectItem>
+-            </SelectContent>
+-          </Select>
+-        ) : null}
+-      </div>
+-      {rows.length ? (
+-        charts.map((chart) => (
+-          <div key={chart.currency} className="space-y-2">
+-            <div className="flex flex-wrap items-center gap-4 text-ui-sm text-foreground-subtle">
+-              {chart.series.map((s) => (
+-                <span key={s.key} className="inline-flex items-center gap-1.5">
+-                  <span className="size-2 rounded-sm" style={{ backgroundColor: s.color }} />
+-                  {s.label}
+-                </span>
+-              ))}
+-              <span className="ml-auto">
+-                {chart.currency}
+-                {perMillion ? " / 1M Tokens" : ""}
+-              </span>
+-            </div>
+-            <UsageCostBarChart
+-              rows={rows}
+-              series={chart.series}
+-              currency={chart.currency}
+-              money={money}
+-              title={t(group)}
+-            />
+-          </div>
+-        ))
+-      ) : (
+-        <p className="py-6 text-center text-ui-base text-foreground-subtle">{t("empty")}</p>
+-      )}
+-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+-        <Popover>
+-          <PopoverTrigger asChild>
+-            <Button variant="ghost" size="sm">
+-              <ExternalLink className="size-3.5" />
+-              {t("priceSources")}
+-            </Button>
+-          </PopoverTrigger>
+-          <PopoverContent align="start" className="max-h-64 w-80 space-y-3 overflow-y-auto p-3">
+-            {report.models.map((model) => (
+-              <div key={model.modelId} className="space-y-1">
+-                <div className="truncate text-ui-sm font-medium">{model.modelId}</div>
+-                {model.priceSources
+-                  .filter((s) => s.startsWith("https://"))
+-                  .map((source) => (
+-                    <Button
+-                      key={source}
+-                      variant="link"
+-                      className="h-auto p-0 text-ui-sm"
+-                      onClick={() => void platform.openExternal(source)}
+-                    >
+-                      {new URL(source).hostname}
+-                    </Button>
+-                  ))}
+-              </div>
+-            ))}
+-          </PopoverContent>
+-        </Popover>
+-        {payment && summary.allocationBasis === "unavailable" ? (
+-          <ControlHintTooltip
+-            title={
+-              summary.unknownAccountRequests
+-                ? intl.formatMessage(
+-                    { id: "settings.usage.costAnalysis.unknownAccounts" },
+-                    { count: summary.unknownAccountRequests },
+-                  )
+-                : intl.formatMessage({ id: "settings.usage.payments.unavailable" })
+-            }
+-          >
+-            <span tabIndex={0} className="text-ui-sm text-foreground-subtle">
+-              {t("allocationPending")}
+-            </span>
+-          </ControlHintTooltip>
+-        ) : payment && payment.end > Date.now() ? (
+-          <span className="text-ui-sm text-foreground-subtle">{t("periodOpen")}</span>
+-        ) : null}
+-      </div>
+-    </div>
+-  );
+-}
+diff --git a/packages/ui/src/settings/usage-stats/officialSubscriptionPrices.ts b/packages/ui/src/settings/usage-stats/officialSubscriptionPrices.ts
+new file mode 100644
+index 0000000..ed0960c
+--- /dev/null
++++ b/packages/ui/src/settings/usage-stats/officialSubscriptionPrices.ts
+@@ -0,0 +1,63 @@
++export interface OfficialSubscriptionPrice {
++  id: string;
++  label: string;
++  amount: number;
++  currency: "USD";
++  sourceUrl: string;
++  annualEquivalent?: boolean;
++  /** Team prices are per seat, not an account's actual payment. */
++  perSeat?: boolean;
++}
++
++const CHATGPT_BUSINESS = "https://help.openai.com/en/articles/8542115-chatgpt-business-general-faq";
++const CHATGPT_RELEASES = "https://help.openai.com/en/articles/6825453-chatgpt-release-notes";
++const COPILOT_PRICING = "https://docs.github.com/en/copilot/get-started/plans";
++const GROK_PRICING = "https://x.ai/pricing";
++
++export function normalizeSubscriptionPlanKey(plan: string | undefined): string | null {
++  return plan?.trim().toLowerCase().replace(/[\s_-]/g, "").replace(/\+/g, "plus") || null;
++}
++
++/** A checked public list price is a suggestion, never a paid invoice or a quota multiplier. */
++export function officialSubscriptionPrices(
++  kind: "openai-codex" | "github-copilot" | "xai",
++  reportedPlan: string | undefined,
++): OfficialSubscriptionPrice[] {
++  const plan = normalizeSubscriptionPlanKey(reportedPlan);
++  if (!plan) return [];
++  const price = (
++    id: string, label: string, amount: number, sourceUrl: string,
++    options: { perSeat?: boolean; annualEquivalent?: boolean } = {},
++  ) => ({ id, label, amount, currency: "USD" as const, sourceUrl, ...options });
++  if (kind === "openai-codex") {
++    if (["plus", "chatgptplusplan"].includes(plan))
++      return [price("chatgpt-plus", "Plus", 20, CHATGPT_RELEASES)];
++    if (["pro", "chatgptproplan"].includes(plan))
++      return [
++        price("chatgpt-pro-100", "Pro 100", 100, CHATGPT_RELEASES),
++        price("chatgpt-pro-200", "Pro 200", 200, CHATGPT_RELEASES),
++      ];
++    if (["team", "business", "chatgptteamplan"].includes(plan))
++      return [
++        price("chatgpt-business-standard-monthly", "Standard", 25, CHATGPT_BUSINESS, { perSeat: true }),
++        price("chatgpt-business-premium-monthly", "Premium", 125, CHATGPT_BUSINESS, { perSeat: true }),
++        price("chatgpt-business-standard-annual", "Standard", 20, CHATGPT_BUSINESS, { perSeat: true, annualEquivalent: true }),
++        price("chatgpt-business-premium-annual", "Premium", 100, CHATGPT_BUSINESS, { perSeat: true, annualEquivalent: true }),
++      ];
++    return [];
++  }
++  if (kind === "github-copilot") {
++    if (plan === "pro") return [price("copilot-pro", "Pro", 10, COPILOT_PRICING)];
++    if (plan === "proplus") return [price("copilot-pro-plus", "Pro+", 39, COPILOT_PRICING)];
++    if (plan === "max") return [price("copilot-max", "Max", 100, COPILOT_PRICING)];
++    if (plan === "business") return [price("copilot-business", "Business", 19, COPILOT_PRICING, { perSeat: true })];
++    if (plan === "enterprise") return [price("copilot-enterprise", "Enterprise", 39, COPILOT_PRICING, { perSeat: true })];
++    return [];
++  }
++  if (kind === "xai") {
++    if (plan === "supergrok") return [price("supergrok", "SuperGrok", 30, GROK_PRICING)];
++    if (plan === "supergrokplus") return [price("supergrok-plus", "SuperGrok Plus", 100, GROK_PRICING)];
++    return [];
++  }
++  return [];
++}
+diff --git a/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts b/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts
+deleted file mode 100644
+index 6f2623b..0000000
+--- a/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts
++++ /dev/null
+@@ -1,46 +0,0 @@
+-import type { IProviderSettingsService } from "@zcode/services";
+-import { matchEndpointTemplate } from "@zcode/provider";
+-import { readProviderSettings } from "@/lib/providerSettingsRead.js";
+-
+-export type PaymentAccount = { providerId: string; accountId: string; label: string };
+-
+-/** Read existing account identities; membership-key plans have one explicit connection total. */
+-export async function readPaymentAccounts(
+-  service: IProviderSettingsService,
+-  connectionLabel: string,
+-): Promise<PaymentAccount[]> {
+-  const view = await readProviderSettings(() => service.getView());
+-  const groups = await Promise.all(
+-    view.providers.map(async (provider) => {
+-      // 与模型设置的已添加服务保持同一范围，不能把原版隐藏套餐当成用户已绑定的会员。
+-      if (provider.effectiveConfig.group !== "standard-personal") return [];
+-      const label = provider.providerName ?? provider.providerId;
+-      if (provider.effectiveConfig.access?.type === "subscription") {
+-        const saved = await readProviderSettings(() =>
+-          service.getSubscriptionAccounts(provider.providerId),
+-        );
+-        return saved.accounts.map((account) => ({
+-          providerId: provider.providerId,
+-          accountId: account.id,
+-          label: `${label} · ${account.label ?? account.id}`,
+-        }));
+-      }
+-      const template =
+-        view.providerTemplates.find((item) => item.templateId === provider.templateId) ??
+-        matchEndpointTemplate(provider.effectiveConfig.api?.baseUrl, view.providerTemplates);
+-      if (
+-        template?.category === "subscription-plan" ||
+-        provider.effectiveConfig.access?.type === "zhipu-account"
+-      )
+-        return [
+-          {
+-            providerId: provider.providerId,
+-            accountId: "connection",
+-            label: `${label} · ${connectionLabel}`,
+-          },
+-        ];
+-      return [];
+-    }),
+-  );
+-  return groups.flat();
+-}
+diff --git a/packages/ui/test/subscriptionListPrice.test.ts b/packages/ui/test/subscriptionListPrice.test.ts
+new file mode 100644
+index 0000000..fbc3b98
+--- /dev/null
++++ b/packages/ui/test/subscriptionListPrice.test.ts
+@@ -0,0 +1,20 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { officialSubscriptionPrices } from "../src/settings/usage-stats/officialSubscriptionPrices.js";
++import { accountMonthlyPrice } from "../src/settings/model-provider-section/subscriptionListPriceModel.js";
++
++test("a manual correction is account-and-plan scoped and ambiguous Team prices stay unresolved", () => {
++  const plus = officialSubscriptionPrices("openai-codex", "Plus");
++  const team = officialSubscriptionPrices("openai-codex", "Team");
++  assert.equal(accountMonthlyPrice(plus, undefined, "plus").exact, 20);
++  assert.deepEqual(
++    [accountMonthlyPrice(team, undefined, "team").low, accountMonthlyPrice(team, undefined, "team").high],
++    [20, 125],
++  );
++  assert.equal(accountMonthlyPrice(team, undefined, "team").exact, undefined);
++  assert.equal(accountMonthlyPrice(team, undefined, "team").perSeat, true);
++  const correction = { providerId: "chat", accountId: "a", planKey: "team", amountUsd: 35 };
++  assert.equal(accountMonthlyPrice(team, correction, "team").exact, 35);
++  assert.equal(accountMonthlyPrice(plus, correction, "plus").exact, 20);
++  assert.deepEqual(officialSubscriptionPrices("xai", "SuperGrok Heavy"), []);
++});
+diff --git a/packages/ui/test/subscriptionPaymentAccounts.test.ts b/packages/ui/test/subscriptionPaymentAccounts.test.ts
+deleted file mode 100644
+index cc6c3cf..0000000
+--- a/packages/ui/test/subscriptionPaymentAccounts.test.ts
++++ /dev/null
+@@ -1,84 +0,0 @@
+-import assert from "node:assert/strict";
+-import test from "node:test";
+-import type { IProviderSettingsService, ProviderSettingsView } from "@zcode/services";
+-import { readPaymentAccounts } from "../src/settings/usage-stats/subscriptionPaymentAccounts.js";
+-
+-test("payment choices share the added-service scope, retaining distinct saved accounts and paused plans", async () => {
+-  const providers = [
+-    {
+-      providerId: "hidden",
+-      effectiveConfig: { group: "zai-family", access: { type: "zhipu-account" } },
+-    },
+-    {
+-      providerId: "chat",
+-      providerName: "ChatGPT",
+-      effectiveConfig: { group: "standard-personal", access: { type: "subscription" } },
+-    },
+-    {
+-      providerId: "plan",
+-      providerName: "Plan",
+-      templateId: "plan-template",
+-      enabled: false,
+-      effectiveConfig: { group: "standard-personal", access: { type: "api-key" } },
+-    },
+-    {
+-      providerId: "api",
+-      effectiveConfig: { group: "standard-personal", access: { type: "api-key" } },
+-    },
+-  ];
+-  const view = {
+-    providers,
+-    providerTemplates: [{ templateId: "plan-template", category: "subscription-plan" }],
+-  } as unknown as ProviderSettingsView;
+-  const service = {
+-    getView: async () => view,
+-    getSubscriptionAccounts: async (providerId: string) => {
+-      assert.equal(providerId, "chat");
+-      return {
+-        accounts: [
+-          { id: "a", label: "Account A" },
+-          { id: "b", label: "Account B" },
+-        ],
+-      };
+-    },
+-  } as unknown as IProviderSettingsService;
+-  assert.deepEqual(await readPaymentAccounts(service, "Entire connection"), [
+-    { providerId: "chat", accountId: "a", label: "ChatGPT · Account A" },
+-    { providerId: "chat", accountId: "b", label: "ChatGPT · Account B" },
+-    { providerId: "plan", accountId: "connection", label: "Plan · Entire connection" },
+-  ]);
+-});
+-
+-test("imported membership-key endpoints appear in payment choices without inheriting preset models", async () => {
+-  const view = {
+-    providers: [
+-      {
+-        providerId: "go",
+-        providerName: "Imported Go",
+-        effectiveConfig: {
+-          group: "standard-personal",
+-          access: { type: "api-key" },
+-          api: { type: "openai-chat-completions", baseUrl: "https://opencode.ai/zen/go/v1" },
+-        },
+-      },
+-      {
+-        providerId: "spoof",
+-        effectiveConfig: {
+-          group: "standard-personal",
+-          api: { baseUrl: "https://opencode.ai.example/zen/go/v1" },
+-        },
+-      },
+-    ],
+-    providerTemplates: [
+-      {
+-        templateId: "go-plan",
+-        category: "subscription-plan",
+-        config: { api: { baseUrl: "https://opencode.ai/zen/go/v1" } },
+-      },
+-    ],
+-  } as unknown as ProviderSettingsView;
+-  const service = { getView: async () => view } as unknown as IProviderSettingsService;
+-  assert.deepEqual(await readPaymentAccounts(service, "Connection"), [
+-    { providerId: "go", accountId: "connection", label: "Imported Go · Connection" },
+-  ]);
+-});

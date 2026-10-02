@@ -50,22 +50,18 @@ only place where a bounded implementation may begin.
 
 - **P1 — Fleet is an AI work platform, not a chat tool.** Human owns the top ~10% of judgment and
   the bottom ~10% of common-sense guardrails; agents execute the middle ~80%. (2026-07-08)
-- **P2 — One `app/` tree; Craft is the look and runtime base, not the product.** Current
-  implementation and rolling reference are **v0.13.4**. The 2026-09-21 rebuild (`5a510cf1d`,
-  corrected by `bc7eb0eb7`) supersedes the September 20 uptake plan. The complete earlier Fleet
-  tree is preserved at `snapshot/pre-rebuild-2026-09-21`; it is candidate evidence, not an
-  implementation to restore wholesale. Steering/mid-stream queueing, context-window usage and
-  composer viewport handling now exist in upstream code; inspect those callers before extending
-  them. Each difference is declared in `UPSTREAM-DELTA.tsv` as L0 (defect fix), L1 (visual values),
-  L2 (product behavior) or LOC (local measurement state). Removed controls need a named replacement
-  or explicit retirement decision. R0 remains ACTIVE with fresh verification; no baseline tag is
-  a prerequisite imposed by this contract. Preserve Craft's visual language and the existing
-  authorities; do not reintroduce a discarded shell or import Qoder/TRAE product concepts.
-  (2026-07-08; implementation observation reconciled 2026-09-21.)
-- **P3 — Craft look, Cindy *features*.** Spacing, type, colour and motion stay Craft's. Cindy
-  decides how a capability is built and how the surface talks to the backend — plugins, skills,
-  remote connection, assistants. Rearranging chrome is not Cindy work. (2026-07-09; revised
-  2026-09-10, 2026-09-11)
+- **P2 — One selected product direction with preserved comparison trees.** OV-027 selects ZCode;
+  `.fleet/zcode` is the active candidate. `app/` retains Craft v0.13.4 and declared corrections,
+  and `snapshot/pre-rebuild-2026-09-21` retains earlier code for recovery. Those are separate
+  implementation scopes, not parallel production authorities. Craft changes use
+  `UPSTREAM-DELTA.tsv`; candidate changes use the ordered patch recipe. Neither base selection,
+  source refresh nor a test suite approves a user-data or runtime migration. Current work order
+  belongs only in `TODO.md`. (Earlier Craft-only scope superseded by OV-025/027.)
+- **P3 — Shared Fleet design language; reference roles are revised by OV-025/OV-026.** Preserve
+  Craft's contextual Agent assistance, conversation interactions and useful Board/Pages mechanisms;
+  Craft-derived visual tokens remain reusable. ZCode supplies conversation-shell interaction.
+  Cindy's feature implementations are evidence, not a mandatory host or private extension protocol.
+  Earlier “Craft runtime, Cindy features” wording describes the prior branch, not the reopened choice.
 - **P4 — Fleet is open/free local software.** No Fleet account, login, or subscription. (2026-07-08)
   > **Clarified 2026-09-21 — P4 forbids Fleet *issuing* identity, not the user *using* theirs.**
   > The owner asked how to build an account system given OpenChamber appears to need only a GitHub
@@ -106,19 +102,16 @@ only place where a bounded implementation may begin.
   > breaks. This is a dependency on GitHub, not on Fleet-operated infrastructure. The `gh` CLI
   > path and a pasted personal access token both work with no Fleet `client_id` at all and must
   > stay supported for exactly that reason. (owner question 2026-09-21)
-- **P5 — Craft look is tokens and interaction style, not “restore the v0.10.5 page host”.** Compare
-  pins for the better look. Current base is v0.13.4. Do not restore an older AppShell as the
-  product. Board has a separate navigation entry and projects the existing Session/Task
-  authorities; it never creates another Project, task or conversation store and does not restore a
-  list/Board view toggle. (2026-07-08; revised 2026-07-21, 2026-07-28, 2026-09-10, 2026-09-11)
-- **P6 — Workspace/Project target is reopened; preserve the current records.** Craft v0.13.4 still
-  scopes Projects, Conversations, Sources and Skills under visible Workspaces. The owner first asked
-  to retain that layer, then proposed removing its visible UI and selecting capability suites per
-  Conversation. The second request supersedes the visible-Workspace target, but does not authorize
-  a data migration or replacement store. The candidate Host → optional Project/folder → Conversation
-  mapping and its unresolved migration proof are in [`modules/shell.md`](modules/shell.md). Until a
-  reviewed slice replaces it, the current Workspace/Project/Session authority and remote routes
-  remain intact. Same-folder access never implies shared transcripts or grants.
+- **P5 — Preserve a coherent design language and valuable interactions.** Craft look pins
+  document their own measured values; ZCode is the active product reconstruction reference.
+  Use the scoped rules in `DESIGN.md` and the current component's own primitives. Do not restore
+  an older AppShell or create a second navigation owner. OV-026 permits a Board plugin with its
+  own issue domain; it must reference host Sessions rather than create another execution store.
+- **P6 — Project is the folder (OV-024).** It may be local or remote, and conversations may be
+  folderless. Project suite selection replaces the older per-Conversation composition proposal.
+  Craft Workspace records remain compatibility data until explicit access/migration proof;
+  hiding a selector does not migrate records. Same-folder access never implies shared transcripts
+  or grants. The current shell contract is in [Shell](modules/shell.md).
 - **P7 — Remote Projects connect directly to another Fleet instance; no Fleet account or central
   coordinator.** The current connection interaction is P9-rev below: host access link, client name
   + link. The earlier exposed URL/token form is not the target UI. A remote access grant is
@@ -201,8 +194,9 @@ and grant flow is `not implemented` in the current tree.
   decorative brand artwork. The owner subsequently paused Conversation/Project changes and asked
   for small, reviewed corrections after the original-app walkthrough. None of this UI is currently
   Fleet implementation; the old R1 delivery order is withdrawn.
-- **P11 — A Plugin is distribution packaging, not another authority.** A Component is Fleet's
-  bounded installable capability; a Plugin bundle packages Components, Skills and Sources. Import
+- **P11 — Plugin is the user-facing name for an installable capability (OV-026).** Component is
+  its existing engineering term, not a second package category. It may include domain UI/storage,
+  tools, Skills and Sources without duplicating host state. Import
   compatibility must map into their existing or explicitly introduced native owners, not add
   parallel installers, settings, connections, Skills or permission stores. Current Craft Skill and
   Source stores exist; the Fleet Component store, `ComponentManifest` and bundle adapter do not.
@@ -212,8 +206,8 @@ and grant flow is `not implemented` in the current tree.
   capabilities must work when a catalog is unavailable; source failures stay isolated; install
   trust is computed locally; source identity, not a reusable display name, controls update ownership.
   Cross-machine copying is explicit and user-selected, never an automatic merge of host settings.
-  The former Workspace-activation default is reopened under P6; per-Conversation suite selection is
-  the current design candidate, not an implemented resolver.
+  OV-023/OV-024 select Project-folder suites; the earlier per-Conversation proposal is superseded.
+  Optional-plugin defaults outside a Project remain open; the resolver is not implemented.
 
   Build order after the baseline exit is **Component host → adapter/local install → catalog and
   distribution safety**. An offline seed plus optional remote catalog is a candidate mechanism for
@@ -315,11 +309,13 @@ and grant flow is `not implemented` in the current tree.
 - **C9 — Execution and acceptance are separate authorities.** The executor cannot certify its own
   success by inventing or weakening acceptance. Verification returns `PASS` /
   `IMPLEMENTATION_FAILURE` / `ENVIRONMENT_FAILURE` / `EVIDENCE_UNAVAILABLE` / `CONTRACT_AMBIGUOUS`.
-  A verifier is read-only by default; repair is a new bounded task. Tests/fixtures/harnesses are
-  reserved paths unless the task explicitly owns them. (2026-07-16)
+  A verifier is read-only by default; repair is a new bounded task. Protected acceptance fixtures
+  and grading criteria cannot be weakened by the executor. Adding or correcting implementation
+  regression tests inside an authorized fix is normal work, not a new approval checkpoint. (2026-07-16)
 - **C10 — Progress must be monotonic; incidental findings stay incidental.** Every state-changing
   action maps to an unmet criterion or declared recovery edge. After two non-progressing
-  state-changing attempts, execution halts (tool/hypothesis switches don't reset the count). An
+  state-changing attempts, stop that approach, preserve evidence and resolve the actual blocker;
+  merely renaming the tool/hypothesis does not reset the count. An
   incidental defect is queued with evidence, never silently replacing the active task. (2026-07-16)
 - **C11 — Multi-Agent trust comes from contracts and evidence, not conversation.** One accountable
   owner per criterion; at most one writer per occupied path; one integrator per shared contract.
@@ -332,10 +328,11 @@ and grant flow is `not implemented` in the current tree.
 
 - **D1 — One logical authority per state class.** File format (JSON/SQLite/native) is an
   implementation detail of that authority, never license for a second product store. (2026-07-08)
-- **D2 — Persistence retains the current Craft-derived filesystem authorities** unless a measured requirement
+- **D2 — On the retained Craft branch, persistence retains its filesystem authorities** unless a measured requirement
   changes the implementation. No product-wide SQLite control plane; no independent `jobs.json` /
   `memory.json` / `clips.json`. SQLite requires a written decision with a concrete trigger — see
-  [`decisions.md`](#hard-constraints) §4. (2026-07-09)
+  [`decisions.md`](#hard-constraints) §4. Under OV-025/OV-026 this does not require replacing a
+  candidate's database or a plugin's native domain store with JSON. (2026-07-09; scope reconciled.)
 - **D3 — No second long-lived background authority without a demonstrated lifecycle requirement.**
   The Electron main process owns the terminal/PTY lifecycle and the local spine. (2026-07-09)
 - **D4 — Files and Library are separate layers.** Raw workspace files become Library assets only
@@ -382,27 +379,13 @@ and grant flow is `not implemented` in the current tree.
   typed steps, stored as immutable versioned project documents when run. Full vision:
   [`canvas.md`](modules/canvas.md#canvas-vision).
   (amended 2026-07-11)
-- **E5a — The canvas commits to the DOM-family rendering approach; React Flow v12 is the default
-  first implementation and custom DOM+SVG is the named in-family fallback; the domain model stays
-  renderer-independent.** What is **committed now** (product decision, owner-delegated): Fleet
-  cards are live React components, so the primary renderer is DOM/React-based — GPU engines
-  (Pixi/CanvasKit) may appear only as a *media layer* under the DOM viewport, never as the primary
-  scene graph, and no canvas-engine store (tldraw/Fabric/Konva/Leafer) becomes a domain authority.
-  Grounds: four independent shipping products with Fleet-shaped workloads are all DOM-family —
-  TapNow, MiniMax Hub/Hilo, TRAEWork on React Flow (owner-provided analyses), and Mayi Canvas on fully
-  custom DOM + `translate3d` + SVG bezier with rich media/agent nodes
-  (`references/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md`). What the **E5a spike decides** (may run
-  any time from R5; must pass before deep R7 investment): React Flow vs custom DOM+SVG *within the
-  family*, by named criteria — representative rich cards, concurrent agent updates, media proxies,
-  ≥500-node viewport culling, memory recovery in the real Electron app. Implementation constraints
-  either way: custom edge overlay for the six edge classes; visible-node virtualization + thumbnail
-  workers + object pools (Mayi Canvas performance-mode evidence); iframe/webview previews stay outside the graph
-  layer; resource budgets per E8. tldraw stays behavior-comparison only (license = owner
-  checkpoint); FlowGram is workflow-editor UX reference only. `plugins/xyflow` completes its
-  admission record at the spike. **Anti-oscillation clause:** this entry supersedes both prior
-  wordings ("committed default" and "leading candidate"); do not re-litigate the renderer without
-  new spike evidence or an owner request. (replaced 2026-07-15; family committed + in-family spike
-  defined 2026-07-17 — see `architecture.md` §4.5)
+- **E5a — React Flow is the canvas implementation under OV-066; domain records remain
+  renderer-independent.** This closes the former React Flow/custom-DOM selection exercise.
+  Cards remain live React components; GPU rendering may serve bounded media content, never the
+  product's domain authority. Verify the actual rich-card/media workload, concurrent Agent updates,
+  viewport culling and memory recovery before accepting it. Reopen selection only for a reproduced
+  unmet contract, preserving the same fixture and resource budget. The original DOM-family source
+  observations and admission requirements remain in [canvas](modules/canvas.md#canvas-vision).
 - **E6 — The BrowserPane is a governed evidence input, not a stealth browser or editable-doc
   surface.** Explicit control model (enablement, open-target, data clearing, screenshot policy,
   approval policy, site overrides, separate high-risk full-CDP developer toggle). Remote pages are
@@ -486,10 +469,10 @@ and grant flow is `not implemented` in the current tree.
   Scientific basis: context-rot/lost-in-the-middle degradation means leaner context raises
   capability. (owner direction, 2026-07-18)
 - **E13 — Harness efficiency is a model-facing projection problem, not a reason to replace the
-  Craft/Fleet kernel.** Benchmark `model × harness/profile × task` on the same sealed task and
+  selected Fleet Host.** Benchmark `model × harness/profile × task` on the same sealed task and
   effort; never generalize a Pi win into “Pi always wins” or treat use of the Pi SDK as proof that
-  Fleet preserves upstream Pi's minimal harness. Craft remains the product shell and the sole
-  Session/permission/timeline/task/settings authority. A Pi-light path is an execution profile over
+  Fleet preserves upstream Pi's minimal harness. OV-027/066/069 supersede the historical Craft
+  owner with the selected ZCode Host. A Pi-light path is an execution profile over
   those authorities, not a second agent kernel. Before each model call, the visible prompt, tools,
   Skills/Sources and environment capabilities are the smallest effective projection of
   `task need ∩ installed capability ∩ runtime availability ∩ caller policy ∩ live grant`; hidden
@@ -1066,9 +1049,10 @@ and grant flow is `not implemented` in the current tree.
 
 ### 1. Never create a second authority
 
-Do not create a second:
+OV-025 reopens the implementation, not the rule against competing owners of the same entity.
+Plugin issues, editor documents/undo and host Sessions are different entities. Do not create a second:
 
-- session/chat store beside Craft sessions;
+- session/chat store beside the selected host's sessions (Craft in the retained branch);
 - permission or approval path for UI, agents, or workflows;
 - memory database or silent shadow memory;
 - job, cost, or usage ledger for the same work;
@@ -1076,16 +1060,17 @@ Do not create a second:
 - project/task/workspace authority;
 - audit timeline for the same events;
 - application shell, workbench, browser stack, or settings home.
-- agent harness, prompt/loadout authority, or provider-specific capability policy beside the
-  existing Craft/Fleet provider and permission paths.
+- a competing prompt/loadout or provider policy owner for the same Fleet run. OV-036 permits
+  selectable complete executors with their own bound native continuation; each admitted run has
+  one active executor and all Fleet domain operations retain their existing owners.
 
 **Extend the existing authority, or demonstrate why it is insufficient, before replacing it.**
 Violating this is how the product fragments into disconnected utilities.
 
 ### 2. UI and product
 
-- **Do not change a surface Craft already has without first diffing the upstream component** at the
-  same path under `源码参考/software/craft-agents-oss/`, and justifying each delta. An unjustified
+- **Diff a changed surface against its own pinned original** (ZCode candidate against ZCode;
+  retained `app/` against Craft), and justify each delta. An unjustified
   difference is an invention, and it reads as a second UI language beside the first. Step 0 in root
   [`AGENTS.md`](../AGENTS.md).
 - **Do not produce a concept mockup, redesign image or "structure draft" as input to an
@@ -1097,7 +1082,7 @@ Violating this is how the product fragments into disconnected utilities.
 - **Do not read "keep Craft's style" as "keep every old function."** The visual system and proven
   interactions carry over; which functions live, merge, move or die is the owner's call per surface.
   Relocating every old button is not preservation, it is refusing to make the decision.
-- Do not build a greenfield shell or restore rejected skins when Craft can be simplified/extended.
+- Do not rebuild a working selected-host surface or restore a rejected skin without a demonstrated gap.
 - Do not add empty docks, panels, settings, routes, dashboards, or placeholder modules to the
   **default surface**. Ahead-of-behavior pages exist only inside the preview-gated frontend track
   (Decision G6): spec'd, mock-behind-adapter, reported `display-only`. Nothing unwired ships
@@ -1123,8 +1108,9 @@ Violating this is how the product fragments into disconnected utilities.
   `isLocalOnly` and `isRemoteEligible`, but the required double-ended admission boundary is
   `not implemented`; the former `isRemoteAllowed` / `remoteRefusalFor` helpers are absent. A
   classification table alone does not prove enforcement. Never admitted: window/UI control, native
-  dialogs, shell side effects, credential reads or writes, the updater, writes to the host's own global
-  settings, and raw store writes that bypass a business handler.
+  dialogs, raw credential access, the updater, writes to the host's own global settings, and raw
+  store writes. Authorized remote shell/file work goes through the selected runtime and its
+  governed business handler; this rule does not ban the remote execution required by P7.
 - **A remote credential is per device, hashed, scoped and revocable (Decision P7).** Never
   hand a remote client this machine's own server token, and never put a standing credential
   in an access link — the link carries a single-use, expiring invite, and redeeming it mints
@@ -1135,9 +1121,9 @@ Violating this is how the product fragments into disconnected utilities.
 ### 3. Architecture
 
 - No workflow runner with its own permission/runtime/job systems beside the existing ones.
-- No Pi-light, OpenHands, Hermes, OpenClaw or other profile/reference promoted into a second kernel;
-  extend one model-facing effective projection and keep every real call on the canonical
-  permission/evidence path (E13).
+- A profile/reference is not permission to install another competing Fleet Host. Selectable
+  executors under OV-036 retain their native loops; Fleet operations still use the canonical
+  scope, permission and evidence path. Do not wrap a complete native Agent in another tool loop.
 - No Tool Search before static scoped profiles and catalog/recovery measurements prove it necessary;
   discovery never grants or executes.
 - No long-lived daemon as an early prerequisite when the Electron main process can own the behavior.
@@ -1167,7 +1153,8 @@ Violating this is how the product fragments into disconnected utilities.
   `replay`, or `system`, plus Session/Component/Action correlation and before/after version evidence. A replay
   or learned Skill may use a human demonstration only after the user explicitly selects the range
   and approves the generated reusable procedure.
-- No Component, MCP server or renderer may create a private trajectory/history authority. Current
+- No Component, MCP server or renderer may duplicate the host work-trajectory authority. Native
+  editor undo and domain version history remain with their editor; they are not duplicate chat logs. Current
   evidence uses Craft Sessions and SessionEvents. Governed Action, Job and ArtifactRef integration
   are targets at their owning release rows, not an existing unified path. Those additions must
   extend the current evidence authority; the visible trace remains a projection.
@@ -1193,11 +1180,14 @@ Violating this is how the product fragments into disconnected utilities.
 
 ### 4. Persistence discipline (the SQLite trigger)
 
-Near-term persistence retains the current Craft-derived filesystem stores under one logical authority (Decision
+On the retained branch, persistence retains the Craft-derived filesystem stores under one logical authority (Decision
 D2). Introduce SQLite or a control-plane database only when a **concrete, observable engineering
 signal** appears — e.g. the first real bug where file-based lease-restart reconciliation or job
 idempotency cannot be made atomic on the filesystem. Record the trigger, migration path, and owning
 authority in `decisions.md`, then migrate. "It would be cleaner" is not a trigger.
+This is a migration rule, not a ban on a selected baseline's existing database, a Board issue store,
+or an editor's native format/history. Do not rewrite mature domain persistence solely to satisfy
+an obsolete Craft-specific mechanism; ownership, export, backup and migration still need proof.
 
 #### Artifact history (Decisions H1–H4)
 
@@ -1207,7 +1197,9 @@ authority in `decisions.md`, then migrate. "It would be cleaner" is not a trigge
   silently committing or stashing under a user is the most destructive thing this capability can do
   — which is exactly what "just stash it" produces. The snapshot helper named by the original H
   decision was discarded in the rebase; this remains a boundary for any future implementation, not
-  a claim that the helper exists.
+  a claim that the helper exists. Unreferenced objects in the user repository alone cannot
+  guarantee durable recovery through Git garbage collection. A future implementation must retain
+  recoverable bytes in an owned snapshot store/pack without moving the user's refs or index.
 - **Do not put media in a git tree, and do not put a canvas there either.** History is routed by
   artifact kind (H1). Reaching for git because it is already there is how a repository becomes
   unusable one video at a time.
@@ -1224,13 +1216,13 @@ authority in `decisions.md`, then migrate. "It would be cleaner" is not a trigge
 
 #### Current state authorities
 
-Confirm each row against current code before changing it; extend the authority rather than creating
-a neighbor.
+These rows describe the retained Craft implementation, not mandatory future owners. Confirm them
+against code; preserve records when replacing an owner under OV-025 rather than creating a neighbor.
 
 | State | Current authority | Fleet rule |
 |---|---|---|
 | sessions and tasks | Craft SessionManager and task stores | reuse |
-| user-facing projects | Workspace configuration/routing plus Workspace-scoped Project memberships (revised P6) | keep both existing authorities; directory sharing never merges conversations/configuration |
+| user-facing projects | Legacy Workspace configuration/routing plus scoped Project memberships | compatibility data only; OV-024 selects one Project folder, with explicit record reconciliation rather than two permanent user concepts |
 | permission modes and Agent gating | Craft mode-manager, PreToolUse, SessionManager approval flow | extend caller-aware policy; no second engine |
 | session evidence | Craft SessionEvent stream | extend attribution only when a real caller requires it |
 | session-scoped Agent tools | `SESSION_TOOL_DEFS` and handlers | tool registry, not the complete cross-caller invocation layer |
@@ -1278,14 +1270,17 @@ a neighbor.
   carry breadth/depth design and compatibility records. They are permitted only while (a) their
   depth labels remain documentation states, never work permissions or schedule gates
   (`engineering.md` §2), (b) they own no capability status, progress %, assignment, or
-  approval, and (c) no document requires reading them before ordinary bounded work. The moment one
+  approval, and (c) relevant contract reading does not become a second permission process for
+  already authorized bounded work. The moment one
   becomes a work-permission gate or a second status system, it is the banned machinery again.
 - Do not let documentation claim more than implementation. When plan and code diverge, correct the
   status immediately.
 
 ## The owner's words
 
-These owner statements remain active product intent. Quote them verbatim when exact wording matters;
+These quotations preserve owner intent and changes of direction. A later applicable decision
+supersedes an earlier conflicting one; quotations are not all simultaneously active. Quote them
+verbatim when exact wording matters;
 do not turn this file into an archive or infer implementation status from it. Current scope and
 interface rules are owned by [PRODUCT](product.md#how-the-interface-behaves).
 
@@ -1633,6 +1628,10 @@ module and take the better frontend and backend; do not keep patching Craft's st
 
 ### OV-024 — Keep Craft's look and its Agent-operable pages; one thing called a project (2026-09-26)
 
+**Partially superseded:** the historical Craft-base choice was reopened by OV-025 and replaced
+by OV-027. The folder-backed Project boundary and contextual Agent-operation requirements remain
+current. Use Product and TODO for the active implementation, not the historical base gloss below.
+
 > 「我想你在维持Craft Agents的前端设计和一些功能的情况下吸收其他项目的优点，对我们的项目进行深度的整改，Craft Agents的很多页面或者功能，都是能让agent和人类都能调整修改，这点是别的软件不具备的」
 >
 > 「这是要实现任何agent的工作台非常必要的，要让agent自己就能操控我们软件的各种功能等」
@@ -1652,6 +1651,1035 @@ against the references. This supersedes the 2026-09-25 proposal to switch the ba
 
 **Now carried by:** [`product.md`](product.md#conversation-project-and-workspace-boundary),
 [`modules/shell.md`](modules/shell.md).
+
+### OV-025 — Reopen the whole baseline and development method (2026-09-26)
+
+> 「我觉得经过你的修改整改项目发生了巨大的问题，现状整改项目根本不可用，而且完全不如直接使用项目中的任何一个，我觉得你需要梳理清楚我的需求和想达成的效果重新选定正确的开源项目作为基线，并且想清楚正确的开发模式」
+>
+> 「我觉得你确认清楚我的需要也要对各种类似的软件进行研究」
+
+**English gloss:** The owner rejects the accumulated reconstruction and reopens complete-base
+selection. Clarify the intended general Agent workbench and study comparable software before
+resuming implementation. Keeping Craft's valuable visual/Agent-operable surfaces does not lock
+Fleet to Craft's runtime. OV-024's historical “Craft stays the base” interpretation and prior
+implementation queues no longer decide this question. Preserve existing work/data while comparing
+alternatives. The current source-backed recommendation to verify Cindy first is the executing
+agent's recommendation, **not an owner-selected baseline**.
+
+**Now carried by:** [Product](product.md#baseline-reassessment),
+[comparison](references.md#whole-product-baseline-comparison),
+[development method](engineering.md#baseline-selection-and-development-method) and `TODO.md`.
+
+### OV-026 — Application plugins and the Craft interactions worth retaining (2026-09-26)
+
+> 「Craft我想要的不是他的前端，而是他在跟agent交互上的一些设计，他的很多地方的功能都可以直接唤起agent让agent帮忙设置或者做配置，然后就是他的在对话气泡上的一些设计，还有他的看板功能」
+>
+> 「https://github.com/chuspeeism/dashi-taskboard 我希望和这个看板结合做成一个我们项目的看板插件」
+>
+> 「能直接安装一个插件直接在界面或者设计页面右侧工具栏，多出一个入口来或者界面来，让agent可以自由的为软件创建插件，并且些新增的界面也能符合我们软件的设计语言和各种要求这个非常重要」
+>
+> 「Cindy就把OpenDesign改造成了Cindy的一个插件，这样让人们可以直接在Cindy里使用Open Design这个原本是个独立软件的开源项目」
+
+**English gloss:** Preserve Craft's contextual Agent-assisted configuration, conversation-bubble
+interactions and Board value; its frontend is not the desired mandatory base. Combine the Board
+with dashi-taskboard as an installable Fleet plugin. Plugins must be capable of adding genuine
+pages/tool entries, including design-page right tools, and Agents must be able to author them while
+following the shared design language. Cindy's OpenDesign port is the concrete application-level
+example: suites can adapt substantial independent software, not only Skills or small tool panels.
+This supersedes earlier blanket rejection of Dashi's board/domain storage. It does not authorize
+duplicate Session/permission ownership or claim the full original OpenDesign product is embedded.
+
+**Implementation advice, not an owner-selected schema/base:** inspect and exercise Cindy's existing
+port, then prove the native-plugin seam with the requested Board; use shared operations, host
+capabilities and a versioned UI contract. The whole baseline decision remains open under OV-025.
+
+**Now carried by:** [Product](product.md#baseline-reassessment),
+[plugin and Board contracts](modules/components.md#agent-authored-native-plugins),
+[authoring lifecycle](modules/marketplace.md#agent-authoring-and-application-packages),
+[source evidence](references.md#cindy-opendesign-application-plugin) and
+[UI contract](../DESIGN.md#plugin-ui-contract).
+
+### OV-027 — ZCode product baseline; kernel target reviewed separately (2026-09-26)
+
+> 「我想在ZCode基础上做整改去除ZCode品牌化的设计，对他的模型设置方面还有模型方面做整改优化，我们是像Cindy和Cindy一样用pi作为内核，还有有什么更好的方案么」
+
+**English gloss:** Use ZCode as the product reconstruction direction, remove its branding and
+improve model settings and model behaviour. Evaluate using Pi as kernel and whether a better
+approach exists. This supersedes Cindy-first feasibility under OV-025; it does not instruct a
+continued Craft shell transplant. Preserve OV-026's application plugins and Craft interactions.
+
+**Current implementation:** the isolated candidate still runs ZCode's `AgentRuntime` and retains
+its Session/permission owner; installed `pi-ai` is a model transport. OV-036's best-first review
+now recommends a different long-term Fleet-owned kernel. Product-base selection does not approve
+that authority migration. Cindy's Pi RPC bridge remains comparison evidence, and current
+app/data/reference pins remain preserved.
+
+**Now carried by:** [Product](product.md#baseline-reassessment),
+[source comparison and options](references.md#zcode-baseline-and-pi-integration) and
+[current work](../TODO.md#current-work--zcode-baseline-and-model-boundary-ov-027).
+
+### OV-028 — Compare vendor harness optimizations with Pi (2026-09-26)
+
+> 「你可以拿几个模型尝试的驾驭工程跟pi做对比，看看怎么样的实现方式是最好的，能够适配不同的模型尝试，让各方都能在我们的软件里拥有用官方驾驭功能一下的优化效果」
+
+**English gloss:** Compare several model vendors' harnesses with Pi and identify an implementation
+that preserves provider-specific optimization inside Fleet. This requests source-backed evaluation,
+not an assumption that a single generic protocol or replacing the whole kernel yields official parity.
+
+**Evidence and recommendation:** the [comparison](references.md#official-harnesses-versus-pi)
+records native request/history/cache/tool mechanisms and six Pi routes exercised offline. Prefer
+one host authority with provider/protocol adapters and bounded model-specific policies; compare
+existing ZCode and Pi adapters before changing the Agent loop. That is engineering advice, not
+approval of a new runtime, dependency or storage boundary. Live cache/quality parity remains unproven.
+The [first proof](modules/context.md#first-proof) fixes comparison controls and scope.
+
+### OV-029 — Learn Hermes/OpenClaw/CC Switch mechanisms and start landing (2026-09-26)
+
+> 「Hermes和OpenClaw是怎么处理相关问题的CC Switch能很好的适配各种厂商并且注入到各个驾驭工程，他的设计有没有我们可以学习的，想清楚就直接动手梳理好项目文档，然后开始落地」
+
+**English gloss:** Investigate the actual provider/harness integration mechanisms of Hermes,
+OpenClaw and CC Switch, organize the canonical contracts and begin implementation. This advances
+OV-027/028 beyond a documentation-only comparison; it does not choose a different product base,
+authorize paid requests or replace Session/permission/credential ownership.
+
+**Landing:** an isolated full ZCode checkout plus a reproducible patch against its reviewed pin.
+The first correction keeps user-owned API-key requests at their configured endpoint instead of
+implicitly routing them through ZCode's platform. Its subscription account path stays separate.
+The [source comparison](references.md#hermes-openclaw-and-cc-switch) distinguishes native config
+projection, protocol adaptation, scoped credentials and cache policies; Pi kernel migration,
+external CLI takeover and performance parity remain unimplemented.
+
+### OV-030 — Local startup, no ZCode commerce; optional GitHub identity (2026-09-26)
+
+> 「软件开启时的有些提问弹窗或者一些要依赖或会连接ZCode官方服务器，或者是他官方用于收集用户数据之类的东西应该删除，原本的账号登录之类的应该改成GitHub登录」
+> 「开始的引导页也要去除右侧ZCode官方的标识和一些设计」
+> 「还有升级套餐等商业化的设计也要去除」
+
+The candidate must start without a mandatory ZCode account or questionnaire. Retire original product
+collection and purchase/upgrade routes, retaining user-owned model APIs as optional connections.
+GitHub authorization is optional repository identity, independent of Copilot model authorization.
+The owner subsequently asks about official GitHub plugins; [marketplace](modules/marketplace.md#github-package-and-official-implementations)
+records official MCP/CLI reuse; OV-031 corrects the existing GitHub package and account boundary.
+No authorization of a real GitHub account, hosted service deployment or user-data migration follows.
+
+### OV-031 — Local Agent help and direct GitHub account authorization (2026-09-26)
+
+> 「右上角的帮助也应该做一些整改像产品文档应该改成Craft Agents之前那样的本地化文档，而且也都应该是给Agent使用的」
+> 「ZCode原版插件商城里既有GitHub插件」
+> 「还有你对于GitHub账号链接方面也做的很失败，而且我感觉不应该靠GitHubCLI来链接」
+> 「而且应该使用GitHub头像而不是分支图标」
+> 「头像之类的你应该直接用原版软件的大小图标之类的」
+> 「Craft Agents是可以在不同的功能的页面有按钮可以直接唤起Agent，并且会发相关的文档之类的给Agent作为上下文，让Agent更好处理用户需求」
+> 「而且无论是在二开Craft Agents还是现在的ZCode你修改的时候总是忽略修改相关功能或者总是错误理解我想要的东西和效果，也不多主动的提问」
+> 「还有你的本地指南设计也有问题」
+
+Use packaged, source-backed operational documents through existing preview/plugin owners. Retire
+vendor-only Help entries. The generic Help → configure draft was an implementation misunderstanding,
+not contextual editing. The owner confirms Craft-style small conversations, prioritizing what the
+Agent needs (target, documentation, supported operations and refresh), and asks whether each ZCode
+feature actually needs them. Help has exactly documentation, Resource Manager and Check for Updates.
+The summary guide is not accepted as complete operational documentation.
+
+The direct GitHub profile-login attempt was not completed and is superseded by OV-032. Its fixture
+tests did not establish usable login. Existing ZCode GitHub workflow plugins have a separate tool
+authorization path; no real account consent, registration or credential migration was performed.
+
+### OV-032 — Local profile replaces the account entry (2026-09-26)
+
+> 「还有你设计的左下角GitHub根本无法使用，还写一堆乱七八糟的小字」
+> 「我感觉你对原版ZCode的很多修改都有问题，就像让你改Craft Agents时一样，各种乱搞」
+> 「或者左下角去除什么账号登录之类的做成Cherry Studio那样让用户可以自己命名和替换头像的设计」
+> 「还有对于ZCode原版的插件商城里的插件我们又要怎么处理，我们点击下载都是从ZCode官方下载吗」
+> 「头像各个方面你也应该改回原本的，然后有些地方也被你错误的修改或者删除了整改软件」
+> 「还有token环等」
+> 「默认头像不对」
+
+Replace lower-left account controls with an editable local name/avatar using Cherry's interaction
+and the existing ZCode components/settings owner. Remove the newly added GitHub login path and its
+configuration captions. Do not delete saved credentials or modify repository/plugin/Copilot access.
+Existing preference actions retain their Settings/native menu homes. No new login service or profile
+authority follows. Marketplace-source findings and proposed intake belong to the marketplace module;
+asking where downloads originate does not authorize bulk mirroring or external publication.
+
+### OV-033 — Model services and bounded credential switching (2026-09-26)
+
+> 「你还可以看看Cherry Studio在模型服务页面是怎么设计的」
+> 「API地址应该在上面，密匙和订阅账号都应该可以在下面添加多个，而且可以设计一个自动切换的开关」
+> 「同服务商、同模型切换（推荐）」
+> 「他的前后端交互还有各种设计你都可以看看，他的模型页面有很多不错的设计，而且还能适配Antigravity 订阅你看他是怎么实现的」
+
+Inspect installed NewMax and Cherry's model-service implementation before landing. Keep address
+and supported protocol above credentials. Multiple keys/accounts and an opt-in switch belong to
+the existing Provider and credential owners. Automatic recovery stays within the same configured
+service, endpoint/protocol and exact model; the answer does not authorize model-priority fallback,
+cross-provider routing or mixing API billing with subscription allowance. Default off is the
+recommended initial setting. Reference findings, limitations and the Antigravity integration
+boundary are recorded in [the comparison](references.md#model-service-and-credential-comparison).
+No real account authorization or credential migration was performed by this investigation.
+
+### OV-034 — Vendor-first, in-place connection choices (2026-09-26)
+
+> 「按供应商分是对的但是你的交互设计还是有很大的问题」
+> 「可以想想怎么在不弹窗，不实用下拉框的情况下能让用户配置选择到想要的链接方式」
+
+Keep the explicitly grouped vendor catalog. Selecting a vendor must reveal its service/plan,
+region and protocol choices directly in the existing settings content, without a dialog or
+connection-choice dropdown. NewMax's in-place connection setup and segmented formats supply the
+interaction reference; reuse ZCode's existing visual primitives and credential owners. Selection
+is a local draft, not creation of an empty saved Provider. Explicit Add/Connect owns persistence
+and authorization. This does not approve another credential authority, new OAuth provider,
+automatic paid testing or merging existing connections. Appearance remains pending acceptance.
+
+### OV-035 — Provider-native defaults with explicit custom protocol settings (2026-09-26)
+
+> 「对于API的格式是固定某一种，并且对另外两种做兼容好还，还是只适配一种好，有没有必要让用户手动的去择采用哪种API格式不同的API格式或者输出效果或者哪些方面有产生影响吗？」
+> 「你可以看看其他的项目和软件，他们是怎么做的理出最佳方案，然后动手整改」
+> 「还有对于获取最新的模型列表，没必要专门做一个按钮，又做一个弹窗」
+
+The owner authorizes source-backed implementation following the recommendation: one internal model
+contract with provider-native adapters; presets choose declared formats, while custom endpoints
+retain explicit overrides. The owner's later correction, 「API格式可以直接做成这样的选择按钮」,
+requires always-visible, full-width format segments, taking NewMax's interaction with ZCode's
+existing controls. Selecting a documented preset route updates its format and endpoint together;
+custom addresses remain user-owned. Defaults remain selected without requiring a choice.
+Keep the in-place interaction under OV-034. Do not silently convert all models to Chat Completions,
+probe protocols, change account/model/billing on failure, migrate existing overrides or replace the
+Session/credential/runtime authority. Source comparison and concrete limits live in references and
+context; this authorization is not proof of new provider support or live inference quality.
+Model catalogs load within the existing model list after connection settings are committed. Remove
+the separate fetch button/dialog; keep search, selection, refresh and recovery inline, without
+running inference. The later owner correction automatically registers discovered models in the existing owner, preserves prior edits and disabled states, and reserves manual Add for undiscovered IDs; see the current model contract.
+
+### OV-036 — Source-backed subscription and kernel selection (2026-09-27)
+
+> 「还有别的订阅会员也要处理，我之前说的很多东西，你都没解决」
+> 「你先看清楚各个开源项目有哪些接入方式再选择最佳方案，而不是问我」
+> 「内核本身也要纳入研究范围，想清楚要实现后面的种种设计，用什么样的内核最合适」
+> 「对于内核的选择应该早做决定不应该一直拖着，全面对比所有内核设计」
+
+> 「重点是想要更好的实现我们的后续开发的各种功能和设计使用谁的内核最合适，或者我们直接自研，不要在意工作量，我只在意最好」
+> 「而且你应该先更新所有项目到最新版」
+> 「我希望你进行更仔细深入的研究和测试，确认清楚到底有什么样的配合还是最好的，还是说像有些像风一样，让用户可以自己切换，同时兼容多个」
+> 「而且你也可以想想，当我们选择某个内核之后，对后续开发都会有哪些变化和影响」
+
+**Historical recommendation, superseded for implementation by OV-066:** use **one Fleet Host
+with a default embedded executor and selectable complete native executors**. Fleet owns Project
+operations, logical conversations, input admission and usage attribution; each run has one active
+executor. Pi durable/Chord remains an execution-durability candidate for the proposed default lane,
+with `pi-ai` model transport, but the prior categorical claim of an established best kernel was
+stronger than the evidence. Offline recovery tests do not rank task quality, cache savings or
+provider latency. Preserve ZCode as the current candidate and benchmark. Its journaled dynamic
+workflow already supports replay and is not an empty capability to rebuild. Choosing the Host
+architecture does not require committing every conversation to one vendor or copying several
+applications' stores, settings and permission systems. A production replacement remains gated.
+
+**Why this target:** refreshed Pi `2532a0bef7f7` supports atomic transcript/task/document
+commits, durable tool intent, safe-versus-unsafe replay and child foreground/background ownership.
+Chord offers typed cross-process services, replicated state and reverse-disposed facets. The
+source marks Pi durable experimental, and its media reader, Fleet permission policy and native
+page contribution do not exist. New direct tests show that changing its model during tool work
+changes the next request of the same user input, and queued inputs do not capture their route.
+Fleet must bind the whole input explicitly. An internal Fleet fork could stabilize those contracts while
+preserving MIT notices. Extending ZCode indefinitely keeps a single current path, but its V4
+handlers call `record.app.runtime` directly and still lack the needed domain-page/plugin host.
+Full Pi CLI brings its own JSONL Session and process-permission extensions; DeepSeek Cordis,
+OpenCode, AionCore, Deep Agents JS, OpenAI Agents JS and the vendor CLIs each contribute useful
+mechanisms but no complete ready-made Fleet host. The later official MiniMax Code V2 source is a
+stronger whole-host comparator: it owns SQLite Session/history/queue, a permission gate and
+supervised MiniApp publication over a vendored Pi loop. Its published source excludes the desktop
+app, while inspected writers are Session/queue-specific; it does not yet prove Fleet's common
+Project document/Job or native panel contract. Goose supplies the missing open desktop/CLI/ACP
+comparison and correctly delegates a complete external ACP Agent; its standalone MCP App starts
+a distinct ACP Session and likewise lacks the inspected common Project document/Job transaction.
+A blank-sheet kernel would discard tested commit/recovery code without a demonstrated benefit.
+Original ZCode's completed effects replay safely, but interrupted `world.run` nodes may run again;
+neither it nor Pi supplies a remote provider's exactly-once effect guarantee. The exact
+[source call chains, alternatives and limitations](references.md#kernel-choice-against-fleets-complete-product)
+carry this conclusion, not ecosystem popularity.
+
+**Authority and path:** one Fleet Host admits a versioned Project/Session command. Each existing
+owner commits its own records; native files and remote effects report receipts and explicit partial
+outcomes. No transaction spans all stores. Publish committed state, and reconcile an effect whose
+receipt was not persisted before retrying it. A person and an Agent invoke the same resource operation; the Fleet
+policy owner checks the current Project grant and resource revision at the effect boundary even
+after approval. An Agent's ordinary model loop uses `pi-ai`; an official CLI/app-server/ACP Agent
+runs as one capability-negotiated complete executor and reports events back to the same Host,
+without an outer tool loop. Chord composes backend/renderer/remote plugin services but does not
+own a second database or grant OS privileges from a manifest. Project folders, folderless
+conversations, artifact references, attempt IDs and native continuation bindings need one
+versioned migration map in the isolated proof; no existing user data is rewritten yet. The
+[switching contract](modules/agent-core.md#kernel-target-under-ov-036) pins each admitted input,
+stages choices until a safe send boundary, validates parked native state and commits a durable
+handoff receipt. Switching back is native resume only when the old binding remains compatible;
+otherwise it is a visible new handoff/branch. Tool, image, permission, usage and rewind capability
+remain adapter-specific. The [development impact table](architecture.md#executor-choice-and-feature-development)
+governs downstream feature design so the same domain operation is not implemented per engine.
+
+**Failure and evidence:** cancellation is requested and observed separately; an interrupted
+unsafe paid/destructive tool is reconciled, never blindly replayed. Removal revokes both tool and
+UI registrations while keeping user documents. Existing ZCode records remain readable until a
+verified copy/replay and rollback path is accepted. The offline
+[`fleet-kernel-shared-operation.mjs`](../scripts/probes/fleet-kernel-shared-operation.mjs)
+probe validates a shared human/Agent edit, stale version rejection, authorization revoked *after*
+the model reply, Project isolation, a reconciled fake media Job and backend facet disposal across
+SQLite reopen with zero network calls. The refreshed Pi
+source passes 125 focused ownership/recovery cases; seven document/tool/SQLite/facet suites pass
+189 cases, with overlap. The probe persists one Boolean grant; Fleet's full permission policy,
+native UI plugin mounting, real media output, native executor mapping, Windows/Linux packaging and full ZCode data migration are
+**not implemented** in Fleet. The current ZCode candidate remains `wired but not visually checked`.
+Further executed evidence includes AionCore's 609 adapter/reducer cases, 70 original Cindy handoff
+cases plus 3 boundary cases, 3 Pi model/queue switching observations and 3 original ZCode replay
+observations. A real SIGKILL/reopen probe preserves a fake media receipt and leaves unqueryable
+outcomes unresolved without another effect. These validate control/recovery mechanisms only;
+native CLI version drift and real-account inference remain explicit limits in the source record.
+
+**Owner checkpoint before large implementation:** this replaces a Session/permission/security
+boundary and introduces maintained source. Present the isolated schema, one Project document plus
+one media Job, plugin revocation, native-executor fake and read-only ZCode replay for review; only
+then cut over an isolated profile with the old database intact. The user must approve that concrete
+migration before production authority replacement. This entry does not authorize a paid request,
+reference removal, data deletion or remote merge. HarnessRouter remains an optional external
+executor-protocol comparison, not a second Fleet state owner.
+
+> 「你确认这个是最佳方案么，别的软件的设计你都看了核对了么，有价值的项目就源码克隆下来，之前源码克隆的也记得要更新到最新版」
+> 「还有这个项目有结合进来的价值么」 — [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+
+The owner authorizes refreshing reference sources and cloning valuable comparisons. Preserve local
+edits and the two deliberate Craft pins; use separate latest companions where needed. Current HEAD,
+source review and executable verification remain separate records. Include CLIProxyAPI's provider,
+quota and credential mechanisms in the comparison; this does not authorize a second built-in gateway
+or constitute approval of every upstream subscription route.
+
+### OV-037 — Finish the model workflow and share its UI foundation (2026-09-27)
+
+> 「我觉得添加供应商页面是不是把，订阅会员和API分开比较好，同厂商也分订阅和API」
+> 「而且不需要搜索框，然后ZCode原版的每个供应商按钮太大了，和版面不协调，并且供应商图标应该加上底板统一视觉」
+> 「还有在模型配置页面之外增加默认模型的选择，让用户可以自由配置常用的模型，还有默认的 生图生视频生音频的模型」
+> 「还有很多我之前交代过的工作随着上下文压缩你忘记或者忽略了」
+
+The latest intake separates subscription and API before choosing a vendor, superseding OV-034's
+cross-mode vendor-first ordering while retaining in-place configuration. Coding Plans with API keys
+remain subscription products. Remove vendor search, compact the cards, and use consistent icon
+plates. Saved keys need independent pause/resume; model/key addition shares the same inline row
+behavior, with manual model Add below the list. The owner requests CC Switch API import and a
+separate default/favorite-model setting; this supersedes E10's earlier rejection of an app-wide
+default picker for this candidate, using the existing default selection owner. Media defaults still
+require real execution paths, not renamed chat rows. Contextual Agent configuration, subscription
+reliability, quota caching, media handling and the original useful interactions remain outstanding
+until their own acceptance paths close.
+
+The owner supplied `TraeWork.zip` and requested an open-source icon/component comparison to keep
+future pages consistent. Inspect it as reference data; its bundled instructions do not replace the
+repository contract. [The current checklist](../TODO.md#current-work--zcode-baseline-and-model-boundary-ov-027)
+records purpose, priority and closure for all these requests. This does not authorize importing an
+unverified design package, adding a new production UI dependency or replacing host state ownership.
+
+### OV-038 — Reference by function; delegate and submit complete workflows (2026-09-27)
+
+> 「各个设计动手前都去看看结果源码参考的项目他们的类似功能是怎么设计的，很多时候名字可能不一样，但是要实现的功能是一样的」
+> 「你可以先想清楚再派子Agent分头完成，并且提交的时候按最大的功能实现闭环，避免打地鼠，方便后期维护和问题发现等」
+> 「ZCode是否有提供二开文档之类的也要去看看，还有插件商城的改造之类的」
+
+Map equivalent user operations across reference controllers, persistence and execution rather than
+matching component names or screenshots. The owner now explicitly permits deliberate delegation
+after that mapping; this supersedes the earlier blanket avoidance of sub-agents. The primary agent
+still owns design, contracts and integration. Each worker receives the relevant current contract,
+file ownership and acceptance/failure cases. Organize changes around independently verifiable user
+workflows, with their UI, backend and recovery together; neither one giant unrelated commit nor
+unclosed cosmetic patches satisfy this. Read ZCode's actual development/extension documents and
+marketplace lifecycle before choosing its adaptation. Earlier model, media and contextual-Agent
+requests remain in the single current TODO, not displaced by marketplace or library research.
+
+### OV-039 — Necessary explanations and model-foundation acceptance (2026-09-27)
+
+> 「原版这里的小字被你错误的删除」
+> 「上游格式等等一些功能的后面是否需要加一些小的感叹号注释一下每个选择会产生的影响，原版ZCode是否有地方有类似的设计可以按他的版式来」
+> 「记得每个修改都要仔细排查确定清楚，避免后期带病开发，模型相关的设计是整个项目的地基」
+
+Restore necessary introductory/prerequisite copy and use source-equivalent ZCode help/connection
+card patterns. Explain the real effects of upstream formats and provider-specific subscription
+steps; do not infer every Responses tool or membership entitlement from a format/login entry.
+Audit saved, editing, disabled and multi-credential row states together; empty action columns are
+not a useful affordance. Model metadata, execution options, context/media projection and defaults
+must remain consistent across Settings, conversation, Agent tools and future capability consumers.
+This strengthens the existing closed-workflow acceptance under OV-038; it does not retire earlier
+subscription, media, contextual-Agent or marketplace requirements.
+
+### OV-040 — Restore the profile menu and preserve account quota semantics (2026-09-27)
+
+> 「原软件点击是有功能弹窗的，但是你现在改成了智能设置头像和名称的弹窗，把原本的功能弹窗去掉了」
+> 「原版的Token环在没有首次对话的时候好像不显示」
+> 「总不能让用户频繁的切换到设置页面查看吧」
+> 「有时候用户可能订阅了20X和1X等不同档位的会员」
+
+Restore the original avatar preference menu and put the local profile editor inside it. OV-032
+changes identity/authentication, not the availability of language, theme, interface mode, zoom or
+usage shortcuts. Retired ZCode commerce/authentication actions do not return. The owner requests
+source-backed context/quota semantics and conversation access; account-count percentages and plan
+multipliers are suggestions to evaluate, not approval to misrepresent mixed-plan capacity.
+
+### OV-041 — Software-update shortcut and source-backed usage accounting (2026-09-27)
+
+> 「原本的升级可以改成软件升级，用于快捷更新软件」
+> 「除了之前的Token环使用统计也要考虑到，你可以看看CC Switch的使用统计是怎么实现的」
+> 「GitHub上面还有很多专门监控订阅额度和CLI额度的项目你可以源码克隆有价值的做研究」
+> 「getagentseal/codeburn」
+
+Add Software update to the restored avatar menu using the existing update owner, separate from
+vendor-plan upgrades. The owner names CodexBar, AIUsage, one-api, CPA-Manager-Plus and CodeBurn
+as research inputs. Inspect and retain valuable source; compare accounting, quota, identity,
+refresh and display, then choose mechanisms suitable for Fleet's current owners. A repository
+link authorizes source study, not importing credentials, running a proxy, publishing a release or
+presenting API-equivalent estimates as subscription bills. Earlier model/context/media tasks remain.
+
+### OV-042 — Explain protocol choice plainly and restore useful token details (2026-09-27)
+
+> 「想清楚就动手做完你之前没做完的设计」
+> 「你在模型设置页面乱加的注释太多了，而且很多我看了都不知道你在说什么」
+> 「看完你的解释我依旧不知道API格式选谁的有什么区别」
+> 「之前的token环点击会显示详细的消耗信息，为什么现状没有了，是上游修改导致的吗」
+> 「我觉得有详细的上下消耗信息会好一些」
+
+Remove redundant explanations; retain one plain format-choice aid containing only available
+options and the provider's documented interface names. Selecting a format is not selecting the
+model brand. Keep actionable prerequisites, failures, quota impact and actual authorization scope.
+The inspected upstream still has a character-composition breakdown and cache hit rate. The candidate
+had kept an empty pre-measurement ring with only an unmeasured explanation. Restore useful click
+inspection, distinguish measured per-request counters from estimated composition, and finish the
+existing context/account-allowance workflow rather than treating copy edits as model-foundation
+completion. Earlier statistics, capabilities, subscription, media and Agent-operation work remains.
+
+### OV-043 — Personally verify account correctness and simplify allowance details (2026-09-27)
+
+> 「打开授权页后又连回原账号」
+> 「我登陆了第二账号，根本没用还是只显示一个」
+> 「我看你现状好像连一个账号都会出问题了，不要乱派子智能体，自己排查确认清楚」
+> 「额度信息不对，而且你看看每个账号的下拉框排版能不能做精简优化」
+> 「而且应该显示会员订阅剩余天数」
+> 「你的token环设计非常不合理」
+> 「我觉得你的设计不如官方原版直观」
+> 「Cockpit Tools都能识别到订阅的是什么级别的会员什么时候到期,而且还可以在他软件里使用重置卡」
+
+The primary agent personally owns the current regression investigation and verification; no
+further worker dispatch. Preserve every saved account and the original default while inspecting
+authorization, identity, save receipts, account refresh, catalog replacement, quota and inference
+as one workflow. A second saved account hidden behind a stale UI revision is not a failed login.
+Account disclosure shows compact native quota windows and meaningful freshness. Display remaining
+allowance clearly, with used percentages available as detail. Membership days require an actual
+account-matched subscription term; quota resets and OAuth token expiry cannot supply it. When the
+current authorization does not expose billing dates, say so without fabricating a renewal date or
+silently importing browser credentials. The primary must inspect Cockpit's actual account-entitlement and subscription queries before concluding dates are unavailable. The owner rejects the added tabs and ledger-first hierarchy. Restore the original capacity → visible composition → compact allowance order; keep request consumption behind a secondary disclosure. Earlier backlog items remain open.
+
+### OV-044 — Conversation switching and real fast-mode support (2026-09-27)
+
+> 「是否考虑过在对话过程中切换账号，切换模型等情况发生时怎么处理」
+> 「原版的软件怎么设计的，其他项目怎么设计的，你觉得最佳的落地方案是怎么样的，想清楚就动手」
+> 「现状很多厂商的有些模型都有快速没收，你并没有做相应的开关」
+
+Treat the last phrase as fast mode. Personally compare the current ZCode submission/active-model
+boundary with Cindy, OpenCode and native provider contracts before implementation. Account,
+model, effort and speed must reach the real request without cross-account continuation leakage,
+mid-stream mutation, lost history or retry loops. Preserve a running turn and make the point of
+change explicit. Speed is distinct from reasoning effort, model aliases and higher-capacity account
+plans; surface it only for a supported model/connection/adapter combination, with its real allowance
+or billing impact. Keep one Session, credential and selection authority. No live premium inference
+is authorized merely by adding the switch. The original-layout token-popup correction and prior
+account/model/media/plugin backlog remain active; no further subagent dispatch.
+
+The owner subsequently rejected the compound Fast control: 「你把快速的按钮做的太复杂了」.
+OV-047 then moved Fast into the existing effort menu: it remains an independent speed choice,
+shown only when the selected model/account advertises it. Explain the allowance multiplier there,
+without a second toolbar switch, slider or dialog.
+
+### OV-045 — Remove extra model-preference surfaces and supply automatic effort (2026-09-27)
+
+> 「不需要常用模型的设计，在每个模型都有开关不用可以关」
+> 「别的软件选择了模型就能直接用，但是你的还一定要用户再选思考等级」
+> 「别人好像都有自动的默认最佳等级还是怎么样，你去仔细了解清楚」
+> 「你乱增加的默认模型也该删除」
+> 「还有生图生视频等，还有很多我之前提到过的东西你没完善好」
+
+Remove the added Default models page/sidebar entry, favorite-model UI and duplicate picker group;
+model enablement and the existing conversation picker own visibility and selection. This supersedes
+OV-037's separate default/favorite surface. Preserve existing stored preferences for compatibility
+rather than silently deleting data. Selecting a model must be executable without a mandatory second
+reasoning choice. Prefer a valid provider-declared default; otherwise let the provider select its
+native default without inventing a universal best/highest level. Preserve valid explicit choices.
+Trace normalization, submission freezing, runtime validation and final wire omission/value together.
+The former required manual reasoning after incomplete restoration is superseded. A legacy
+subscription auto-discovery snapshot that saved only a synthetic `off` level may yield to a newer
+account catalog only when its other observed fields still match; disabled, manually fixed and
+materially edited rules remain. An empty upstream effort list never establishes Off. The actual
+saved selection, menu and request must agree. Media remains an
+unfinished input → invocation → progress/cancel → saved artifact/preview workflow. All other backlog
+items and OV-044 switching/fast-mode work remain active; this is not a cancellation of those tasks.
+
+### OV-046 — Audit custom changes against upstream and study Pi packages (2026-09-27)
+
+> 「整个项目的很多修改都要跟原版软件做仔细对比」
+> 「确保你的修改都是在优化项目，而不是过度工程胡乱堆砌代码和防御性工程等」
+> 「pi有大量的优质插件，你可以看看有些哪些是我们项目所需要的，比z code做的更好的，或者他没有但我们需要的等等」
+
+Compare existing deltas by complete workflow with pinned upstream and named references; identify
+measurable benefit, required behavior, duplicated state/guards and needless surfaces before further
+layering. Study https://pi.dev/packages with source, license, dependency and real-host compatibility
+evidence. Prefer packages addressing established media, document, context and plugin gaps. Catalog
+claims/downloads alone do not prove quality. The current pi-ai transport is not a Pi Agent extension
+host; this instruction does not authorize replacing the runtime, importing another permission/store
+system, installing every package, or opening a new external service. Earlier tasks remain active.
+
+### OV-047 — Original context UI and subscription cost accounting (2026-09-27)
+
+> 「请求明细完全是无用的多余设计」
+> 「使用统计增加每个模型的缓存命中率」
+> 「用官方价格结合模型用量来算大概的花费」
+> 「填我绑定的各家会员的每月真实花费」
+> 「快速模式的开关可以做进思考等级里」
+> 「统计也要记有没有开快速模式，算价格的时候」
+> 「原本zcode的设计……Token环相关的设计没什么问题不要乱改」
+> 「写ChatGPT就好了」
+> 「订阅账号……在他的基础上做小的修改」
+> 「每个档位用不一样的颜色」
+> 「输入框选择模型后只要显示模型名称就行」
+
+Remove the added request-detail disclosure from the context popup. Original context/allowance
+structure remains the UI baseline; usage analytics owns cache hit rates and costs. Move speed into
+the effort menu without treating it as effort; show sourced provider-specific multiplier information.
+User-facing subscription branding is ChatGPT; protocol identity and existing credentials stay intact.
+Subscription account UI reuses original plan-card structure with tier badges and bounded multi-account
+operations. Composer trigger shows model name only; menu retains provider grouping.
+
+The owner explicitly approved extending/migrating the existing statistics ledger: 「批准，按此方案实现」.
+Record account, billing period, currency and actual paid fee; allocate only measured Fleet usage by
+native credit weight when available, otherwise sourced API-value weight. Label allocations and
+API-equivalent costs as estimates, never provider bills. Preserve unknown legacy identity, price,
+speed and missing counters; no reconstruction by current defaults. Other applications are outside
+measured coverage. Retention must not silently erase a paid period. New production dependencies,
+external service activation and paid acceptance calls are not implied. Earlier work stays in TODO.
+
+### OV-048 — Check new ZCode releases and synchronize applicable changes (2026-09-27)
+
+> 「新版本的ZCode有些功能更新你可以同步更新一下」
+
+Check public releases and source before integrating; preserve Fleet's approved changes and current
+uncommitted work. At this check, remote HEAD/main remains `29628c9acdb81b703bbd4080c207a0e7ce5e276e`
+and GitHub's latest public release is v3.14.3, the candidate pin. No newer public source was found;
+do not invent an upgrade or replace the reference pin. Verify named missing features against that
+baseline when evidence becomes available. Binary product rollout can differ from public source.
+
+### OV-049 — Original-style statistics and simpler model management (2026-09-28)
+
+> 「你新增的模块排版又丑……也没有图表化……写了一堆小字」
+> 「模型设置里的模型都有开关了，不应该再做删除按钮吧」
+> 「添加模型的设计和作用和交互还是得仔细考虑」
+> 「你可以看看ccswitch等其他软件的相关设计」
+
+Compare original ZCode and CC Switch source before refining the new surfaces. Retain ZCode's
+summary/heatmap/trend/model-chart hierarchy and native visual primitives. Cache hits and estimated
+cost become metrics in the original model chart; remove the added report table and permanent
+methodology prose. Keep meaningful unknown/partial states visible with concise focused explanations.
+Graph account-period payment allocation through the same chart pattern; retain the approved ledger
+and payment ownership. This is a presentation correction, not approval to change accounting facts.
+Model rows use enablement and editing; retire the duplicate deletion control without deleting data.
+Native subscriptions obtain model membership from their authenticated catalog; manual ID entry is
+reserved for API connections. Preserve duplicate prevention, explicit draft confirmation, cancellation
+and failure recovery. Earlier backlog remains active; visual acceptance of the replaced layout is open.
+
+### OV-050 — Reuse public price directories and validate DeepSeek intake (2026-09-28)
+
+> 「所有模型的官方收费标准都是公开的，为什么你没有获取到别人怎么就能获取到？」
+> 「有些东西你可以不用自己去获取吧，你看看别的软件有没有有相关的价格列表啊之类的」
+> 「deepseek……对于第三种应该怎么添加上去？你可以用这个真实的案例来测试」
+
+Reuse established public pricing data rather than a small hand-maintained model list. Extend the
+existing price calculator with a validated bundled models.dev snapshot and a reproducible refresh
+command, preserving directory provenance and verified official overrides. Price availability is
+separate from missing request facts. Match provider/region and exact or unambiguous case-equivalent
+model ID; no arbitrary suffix stripping, cheapest-provider substitution or zero for missing data.
+Do not alter frozen historical amounts or reconstruct unknown account/speed/counters from current
+configuration. The latest request does not authorize paid inference or an additional runtime service.
+
+Validate DeepSeek with its actual authenticated catalog, then the existing manual add/save/reopen
+path in an isolated configuration. Its currently published legacy Flash names are aliases, not extra
+independent models; do not inflate the automatic catalog merely to match an expected count.
+The test must preserve the owner's actual model list, credentials and default selection.
+
+### OV-051 — Connect estimates, paid costs and project attribution (2026-09-28)
+
+> 「模型费用预估啊，和下面订阅费用……他们现在还是独立的东西」
+> 「每个模型的官方定价，公开定价那些也要连起来」
+> 「每个项目的项目花费……让它可以在面板里独立的看到」
+> 「不要乱派子整体」
+
+The enduring outcome is to relate sourced API-equivalent usage, subscription value and Project
+attribution in one understandable experience. The original exact account-period payment allocation
+method was superseded by the owner's later simplification in OV-057; do not restore its editor or
+paid-per-model chart from this older entry. Preserve recorded usage/account/model/speed identity,
+Other attribution and the later standalone Project view through existing owners. The primary
+retains integration responsibility; incomplete workflows remain active.
+
+### OV-052 — Correct CC Switch adaptation and make statistics personalizable (2026-09-28)
+
+> 「模型设置页面从ccswitch导入也有问题……没适配到我们的软件的设置里」
+> 「你没有做到去重，有些API可能我已经绑定了」
+> 「CCSwitch里也有订阅会员……导入还是让用户自己登录更安全，像Claude你就还没做」
+> 「会员订阅费……能自动获取到的，不应该依赖用户手填」
+> 「没有登记进项目的消耗就归其他，还有项目外的对话消耗」
+> 「使用统计页面我只是想你增加一些能让Agent编辑的地方……个性化的修改」
+
+Correct source-client URL/model semantics and map imported connections into existing provider
+settings, including restart/reimport repair, logos, model visibility and membership-key fee choices.
+The import remains source-read-only and uses existing ProviderSettings commands; never copy OAuth
+cookies, execute foreign scripts, silently change defaults or perform paid inference.
+
+Automatically obtain subscription billing facts where the authorized provider exposes them. Preserve
+provider-reported plan/period/currency/discount provenance; a public plan price or discount amount is
+not evidence of the actual paid invoice. User correction of a displayed subscription-price basis remains an outcome, while OV-057 retires
+the complex fee/allocation interface. Projectless and unregistered usage belongs to Other;
+no exact payment-allocation denominator is required by the simplified current design. Keep the original statistics structure;
+expose bounded user/Agent customization through the existing Session, permission and settings/domain
+commands, not a replacement dashboard or a second ledger. These clarifications do not cancel the
+import correction or the earlier backlog. The primary agent continues personally.
+
+### OV-053 — Reuse charts and monitor for Agent decisions (2026-09-28)
+
+> 「使用统计新增的板块设计的就很差……GitHub上看有没有现成的好的方案或者模块」
+> 「哪个工具，哪个技能使用了多少次」
+> 「这些监控对于让Agent控制成本，或者决定哪些插件SKill的调整和去留都很有帮助」
+> 「并不是只是为了好看……从我们整个项目的高度来思考哪些信息是应该监控留存的」
+> 「看原版软件是否已经有类似功能避免重复」
+
+Compare source before adding counters or UI. Reuse original tool/model/turn usage and existing Skill
+event identity, retaining missing durable fields in the same ledger. Installation is not execution;
+frequency alone is not value or permission to remove a component. Preserve outcome, duration,
+retry/permission/size facts and session/turn lineage for later cost-quality and configuration-change
+comparisons. Do not invent per-tool token bills from shared model requests or equate a completed
+handler with an accepted task outcome. Versioned provenance and Agent access must be proven before
+claiming autonomous optimization. Existing permission and user correction paths remain authoritative.
+
+Study the owner-named EvilCharts and starc007/ui-components sources/licenses. Reuse a focused chart
+pattern within ZCode's existing primitives; do not replace the design system or add a dashboard
+runtime. Shared statistics retain the same time scope, clear currency units, missing-data gaps and
+Other for non-project usage. Source-segmented cost bars reuse the original context meter palette;
+model focus scopes the existing tool/Skill aggregate only where a turn has one known model. Earlier
+CC Switch, subscription, media and Agent-editing work remains.
+
+### OV-054 — Imported connection health and actionable failures (2026-09-28)
+
+The owner reports unusable CC Switch imports shown as green and an English authentication error that opens model settings. Reuse the existing Provider and network-diagnostic owners: import/catalog success does not establish inference access; configured connections are neutral until explicitly probed. Preserve the original inline failure feedback, localize classified causes, and never open metadata editing because authentication, allowance or transport failed. Only explicit upstream evidence may establish subscription expiry. The recorded Kimi Code response is `access_terminated_error` (current subscription has no Kimi Code access); its successful model catalog read does not contradict that failure. Changes remain within the existing import/connection correction.
+
+### OV-055 — Original feedback placement and product-specific subscription identity (2026-09-28)
+
+The owner asks whether error feedback reused upstream design and positioning, and requires consumer
+subscription products to keep their own public names/logos separately from the same company's API
+(for example Grok versus xAI). Membership tiers belong to each account, not duplicated login routes.
+Source comparison verifies ProviderDetailFeedback and its SectionLayout mount are unchanged from
+ZCode 29628c9acdb8; classified/localized failure content and manual dismissal are the declared deltas.
+Use existing vendor/service/region catalog fields, the existing icon library and original plan-card
+badge. Retrieve Grok's tier from official RemoteSettings as Grok Build does; a tier does not establish
+model access, paid amount, expiry or a complete native-client integration. Preserve user aliases.
+
+### OV-056 — Verify wire formats per service and return to original credential controls (2026-09-28)
+
+The owner rejects showing OpenAI Responses for a service merely because Fleet implements the
+transport, requests an audit of each provider's API and subscription boundary, and restores ZCode's
+simple key form: no confirm icon, and no single-credential delete/switch controls. Preset formats
+need explicit service/region/auth routes and a compatible model set. OpenCode Go/Zen publish mixed
+per-model protocols, so new connection choices change template/model membership; saved connections
+cannot swap a protocol while carrying a different variant's model list. Custom URLs retain explicit
+user-declared format choice with no promise of upstream support. One API key saves on Enter/blur;
+clearing the last remains a removal path. A sole subscription account can disconnect from its
+expanded row. Claude subscription must use an unmodified official client path with Fleet Session,
+permission and usage mapping; Anthropic API keys and CC Switch rows do not imply that support.
+
+### OV-057 — Separate subscription allowance from API-equivalent cost (2026-09-28)
+
+> 「我只是想让我能更直观的看到订阅会员和API原价之间的差别，不太需要精确的算账之类的」
+> 「想让你能手动修改订阅费的价格，也只是为了防止你把月费算错」
+> 「感觉算上订阅费的月费会十分混乱……重点不是看他们用什么字段来表示，而是看他们对这些费用信息的获取、处理等等各个方面的实现」
+
+The owner later retired the public plan-reference-price row and its correction form as obsolete.
+An account card shows the reported tier, quota windows, term and reset-card count; when a card is
+available, that count opens the details and a confirmation before account-bound redemption. The
+refresh hint uses the original title/secondary-copy tooltip pattern and carries the last fetched
+time, rather than repeating it inside the card. Usage Stats prices only Fleet-recorded requests at
+public API rates with explicit coverage and model/project attribution. One panel joins cost-source
+bars to activity facts; bars use the original context meter's tone progression and only recorded
+requests. Hover or keyboard focus scopes activity to one model; no focus means all. It does not
+assign a tool call a share of a whole model request or divide estimates by subscription fees.
+This supersedes OV-051's visible billing-period editor and the retired plan-price row, not the
+existing usage ledger or saved historical payment records. The original goal—an intuitive
+subscription-value versus API-price comparison, with a correction when a displayed plan price is
+wrong—remains open. Retiring the old row/form does not retire that goal. Public list price, a
+user-entered correction and a verified invoice have different provenance; a compact future
+comparison must disclose coverage and cannot claim exact per-model subscription billing. Its
+replacement presentation is not implemented and must fit the existing connection/usage pages.
+
+### OV-058 — Cost bars and composer usage stay local (2026-09-28)
+
+> 「对于没有产生费用的模型，就不应该显示……上面已经显示过命中缓存了，在这里也不用显示……工具和技能的切换按钮也应该显示在右边……对于花费的蓝条也应该参考Token条用，并且搭配左下角来显示，按颜色分层来显示哪些钱花在哪些地方等」
+> 「对于输入框的Token管理，没有必要有其他页面的跳转入口」
+
+The API-equivalent cost panel lists only models/projects with a positive priced amount; unpriced
+requests still count toward the visible coverage, and genuine zero is not renamed unknown. Its
+recorded request-source segments reuse the original Token meter colors, with a compact amount/share
+legend below the bars. The original model chart remains the home for cache-hit metrics; Activity
+keeps conversation, request, tool, error and Fast facts, with the Tool/Skill switch right-aligned.
+The composer context/allowance popup keeps in-place account inspection, refresh and reset actions
+but has no navigation to Settings or Usage Stats. Those pages retain their independent sidebar
+entries; this decision does not change the model picker's separate Manage Models action.
+
+### OV-059 — Keep account actions right and distinguish saved rows from drafts (2026-09-28)
+
+> 「对于订阅账号的设为默认和展开订阅额度的按钮应该靠右边，并且你的设计不太符合软件的风格。然后还有对于API页面添加API和添加模型的交互逻辑按钮啊，各个方面也设计的有些问题。仔细看看原版软件和其他软件，这些东西都是怎么做，讲清楚，怎么样设计才是最好」
+
+The account card keeps identity and reported tier on the left, with default selection, allowance
+expansion and (only for multiple accounts) removal in one right-aligned action group. This follows
+ZCode's information/action card structure and CC Switch's account action placement without
+adopting another theme or account store. An API connection with one saved key keeps one full-width
+input; adding a second opens a cancellable draft, not a second saved credential. Default/delete/
+switch controls for saved keys appear only when more than one actual saved key exists. Key entry
+continues to save on Enter/blur through the existing owner without an extra confirmation button.
+The model list auto-loads from the committed connection; its inline Add action allows one explicit
+ID draft at a time, with duplicate blocking, confirm/cancel, preserved input on save failure and
+localized feedback. It does not run a paid connectivity test or infer capabilities from the ID.
+
+### OV-060 — Finish the product base before expanding plugins (2026-09-28)
+
+> 「你不应该先做插件，我们项目的底座和各种基本的功能都还没整改优化好」
+> 「仔细查看项目文档和聊天记录项目现状等，定位清楚整个项目存在的问题和需要完善优化的地方……然后统一进行整改优化」
+
+The installed ZCode plugin inventory remains a read-only source reference. The unfinished
+portable-plugin implementation was removed before admission. Work now follows the existing P0
+connection, Session/model, context, usage/project-identity and subscription/media workflows in
+`TODO.md`; native plugin host and document-suite expansion resume only after their required base
+contracts are verified. A passing catalog or plugin test cannot promote an incomplete product path.
+
+### OV-061 — Token-ring quota follows the executing account (2026-09-28)
+
+> 「Token环里的账号信息也有问题，应该显示当前对话正在使用的模型所归属的账号而不是让用户手动点，然后就是开启账号自动切换的话你看是自动同步当前切换到的账号好，还是全部账号叠在一起百分比变成相应基础会员用量倍数的百分比（根据账号会员决定倍数，一般官方都会写每个档位是基础会员的多少倍额度）」
+> 「我记得ZCode原版就是这种设计，很多时候你都应该对比清楚你自己修改跟原版确保你不是在把软件越改越差」
+
+The composer uses the selected model's last persisted request account receipt, not a manually
+selected inspection account. Before a receipt it identifies the configured default as provisional;
+if the served account was removed, it shows no other account's quota. Automatic failover updates
+after the next request receipt. The original ZCode context ring remains the structural baseline.
+OpenAI's 5x/20x examples are estimates with independent five-hour/weekly windows and variable
+model/task consumption; Cockpit's summed percentages lack a common denominator. Therefore the
+Token ring stays account-specific, and no weighted pool percentage is fabricated.
+
+### OV-062 — Contextual Agent operation is product-base parity (2026-09-28)
+
+> 「像我之前提到的要做Craft Agents那样的右键可以让Agent在任何功能页面唤起Agent帮对话窗我们操作的还有一些相关的设计你就还没做，好像也没落到文档里」
+> 「还有就是我们的软件跟普通agent软件专注于code不同，我们还需要让agent能很好的操控我们软件本身的各种功能和页面啊之类的」
+
+Craft's targeted `EditPopover` remains in `app/`; the selected ZCode candidate lacks a
+feature-bound equivalent. Promote the existing contextual-assistance contract from a later
+enhancement to a product-base exit gate. Each feature page supplies an exact target and its
+supported operations to one anchored compact conversation using the existing Session, permission
+and domain-write owners. Preserve native context menus and a keyboard/touch entry. Model Settings
+is the first full proof; a help-only popup or an unscoped new chat does not satisfy this direction.
+The follow-up reiterates OV-024/026 and the product's original native-workbench definition; it is
+not a new feature request or a scope change. Kernel research must consume that existing contract.
+The prior coding-harness and synthetic recovery tests do not establish shared live-document
+editing, native save/undo, installed page contributions or feature-local Agent operation. Prove
+the current ZCode page/service loop first and compare executors through that same operation path;
+do not delay the authorized baseline correction behind an unproven replacement framework.
+
+### OV-063 — Model tool aptitude, vision bridge and prewritten follow-ups (2026-09-28)
+
+> 「工具调用方面也会受模型影响也要纳入考虑，有些模型就偏工具，像Cindy和OpenCham ber等各种Agent软件还有很多不错的，我们缺少并且很需要的功能，比如“视觉桥 让纯文本模型获得看图能力”等，然后现在很多的Agent软件还能做到在输入框里预输入回复Agent的提示词等这种功能是怎么实现，我们要怎么做到」
+
+Tool-call support is a model/route capability with explicit unknown, not a proxy for task quality.
+Keep user corrections in the Provider owner and retain model-specific call, validation, error and
+turn outcomes in the existing usage/Session ledger before comparing tool aptitude. The vision
+bridge is a separate, explicit input operation that describes an attached image through a selected
+eligible model before the text Agent request, preserving the source image, derived-text provenance,
+permission, cancellation and both models' usage. Neither a model name nor an image-input badge
+authorizes a hidden paid fallback. For typed-ahead instructions, keep ZCode's composer draft and
+Session-owned `queue`/`guide` admission; OpenChamber's server queue and Pi's steering/follow-up
+are comparison evidence, not another accepted queue. A draft is not a sent reply to a future
+question. The source comparison is in [references](references.md#tool-capability-vision-bridge-and-busy-input-comparison).
+
+### OV-064 — Reconcile documentation before the next kernel decision (2026-09-29)
+
+> 「有没有发现我们的项目文档和规划中存在的问题？哪一更好方案哪些地方可能无法实现等哪些规则或者说说明文档容易让别的意见的产生产误解或者说明都不够详细啊，那些文档没有必要带过，重复啰唆了等确认排查清楚，然后对文档进行全面的梳理和整改，然后再动手法内核等各个方面进行全面的整改。」
+> 「你看判断内和梳理文档，哪一个先进性比较好？」
+
+The owner authorizes a comprehensive documentation/planning audit and rectification, followed by
+kernel and product work. First reconcile the decision-bearing scope, code roots, authority,
+acceptance and feasibility statements. Then decide the Host/executor combination on those existing
+workflows; align the remaining implementation details from that result. Do not freeze every later
+schema before the evidence or reinterpret product requirements to fit a chosen framework.
+
+The audit may consolidate and retire obsolete project documents after preserving unique evidence
+and links. It does not delete user records or reference projects, waive runtime/data/security
+cutover requirements, change accepted outcome criteria, or turn a passed document gate into
+implemented functionality. `TODO.md` owns the active sequence. This supersedes the retired
+Craft-only work queue while preserving its source and recovery evidence.
+
+### OV-065 — Audit prior implementation, not only its documentation (2026-09-29)
+
+> 「如果连项目文档中都有那么多问题，那还有可能在之前的项目开发中出现了很多错误和问题，也需要你进行仔细的排查确认，然后统一进行全面的整改」
+
+The audit includes earlier frontend/backend changes and actual runtime behavior against original
+requirements and source references. A coherent document or passing pre-existing test is not proof
+of a correct implementation. Follow complete workflows, reproduce defects, preserve unrelated
+work/data, retire superseded uncalled mechanisms and repair verified regressions. This extends
+OV-064's preparation into code verification; it neither settles the kernel choice nor waives the
+existing authority/data-migration checkpoint. The active workflow list remains in TODO.
+
+### OV-066 — Close foundation choices and deliver in dependency order (2026-09-29)
+
+> 「还有很多重要的部分，应该赶紧做好决定，而不是让那些东西始终停留在备选待办等，想清楚整个项目的开发应该从哪些地方先入手」
+
+**Working route; page-first order superseded by OV-067:** evolve the selected
+ZCode implementation into Fleet's application Host. Keep its existing AgentRuntime as the default
+executor and pi-ai as model transport. This is the development baseline, not a holding pattern
+pending a whole-product bake-off. It supersedes OV-036's proposed Pi durable/Chord replacement;
+that source remains mechanism evidence. No live owner, credentials or user data changes here.
+
+| Decision now | Consequence |
+|---|---|
+| One Fleet Host evolved from ZCode; no blank-sheet or wholesale alternate-Host rewrite | Existing Session, command admission, permissions, Provider owner, artifact store and journal remain the starting writers. Native editor state is not forced into the Host DB. |
+| Default AgentRuntime + pi-ai; selectable complete native executors | Claude is the first native adapter, then ChatGPT's native tool/image route. Users choose the connection and model; that route selects the executor, without an independent global kernel picker. Each adapter declares and verifies its exact protocol/features; unknown resume/tool/usage semantics are not normalized by guess. Internal Codex protocol identifiers remain internal; user-facing subscription name is ChatGPT. |
+| Shared human/Agent domain operations are the first foundation deliverable | Start with Model Settings explanation and a version-checked model-enable operation. Use the existing Session/permission path and Provider mutation; no second settings store, arbitrary DOM controller or separate assistant engine. |
+| Extend the existing plugin installer and lifecycle | Agent Skills and MCP are the initial interoperable contributions. Vendor bundles are imported per contribution. Fleet owns persistent page/right-tool integration; MCP Apps is the interactive tool-result route, not the application/plugin lifecycle. Unsupported executable extensions are explicit. |
+| GenOffice open-source native document components are the Office suite source base | DOCX first, then XLSX/PPTX. Exclude enterprise-only code. Preserve each editor's live draft, undo and native save; PDF uses its own declared extraction/annotation/form capabilities. Dependency admission and format/platform fidelity tests remain before shipping. |
+| React Flow is the canvas implementation | Reuse the candidate's existing dependency; keep domain records outside the renderer. The rich-card performance exercise is an acceptance test, not another open renderer selection contest. |
+| One usage ledger and a simple subscription value comparison | Public API equivalents, sourced plan reference price and observed usage remain distinct. Allow correcting plan price; do not rebuild exact payment allocation or billing-period UI. Authoritative Project membership replaces the capped recent list. |
+| Original ZCode interaction primitives govern the candidate UI | Port Craft contextual assistance and useful domain interactions through those primitives. Do not restart a theme redesign or import each reference's chrome. |
+
+**Why this is the selected route:** the source review and executable probes establish existing
+ZCode queue/admission/permission and journal mechanisms. Its direct Runtime calls need a bounded
+adapter seam, not proof-by-assertion that a new Host is necessary. Pi durable supplies useful
+recovery mechanisms, but the tested lock lacks native page/editor parity and needs input-binding
+corrections. Its thin coding prompts do not establish a whole-workbench advantage; prompt/tool
+projection improvements can be measured on the chosen Host. Native vendor capabilities belong in
+complete executor adapters, while every engine shares Fleet's actual feature operations. None of
+the inspected alternatives supplies that whole product ready-made.
+
+This selects implementation responsibility and component families; it does not claim they are
+implemented, license every dependency, authorize paid calls or approve a Session/security/data
+cutover. A whole-runtime replacement is no longer on the active path. Reopen that choice only with
+a reproduced unmet Fleet contract or a matched whole-workflow improvement, preserving existing
+acceptance criteria. [TODO](../TODO.md#delivery-order) owns the ordered deliverables and exit tests;
+[architecture](architecture.md#executor-choice-and-feature-development) owns shared boundaries.
+
+### OV-067 — Implement and verify the kernel before feature pages (2026-09-29)
+
+> 「对于更重要的内核和一些东西，为什么不先做」
+
+Kernel engineering is the first implementation unit. OV-066 prematurely treated the current
+runtime baseline as sufficient grounds to put page operations first. Its source/component choices
+remain the working route, but neither source selection nor passing isolated probes establishes a
+completed Fleet kernel. This priority correction does not, by itself, select another framework.
+
+The kernel includes Host/Session admission, immutable input/run/executor/account/model options,
+tool capability and permission enforcement, state commit and replay, cancellation, native executor
+continuation and usage/artifact attribution. Establish these production boundaries and verify the
+first native adapter before expanding feature pages. Page/domain operations, plugins and media
+Jobs must use them rather than introducing private executors. Retain native editor data/undo.
+
+Start on the existing ZCode command and persistence paths with the same source-backed acceptance;
+fix inherited defects as well as Fleet regressions. A failed model/effort save must not change the
+active selection or publish success. Real SQLite reopen verifies recovery; transient and
+execution-scoped routes remain explicit. The main kernel stage must still prove permissions,
+queue/stop/restart and native execution; this first persistence repair does not complete it.
+
+[TODO](../TODO.md#delivery-order) owns the new order. OV-066's earlier page-first sequence is
+superseded; no UI work is needed to justify starting the kernel. Existing migration/dependency and
+external-effect checkpoints remain, reached after concrete isolated preparation.
+
+### OV-068 — Compare full Pi hosting and extend unsupported providers (2026-09-29)
+
+> 「你确定这样是最佳方案么，有没有更好的方案，直接参考Cindy额h Craft Agents使用PI内核会不会更好，pi对于有些我想要的供应商不支持怎么办，」
+
+The owner challenges the prior optimum claim and explicitly requests Cindy/Craft's complete Pi
+integration and provider-gap analysis. The existing AgentRuntime + pi-ai remains the running
+baseline; it is not proved optimal. Full pi-coding-agent SDK, pi-ai transport and experimental
+pi-durable/Chord are separate choices. Native Pi continuation under one Fleet Host does not itself
+violate single logical Session ownership. Retire the earlier categorical rejection on that ground.
+
+Source and the new full-SDK probe make Craft-style supervised Pi SDK a recommended default-executor
+target for the bounded kernel comparison, using Host-owned permissions/resources/domain operations
+and Cindy-style independent connection identities. This is a recommendation, not an approved live
+cutover or a claim that Pi always improves model quality/cost. Current production owners and data
+remain unchanged. A model-switch persistence counterexample in both tested SDK versions must be
+handled in the comparison rather than hidden by a success count.
+
+Unlisted models use verified compatible endpoints; auth/discovery/protocol gaps use Provider
+extensions and wire adapters. CLI-only access and media execution are separate capability paths.
+No catalog registration or API key establishes subscription entitlement. Exact sources, versioned
+probe results and limits live in [references](references.md#full-pi-sdk-and-provider-extensibility-reassessment).
+
+### OV-069 — Execute full Pi integration beneath the existing Host (2026-09-30)
+
+**Implementation boundary:** current code runs Pi AgentSession for loop/dispatch/abort/settlement.
+ZCode Host still assembles requests, calls providers, executes tools and owns retry, compaction,
+permissions and persistence. Pi default resources and extension autoload are disabled. The heading
+records the requested integration direction; it is not evidence of the full default Pi harness.
+
+> 「排查确认清楚然后动手执行，不要总是跟我做无意义的阶段性汇报」
+
+Following the explicit full-Pi proposal under OV-068, the owner directs inspection and execution.
+This authorizes the bounded candidate SDK dependency/integration, preserving ZCode product owners,
+permissions, credential/model adapters and user data. It does not authorize paid calls, arbitrary
+plugins, whole-Host replacement or a live-data migration.
+
+Full Pi AgentSession now drives each admitted input's model/tool continuation inside the existing
+supervised CLI process. Host context, protocol, tool scheduling, permissions and canonical SQLite
+remain authoritative. Private SDK state is in-memory per input; restart uses committed Host history.
+The legacy executor remains an explicit control/rollback option, not another user-facing selector.
+Model binding is changed in Pi only after Host commit. Preserve lazy persistence for unsent drafts.
+
+[Agent core](modules/agent-core.md#first-proof) owns this boundary; tests and actual binary evidence
+are in [Engineering](engineering.md#zcode-candidate). This implementation does not prove superior
+model quality/Token cost, native vendor executors, all platform support or whole-kernel completion.
+
+### OV-070 — Complete the foundation before plugin development; keep model calls lean (2026-09-30)
+
+> 「仔细看看整个项目在进入插件开发之前还有哪些问题，哪些地方不完善，哪些工作没做的，群都解决好」
+> 「希望我能实现像Pi那样精简，不占用模型的上下文…对模型来说的轻量」
+
+The owner reiterates the existing delivery order and asks for model-facing economy rather than
+fewer product capabilities. Fix demonstrated context/loadout defects through existing Host
+owners; preserve policy, task evidence, original retrieval and explicit invocation. Full Pi does
+not inherit upstream prompt size or prove better reasoning. Measure actual projected inputs and
+accepted outcomes before broader profile/selection changes. Existing dependency, native permission
+and live-data checkpoints remain; no plugin feature expansion closes an unresolved kernel gap.
+
+### OV-071 — Proceed with native SDK and permission integration (2026-09-30)
+
+> 「去做啊，要我批准什么」
+
+The owner responds to the specific Claude SDK/native permission proposal by directing execution.
+Proceed with the official Claude Agent SDK dependency and bounded Claude/Antigravity adapters
+through existing Host permissions, Session writers and accounting. Preserve Pi and current data;
+do not ask for this same approval again. This does not authorize paid provider tests, publication,
+credential copying or migration of the retained branch. Native opaque continuation is its own
+entity; it must not replace the editable Fleet conversation or imply unverified compatibility.
+
+### OV-072 — One candidate review instance (2026-10-01)
+
+> 「你现在会同时开启多个Electron，这是非常明显的大问题」
+
+Use one retained candidate review profile and reuse its running window. The agent's parallel
+review profiles and automatic app lookup after quit caused the duplicate windows; the original
+ZCode single-instance lock already exists. Consolidate development launch paths rather than
+replacing production window ownership. Preserve old profile/configuration files and user artifacts;
+inspect unsent state before closing a window, and never claim v4 drafts survived restart without proof.
+
+### OV-073 — Replace improved subscription implementations without duplicate paths (2026-10-01)
+
+> 「还有pi新增了对GPT订阅的支持，我们的相关设计也要做优化整改，上面的一起改」
+> 「如果更好就应该直接替换，不要留着垃圾」
+
+The owner authorizes the proposed Claude bundled-executable/native-resume correction and the
+new Pi ChatGPT subscription integration together. Replace default login and retire duplicate
+controls/code; preserve existing user records through necessary compatibility, without guessing
+identity across protocols. Use the existing credential and Session authorities, with the vendor
+retaining opaque continuation. No paid inference, credential copying or retained-branch migration
+is implied. Current implementation contracts belong to Context and Agent core.
+
+### OV-074 — One model and reasoning entry, compact Brain icon (2026-10-01)
+
+> 「合并模型和思考入口，并保留小闪电」
+> 「模型的思考强度和模型选择合并在一起」
+> 「当窗口缩载到一定程度的时候，可以把模型名称简化成……原本的大脑图标」
+
+Use one composer control for the model name, current evidenced reasoning choice and independent
+Fast action. Preserve the existing model/account picker, effort order/default resolver, request
+binding and keyboard commands. At insufficient width, the same entry collapses to the original
+Brain icon with an accessible tooltip. Reuse ZCode primitives and typography; the owner's Codex
+desktop screenshots supply interaction reference, not a new theme or permission to invent effort
+levels, slider precision, model names or prices. Page-assistant work remains required and resumes
+from its unfinished verification after this input-control correction.
+
+### OV-075 — Compact model-options rows without Settings navigation (2026-10-01)
+
+> 「要么像我截图这样设计，要么做成我之前发给你的图片等他划条的样子，现在这个样式很不对，而且不需要用模型设置的入口」
+> 「有些模型是可以选择上下文的这种才要有上下文窗口的，这种才要出现上下文选择」
+> 「很多软件都不用首次对话就知道模型上下文限制」
+
+Use the compact-row screenshot for Fast, Effort and Model. Show a Context selector only when the
+selected route has explicit, executable context choices; a fixed capacity is not a selector.
+The current catalogs expose fixed limits without a wired variant-selection contract, so this
+menu omits Context rather than inventing options. Fixed evidenced capacity is available from the
+original Token ring before first inference, independently of unknown measured occupancy. Exact
+effort/model values remain in submenus; a single provider needs no redundant provider layer.
+Remove Manage Models from the composer menu; existing Settings navigation and setup feedback
+retain that path. Keep the unified trigger/compact Brain and independent request fields.
+
+### OV-076 — Strengthen the built-in browser and assess Chrome extensions (2026-10-01)
+
+> 「还有对于自带的浏览器也要做全面的增强，现在很多软件都直接内置真实的浏览器，还能直接装谷歌插件等」
+> 「你应该先看看你现在在自己所在这个软件里，它的浏览器是怎么实现的？」
+
+Audit and strengthen the candidate's existing Chromium browser together with the unfinished
+project correction. Compare real extension hosts and installers, not screenshots or a decorative
+Store link. Preserve the original useful guest/profile/Agent path and establish actual extension
+compatibility, installation, permissions and lifecycle before advertising it. This request does
+not retire earlier model, subscription, cost, media or page-Agent work. Production dependency,
+credential/profile migration and security-authority checkpoints retain their stated scope.
+The installed Codex desktop is a mandatory implementation comparison before a browser-runtime
+replacement recommendation; its CLI source and ordinary Electron documentation are insufficient.
+
+### OV-077 — Scope new-conversation model defaults and simplify selection (2026-10-02)
+
+> 「明明配置了模型新建对话却一定要手动选择是不对的」
+> 「已经配置了API或者订阅账号应该有默认模型」
+> 「每个项目新建对话……沿用上一次该项目对话选择的模型……会跟新建对话的默认模型不同」
+> 「可以自己去使用Cursor看看他是怎么做的……具体的设计你可以去看看几个开源和商业项目」
+
+Correct new-conversation defaults and composer interaction within the existing owners. Ordinary
+conversations and each Project/runtime identity keep separate remembered choices. Connected catalogs
+provide a valid starting model without a mandatory extra selection; late readiness does not leave
+an initialized new composer permanently empty. Explicit draft/history/admitted bindings and actual
+unfinished content remain. Compare actual Cursor interaction and source-backed Codex/open-source
+defaults, distinguishing observations from uncertain product guesses. Preserve the combined model,
+effort and independent Fast controls and the host's visual primitives; no new defaults page,
+automatic paid inference, credential authority or unrelated redesign is authorized. Earlier
+unfinished subscription, media, browser and page-Agent work remains in its established order.
+
+### OV-078 — Official and ecosystem implementation research per module (2026-10-02)
+
+> 「每个厂商的官方软件或插件生态里怎么处理的，我希望你做每个功能模块前都这样的去研究清楚」
+> 「而且很多重要的信息你也没更新进文档」
+
+Before implementing a module, compare the selected original, the relevant official vendor
+implementation or public contract, and a concrete ecosystem mechanism. Examine acquisition,
+processing, execution and recovery, rather than field names or screenshots. Keep the resulting
+contract, capability status, work order and evidence in their existing singular homes. NewMax and
+Minara's preserved client reviews are evidence for local mechanisms, not complete remote-server
+reverse engineering or permission to copy proprietary code. This requirement accompanies the
+unfinished engineering; it does not replace it with another research or documentation phase.
+
+### OV-079 — Primary traces NewMax implementation and model interactions (2026-10-02)
+
+> 「NewMax 的前后端设计都要仔细查看他有很多好设计」
+> 「不用派子智能体你亲自去看看人家的前后端源码具体实现，模型配置交互逻辑」
+
+The primary personally inspects the actual renderer, preload, local service/persistence and
+execution paths, with model-configuration interactions as the immediate focus. Delegation for
+this study is stopped. Preserve the installed 1.1.18 and installer 1.1.19 as distinct inputs;
+runtime observations of the installed version do not verify the newer source. Carry useful
+mechanisms into their existing Fleet owners after comparison and tests, without copying the
+commercial client's implementation or assuming access to its hosted-server internals. Earlier
+unfinished rectification remains in scope.
+
+### OV-080 — Parallel rectification judged by complete product outcomes (2026-10-02)
+
+> 「那些可以分支并行开发的就多Agent并行开发，主要的是我要高质量的项目代码而不是一堆屎山」
+> 「如果你开发出来的项目既不能实现我的愿景又不能很好的超越参考的项目，那就是完全没意义的事情」
+
+Parallelize independent bounded fixes with explicit file ownership, failure cases and integration
+responsibility. Cross-review changes and exercise the combined running product; concurrent worker
+completion is not delivery. The primary retains account correction and the personally requested
+NewMax study. Judge improvements against the same complete human/Agent workbench task and the
+selected original/reference mechanism, not feature count, code volume or passing isolated tests.
+Preserve existing owners and replace only demonstrated inferior paths; no new framework is needed
+merely to coordinate these workers. Existing unfinished requirements and delivery order remain.
 
 ### Rules for this file
 

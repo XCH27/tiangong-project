@@ -1,0 +1,422 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index f213185..c3d0635 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -596,3 +596,67 @@ expiry or paid billing period. Keep unknown future tier names rather than mappin
+ Reuse the existing account badge and original plan-status card; known tiers receive established
+ semantic color tokens. Original ProviderDetailFeedback and SectionLayout remain byte-identical to
+ the pin; only failure copy/classification/manual dismissal differs from upstream.
++
++### Source-backed protocol and minimal credential controls
++
++Each preset service/region/auth route exposes only explicitly declared wire formats. A custom
++address can offer adapter formats as user choices, but none is a claim the upstream host supports
++it. Imported routes retain their source protocol and never borrow another vendor's endpoint.
++The official provider documents, source-client transformation, and candidate adapter must agree
++before adding a preset route. Unsupported/unknown formats remain absent from that preset. A model
++catalog GET is not proof of Responses streaming/tool semantics. Claude subscription is distinct
++from Anthropic API and CC Switch's Claude API-key row; no native Claude account login/runtime is
++registered until the unmodified official client path and Fleet Session/permission/usage bridges are
++implemented and verified.
++
++The existing ProviderSettings owner still commits one credential row at a time. For a saved or new
++API key, Enter or input blur commits only that row; Escape restores its saved value. A blank new
++row stays local. Clearing the only saved key removes it on blur without a trash icon. A second
++visible row reveals removal; a second saved identity reveals per-key enable/default controls and
++the automatic-switch section. A single subscription account hides the trash/switch controls but
++retains an explicit disconnect action in its opened account details. None of these actions writes
++other pending address/name/model drafts. Late Host responses cannot overwrite newer edits.
++
++Preset format changes on a saved connection additionally require identical built-in model IDs.
++OpenCode Go/Zen publish model-specific Chat, Messages and Responses endpoints; choosing a
++different format while creating a connection selects the matching sibling template and its model
++list. A saved connection cannot swap its protocol while keeping models from another route.
++Alibaba Coding Plan explicitly excludes Responses; its Chat and Messages endpoints and keys
++are plan/region-specific. DeepSeek and xAI do document Responses, but catalog GET alone never
++certifies streaming/tool semantics. Custom addresses remain user-declared protocol choices.
++
++Acceptance from an isolated desktop profile: the one saved synthetic key showed no confirm,
++trash, per-key toggle or automatic switch; changing it and blurring saved through ProviderSettings.
++A second unsaved row showed removal but no automatic switch; blurring a distinct second synthetic
++key saved it and enabled the controls. Removing that key collapsed back to the single-row layout.
++Clearing the final key on blur removed its persisted value and disabled discovery. No real key or
++provider request was used. The current Claude subscription lane is still absent, not an API alias.
++
++### Preset route audit
++
++This is the 19-vendor/41-template registry projection, not a list of verified paid accounts.
++“Chat” means OpenAI Chat Completions, “Messages” Anthropic Messages, and “Responses”
++OpenAI Responses. A dash means no registered route, not that the company sells no such plan.
++Every route still needs that account's model catalog and a real request before it is called ready.
++
++| Vendor/product | API preset | Subscription or plan-key preset | Boundary checked |
++|---|---|---|---|
++| Z.ai / BigModel | Chat | Coding Plan Messages | Coding key and general API endpoint are separate ([ZCode source](https://zcode.z.ai/en/docs/configuration)). |
++| Kimi / Moonshot | Messages | Kimi Code Messages | Kimi Code also documents Chat, but no Responses ([model guide](https://www.kimi.com/code/docs/en/kimi-code/models.html)). |
++| MiniMax | Messages | Token Plan Messages | Plan key and paid API balance differ ([Token Plan](https://platform.minimax.io/subscribe/token-plan)). |
++| DeepSeek | Chat, Messages | — | Responses is documented separately; current preset remains the two tested routes ([official guide](https://api-docs.deepseek.com/guides/responses_api/)). |
++| Alibaba Model Studio | Chat, Messages, by region | Coding Plan and Token Plan Chat | Plan-specific keys and endpoints; Coding Plan explicitly excludes Responses ([FAQ](https://help.aliyun.com/en/model-studio/coding-plan-faq)). |
++| Xiaomi MiMo | Messages | Token Plan Chat | Model/format coverage varies; no inferred Responses plan route ([MiMo docs](https://platform.xiaomimimo.com/docs/en-US/usage-guide/passing-back-reasoning_content)). |
++| OpenAI | Responses | ChatGPT native account | API balance and ChatGPT subscription use different credentials. |
++| Anthropic | Messages | — | Claude subscription needs the unmodified native Claude Code executor ([policy](https://code.claude.com/docs/en/legal-and-compliance)). |
++| xAI | Responses | Grok native account | API key and Grok account differ ([API reference](https://docs.x.ai/developers/rest-api-reference/inference/responses)). |
++| OpenRouter | Messages | — | Gateway route is user account dependent ([Messages reference](https://openrouter.ai/docs/api/api-reference/anthropic-messages/create-messages)). |
++| OpenCode | Zen: mixed per-model routes | Go: mixed per-model routes | Chat/Messages/Responses models are not interchangeable ([Go](https://opencode.ai/docs/go/), [Zen](https://opencode.ai/docs/zen)). |
++| GitHub | — | Copilot native account | Account catalog, not a general GitHub API key. |
++| Groq | Chat | — | Responses exists but is a separate model/endpoint contract ([compatibility](https://console.groq.com/docs/openai)). |
++| Cerebras | Chat | — | [Chat reference](https://inference-docs.cerebras.ai/api-reference/chat-completions). |
++| Mistral | Chat | — | [Chat reference](https://docs.mistral.ai/api). |
++| NVIDIA | Chat | — | [NIM LLM endpoints](https://docs.api.nvidia.com/nim/reference/llm-apis). |
++| Together AI | Chat | — | Current catalog route only; live execution is unverified. |
++| Google | Chat compatibility | — | Native Gemini consumer login is absent ([compatibility](https://ai.google.dev/gemini-api/docs/openai)). |
++| SiliconFlow | Chat | — | [Chat reference](https://docs.siliconflow.cn/docs/api/chat-completions-post). |
+diff --git a/packages/provider/src/protocol-policy.ts b/packages/provider/src/protocol-policy.ts
+index 11b582d..7ea055f 100644
+--- a/packages/provider/src/protocol-policy.ts
++++ b/packages/provider/src/protocol-policy.ts
+@@ -25,6 +25,7 @@ export interface ProviderProtocolRoute {
+ export function resolveTemplateProtocolRoutes(
+   templateId: string | null | undefined,
+   templates: readonly ProviderTemplateObject[],
++  requireSameModels = true,
+ ): ProviderProtocolRoute[] {
+   const template = templates.find((item) => item.templateId === templateId);
+   const catalog = template?.catalog;
+@@ -37,6 +38,9 @@ export function resolveTemplateProtocolRoutes(
+           item.catalog.serviceId === catalog.serviceId &&
+           item.catalog.region === catalog.region &&
+           item.config.access?.type === template?.config.access?.type &&
++          (!requireSameModels ||
++            JSON.stringify(item.config.builtinModelIds ?? []) ===
++              JSON.stringify(template?.config.builtinModelIds ?? [])) &&
+           JSON.stringify(item.config.api?.headers) ===
+             JSON.stringify(template?.config.api?.headers)),
+     )
+diff --git a/packages/services/test/provider-protocol-policy.test.ts b/packages/services/test/provider-protocol-policy.test.ts
+index 258a332..6c4a9a8 100644
+--- a/packages/services/test/provider-protocol-policy.test.ts
++++ b/packages/services/test/provider-protocol-policy.test.ts
+@@ -29,7 +29,8 @@ test("declared protocols share only the exact service/region/endpoint and surviv
+   ).toJSON();
+   assert.deepEqual(resolveTemplateProtocolFormats("openai", templates), ["openai-responses"]);
+   const declared = resolveTemplateProtocolFormats("opencode-go-chat", templates);
+-  assert.equal(declared.length, 3);
++  assert.deepEqual(declared, ["openai-chat-completions"]);
++  assert.equal(resolveTemplateProtocolRoutes("opencode-go-chat", templates, false).length, 3);
+   const template = templates.find((t) => t.templateId === "opencode-go-chat")!.config;
+   for (const type of declared)
+     assert.doesNotThrow(() =>
+@@ -47,14 +48,14 @@ test("declared protocols share only the exact service/region/endpoint and surviv
+   try {
+     const service = f.runtime.configService;
+     const { providerId } = await service.createPersonalProvider({ templateId: "opencode-go-chat" });
+-    await service.savePersonalProviderOverlay(
+-      providerId,
+-      parseProviderConfig({ api: { type: "openai-responses" } }),
+-    );
+-    assert.equal(
+-      (await service.read()).personalProviders.get(providerId)?.api?.type,
+-      "openai-responses",
++    await assert.rejects(
++      service.savePersonalProviderOverlay(
++        providerId,
++        parseProviderConfig({ api: { type: "openai-responses" } }),
++      ),
++      /protocol/i,
+     );
++    assert.equal((await service.read()).personalProviders.get(providerId)?.api?.type, undefined);
+   } finally {
+     await f.dispose();
+   }
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index e3657d3..510eb5e 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -182,6 +182,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.credentials.show": "Show key",
+   "settings.modelProvider.credentials.addAccount": "Add subscription account",
+   "settings.modelProvider.credentials.accountNumber": "Account {number}",
++  "settings.modelProvider.credentials.disconnectAccount": "Disconnect this account",
+   "settings.modelProvider.credentials.removeAccount": "Remove this account",
+   "settings.modelProvider.subscription.reauthorized":
+     "This account was already added; authorization updated.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 011d52c..ecf1593 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -155,6 +155,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.credentials.show": "显示密钥",
+   "settings.modelProvider.credentials.addAccount": "添加订阅账号",
+   "settings.modelProvider.credentials.accountNumber": "账号 {number}",
++  "settings.modelProvider.credentials.disconnectAccount": "断开此账号",
+   "settings.modelProvider.credentials.removeAccount": "移除此账号",
+   "settings.modelProvider.subscription.reauthorized": "该账号已添加，本次已更新授权。",
+   "settings.modelProvider.credentials.viewAccountAllowance": "查看 {account} 的订阅额度",
+diff --git a/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx b/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
+index d443091..5d63d06 100644
+--- a/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
+@@ -19,6 +19,7 @@ export function CredentialAutoSwitchSection({
+   const { intl } = useZCodeIntl();
+   const id = useId();
+   const eligible = count >= 2;
++  if (!eligible) return null;
+   return (
+     <div className="flex items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2">
+       <div className="min-w-0">
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 9f2782e..e72dd39 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -943,6 +943,7 @@ export function InlineEditableProviderCard({
+             }
+             apiKeyValue={apiKeyValue}
+             apiKeyVisible={apiKeyVisible}
++            readOnly={savingConnection}
+             presetApiKeyUrl={presetApiKeyUrl}
+             onOpenPresetApiKey={onOpenPresetApiKey}
+             onApiKeyChange={handleApiKeyValueChange}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index dcc2487..9037b60 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -345,11 +345,23 @@ export function ProviderApiKeySection({
+   };
+   const keys = [apiKeyValue, ...additionalApiKeys];
+   // 仅在有实际操作的列上对齐；单个已保存密钥不留下空的确认位，新建表单不留下空开关位。
+-  const reserveActions = rowEditing
+-    ? rowEditing.savedKeys.length > 1 ||
+-      keys.some((key, index) => key !== rowEditing.savedKeys[index])
+-    : keys.length > 1;
+-  const reserveSwitch = Boolean(rowEditing?.savedKeys.some((key) => key.trim()));
++  const multiple = keys.length > 1;
++  const reserveActions = multiple;
++  const reserveSwitch = Boolean(
++    rowEditing && rowEditing.savedKeys.filter((key) => key.trim()).length > 1,
++  );
++  const commitRow = (index: number) => {
++    if (!rowEditing) return;
++    const key = keys[index]?.trim() ?? "";
++    const saved = index < rowEditing.savedKeys.length;
++    if (key === (rowEditing.savedKeys[index] ?? "")) return;
++    if (!key) {
++      if (saved) rowEditing.onEdit({ kind: "remove", index });
++      return;
++    }
++    if (rowEditing.savedKeys.some((value, i) => value === key && i !== index)) return;
++    rowEditing.onEdit({ kind: "confirm", index });
++  };
+   const remove = (index: number) => {
+     if (rowEditing) rowEditing.onEdit({ kind: "remove", index });
+     else {
+@@ -394,6 +406,7 @@ export function ProviderApiKeySection({
+                 key={index}
+                 alignWithSiblings
+                 reserveActions={reserveActions}
++                showRemove={multiple}
+                 trailing={
+                   reserveSwitch ? (
+                     <span className="inline-flex min-w-8 items-center justify-end">
+@@ -426,13 +439,7 @@ export function ProviderApiKeySection({
+                 )}
+                 onRemove={() => remove(index)}
+                 actions={
+-                  pending ? (
+-                    <ProviderDraftConfirm
+-                      saving={rowEditing.savingRow === index}
+-                      disabled={!key.trim() || duplicate || readOnly}
+-                      onSave={() => rowEditing.onEdit({ kind: "confirm", index })}
+-                    />
+-                  ) : (rowEditing ? rowEditing.savedKeys.length > 1 : keys.length > 1) ? (
++                  !pending && multiple ? (
+                     <CredentialDefaultControl
+                       selected={index === 0}
+                       disabled={!key.trim() || readOnly}
+@@ -472,7 +479,10 @@ export function ProviderApiKeySection({
+                             autoSwitchCredentials,
+                           )
+                   }
+-                  onBlur={onApiKeyBlur}
++                  onBlur={() => {
++                    if (!rowEditing) onApiKeyBlur();
++                    else if (!compositionActive.current && pending) commitRow(index);
++                  }}
+                   onKeyDown={(event) => {
+                     if (!rowEditing) {
+                       onApiKeyKeyDown?.(event);
+@@ -487,8 +497,7 @@ export function ProviderApiKeySection({
+                       return;
+                     if (event.key === "Enter") {
+                       event.preventDefault();
+-                      if (pending && key.trim() && !duplicate)
+-                        rowEditing.onEdit({ kind: "confirm", index });
++                      if (pending) commitRow(index);
+                     } else if (event.key === "Escape") {
+                       event.preventDefault();
+                       rowEditing.onEdit({ kind: "revert", index });
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+index f83f490..0990f07 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+@@ -17,6 +17,7 @@ export function ProviderDraftRow({
+   actions,
+   alignWithSiblings,
+   reserveActions = true,
++  showRemove = true,
+   trailing,
+   removeLabel,
+   onRemove,
+@@ -26,6 +27,7 @@ export function ProviderDraftRow({
+   actions?: ReactNode;
+   alignWithSiblings?: boolean;
+   reserveActions?: boolean;
++  showRemove?: boolean;
+   trailing?: ReactNode;
+   removeLabel: string;
+   onRemove: () => void;
+@@ -44,17 +46,19 @@ export function ProviderDraftRow({
+       {reserveActions ? (
+         <span className="inline-flex min-w-6 items-center justify-center">{actions}</span>
+       ) : null}
+-      <Button
+-        type="button"
+-        variant="ghost"
+-        size="icon-sm"
+-        disabled={disabled}
+-        aria-label={removeLabel}
+-        title={removeLabel}
+-        onClick={onRemove}
+-      >
+-        <Trash2 className="size-4" />
+-      </Button>
++      {showRemove ? (
++        <Button
++          type="button"
++          variant="ghost"
++          size="icon-sm"
++          disabled={disabled}
++          aria-label={removeLabel}
++          title={removeLabel}
++          onClick={onRemove}
++        >
++          <Trash2 className="size-4" />
++        </Button>
++      ) : null}
+       {trailing}
+     </div>
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+index 0ae0920..a4574e7 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+@@ -79,7 +79,8 @@ export function ProviderTemplateSetup({
+   const regions = [...new Set(serviceTemplates.map((template) => template.catalog?.region))].filter(
+     (region): region is "cn" | "global" => region !== undefined,
+   );
+-  const protocolRoutes = resolveTemplateProtocolRoutes(selectedId, vendor.templates);
++  // 新建时换格式也换模板和模型名单；已保存连接只允许同名单的格式切换。
++  const protocolRoutes = resolveTemplateProtocolRoutes(selectedId, vendor.templates, false);
+   const declaredFormats = [...new Set(protocolRoutes.map((route) => route.type))];
+   const protocolPolicy = resolveProviderProtocolPolicy(custom ? undefined : selected.config, {
+     ...selected.config,
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+index 30bc64b..2444820 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+@@ -25,6 +25,7 @@ export function SubscriptionAccountRow({
+   onOpenChange,
+   onDefault,
+   onRemove,
++  canRemove,
+   onScopeChanged,
+ }: {
+   account: { id: string; label?: string; active: boolean };
+@@ -38,6 +39,7 @@ export function SubscriptionAccountRow({
+   onOpenChange(open: boolean): void;
+   onDefault(): void;
+   onRemove(): void;
++  canRemove: boolean;
+   onScopeChanged(): void;
+ }) {
+   const { intl } = useZCodeIntl();
+@@ -71,11 +73,13 @@ export function SubscriptionAccountRow({
+         }
+         statusMeta={
+           <>
+-            <CredentialDefaultControl
+-              selected={account.active}
+-              disabled={busy}
+-              onSelect={onDefault}
+-            />
++            {canRemove ? (
++              <CredentialDefaultControl
++                selected={account.active}
++                disabled={busy}
++                onSelect={onDefault}
++              />
++            ) : null}
+             <CollapsibleTrigger asChild>
+               <Button
+                 variant="link"
+@@ -96,17 +100,19 @@ export function SubscriptionAccountRow({
+           </>
+         }
+         trailingAction={
+-          <Button
+-            variant="ghost"
+-            size="icon-sm"
+-            disabled={busy}
+-            aria-label={intl.formatMessage({
+-              id: "settings.modelProvider.credentials.removeAccount",
+-            })}
+-            onClick={onRemove}
+-          >
+-            <Trash2 className="size-4" />
+-          </Button>
++          canRemove ? (
++            <Button
++              variant="ghost"
++              size="icon-sm"
++              disabled={busy}
++              aria-label={intl.formatMessage({
++                id: "settings.modelProvider.credentials.removeAccount",
++              })}
++              onClick={onRemove}
++            >
++              <Trash2 className="size-4" />
++            </Button>
++          ) : undefined
+         }
+         usageContent={
+           open ? (
+@@ -123,6 +129,18 @@ export function SubscriptionAccountRow({
+                   onScopeChanged={onScopeChanged}
+                   showReset={account.active}
+                 />
++                {!canRemove ? (
++                  <Button
++                    variant="link"
++                    className="mt-2 h-auto p-0 text-ui-sm"
++                    disabled={busy}
++                    onClick={onRemove}
++                  >
++                    {intl.formatMessage({
++                      id: "settings.modelProvider.credentials.disconnectAccount",
++                    })}
++                  </Button>
++                ) : null}
+               </div>
+             </CollapsibleContent>
+           ) : undefined
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index 68d38d5..67a374d 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -246,6 +246,7 @@ export function SubscriptionConnectionSection({
+               onDefault={() => void update({ select: account.id })}
+               onScopeChanged={() => void accountList.reload()}
+               onRemove={() => void update({ remove: account.id })}
++              canRemove={accounts.accounts.length > 1}
+             />
+           ))}
+         </div>

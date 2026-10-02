@@ -1,0 +1,118 @@
+diff --git a/packages/ui/src/browser-use/UnifiedBrowserView.tsx b/packages/ui/src/browser-use/UnifiedBrowserView.tsx
+index 5cab4da..bc40d80 100644
+--- a/packages/ui/src/browser-use/UnifiedBrowserView.tsx
++++ b/packages/ui/src/browser-use/UnifiedBrowserView.tsx
+@@ -1019,6 +1019,7 @@ export function UnifiedBrowserView({
+   return (
+     <div
+       aria-hidden={!isVisible}
++      onKeyDownCapture={find.onKeyDown}
+       data-browser-screenshot-webview-state={
+         screenshotSurfaceRequest ? (webview ? "ready" : "missing") : undefined
+       }
+diff --git a/packages/ui/src/browser-use/useBrowserFind.ts b/packages/ui/src/browser-use/useBrowserFind.ts
+index 7daae4b..839a1a2 100644
+--- a/packages/ui/src/browser-use/useBrowserFind.ts
++++ b/packages/ui/src/browser-use/useBrowserFind.ts
+@@ -1,4 +1,4 @@
+-import { useCallback, useEffect, useRef, useState } from "react";
++import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+ import { EmbeddedBrowserWebviewChannels } from "@zcode/shared";
+ import { safeWebviewCall } from "@/embeddedBrowserHelpers.js";
+ 
+@@ -86,9 +86,11 @@ export function useBrowserFind(
+     };
+   }, [close, isVisible, open, webview]);
+ 
+-  useEffect(() => {
+-    if (!isVisible) return;
+-    const onKey = (event: KeyboardEvent) => {
++  // Bind to this browser's DOM container. A visible side pane must not steal the
++  // conversation/editor's Cmd/Ctrl+F or Escape through a window-wide listener.
++  const onKeyDown = useCallback(
++    (event: KeyboardEvent<HTMLElement>) => {
++      if (!isVisible) return;
+       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
+         if (!isReady) return;
+         event.preventDefault();
+@@ -98,10 +100,9 @@ export function useBrowserFind(
+         event.preventDefault();
+         close();
+       }
+-    };
+-    window.addEventListener("keydown", onKey, true);
+-    return () => window.removeEventListener("keydown", onKey, true);
+-  }, [close, isOpen, isReady, isVisible, open]);
++    },
++    [close, isOpen, isReady, isVisible, open],
++  );
+ 
+   return {
+     isOpen,
+@@ -111,6 +112,7 @@ export function useBrowserFind(
+     open,
+     close,
+     setQuery,
++    onKeyDown,
+     next: () => find(true, false),
+     previous: () => find(false, false),
+   };
+diff --git a/packages/ui/test/embeddedBrowser.browser.tsx b/packages/ui/test/embeddedBrowser.browser.tsx
+index f24d891..c4b1d3e 100644
+--- a/packages/ui/test/embeddedBrowser.browser.tsx
++++ b/packages/ui/test/embeddedBrowser.browser.tsx
+@@ -28,7 +28,11 @@ let currentFind: ReturnType<typeof useBrowserFind>;
+ function Find({ guest, visible }: { guest: ElectronWebviewTag; visible: boolean }) {
+   const find = useBrowserFind(guest, visible, true);
+   currentFind = find;
+-  return find.isOpen ? <BrowserFindBar find={find} /> : null;
++  return (
++    <div onKeyDownCapture={find.onKeyDown}>
++      {find.isOpen ? <BrowserFindBar find={find} /> : <button>Browser focus target</button>}
++    </div>
++  );
+ }
+ globals.__embeddedBrowserTests = (async () => {
+   const results: { name: string; error?: string }[] = [];
+@@ -96,6 +100,20 @@ globals.__embeddedBrowserTests = (async () => {
+     }
+   await test("Guest Cmd/Ctrl+F, Escape and hidden-tab isolation", async () => {
+     await act(async () => render("zh-CN"));
++    const outside = document.createElement("input");
++    document.body.append(outside);
++    const foreignSearch = new KeyboardEvent("keydown", {
++      key: "f",
++      ctrlKey: true,
++      bubbles: true,
++      cancelable: true,
++    });
++    await act(async () => outside.dispatchEvent(foreignSearch));
++    check(
++      !foreignSearch.defaultPrevented && !currentFind.isOpen,
++      "Visible browser stole the composer's find shortcut",
++    );
++    outside.remove();
+     const inputGuest = guest as unknown as { sendInputEvent(input: Record<string, unknown>): void };
+     guest.focus();
+     inputGuest.sendInputEvent({
+@@ -105,14 +123,16 @@ globals.__embeddedBrowserTests = (async () => {
+     });
+     await wait(() => currentFind.isOpen);
+     await act(async () =>
+-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
++      node
++        .querySelector("input")!
++        .dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+     );
+     check(!currentFind.isOpen, "Escape retained guest search");
+     await act(async () => render("zh-CN", false));
+     await act(async () =>
+-      window.dispatchEvent(
+-        new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }),
+-      ),
++      node
++        .querySelector("button")!
++        .dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true })),
+     );
+     check(!currentFind.isOpen, "Hidden tab handled another page's shortcut");
+   });

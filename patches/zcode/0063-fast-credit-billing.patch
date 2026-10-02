@@ -1,0 +1,167 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+index dea1f03..dfbcdf1 100644
+--- a/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
++++ b/apps/zcode-cli/packages/adapters/src/storage/session-store/repositories/usage-accounting.ts
+@@ -112,7 +112,7 @@ export function queryAccounting(
+     return JSON.stringify({
+       ...facts,
+       ...price,
+-      // API 参考价补齐不能改掉请求时已记录的原生额度权重，否则会员分摊会随价目更新漂移。
++      // Filling a missing API estimate preserves the request's frozen credit estimate.
+       ...(typeof facts.estimatedCredits === "number"
+         ? { estimatedCredits: facts.estimatedCredits }
+         : {}),
+diff --git a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+index 9bbe723..79cad1b 100644
+--- a/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts
+@@ -92,7 +92,7 @@ test("accounting survives reopen and retention; same logical request is not coun
+     assert.ok(
+       Math.abs(
+         a.find((r) => r.modelId === "gpt-6-astra")!.estimatedCredits -
+-          a.find((r) => r.modelId === "gpt-6-sol")!.estimatedCredits * 12.5,
++          a.find((r) => r.modelId === "gpt-6-sol")!.estimatedCredits * 10,
+       ) < 1e-12,
+     );
+     assert.equal((await f.query(Date.UTC(2026, 8, 1))).accounting?.length, 0);
+diff --git a/packages/services/test/usage-price.test.ts b/packages/services/test/usage-price.test.ts
+index 9fe0ebc..b4a85fb 100644
+--- a/packages/services/test/usage-price.test.ts
++++ b/packages/services/test/usage-price.test.ts
+@@ -51,7 +51,7 @@ test("Fast impact separates subscription credits from each vendor's API rates",
+     lookupFastModePriceImpact({ billingProvider, modelId, subscription });
+   assert.deepEqual(
+     [impact("openai", "gpt-6-sol", true)?.basis, impact("openai", "gpt-6-sol", true)?.multiplier],
+-    ["subscription-credits", 2.5],
++    ["subscription-allowance", 2.5],
+   );
+   assert.equal(impact("openai", "gpt-6-sol", false)?.multiplier, 2);
+   assert.equal(impact("openai", "gpt-5.5", false)?.multiplier, 2.5);
+@@ -77,13 +77,22 @@ test("OpenAI long tier starts strictly above 272K inclusive input, affecting the
+   );
+ });
+ 
+-test("subscription credits have no write surcharge and use their own Fast multiplier", () => {
++test("purchased subscription credits use 2x Fast billing, separately from the 2.5x allowance impact", () => {
+   const standard = estimateUsagePrice({ ...request, subscription: true });
+   const fast = estimateUsagePrice({ ...request, subscription: true, speedMode: "fast" });
+   close(standard.estimatedUsd, 0.101);
+   close(standard.estimatedCredits, 2.4);
+   close(fast.estimatedUsd, 0.202);
+-  close(fast.estimatedCredits, 6);
++  close(fast.estimatedCredits, 4.8);
++  assert.equal(
++    lookupFastModePriceImpact({
++      billingProvider: "openai",
++      modelId: request.modelId,
++      subscription: true,
++    })?.multiplier,
++    2.5,
++  );
++  assert.match(fast.priceVersion, /credit-fast-2026-09-30/);
+   const missingWrites = estimateUsagePrice({
+     ...request,
+     subscription: true,
+diff --git a/packages/shared/src/usage-price.ts b/packages/shared/src/usage-price.ts
+index 3c916b7..c3d8be7 100644
+--- a/packages/shared/src/usage-price.ts
++++ b/packages/shared/src/usage-price.ts
+@@ -26,7 +26,7 @@ export interface UsagePriceInput {
+ 
+ export interface UsagePriceEstimate {
+   estimatedUsd?: number;
+-  /** Native credit-rate estimate; not included subscription allowance or a USD conversion. */
++  /** Published purchased-credit estimate; not included subscription allowance or a USD conversion. */
+   estimatedCredits?: number;
+   priceVersion: string;
+   sourceUrl?: string;
+@@ -37,7 +37,8 @@ export interface UsagePriceEstimate {
+ const PRICE_VERSION = "official-2026-09-27";
+ const OPENAI_PRICE_URL = "https://developers.openai.com/api/docs/pricing";
+ const CHATGPT_PRICE_URL = "https://learn.chatgpt.com/docs/pricing";
+-const CHATGPT_FAST_CREDIT_MULTIPLIER = 2.5;
++const CHATGPT_FAST_ALLOWANCE_MULTIPLIER = 2.5;
++const CHATGPT_FAST_CREDIT_MULTIPLIER = 2;
+ const XAI_PRIORITY_PRICE_URL = "https://docs.x.ai/developers/pricing";
+ const DEEPSEEK_PRICE_URL = "https://api-docs.deepseek.com/quick_start/pricing";
+ const MILLION = 1_000_000;
+@@ -55,7 +56,7 @@ interface OpenAIPrice {
+ 
+ // Exact official model IDs only. Do not strip suffixes or infer a model family.
+ // Every model's /api/docs/models/<id> page verifies >272K input as the long tier.
+-// Fast API values come from the API table; credit Fast = 2.5x is independently
++// Fast API values come from the API table; included allowance = 2.5x and purchased credits = 2x are
+ // documented at https://learn.chatgpt.com/docs/agent-configuration/speed.
+ const OPENAI_PRICES = new Map<string, OpenAIPrice>([
+   [
+@@ -144,7 +145,7 @@ export function lookupFastModePriceImpact(input: {
+   modelId: string;
+   subscription: boolean;
+ }):
+-  | { multiplier: number; basis: "subscription-credits" | "api-list-price"; sourceUrl: string }
++  | { multiplier: number; basis: "subscription-allowance" | "api-list-price"; sourceUrl: string }
+   | undefined {
+   const modelId = input.modelId.toLowerCase();
+   if (input.billingProvider === "openai") {
+@@ -152,8 +153,8 @@ export function lookupFastModePriceImpact(input: {
+     if (!price) return undefined;
+     return input.subscription
+       ? {
+-          multiplier: CHATGPT_FAST_CREDIT_MULTIPLIER,
+-          basis: "subscription-credits",
++          multiplier: CHATGPT_FAST_ALLOWANCE_MULTIPLIER,
++          basis: "subscription-allowance",
+           sourceUrl: "https://learn.chatgpt.com/docs/agent-configuration/speed",
+         }
+       : {
+@@ -286,6 +287,7 @@ export function estimateUsagePrice(input: UsagePriceInput): UsagePriceEstimate {
+         outputTokens * output) /
+         MILLION) *
+       (input.speedMode === "fast" ? CHATGPT_FAST_CREDIT_MULTIPLIER : 1);
++    if (input.speedMode === "fast") result.priceVersion += "+credit-fast-2026-09-30";
+   }
+ 
+   const long = inputTokens > LONG_INPUT_THRESHOLD;
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 05c0c6e..ab3e885 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -5237,7 +5237,7 @@ const enUS: Record<string, string> = {
+   "chat.toolbar.speed.disable": "Disable Fast mode",
+   "chat.toolbar.speed.tooltipTitle": "Fast mode",
+   "chat.toolbar.speed.creditImpact":
+-    "Uses {extra}× extra subscription credits ({total}× total). Reasoning is unchanged.",
++    "Uses {total}× included allowance; purchased credits are billed at 2×. Reasoning is unchanged.",
+   "chat.toolbar.speed.apiImpact":
+     "Estimated at {total}× the Standard API list rate; billing follows the served tier.",
+   "chat.toolbar.speed.claudeApiImpact":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 0290fdb..b7522c5 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -4879,7 +4879,7 @@ const zhCN: Record<string, string> = {
+   "chat.toolbar.speed.disable": "关闭快速模式",
+   "chat.toolbar.speed.tooltipTitle": "快速模式",
+   "chat.toolbar.speed.creditImpact":
+-    "额外消耗 {extra} 倍订阅额度（总计 {total} 倍），思考等级不变。",
++    "会员额度消耗为普通模式的 {total} 倍；购买点数按 2 倍计费。思考等级不变。",
+   "chat.toolbar.speed.apiImpact": "按标准 API 列价的 {total} 倍估算；以实际返回的速度档位计费。",
+   "chat.toolbar.speed.claudeApiImpact":
+     "Claude API Fast 约为标准价格的 {total} 倍，需有预览权限；切换速度会重新建立缓存。",
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index ea69230..edd5655 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -959,11 +959,10 @@ function V4ComposerModelControlsImpl({
+       })
+     : undefined;
+   const fastImpactNote =
+-    fastImpact?.basis === "subscription-credits"
++    fastImpact?.basis === "subscription-allowance"
+       ? intl.formatMessage(
+           { id: "chat.toolbar.speed.creditImpact" },
+           {
+-            extra: fastImpactNumber!.format(fastImpact.multiplier - 1),
+             total: fastImpactNumber!.format(fastImpact.multiplier),
+           },
+         )

@@ -3,7 +3,153 @@
 How work is done in this repository: setup, gates, verification, commits. Collaboration rules and
 owner checkpoints are in [`AGENTS.md`](../AGENTS.md).
 
-## Setup
+## Baseline selection and development method
+
+OV-025/027 make **completed user work** the unit of progress. OV-066 settles development on the
+ZCode Host with bounded native executor adapters; OV-069 uses Pi AgentSession as its default loop executor. OV-067 puts production kernel boundaries and
+acceptance first; selecting the baseline does not complete them. [TODO](../TODO.md#delivery-order) owns execution order.
+1. **Compare the affected original path.** Record source pin, licences and real owner/callers.
+   Use isolated data, preserve references and distinguish inherited failures from Fleet regressions.
+   Do not rerun unrelated research or reconstruct infrastructure to force a preferred result.
+2. **Deliver through existing owners.** Start with kernel admission, state commit, permission
+   and native-executor boundaries; page/document/plugin/media flows consume those boundaries. Test permission,
+   concurrent edits, account/Project scope, cancellation and restart through those actual callers.
+3. **Extract only a consumed boundary.** The native executor adapter, page contribution and Job
+   operation must have named production callers. Preserve native editor/continuation state; no
+   whole-runtime or universal-store migration is implied. New dependencies or authority replacement
+   retain their existing checkpoint, reached after concrete reviewable preparation.
+4. **Replace one complete interaction at a time.** Name reference UI/controller, data owner, operation,
+   persistence/recovery and retired entry. Reuse the selected host's end-to-end path; introduce shared
+   abstractions only for real consumers. Never keep two independent creation or permission paths.
+5. **Keep the base releasable.** Lock its version during a slice. Separate upstream upgrades, runtime
+   replacement, visual adaptation and new capabilities. One integration owner, reviewable commits;
+   no delegated architecture/layout decisions or speculative framework requirements.
+6. **Accept before expanding.** Prove request → operation → persistence → restart, including failure.
+   Then adapt Craft values/valuable surfaces and complete shell, models/context, Pages/documents,
+   Git/GitHub and remote paths as separate slices; domain suites/distribution follow. Provider cache,
+   effort and speed optimizations belong to supported adapters; `usable` requires owner acceptance.
+
+## ZCode candidate
+
+The active checkout is `.fleet/zcode`, with its own Git state and source pin
+`29628c9acdb81b703bbd4080c207a0e7ce5e276e`. Preserve its existing dirty work. Reconstruct a
+fresh candidate only with the [ordered patch recipe](../patches/zcode/README.md); do not apply
+that recipe twice or reset an existing checkout. Intermediate designs and test counts are not
+current capability status; the register and owning module describe the surviving behavior.
+
+The candidate embeds `pi-coding-agent@0.99.2` and its matching Pi types as the default executor
+inside the existing supervised CLI. Host models and subscription services use patched `pi-ai@0.99.2` for
+transport/OAuth; the same Pi release now serves execution and providers. The production default is Pi; the retired legacy executor selector no longer changes the loop.
+Native vendor routes use their own admitted adapter. No credential store or user-data migration was added.
+Resources are explicitly Host-owned; this does not enable arbitrary community extensions or pages.
+`pnpm exec tsx scripts/measure-context-projection.mts` measures fixed scripted fixtures without
+reading user history or calling a provider. It reports model-facing character lengths separately
+from local tool contracts; efficiency claims require vendor counters and accepted task comparisons.
+
+From the candidate root, use its locked package manager and existing scripts:
+
+```bash
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm typecheck
+pnpm verify:pre-push
+pnpm test:usage-hooks
+pnpm test:provider-drafts && pnpm test:composer-previews && pnpm test:settings-typography
+pnpm test:combined-model-ui && pnpm test:model-settings-tool-ui
+pnpm test:draft-model-defaults
+pnpm test:pi-executor && pnpm test:native-executor && pnpm test:native-ui && pnpm test:chatgpt-ui
+PATH="$PWD/node_modules/.bin:$PATH" node scripts/build-desktop-agent-cli.mjs
+pnpm test:pi-bundle && pnpm test:native-bundle
+```
+
+The renderer self-check runner refuses a recorded live review of the same candidate before creating
+a test profile or starting Electron. Quit the review first and run renderer tests serially.
+
+The usage-hook and provider-draft regressions use the installed Electron renderer with an isolated temporary
+profile and blocked HTTP(S); Linux needs a display or the existing CI display wrapper. It adds no
+production dependency. Run tests appropriate to changed paths; synthetic OAuth/catalog/permission/usage fixtures do not
+prove live login, model access or billing. Build desktop main/host/preload before launching an
+isolated preview; stale development ready markers do not prove a newly built runtime is running.
+The observed development host uses Node 26.3.0/pnpm 10.33.2; upstream's pinned release toolchain
+and all target platforms still require packaging verification. Do not change the lockfile to
+match the local machine or silently execute new dependency lifecycle scripts.
+
+Candidate review must isolate Main cold-restore settings as well as all six stores: `ZCODE_DATA_BASE_DIR`, `ZCODE_DESKTOP_USER_DATA_DIR`,
+`ZCODE_DESKTOP_HOME_DIR`, `ZCODE_STORAGE_DIR`, `ZCODE_HOME`, and `ZCODE_SESSION_DB`.
+For candidate visual review use `bash scripts/review-app.sh --zcode`: it reuses one retained profile and checks running review PIDs before launch. Do not clone more Electron apps or open different profiles concurrently; do not stage review data. Desktop home overrides do not
+isolate CLI plugin/cache storage. Confirm the exact app is running before CUA lookup; lookup of a stopped development app can launch bare Electron. Migration tests read a consistent copy of the source SQLite
+DB and preserve the original. Record real account actions separately from fixture behavior.
+
+The SDK suite uses real AgentRuntime/SQLite/Host tools with scripted inference. It covers immutable
+admission/queue/Guide data, streaming/media, account refresh, permission, stop, output continuation,
+repeated upstream tool IDs, request-scoped tool/Skill attribution, manual-only Skill policy/arguments, desktop prompt scope and reopen. The staged macOS ARM64 CLI test uses loopback SSE and a
+real Read, verifies admitted Fast on physical requests and retained context selection, manual-only Skill refusal and explicit invocation, renderer events and restart, then checks two receipts for a repeated upstream ID.
+The CJS build resolves Pi/Claude SDK ESM locations to the artifact. SDK runtime minimum is Node 22.19.0;
+`node22` is a syntax target and does not establish compatibility with older SSH runtimes.
+Native tests require the SDK-matched bundled Claude executable and loopback inference; missing/broken binaries fail verification. They prove matching-ID native resume with delta input, changed/missing-cache handoff, checkpoint-save refusal, process-exit-aware Stop and failed admission without an extra request. SDK MCP returns committed Host receipts; actual Provider writer tests cover native account/catalog atomicity. Public ChatGPT tests run real Pi OAuth/serialization with signed local OIDC fixtures, locked refresh, account-bound reauthorization and isolated production/development bundles. Login UI uses fixtures; live consent, entitlement/inference, other platforms and owner acceptance remain separate.
+Built desktop IPC rejects an independent writer's stale address, retains its draft and saves after
+Esc restoration; checked dark/zh-CN and light/en-US in an isolated profile. Owner visual acceptance remains separate.
+Known check limits: root lint excludes CLI; inherited formatting/max-lines failures and complete
+license notices remain separate closure items. SDK notices are source-pinned; complete regeneration
+is blocked by `proxy-agent-negotiate@1.1.0` lacking complete upstream text. Cross-platform notice
+verification also lacks installed optional architecture packages. Do not waive these release gates or call a development build
+a signed Fleet release. The product updater stays unavailable until a Fleet feed is configured.
+Source reconstruction, user-data migration and release acceptance are three different operations.
+
+### Candidate source protection
+
+The media transport/recovery regressions are part of `pnpm run test:provider-routing`, including
+`media-generation-tool.test.ts`, `media-video-recovery.test.ts`, `xai-media-generation.test.ts`
+and `media-provider-routes.test.ts` under the CLI packages. They execute real Host/Pi approval,
+SQLite/native artifacts and restart with scripted inference/HTTP: denial sends no paid POST,
+unknown submissions are not replayed, known videos retain credentials and recover missing files,
+and model history remains a lightweight video reference without binary reads on cold hydration.
+Actual generated-image Host reopen restores its image bytes for a vision model. Byte-budget tests
+ensure evicted unapproved bindings cannot spend. The built desktop's original PNG preview and MP4
+player were personally inspected with local FFmpeg test assets; that proves the existing file
+viewer, not a live generated result. These checks do not prove paid entitlement,
+provider output quality, native subscription media, owner acceptance or queue fairness.
+
+`scripts/check-zcode-candidate.py` replays every consecutively numbered patch in a temporary Git
+index, validates the declared reconstruction table and compares that tree with all current
+non-ignored source, including untracked additions and removals. It never changes the normal index.
+Use `--recipe-only` to inspect the recipe independently; that mode does **not** prove it describes
+current work. Candidate pre-push and the root patch commit gate require the full comparison.
+
+`init.sh` installs candidate-specific hooks as well as retained-branch gates. Candidate commit
+checks cover desktop/services and all CLI packages directly; the full project verifier selects
+the candidate by default, with `--retained-craft` reserved for the preserved implementation.
+
+Source recovery also needs an independent copy. Git tree archives plus history bundles under
+`/Volumes/AIGC/天工恢复/` exclude credentials, user profiles and generated dependencies. Their
+checksums and extraction into disposable clones were verified against the recorded trees. Refresh
+those copies after a completed change; a backup of an earlier tree is not protection for later work.
+The candidate source is now recorded in ordinary local commits on `codex/fleet-workbench`:
+the reconstructed baseline through patch 101 and the independently verified turn-output workflow
+are separate commits. The ordered recipe remains a base-to-current reconstruction proof;
+ignored review profiles and retained Craft dirty work are not part of these candidate commits.
+
+Bounded foundation regressions include durable Guide admission across failed/slow saves and
+replacement turns, Skill/Agent projection under actual dispatch visibility, and plugin uninstall
+data retention with regenerated derived commands. `test:native-executor` also covers prompt-free
+Claude usage control and scoped cache/reopen; `test:native-ui` uses the desktop stylesheet for
+Chinese/English, light/dark, narrow-card and late-account response cases. Temporary protocol/SQLite
+fixtures are distinct from a live subscription read and from owner visual acceptance. The integrated
+pre-push gate passed 569 tests with zero architecture violations; both staged CLI restart probes
+passed using loopback inference, and the native account UI passed 11 renderer cases.
+
+`test:conversation-outputs` covers four projection cases and nine actual renderer cases using the
+desktop stylesheet: Chinese/English, light/dark, narrow cards, exact read targets, hidden-card IO,
+missing outputs, retained preview URLs and document-preview versus source-review actions. Eight
+bootstrap regressions exercise Host/Pi/SQLite live and cold output reads, reused tool IDs, denied
+refs, stop/recovery, late background events, binary Markdown images and success publication only
+after completed ToolPart persistence. The built full desktop was personally opened on the local
+output fixture: cold replay, media-only status panel, image preview and complete MP4 playback passed;
+light/dark and English/Chinese were inspected. The fixture supplies synthetic local media, not a
+vendor result. Its minimal injected runtime lacks the file execution adapter, so document Write
+failure is retained rather than counted as a generated document; document action routing is
+covered by the renderer cases. Paid quality/entitlement and owner acceptance remain separate.
+
+## Retained Craft setup
 
 ```bash
 bash scripts/init.sh            # commit gates, toolchain, Craft pins
@@ -11,8 +157,7 @@ cd app && bun install
 bun run electron:dev
 ```
 
-`core.hooksPath` lives in `.git/config` and is not carried by a clone, so `init.sh` must be run on
-every new checkout. Without it no commit gate runs.
+`core.hooksPath` is local Git configuration; run `init.sh` after every clone to install the gates.
 
 ## Commit gates
 
@@ -28,23 +173,28 @@ every new checkout. Without it no commit gate runs.
 The two upstream checks exit 2 when the reference mirror is not mounted; the hook then warns and
 lets the commit through, because an unplugged volume must not block all work. Exit 1 blocks.
 
-Full gate before handing work over: `bash scripts/fleet-verify.sh` — the above plus Python tool
-tests, the whole Bun suite under a disposable `CRAFT_CONFIG_DIR`, isolated tests, document tools and
-a backend smoke. Upstream `validate:dev` runs a subset and is not full-suite evidence.
+Full gate before handing candidate work over: `bash scripts/fleet-verify.sh` runs the common
+documentation/source checks, then the active candidate verification. Candidate staged-binary and
+renderer checks remain explicit commands above. The retained Craft full suite uses
+`bash scripts/fleet-verify.sh --retained-craft`, including the disposable `CRAFT_CONFIG_DIR`,
+isolated tests, document tools and backend smoke. Upstream `validate:dev` is a subset, not
+full-suite evidence.
 
-**Upstream ships failing tests.** Unmodified v0.13.4 fails 12 of about 5,300 Bun tests; each is
-recorded with its cause in `scripts/known-upstream-test-failures.txt`, and
-`scripts/run-bun-tests.py` fails the gate only on a new failure or on a recorded one that now
-passes. **Never run the suite without a disposable `CRAFT_CONFIG_DIR`**: at least one upstream test
-reads the real user profile and behaves differently against it.
+**Upstream ships failing tests.** The 31 deterministic v0.13.4 failures and one timing-flaky case are recorded in `scripts/known-upstream-test-failures.txt`; `scripts/run-bun-tests.py` rejects new failures and stale exceptions. **Use a disposable `CRAFT_CONFIG_DIR`**: upstream tests can read the real profile.
 
-These gates live at the repository root on purpose: `app/` stays identical to upstream, and
+The retained full-suite run on macOS 27/Bun 1.3.14 also stalled entering `mode-manager.test.ts`
+after `mcp-pool.test.ts`; it was terminated without a completed test summary. The same mode suite
+passes alone (433 pass, 11 skip). Its original-reference run lacks `@craft-agent/session-tools-core`,
+so that comparison cannot classify the combined-run stall as upstream or introduced. Resolve this
+execution gap before claiming a full retained-branch pass; do not add it to the failure allowlist.
+
+These gates live at the repository root to track `app/` against its upstream pin, while
 upstream's OSS `package.json` names staged-check scripts it does not ship.
 
 ## Changing `app/`
 
 1. Classify the change REUSE / EXTEND / NEW against the Craft capability map in
-   [`architecture.md`](architecture.md).
+   [`capabilities.md`](capabilities.md#craft-capability-map).
 2. Diff the upstream component and the reference component before writing
    ([`AGENTS.md`](../AGENTS.md#before-you-write-ui)).
 3. Declare each changed file in [`UPSTREAM-DELTA.tsv`](UPSTREAM-DELTA.tsv) with its layer —
@@ -75,8 +225,8 @@ instance is a first run; a model connected there is stored in the sandbox.
 ## Commits and branches
 
 - Working line: `work/craft-0.12-rebase` (historical name; the tree is v0.13.4).
-- One logical change per commit. The message says what changed and why, including anything found
-  broken along the way.
+- One independently verifiable user workflow per commit (OV-038), including its UI, backend, persistence, failure/recovery and tests. The primary agent maps source-equivalent flows before bounded delegation; unfinished or unrelated work is not bundled merely to make a large commit.
+  The message says the trigger, resulting behavior and verified limits. Cosmetic subpatches alone do not close a workflow.
 - Never merge to remote `main` without the owner (a checkpoint in `AGENTS.md`).
 - Integration: one owner per shared contract; a dependent change consumes the merged contract, never
   another worktree's uncommitted files. One primary home per capability, no duplicate state
@@ -93,7 +243,7 @@ equivalents that matter run from `scripts/`; the rest are not needed for develop
 ## Quality: verification and acceptance
 
 > How work is verified and accepted, and who owns which layer. Policy authority: Decision G3.
-> The commands live in [`architecture.md`](architecture.md#code-map).
+> Commands and implementation scopes live in this document; Architecture supplies the code map.
 
 ### The split (who verifies what)
 
@@ -131,12 +281,7 @@ external side effects, and broad interactive journey audits still require explic
    Upstream `validate:dev`/`validate:ci` run a selected shared-test subset, so neither replaces the
    repository gate. `validate:quick` is absent after the rebuild; use scoped commands while iterating.
 
-> **A gate only counts what it runs.** Until 2026-07-30 `validate:dev` ran 3 of 703 test files and
-> `typecheck:all` could not pass at all, so "gates green" was reported for months against a check
-> that measured almost nothing. When you add a test area, wire it into a gate in the same slice; a
-> suite that no gate invokes is documentation, not verification.
-> The v0.13.4 reset reintroduced that same subset-only gate. The repository wrapper now owns
-> complete coverage; always inspect what a package command actually runs after an upstream intake.
+> **A gate only counts what it runs.** Wire new regression suites into a gate in the same slice. Inspect the actual command after every upstream intake; upstream subset checks do not replace the repository wrapper.
 
 Do not run the full suite for a bounded change. Do not micro-test every edit — validate after a
 coherent slice.
@@ -180,11 +325,13 @@ preview-gated page's *design* (layout, states, wording) while its status remains
 | Incremental UI contract | `app/scripts/check-ui-contract.ts`; `scripts/tests/test_ui_contract.py` | `usable`: staged/unstaged/untracked rejection fixtures; run by `fleet-verify.sh` |
 | Repository verification scripts | `scripts/tests/` | Python unittest through `scripts/fleet-verify.sh` |
 | Offline production backend | `scripts/smoke-baseline.mjs` | `bun scripts/smoke-baseline.mjs` from the root; also run by `fleet-verify.sh`. Temporary profile, authenticated RPC, real Session/config storage, self-tested outbound API guards, redacted traffic/startup evidence and process/listener cleanup. No provider subprocess or Electron-renderer claim. |
+| Provider request comparison | `scripts/probes/provider-harness-contracts.ts` | `bun scripts/probes/provider-harness-contracts.ts`; installed Pi 0.87.1, synthetic credentials/history, capture-abort before inference plus a fetch guard. Twelve payload captures; no official-CLI, server, cache-hit or task-quality claim. Run explicitly for model-adapter research, not as product acceptance. |
+| DeepSeek desktop source mechanisms | `scripts/probes/deepseek-desktop-source.mjs` | `.fleet/zcode/node_modules/.bin/tsx scripts/probes/deepseek-desktop-source.mjs`; four original-code mechanism checks at the locked reference, no Host/provider/user-state writes. |
+| Executor switching research | `scripts/probes/executor-switching.mjs`, `cindy-handoff-boundaries.test.ts`, `cindy-handoff.config.mjs`, `zcode-workflow-replay.test.ts` | `node --test scripts/probes/executor-switching.mjs`; `node 源码参考/software/pi-mono-latest/node_modules/vitest/vitest.mjs run --config scripts/probes/cindy-handoff.config.mjs`; `bun test scripts/probes/zcode-workflow-replay.test.ts`. Executes actual pinned source with scripted providers or injected drivers; the ZCode test byte-checks the installed candidate package against the original. No model-quality or live-account claim. |
+| Durable process recovery research | `scripts/probes/durable-process-recovery.mjs`, `fleet-kernel-shared-operation.mjs` | Run each with Node. Real SQLite/process SIGKILL and reopen; external service/artifact receipts remain fake. Queryable effects reconcile, unknown outcomes remain unresolved. The probe's adapter supplies this policy; it is not an upstream exactly-once guarantee. |
+| Installed native protocol | `scripts/probes/native-protocol-surface.mjs` | `node scripts/probes/native-protocol-surface.mjs`; exports installed Codex schema into a temporary directory and checks thread/provider scope, next-turn model/policy settings, steering precondition and tool/approval correlation. No thread, login or inference. |
 | Documentation handoff and reference routes | `scripts/validate-doc-contracts.py`, `doc_execution_contracts.py`, `reference-guides.py` | `python3 scripts/validate-doc-contracts.py` from root checks 1:1 execution owners, required fields, real app source paths and reference routes; `python3 scripts/reference-guides.py --check` additionally requires mounted, unchanged source locks |
 | Cross-package gates | repository wrapper + CI workflow | `bash scripts/fleet-verify.sh`; CI also runs the existing i18n checks |
-
-Keep this table honest: if a new test area appears (e.g. smoke scripts under `app/scripts/`), add
-its row in the same slice.
 
 The reference guide check is local/reference work, not a CI requirement to mount the owner's
 external disk. CI validates the canonical route data through the normal document gate. On a
@@ -388,6 +535,24 @@ proposal cannot name that Craft starting path, it is not ready even as a module 
 Every module also has one explicit R0–R18 anchor in its register rows; module design depth
 does not create a separate time horizon or permission to skip that ordered row.
 
+### Source intake before module implementation
+
+OV-078 requires this check for every module, including a correction to an existing feature.
+Start with the selected implementation and its pinned original, then the relevant vendor's
+official client/SDK or published contract and a named ecosystem implementation. Trace the actual
+request, credential audience/account, model eligibility, tool dispatch, saved result, usage and
+failure/recovery paths. Inspect only the mechanisms needed for the fixed acceptance; this is not
+an instruction to clone every project or restart a repository-wide survey.
+
+Record source revision, inspected symbols, adopted/rejected mechanism and evidence limits in the
+existing reference record; reconcile the owning module contract before editing. Resolve a changed
+upstream revision against the previous finding without silently re-pinning a reference. A closed
+source installer can establish shipped frontend, main-process and local-service behavior, but
+cannot establish the remote server's internals, live entitlement or visual acceptance. Where
+official source is unavailable, use the published contract and label the missing evidence.
+Implementation and its tests continue in the same bounded slice; research completion never
+promotes a capability or replaces delivery.
+
 #### 2. Compatibility is a design gate, not a late integration task
 
 Before a large module receives an implementation spec, its design must pass a compatibility review.
@@ -456,14 +621,14 @@ it is never a fallback code donor by default.
 
 ##### Common implementation and verification contract
 
-1. Resolve the capability's release row and dependencies, then the current spec. Existing R0/R1/R2
-   correction specs apply immediately within R0; other routes wait for its exit. A missing later
+1. Resolve the current workflow in `TODO.md`, its capability row and owning module. Old retained
+   Craft gates apply to that branch; later owner-authorized candidate work follows the current order. A missing later
    spec is filled from the execution section as the first task in that release, in its existing
    suite until a persisted/shared interface or behavior warrants a bounded spec. Do not pre-create
    eighteen empty release documents or resurrect removed contracts.
 2. Trace renderer/tool → RPC → policy → owning service → persistence → event/result for both real
-   callers. `Sources` are entry points, not permission to rewrite entire files. Diff both Craft
-   pins for inherited behavior. Newly named records below are design fields until a real caller
+   callers. `Sources` are reference entry points, not proof of candidate implementation or permission
+   to rewrite entire files. Diff the selected implementation against its own pinned original. Newly named records below are design fields until a real caller
    requires the shared type; do not scaffold all domain stores at once.
 3. Identity is the existing Workspace/Session plus the native record ID. A consequential request
    has one stable operation ID and an attempt ID, an expected revision where concurrent writes are
@@ -473,10 +638,10 @@ it is never a fallback code donor by default.
    state and may keep a disposable draft; it cannot declare success before the owner acknowledges
    persistence. Async acknowledgements distinguish accepted/running/completed; a missing receipt
    is unknown/reconciling, never permission to repeat an external effect.
-5. Every mounted surface uses existing Craft host/primitives and UI-SPEC. Cover empty, loading,
+5. Every mounted surface uses its selected host’s existing primitives and `DESIGN.md`. Cover empty, loading,
    ready, denied, unsupported, offline, stale/conflict, failed and recovery states that apply.
    Keyboard/focus, zh-Hans/en, narrow width and high-DPI behavior belong to the same slice. Restore
-   the restored UI-contract guard before accepting rendered-value edits. No new navigation authority.
+   the applicable UI-contract guard before accepting rendered-value edits. No new navigation authority.
 6. Persist through the native owner with validation, expected-version checks and its atomic write
    mechanism. Preserve unreadable bytes and unknown newer schema versions. Stage migrations with
    a recoverable original; on failure keep the prior reader and data. Disabling/uninstalling a
@@ -515,158 +680,13 @@ The required packet fields are listed above; the compatibility record below is t
 Until a packet contains actual code paths, reference files/commits and observable acceptance IDs,
 its packet state must remain `BREADTH_ONLY` or `PACKET_DRAFT`; `covered` is retired terminology.
 
-#### 4. Compatibility record template
+#### Compatibility record and module readiness
 
-```text
-Module:
-Owner authority:
-Craft capability row: REUSE | EXTEND | NEW
-Core authorities consumed:
-Native module authority:
-Adapter seam:
-Persisted identifiers:
-Failure/offline/denied behavior:
-Removal and migration behavior:
-Performance/resource budget:
-License/platform constraints:
-References consumed:
-Rejected alternatives:
-Packet state: `BREADTH_ONLY` | `PACKET_DRAFT` | `READY_FOR_SPEC`
-Spec/release anchor and lifecycle: <link; owned by spec + roadmap, not packet state>
-Implementation status: `usable` | `wired but not visually checked` | `display-only` | `not implemented`
-```
-
-Packet state describes the completeness of a module packet; it is not a user-facing capability
-status. `usable`/`wired but not visually checked`/
-`display-only`/`not implemented` are the only implementation statuses (see `../AGENTS.md`
-and [`product.md`](product.md#glossary)). `ACTIVE`, `READY`, `DEP`, and `GATED` belong only to
-roadmap releases. A packet may be `READY_FOR_SPEC` while its implementation remains `not implemented`.
-
-#### 5. Initial deep-packet registry
-
-The complete breadth list is [`capabilities.md`](capabilities.md#capability-register). The smaller list below
-identifies modules that already have a starter deep packet in `modules/`; it is not a complete
-product list.
-
-The registry is intentionally flat for omission checking, not as a dependency graph between every inventory row. Before
-implementation, use its context/kind in the register: core system, product module,
-surface, adapter/connector or capability.
-
-The following modules remain in product coverage even when their implementation is gated. Their
-table status is implementation status; packet readiness is recorded in each module document under `docs/modules/`.
-
-| Module | Design home | Current implementation status | Development order / compatibility gate |
-|---|---|---|---|
-| Canvas/spatial orchestration | `modules/canvas.md` | not implemented | R7; renderer benchmark; projection must not own domain truth |
-| Video/media editing | `modules/media.md` | not implemented | R12; timeline model, media jobs, renderer/export and ArtifactRef seam |
-| Browser automation/evidence | `modules/browser.md` | Craft BrowserPane baseline `wired but not visually checked`; Fleet capture/evidence `not implemented` | R3 existing evidence; R5 versioned handoff; permission and download boundaries; no R16 general-control layer |
-| Token/context economy | `modules/context.md` | not implemented | TE1/R3 measurement; R15 loadout; R17 policy closure; no projection store before two consumers |
-| Reviewed memory | `modules/context.md` | not implemented | R9 proposal/review/retrieval/deletion; raw Session history remains evidence authority |
-| AIGC jobs/rendering | `modules/media.md` | not implemented | R11–R13; cancellation, resource limits and provider adapters |
-| Design surface | `modules/canvas.md` | not implemented | R10; transactional native design model and license gate |
-| Deck/motion | `modules/media.md` | not implemented | R13; native document authority and honest export fidelity |
-| Workflow composition | `modules/workflow.md` | not implemented | R8; governed actions, immutable DAG and run projection |
-| Workbench/panels | `modules/components.md` | fixed sizing `wired but not visually checked`; registered/movable host `not implemented` | after R0 baseline exit: early R15/R18 foundation with mounted Files + Notes RPC/consumer; R18 advanced/native-window closure follows |
-| Component host/composition and distribution | `modules/components.md` + `marketplace.md` | not implemented | after R0 baseline exit: local/scoped host before domain Components; R15 distribution follows trust/permission proof; no blanket R6/R9 prerequisite |
-
-#### 6. Relationship to the roadmap
-
-`TODO.md` controls integration order only. It does not justify losing a unique product requirement. Superseded or duplicate packets must
-be absorbed and deleted under PRODUCT's document-retirement rule. A packet can be `READY_FOR_SPEC` while its implementation is `not implemented` or
-dependency-blocked; when its R0–R18 row becomes ACTIVE, a focused file in `docs/modules/` activates
-only that bounded slice.
+Use the [single promotion record](references.md#required-promotion-record) for source selection,
+license, real caller, rejected alternatives and verification. Module readiness is in the
+[capability register](capabilities.md#capability-register); do not maintain another status table.
+Current implementation order comes from [TODO](../TODO.md), including later owner-authorized work.
 
 ## Building and packaging
 
-How Fleet is built and packaged for Windows, macOS and Linux, and what must change before a build
-is handed to anyone. Everything below is read from the current `app/` (Craft v0.13.4).
-
-### Status
-
-**No packaged build may be distributed yet.** The inherited updater replaces the installed app with
-upstream Craft on its own (see *Updates*). Development mode (`bun run electron:dev`) never updates
-and is safe to run.
-
-### Build commands
-
-Run from `app/`:
-
-| Command | Output |
-|---|---|
-| `bun run electron:dev` | Development app with hot reload. No packaging, no updater |
-| `bun run electron:build` | Compiled main, preload, renderer, resources and assets in `apps/electron/dist` |
-| `bun run electron:start` | `electron:build`, then launch the compiled app unpackaged |
-| `bun run electron:dist:mac` | macOS packages via electron-builder |
-| `bun run electron:dist:win` | Windows installer via electron-builder |
-| `bun run electron:dist:linux` | Linux package via electron-builder |
-
-Platform build scripts that wrap the same steps with prerequisite checks live in
-`app/apps/electron/scripts/`: `build-dmg.sh`, `build-win.ps1`, `build-linux.sh`. `copy-assets.ts` and
-`afterPack.cjs` are part of the chain.
-
-**Scripts upstream does not ship.** The OSS `package.json` declares `build`, `release`,
-`check-version`, `fresh-start`, `oss:sync`, `sync-secrets`, `electron:dev:menu` and others whose
-scripts are absent from the published tree. They fail with "No such file". Use the `electron:*`
-commands above; a Fleet release pipeline is still to be written.
-
-### Targets
-
-From `app/apps/electron/electron-builder.yml`:
-
-| Platform | Target | Architectures | Gap for Fleet |
-|---|---|---|---|
-| macOS | `dmg`, `zip` | arm64, x64 | Signing and notarization are commented out; unsigned builds are blocked by Gatekeeper on other machines |
-| Windows | `nsis` | x64 only | No arm64; no code signing configured |
-| Linux | `AppImage` | x64 only | No arm64, no `deb`/`rpm` |
-
-Electron **39.2.7**. `asar: false`. Platform binaries (ripgrep and others) are filtered per platform
-under `resources/bin/`.
-
-A build must be produced and launched **on each platform** to count. A macOS run certifies macOS
-only; Windows and Linux support are not advertised until each has its own build-and-launch evidence
-(minimum OS versions, architectures and, for Linux, the display environments tested).
-
-### Identity still belongs to Craft
-
-Changing these is part of the R2 branding slice, with a licence and trademark check:
-
-| Field | Current value |
-|---|---|
-| `appId` | `com.lukilabs.craft-agent` |
-| `productName` | `Craft Agents` |
-| `copyright` | `Copyright © 2026 Craft Docs Ltd.` |
-| Linux `maintainer` | `Craft Docs Ltd. <support@craft.do>` |
-| macOS `NSLocalNetworkUsageDescription` | "Craft Agents uses your local network…" |
-| Artifact names | `Craft-Agents-${arch}.${ext}` |
-
-Changing `appId` changes the user-data directory and keychain scope; plan a migration for anyone who
-already ran a build.
-
-### Updates
-
-What the packaged app does today:
-
-1. On launch, `app/apps/electron/src/main/index.ts` calls `checkForUpdatesOnLaunch()` when
-   `app.isPackaged` is true.
-2. `app/apps/electron/src/main/auto-update.ts` sets `autoUpdater.autoDownload = true` and
-   `autoUpdater.autoInstallOnAppQuit = true`.
-3. The feed is `publish: { provider: generic, url: https://thecraftagents.com/electron/latest }` in
-   `electron-builder.yml`; `app/packages/shared/src/version/manifest.ts` reads the same host.
-4. Dismissing an update only skips the notification (`auto-update.ts:502`). The download continues,
-   and the next quit installs it. If installation fails, the dialog says "Craft Agents will restart
-   now."
-
-Result: a Fleet build silently becomes upstream Craft. The correction belongs to
-[R2](modules/services.md): no Craft feed, no automatic download or install without a
-user-controlled Fleet channel, and dismissal that actually stops the download. Verify it with
-disposable lifecycle fixtures — never by downloading or installing an upstream binary.
-
-### Before a first distributable build
-
-- [ ] Updater corrected (above)
-- [ ] Craft-operated services resolved per R2: hosted Pages publication, Sentry ingest, hosted help
-      in the Agent prompt, OAuth relays
-- [ ] Identity fields changed, with user-data migration
-- [ ] macOS signing and notarization; Windows code signing
-- [ ] Build and launch evidence on each target platform
-- [ ] Release pipeline that does not depend on the scripts upstream withholds
+[Packaging](packaging.md) owns candidate release requirements and retained Craft build/update evidence.

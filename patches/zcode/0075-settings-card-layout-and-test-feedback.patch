@@ -1,0 +1,258 @@
+diff --git a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+index 122c66f..4d270db 100644
+--- a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
++++ b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+@@ -21,9 +21,9 @@ export function PlanStatusCardSurface({
+ }) {
+   return (
+     <div
+-      className={cn("rounded-xl border border-border bg-surface", compact ? "px-3 py-2.5" : "p-4")}
++      className={cn("@container rounded-xl border border-border bg-surface", compact ? "px-3 py-2.5" : "p-4")}
+     >
+-      <div className="flex min-w-0 items-center justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
++      <div className="flex min-w-0 items-center justify-between gap-3 @max-lg:flex-col @max-lg:items-stretch">
+         <div
+           className={cn(
+             "min-w-0",
+@@ -34,10 +34,7 @@ export function PlanStatusCardSurface({
+             <div className="flex min-w-0 items-center gap-1">
+               {planTitle ? (
+                 <h3
+-                  className={cn(
+-                    "min-w-0 truncate leading-5 text-foreground",
+-                    "text-ui-lg font-semibold",
+-                  )}
++                  className="min-w-0 truncate text-ui-lg font-semibold leading-5 text-foreground"
+                 >
+                   {planTitle}
+                 </h3>
+@@ -59,10 +56,10 @@ export function PlanStatusCardSurface({
+         {trailingAction ? (
+           <div
+             className={cn(
+-              "shrink-0 max-sm:flex",
++              "shrink-0 @max-lg:flex",
+               trailingActionFillNarrow
+-                ? "max-sm:w-full max-sm:[&>button]:w-full"
+-                : "max-sm:justify-end",
++                ? "@max-lg:w-full @max-lg:[&>button]:w-full"
++                : "@max-lg:justify-end",
+             )}
+           >
+             {trailingAction}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index 5e8bfee..b2e32cb 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -16,6 +16,7 @@ import type { ModelConfigResolution, ProviderConfigObject } from "@zcode/provide
+ import { shouldShowModelVisionBadge } from "@/lib/modelVisionBadge.js";
+ import { useProviderDetailFeedback } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
+ import { providerSettingsWriteError } from "@/lib/providerSettingsWriteError.js";
++import { modelConnectivityErrorMessage } from "./providerStatus.js";
+ 
+ export function ModelRowInput({
+   model,
+@@ -194,14 +195,6 @@ export function ModelRowInput({
+           dismissLabel: intl.formatMessage({ id: "common.close" }),
+         });
+       } else {
+-        const reason = intl.formatMessage({
+-          id:
+-            result.error.code === "provider-unavailable"
+-              ? "settings.modelProvider.testModel.providerUnavailable"
+-              : result.error.code === "model-unavailable"
+-                ? "settings.modelProvider.testModel.modelUnavailable"
+-                : `settings.modelProvider.testFailure.${result.error.kind ?? "unknown"}`,
+-        });
+         showFeedback({
+           key: dedupeKey,
+           state: "failure",
+@@ -210,8 +203,7 @@ export function ModelRowInput({
+             {
+               provider: providerName,
+               model: modelId,
+-              reason:
+-                reason + (result.error.statusCode ? ` (HTTP ${result.error.statusCode})` : ""),
++              reason: modelConnectivityErrorMessage(result.error, intl),
+             },
+           ),
+           durationMs: 0,
+@@ -230,9 +222,9 @@ export function ModelRowInput({
+           {
+             provider: providerName,
+             model: modelId,
+-            reason: intl.formatMessage({
+-              id: `settings.modelProvider.testFailure.${!result.success ? (result.error.kind ?? "unknown") : "unknown"}`,
+-            }),
++            reason: result.success
++              ? intl.formatMessage({ id: "settings.modelProvider.testFailure.unknown" })
++              : modelConnectivityErrorMessage(result.error, intl),
+           },
+         ),
+         durationMs: 0,
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+index c34a077..b29793d 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+@@ -1,7 +1,7 @@
+ import { CircleIcon } from "lucide-react";
+ import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-import { resolveProviderStatus } from "./providerStatus.js";
++import { modelConnectivityErrorMessage, resolveProviderStatus } from "./providerStatus.js";
+ 
+ const presentation = {
+   disabled: { label: "settings.modelProvider.disabledStatus", color: "text-foreground-subtlest" },
+@@ -35,7 +35,12 @@ export function providerStatusLabel(
+         minute: "2-digit",
+       })
+     : "";
+-  return intl.formatMessage({ id: key }, { model: provider?.connectionTest?.modelId ?? "", time });
++  const test = provider?.connectionTest;
++  const values = { model: test?.modelId ?? "", time };
++  if (provider?.enabled !== false && provider?.executable && test?.result.success === false) {
++    return `${intl.formatMessage({ id: "settings.modelProvider.testFailedStatus" }, values)} · ${modelConnectivityErrorMessage(test.result.error, intl)}`;
++  }
++  return intl.formatMessage({ id: key }, values);
+ }
+ 
+ export function ProviderStatusIndicator({ provider }: { provider?: StatusProvider | null }) {
+@@ -47,7 +52,7 @@ export function ProviderStatusIndicator({ provider }: { provider?: StatusProvide
+     <CircleIcon
+       data-provider-status={status}
+       aria-label={description}
+-      className={`size-2 shrink-0 ${status === "configured" ? "" : "fill-current"} max-md:absolute max-md:right-1 max-md:bottom-1 max-md:rounded-full max-md:ring-2 max-md:ring-card ${color}`}
++      className={`size-2 shrink-0 ${status === "configured" ? "" : "fill-current"} ${color}`}
+     >
+       <title>{description}</title>
+     </CircleIcon>
+diff --git a/packages/ui/src/settings/model-provider-section/providerStatus.ts b/packages/ui/src/settings/model-provider-section/providerStatus.ts
+index 0287474..8ab45da 100644
+--- a/packages/ui/src/settings/model-provider-section/providerStatus.ts
++++ b/packages/ui/src/settings/model-provider-section/providerStatus.ts
+@@ -1,4 +1,19 @@
+ import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
++import type { ModelConnectivityResult } from "@zcode/shared";
++
++/** Shared by the original test feedback and navigation; provider response bodies stay private. */
++export function modelConnectivityErrorMessage(
++  error: Extract<ModelConnectivityResult, { success: false }>["error"],
++  intl: { formatMessage(descriptor: { id: string }): string },
++): string {
++  const id =
++    error.code === "provider-unavailable"
++      ? "settings.modelProvider.testModel.providerUnavailable"
++      : error.code === "model-unavailable"
++        ? "settings.modelProvider.testModel.modelUnavailable"
++        : `settings.modelProvider.testFailure.${error.kind ?? "unknown"}`;
++  return intl.formatMessage({ id }) + (error.statusCode ? ` (HTTP ${error.statusCode})` : "");
++}
+ 
+ export type ProviderStatus = "disabled" | "unavailable" | "configured" | "failed" | "ready";
+ type StatusFacts = Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "connectionTest">;
+diff --git a/packages/ui/test/providerStatus.test.ts b/packages/ui/test/providerStatus.test.ts
+index b2a9654..b82f4d6 100644
+--- a/packages/ui/test/providerStatus.test.ts
++++ b/packages/ui/test/providerStatus.test.ts
+@@ -1,6 +1,7 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ import {
++  modelConnectivityErrorMessage,
+   providerProbeScope,
+   resolveProviderStatus,
+ } from "../src/settings/model-provider-section/providerStatus.js";
+@@ -110,3 +111,16 @@ test("probe evidence survives unrelated refreshes but not credential or model ch
+     first,
+   );
+ });
++
++
++test("status and test feedback share classified copy without disclosing provider bodies", () => {
++  const intl = { formatMessage: ({ id }: { id: string }) => id };
++  for (const kind of ["authentication", "access-denied", "subscription-expired", "model", "network"] as const) {
++    assert.equal(modelConnectivityErrorMessage({ kind, message: "private body", statusCode: 403 }, intl),
++      `settings.modelProvider.testFailure.${kind} (HTTP 403)`);
++  }
++  assert.equal(modelConnectivityErrorMessage({ message: "Subscription expired in an unclassified body" }, intl),
++    "settings.modelProvider.testFailure.unknown");
++  assert.equal(modelConnectivityErrorMessage({ code: "model-unavailable", kind: "unknown", message: "private" }, intl),
++    "settings.modelProvider.testModel.modelUnavailable");
++});
+diff --git a/packages/ui/test/settingsTypography.browser.test.tsx b/packages/ui/test/settingsTypography.browser.test.tsx
+index 5321963..a948b82 100644
+--- a/packages/ui/test/settingsTypography.browser.test.tsx
++++ b/packages/ui/test/settingsTypography.browser.test.tsx
+@@ -1,4 +1,7 @@
+ import { act } from "react";
++import { Button } from "../src/components/ui/button.js";
++import { Badge } from "../src/components/ui/badge.js";
++import { ProviderStatusIndicator } from "../src/settings/model-provider-section/ProviderStatusIndicator.js";
+ import { createRoot } from "react-dom/client";
+ import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
+ import { PlanStatusCardSurface } from "../src/settings/model-provider-section/PlanStatusCardSurface.js";
+@@ -32,6 +35,26 @@ async function run() {
+             <div data-action>
+               <CredentialDefaultControl selected={false} onSelect={() => {}} />
+             </div>
++            <div data-fit>
++              <PlanStatusCardSurface
++                compact
++                trailingActionFillNarrow={false}
++                planTitle="an-account-with-a-long-name@example.com"
++                titleAccessory={<Badge variant="secondary">Team</Badge>}
++                trailingAction={<div data-account-actions className="flex flex-wrap justify-end gap-3">
++                  <CredentialDefaultControl selected={false} onSelect={() => {}} />
++                  <Button variant="link">{locale === "zh-CN" ? "订阅额度" : "Usage allowance"}</Button>
++                </div>}
++              />
++            </div>
++            <div data-status className="relative flex items-center justify-between">
++              <span>Provider</span>
++              <ProviderStatusIndicator provider={{
++                enabled: true, executable: true, config: {},
++                connectionTest: { modelId: "unavailable-model", checkedAt: 1,
++                  result: { success: false, error: { kind: "access-denied", statusCode: 403, message: "private upstream body" } } },
++              }} />
++            </div>
+             <div data-quota>
+               <SubscriptionAllowanceDetails
+                 now={0}
+@@ -55,6 +78,24 @@ async function run() {
+         check(font(quota) === font(action), "Quota information is smaller than other primary text");
+         check(font(timestamp) < font(quota), "Reset timestamp lost its secondary hierarchy");
+         results.push({ name });
++        const title = node.querySelector("[data-fit] h3")!.getBoundingClientRect();
++        const actions = node.querySelector("[data-account-actions]")!.getBoundingClientRect();
++        const status = node.querySelector("[data-status] svg")!;
++        const label = status.getAttribute("aria-label") ?? "";
++        const presentationName = `${locale}: narrow account actions and status feedback at ${size}px`;
++        try {
++          check(actions.top >= title.bottom && title.width >= 100, "Card used the wide viewport instead of its narrow content column");
++          check(getComputedStyle(status).position === "static", "Status retained the obsolete icon-rail positioning");
++          check(label.includes("HTTP 403") && !label.includes("private upstream body"), "Status lost classified failure details or exposed provider text");
++          check(!label.includes(locale === "zh-CN" ? "订阅已到期" : "Subscription expired"), "Access denial was presented as subscription expiry");
++          node.style.width = "720px";
++          const wideTitle = node.querySelector("[data-fit] h3")!.getBoundingClientRect();
++          const wideActions = node.querySelector("[data-account-actions]")!.getBoundingClientRect();
++          check(wideActions.left > wideTitle.left && wideActions.top < wideTitle.bottom, "A wide card lost its original trailing action row");
++          results.push({ name: presentationName });
++        } catch (error) {
++          results.push({ name: presentationName, error: String(error) });
++        }
+       } catch (error) {
+         results.push({ name, error: String(error) });
+       } finally {
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+index c0cc141..1db4821 100644
+--- a/scripts/test-usage-hooks.mjs
++++ b/scripts/test-usage-hooks.mjs
+@@ -43,7 +43,7 @@ app.setPath("userData", ${JSON.stringify(join(profile, "data"))});
+ if (process.platform === "darwin") app.dock.hide();
+ app.whenReady().then(async () => {
+   session.defaultSession.webRequest.onBeforeRequest({urls:["http://*/*","https://*/*"]}, (_r, cb) => cb({cancel:true}));
+-  const window = new BrowserWindow({show:false, webPreferences:{sandbox:true, contextIsolation:true}});
++  const window = new BrowserWindow({show:false, width:${stylesheet ? 640 : 800}, webPreferences:{sandbox:true, contextIsolation:true}});
+   await window.loadFile(${JSON.stringify(join(profile, "index.html"))});
+   const results = await window.webContents.executeJavaScript("window." + ${JSON.stringify(resultKey)});
+   if (!Array.isArray(results)) throw new Error("Renderer test bundle did not execute");

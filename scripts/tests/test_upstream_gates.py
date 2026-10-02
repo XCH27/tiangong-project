@@ -183,7 +183,7 @@ exit 0
         capture = self.root / "profile-path"
         env = dict(os.environ, PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
                    CRAFT_CONFIG_DIR="/owner-profile-must-not-be-used", PROFILE_CAPTURE=str(capture))
-        result = subprocess.run(["bash", str(SCRIPTS / "fleet-verify.sh")], env=env, capture_output=True, text=True)
+        result = subprocess.run(["bash", str(SCRIPTS / "fleet-verify.sh"), "--retained-craft"], env=env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 42, result.stderr)
         profile = Path(capture.read_text())
         self.assertIn("fleet-verification-profile.", profile.name)

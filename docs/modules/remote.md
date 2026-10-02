@@ -1,5 +1,8 @@
 # SYS-02 — Remote engineering office
 
+**Code scope:** `app/` paths and unqualified Craft observations describe the retained branch;
+`.fleet/zcode` sections describe the active candidate. [Current order](../../TODO.md) overrides old branch sequencing.
+
 **Owned execution rows:** EXEC-07, EXEC-09, EXEC-11, EXEC-13, EXEC-15.
 **Consumed rows:** EXEC-05, INFO-01, INFO-08. **Owner:** remote target,
 runtime, Git/worktree and delivery adapters. **Depends on:** SYS-01 identity, policy, action and
@@ -39,7 +42,7 @@ offline target, expired grant and reconnect recovery.
 ## Acceptance and references
 
 Use `EXEC-07-A`, `EXEC-09-A`, `EXEC-13-A`, `INFO-01-A`, `INFO-08-A`. OpenChamber supplies Git/GitHub comparison; Orca and Codex supply bounded worktree/protocol
-candidates. Current Craft is the process/Session starting point. Older OpenHands executor findings
+candidates. Retained Craft is the process/Session starting point for this older packet; the isolated ZCode candidate keeps its own Host and Session path. Older OpenHands executor findings
 are historical and do not describe the current Agent Canvas checkout. Historical lease evidence may be reopened temporarily only for a named uncovered failure.
 A successful connection alone is not `usable`.
 
@@ -240,3 +243,48 @@ implementation has added them; extend a matching existing behavioral test instea
 - **Failure:** Stale/ambiguous target fails before input; Stop revokes queued dispatch and requires fresh observation before resume. Delivered OS input can have unknown outcome; verify rather than blindly replay.
 - **Proof:** EXEC-15-A — Disposable local app then one authorized office app: observe/act/verify/stop/revoke; test moved/restarted window, multi-display scale, denied AX/capture, helper crash and uncertain save. Planned regression/probe target relative to `app/`: `scripts/probes/exec-15.ts`. After adding the target, run from `app/`: `bun run scripts/probes/exec-15.ts`; apply the isolated-profile rule for configuration writes.
 - **Reference:** Orca native provider shape and Peekaboo exact-target/mutation-receipt invariants; UI-TARS coordinate fallback only. Compare native helper versus bounded CLI adapter under the local-app proof below. Source locks and limits: [reference registry](../references.md#bounded-source-review--2026-09-21).
+
+## GitHub account entry
+
+The candidate's lower-left control is now a **local profile**, per the owner's Cherry Studio
+reference. It is not GitHub identity. The original ZCode footer Avatar size/name alignment remains;
+clicking opens an avatar/name editor. `ISettingService` on the local/base host persists
+`localProfileName` and `localProfileAvatar` using its existing schema, write queue and atomic file.
+Name/image changes do not touch authenticated user state, credentials, permissions or remote-host
+settings. Image selection is local-only, normalized to a bounded 128×128 PNG; reset stores an empty
+avatar. Decode/write errors preserve committed values. No image URL fetching or photo upload occurs.
+
+Source comparison: Cherry `src/renderer/components/UserPopup.tsx` and profile IPC at `09d4ea5e`
+provide the edit flow and image normalization; ZCode `WorkspaceSidebarFooter.tsx`, `Avatar` and
+`useSettingService` supply host primitives and persistence. Cherry's cloud login, emoji picker and
+file-entry database are not imported. Footer language/mode/theme move to their existing General/
+Appearance settings; zoom remains in View and shortcuts. Native GitHub identity code added in the
+candidate is removed, leaving any old credential records untouched. The existing [GitHub plugin](marketplace.md#github-package-and-official-implementations)
+retains its separate repository-tool authorization; Copilot connection is separate again.
+
+The following RPC/client-isolation contract describes **retained Craft only**, not the candidate.
+The footer adapts OpenChamber `GitHubAccountControl` account selection and `GitHubSettings`
+start/code/completion/cancel flow. The owner requested direct footer login; Fleet hosts those
+controls there rather than importing OpenChamber's settings hierarchy, Zustand account store,
+OAuth client ID or token persistence. Application Edit/View/Window actions remain a separate menu.
+
+`git:githubCliStatus` and `git:githubCliAuth` use the existing workspace-routed RPC and system
+handlers on desktop/headless hosts. The official installed `gh` CLI owns login, secure-storage
+selection, account activation and logout. The renderer sees only host/login/active state and a
+public one-time code. `gh auth login --web --skip-ssh-key` starts only on an explicit user click;
+no SSH key upload, protocol rewrite, custom scopes or token reads are added. GitHub's fixed device
+URL opens after a code is available. Startup/poll/cancel are scoped to the requesting client;
+authorization expires after 15 minutes and concurrent clients cannot inspect or cancel it.
+CLI output is never returned. Environment-owned tokens cannot be changed by these controls.
+
+Switch/logout validate against gh's current public account list. Logout explains that gh's login
+is shared with other CLI consumers and requires its explicit inline action. Changing runtime
+unmounts the account control and cancels a pending flow. No repository write, push, PR, subscription
+login or completed Git delivery capability follows from account presence. Unit tests exercise
+code projection, secret omission, client isolation, cancellation and launch failure with a fake
+process. A real user-approved login/switch/logout round-trip remains required for acceptance.
+
+Source evidence: OpenChamber `packages/ui/src/components/github/GitHubAccountControl.tsx`,
+`packages/ui/src/components/sections/openchamber/GitHubSettings.tsx`; official gh
+[`auth login`](https://cli.github.com/manual/gh_auth_login) and
+[`internal/authflow/flow.go`](https://github.com/cli/cli/blob/trunk/internal/authflow/flow.go).

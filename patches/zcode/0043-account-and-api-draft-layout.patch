@@ -1,0 +1,393 @@
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 1ffb476..9b01186 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -80,7 +80,8 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.connectionsTitle": "Connected services",
+   "settings.modelProvider.connection.saveFirst":
+     "Save the connection changes before testing a model.",
+-  "settings.modelProvider.discovery.removeDraft": "Remove model draft {number}",
++  "settings.modelProvider.discovery.cancelDraft": "Cancel adding model",
++  "settings.modelProvider.discovery.addFailed": "Could not add the model. Your ID is preserved; retry.",
+   "settings.modelProvider.connection.unsaved": "Unsaved connection changes",
+   "settings.modelProvider.loadFailed": "Could not connect to model settings. Please retry.",
+   "settings.modelProvider.discovery.search": "Search model name or ID",
+@@ -178,6 +179,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.credentials.default": "Default",
+   "settings.modelProvider.credentials.makeDefault": "Make default",
+   "settings.modelProvider.credentials.removeKey": "Remove key {number}",
++  "settings.modelProvider.credentials.cancelKeyDraft": "Cancel adding API key",
+   "settings.modelProvider.credentials.addKey": "Add API key",
+   "settings.modelProvider.credentials.keys.autoSwitch": "Switch when a key is unavailable",
+   "settings.modelProvider.credentials.keys.switchRequiresTwo":
+@@ -7175,7 +7177,6 @@ const enUS: Record<string, string> = {
+   "scheduledPreview.addSchedule": "Add schedule",
+   "offPeak.create.unavailableInFleet":
+     "Hosted idle-time service is unavailable in Fleet. Use a local scheduled automation.",
+-  "settings.modelProvider.discovery.manualAdd": "Add model manually",
+   "settings.modelProvider.discovery.manualPlaceholder": "Enter the model ID from your provider",
+   "settings.usage.accounting.tokensTab": "Tokens",
+   "settings.usage.accounting.cacheTab": "Cache hits",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 131b765..89a4e70 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -68,7 +68,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.discovery.failed": "暂时无法读取模型列表，已保存的模型未改变。",
+   "settings.modelProvider.connectionsTitle": "已添加的服务",
+   "settings.modelProvider.connection.saveFirst": "请先保存连接更改，再测试模型。",
+-  "settings.modelProvider.discovery.removeDraft": "移除模型草稿 {number}",
++  "settings.modelProvider.discovery.cancelDraft": "取消添加模型",
++  "settings.modelProvider.discovery.addFailed": "未能添加模型，输入已保留，请重试。",
+   "settings.modelProvider.connection.unsaved": "连接更改尚未保存",
+   "settings.modelProvider.loadFailed": "无法连接模型设置服务，请重试。",
+   "settings.modelProvider.discovery.search": "搜索模型名称或 ID",
+@@ -152,6 +153,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.credentials.default": "默认",
+   "settings.modelProvider.credentials.makeDefault": "设为默认",
+   "settings.modelProvider.credentials.removeKey": "移除密钥 {number}",
++  "settings.modelProvider.credentials.cancelKeyDraft": "取消添加 API 密钥",
+   "settings.modelProvider.credentials.addKey": "添加 API 密钥",
+   "settings.modelProvider.credentials.keys.autoSwitch": "密钥不可用时自动切换",
+   "settings.modelProvider.credentials.keys.switchRequiresTwo":
+@@ -6808,7 +6810,6 @@ const zhCN: Record<string, string> = {
+   "scheduledPreview.toast.view": "查看",
+   "scheduledPreview.addSchedule": "添加计划",
+   "offPeak.create.unavailableInFleet": "Fleet 未接入云端闲时任务服务，请使用本地定时自动化。",
+-  "settings.modelProvider.discovery.manualAdd": "手动添加模型",
+   "settings.modelProvider.discovery.manualPlaceholder": "输入服务商提供的模型 ID",
+   "settings.usage.accounting.tokensTab": "Token 用量",
+   "settings.usage.accounting.cacheTab": "缓存命中",
+diff --git a/packages/ui/src/settings/model-provider-section/ApiKeyInput.tsx b/packages/ui/src/settings/model-provider-section/ApiKeyInput.tsx
+index ba0074f..7b96b35 100644
+--- a/packages/ui/src/settings/model-provider-section/ApiKeyInput.tsx
++++ b/packages/ui/src/settings/model-provider-section/ApiKeyInput.tsx
+@@ -43,7 +43,7 @@ export function ApiKeyInput({
+         type={visible && !readOnly ? "text" : "password"}
+         aria-label={label ?? intl.formatMessage({ id: "settings.modelProvider.apiKey" })}
+         data-testid={TID_MODEL_PROVIDER_API_KEY_INPUT}
+-        className="pr-10"
++        className={value ? "pr-10" : undefined}
+         placeholder={intl.formatMessage({
+           id: "settings.modelProvider.apiKeyPlaceholder",
+         })}
+@@ -60,21 +60,23 @@ export function ApiKeyInput({
+         onCompositionStart={readOnly ? undefined : onCompositionStart}
+         onCompositionEnd={readOnly ? undefined : onCompositionEnd}
+       />
+-      <Button
+-        type="button"
+-        variant="ghost"
+-        size="icon-sm"
+-        disabled={readOnly}
+-        className="absolute top-1/2 right-1.5 -translate-y-1/2"
+-        onClick={onToggleVisibility}
+-        aria-label={intl.formatMessage({
+-          id: visible
+-            ? "settings.modelProvider.credentials.hide"
+-            : "settings.modelProvider.credentials.show",
+-        })}
+-      >
+-        {visible ? <EyeOffIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
+-      </Button>
++      {value ? (
++        <Button
++          type="button"
++          variant="ghost"
++          size="icon-sm"
++          disabled={readOnly}
++          className="absolute top-1/2 right-1.5 -translate-y-1/2"
++          onClick={onToggleVisibility}
++          aria-label={intl.formatMessage({
++            id: visible
++              ? "settings.modelProvider.credentials.hide"
++              : "settings.modelProvider.credentials.show",
++          })}
++        >
++          {visible ? <EyeOffIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
++        </Button>
++      ) : null}
+     </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+index b374a48..1a648c4 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+@@ -33,10 +33,8 @@ export function ModelDraftRows({
+   const savingRef = useRef(false);
+   const generation = useRef(0);
+   const compositionActive = useRef(false);
+-  const names = rows.map((row) => row.value.trim());
+-  const duplicate = (name: string) =>
+-    !!name && (modelIds.includes(name) || names.filter((id) => id === name).length > 1);
+-  const invalid = names.some(duplicate);
++  const duplicate = (name: string) => !!name && modelIds.includes(name);
++  const invalid = rows.some((row) => duplicate(row.value.trim()));
+ 
+   useEffect(
+     () => () => {
+@@ -49,11 +47,11 @@ export function ModelDraftRows({
+     else if (focusTarget !== undefined) inputs.current.get(focusTarget)?.focus();
+   }, [focusTarget, rows.length]);
+ 
+-  const remove = (row: DraftRow, index: number) => {
++  const remove = (row: DraftRow) => {
+     if (savingRef.current) return;
+     setRows((current) => current.filter((item) => item.id !== row.id));
+     setError(undefined);
+-    setFocusTarget(rows[index + 1]?.id ?? rows[index - 1]?.id ?? "add");
++    setFocusTarget("add");
+   };
+   const save = async (row: DraftRow) => {
+     if (savingRef.current || duplicate(row.value.trim()) || !row.value.trim()) return;
+@@ -66,10 +64,10 @@ export function ModelDraftRows({
+       await onAddModel(row.value.trim());
+       if (version !== generation.current) return;
+       setRows((current) => current.filter((item) => item.id !== row.id));
+-      setFocusTarget(rows.find((item) => item.id !== row.id)?.id ?? "add");
+-    } catch (reason) {
++      setFocusTarget("add");
++    } catch {
+       if (version === generation.current)
+-        setError(reason instanceof Error ? reason.message : String(reason));
++        setError(intl.formatMessage({ id: "settings.modelProvider.discovery.addFailed" }));
+     } finally {
+       if (version === generation.current) {
+         savingRef.current = false;
+@@ -80,15 +78,13 @@ export function ModelDraftRows({
+ 
+   return (
+     <div className="space-y-2" data-no-model-drag="true">
+-      {rows.map((row, index) => (
++      {rows.map((row) => (
+         <ProviderDraftRow
+           key={row.id}
+           disabled={saving}
+-          removeLabel={intl.formatMessage(
+-            { id: "settings.modelProvider.discovery.removeDraft" },
+-            { number: index + 1 },
+-          )}
+-          onRemove={() => remove(row, index)}
++          removeKind="cancel"
++          removeLabel={intl.formatMessage({ id: "settings.modelProvider.discovery.cancelDraft" })}
++          onRemove={() => remove(row)}
+           actions={
+             <ProviderDraftConfirm
+               saving={savingId === row.id}
+@@ -135,7 +131,7 @@ export function ModelDraftRows({
+                 void save(row);
+               } else if (event.key === "Escape") {
+                 event.preventDefault();
+-                remove(row, index);
++                remove(row);
+               }
+             }}
+           />
+@@ -147,10 +143,10 @@ export function ModelDraftRows({
+         data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+         onClick={() => {
+           if (savingRef.current) return;
+-          const empty = rows.find((row) => !row.value.trim());
+-          if (empty) {
+-            setFocusTarget(empty.id);
+-            inputs.current.get(empty.id)?.focus();
++          const current = rows[0];
++          if (current) {
++            setFocusTarget(current.id);
++            inputs.current.get(current.id)?.focus();
+             return;
+           }
+           const id = nextId.current++;
+@@ -159,7 +155,7 @@ export function ModelDraftRows({
+           setFocusTarget(id);
+         }}
+       >
+-        {intl.formatMessage({ id: "settings.modelProvider.discovery.manualAdd" })}
++        {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+       </ProviderDraftAdd>
+ 
+       {invalid || error ? (
+diff --git a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+index af9e727..85a411a 100644
+--- a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
++++ b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+@@ -13,7 +13,7 @@ export function PlanStatusCardSurface({
+ }: {
+   planTitle?: string;
+   titleAccessory?: ReactNode;
+-  statusMeta: ReactNode;
++  statusMeta?: ReactNode;
+   trailingAction?: ReactNode;
+   usageContent?: ReactNode;
+   compact?: boolean;
+@@ -33,9 +33,11 @@ export function PlanStatusCardSurface({
+               {titleAccessory}
+             </div>
+           ) : null}
+-          <div className={cn("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1", !compact && "mt-1")}>
+-            {statusMeta}
+-          </div>
++          {statusMeta ? (
++            <div className={cn("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1", !compact && "mt-1")}>
++              {statusMeta}
++            </div>
++          ) : null}
+         </div>
+         {trailingAction ? (
+           <div className={cn(
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 9037b60..a877683 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -346,9 +346,12 @@ export function ProviderApiKeySection({
+   const keys = [apiKeyValue, ...additionalApiKeys];
+   // 仅在有实际操作的列上对齐；单个已保存密钥不留下空的确认位，新建表单不留下空开关位。
+   const multiple = keys.length > 1;
+-  const reserveActions = multiple;
++  const savedKeyCount = rowEditing
++    ? rowEditing.savedKeys.filter((key) => key.trim()).length
++    : keys.filter((key) => key.trim()).length;
++  const reserveActions = savedKeyCount > 1;
+   const reserveSwitch = Boolean(
+-    rowEditing && rowEditing.savedKeys.filter((key) => key.trim()).length > 1,
++    rowEditing && savedKeyCount > 1,
+   );
+   const commitRow = (index: number) => {
+     if (!rowEditing) return;
+@@ -392,7 +395,9 @@ export function ProviderApiKeySection({
+               ? "grid-cols-[minmax(0,1fr)_auto_auto_auto]"
+               : reserveActions || reserveSwitch
+                 ? "grid-cols-[minmax(0,1fr)_auto_auto]"
+-                : "grid-cols-[minmax(0,1fr)_auto]",
++                : multiple
++                  ? "grid-cols-[minmax(0,1fr)_auto]"
++                  : "grid-cols-[minmax(0,1fr)]",
+           )}
+         >
+           {keys.map((key, index) => {
+@@ -406,7 +411,10 @@ export function ProviderApiKeySection({
+                 key={index}
+                 alignWithSiblings
+                 reserveActions={reserveActions}
+-                showRemove={multiple}
++                showRemove={saved
++                  ? savedKeyCount > 1 || rowEditing.savedKeys.length > 1
++                  : index > 0 || savedKeyCount > 1}
++                removeKind={saved ? "delete" : "cancel"}
+                 trailing={
+                   reserveSwitch ? (
+                     <span className="inline-flex min-w-8 items-center justify-end">
+@@ -433,10 +441,12 @@ export function ProviderApiKeySection({
+                   ) : undefined
+                 }
+                 disabled={readOnly}
+-                removeLabel={intl.formatMessage(
+-                  { id: "settings.modelProvider.credentials.removeKey" },
+-                  { number: index + 1 },
+-                )}
++                removeLabel={saved
++                  ? intl.formatMessage(
++                      { id: "settings.modelProvider.credentials.removeKey" },
++                      { number: index + 1 },
++                    )
++                  : intl.formatMessage({ id: "settings.modelProvider.credentials.cancelKeyDraft" })}
+                 onRemove={() => remove(index)}
+                 actions={
+                   !pending && multiple ? (
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+index 0990f07..cc7cd5d 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+@@ -1,5 +1,5 @@
+ import { forwardRef, type ReactNode } from "react";
+-import { Check, Loader2, Plus, Trash2 } from "lucide-react";
++import { Check, Loader2, Plus, Trash2, X } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { Input, type InputProps } from "@/components/ui/input.js";
+ import { cn } from "@/components/lib/utils.js";
+@@ -18,6 +18,7 @@ export function ProviderDraftRow({
+   alignWithSiblings,
+   reserveActions = true,
+   showRemove = true,
++  removeKind = "delete",
+   trailing,
+   removeLabel,
+   onRemove,
+@@ -28,6 +29,7 @@ export function ProviderDraftRow({
+   alignWithSiblings?: boolean;
+   reserveActions?: boolean;
+   showRemove?: boolean;
++  removeKind?: "delete" | "cancel";
+   trailing?: ReactNode;
+   removeLabel: string;
+   onRemove: () => void;
+@@ -56,7 +58,7 @@ export function ProviderDraftRow({
+           title={removeLabel}
+           onClick={onRemove}
+         >
+-          <Trash2 className="size-4" />
++          {removeKind === "cancel" ? <X className="size-4" /> : <Trash2 className="size-4" />}
+         </Button>
+       ) : null}
+       {trailing}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+index adde4e6..b45d957 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAccountRow.tsx
+@@ -74,8 +74,8 @@ export function SubscriptionAccountRow({
+             </Badge>
+           ) : undefined
+         }
+-        statusMeta={
+-          <>
++        trailingAction={
++          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+             {canRemove ? (
+               <CredentialDefaultControl
+                 selected={account.active}
+@@ -91,6 +91,7 @@ export function SubscriptionAccountRow({
+                   { id: "settings.modelProvider.credentials.viewAccountAllowance" },
+                   { account: label },
+                 )}
++                aria-expanded={open}
+               >
+                 {intl.formatMessage({ id: "settings.modelProvider.allowance.title" })}
+                 {open ? (
+@@ -100,22 +101,20 @@ export function SubscriptionAccountRow({
+                 )}
+               </Button>
+             </CollapsibleTrigger>
+-          </>
+-        }
+-        trailingAction={
+-          canRemove ? (
+-            <Button
+-              variant="ghost"
+-              size="icon-sm"
+-              disabled={busy}
+-              aria-label={intl.formatMessage({
+-                id: "settings.modelProvider.credentials.removeAccount",
+-              })}
+-              onClick={onRemove}
+-            >
+-              <Trash2 className="size-4" />
+-            </Button>
+-          ) : undefined
++            {canRemove ? (
++              <Button
++                variant="ghost"
++                size="icon-sm"
++                disabled={busy}
++                aria-label={intl.formatMessage({
++                  id: "settings.modelProvider.credentials.removeAccount",
++                })}
++                onClick={onRemove}
++              >
++                <Trash2 className="size-4" />
++              </Button>
++            ) : null}
++          </div>
+         }
+         usageContent={
+           open ? (

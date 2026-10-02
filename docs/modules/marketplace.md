@@ -1,10 +1,14 @@
 # SYS-08 — Skill, plugin and MCP marketplaces
 
+**Code scope:** `app/` paths and unqualified Craft observations describe the retained branch;
+`.fleet/zcode` sections describe the active candidate. [Current order](../../TODO.md) overrides old branch sequencing.
+
 **Rows:** ORCH-03, ORCH-04, ORCH-10, ORCH-11, ORCH-12. **Owner:** catalog, manifest, trust and
 install lifecycle. **Depends on:** SYS-01 ActorRef/PermissionDecision/ActionEnvelope and SYS-03
 loadout/context measurement. **Authority:** package identity, catalog metadata, staged transactions
 and receipts; it does not own runtime permissions or Session/Task state.
-**Development order:** complete the R0 baseline exit first, then local host/activation in
+**Development order:** OV-025/OV-026 first require the candidate-host proof in
+[`components.md`](components.md#first-proof-after-baseline-selection). The retained Craft sequence is R0, then local host/activation in
 [`components.md`](components.md#release-contract--r18-component-and-panel-foundation), then R15 external
 distribution. Existing permission/settings paths support the first built-in consumers; R6/R9 are
 not blanket prerequisites. A particular component waits only for the capabilities it consumes.
@@ -12,11 +16,10 @@ not blanket prerequisites. A particular component waits only for the capabilitie
 registries. The marketplace adds inspected package/catalog transactions over them; it never replaces
 their runtime or permission paths.
 
-The installable product bundle is a **Component**, as defined in
-[`components.md`](components.md). The historical "plugin"
-view remains a catalog category for compatibility, but a user-facing Component may additionally
-contribute a left tool-rail entry or right-workbench panel and native domain commands. Global versus
-Workspace enablement and user overrides extend the existing user/Workspace settings; the effective
+The user-facing bundle is a **plugin**; **Component** is its older engineering name, as defined in
+[`components.md`](components.md). There is one package lifecycle. A plugin may contain an adapted
+application editor/backend and contribute native pages, right tools and domain commands. Global versus
+Project enablement and user overrides extend the selected host's settings; the effective
 Composition is derived from them, not copied into the catalog or Assistant record. Left/right are
 default contribution placements; the host owns user movement and restore.
 
@@ -61,11 +64,117 @@ P-56 is the shared catalog shell; P-57/P-58/P-59 are typed projections for Skill
 details. The renderer reads catalog/package/transaction state through one adapter and submits staged
 commands. It never writes installation directories, credentials or runtime registries directly.
 
-The backend extends Craft Skills, Sources, MCP, credentials and settings. `PackageManifest`,
-`InstallTransaction` and `InstallReceipt` are candidate shapes extracted only with the first local
-package flow. Catalog adapters may be local, curated or remote, but cannot activate content. Install
+OV-066 selects the existing ZCode installer/lifecycle as the owner. Extend its manifest, transaction
+and receipt types through the first local page/document package; do not introduce another installer.
+Agent Skills and MCP are initial portable contributions; executable vendor hooks need explicit adapters. Catalog adapters may be local, curated or remote, but cannot activate content. Install
 is download → verify → inspect → approve → stage → health check → atomic activation. Update is a new
 transaction; uninstall revokes the package's runtime grants and package-owned credentials before removing staged files; shared connections are retained while referenced.
+
+### Agent authoring and application packages
+
+The owner requires Agents to create installable UI plugins, including ports of independent domain
+software. Reuse the selected host's authoring/install seam. Cindy provides concrete references:
+`main/cindy-brain/forge.ts` scaffolds and packages validated bundles; `main/mcp-integrations/ghost.ts`
+gates Forge installation. Its official OpenDesign package is the [inspected application-port example](../references.md#cindy-opendesign-application-plugin).
+
+Selected flow: obtain version-matched host/SDK guidance → scaffold or adapt a domain package →
+run manifest, UI-contract and operation checks → package with provenance → install through the
+ordinary local installer → exercise actual entries, shared mutations and recovery. A manifest or
+successful build alone does not prove a working plugin. The Agent and human installer must use the
+same validation, scoped grants and lifecycle; no private file-copy bypass. Reuse already-authorized
+local scope instead of asking again for each mechanical step. Publishing and new privileges remain
+separate actions under the owner's existing approval rules.
+
+An application package identifies upstream revision/license, retained capabilities, deliberate
+omissions, adapter patches and backend dependencies. Domain workers start lazily and stop with
+their lifecycle; disable/uninstall does not silently delete user documents. Preserve provenance
+and per-dependency notices. UI and worker compatibility must be checked together during update.
+The native contribution/operation contract belongs to `components.md`, not a second marketplace
+runtime. OV-066 selects this authoring path; it remains unimplemented until the real local package flow passes.
+
+### GitHub package and official implementations
+
+The owner asks whether existing GitHub plugins have official source. The public
+[OpenAI plugins](https://github.com/openai/plugins) repository supplies Codex plugin manifests and
+workflows; an installed Codex GitHub package references an OpenAI-hosted connector plus CLI fallback.
+A connector identifier does not ship its service implementation. The reusable upstream tools are
+[GitHub MCP Server](https://github.com/github/github-mcp-server) and
+[GitHub CLI](https://github.com/cli/cli), both maintained by GitHub.
+ZCode already ships a GitHub marketplace entry: `github` 0.1.2, a CLI workflow skill package with
+10 skills (repository, PR, issue, commit, release, workflow, gist, codespace, secrets and setup).
+The official marketplace archive was verified against SHA-256
+`7320f15886d83625ed8eec944a7a2ab09fe99d64a42131ccec427eeecfd769b6`; its manifest has no MCP server.
+Reuse that existing package/lifecycle before adding any duplicate tool provider. The earlier
+MCP-first recommendation omitted this evidence and is withdrawn. No connector was installed here.
+
+The restored candidate footer menu retains local profile editing and useful original preferences
+(OV-040/041; see shell/services). GitHub plugin CLI authorization and Copilot model authorization
+remain separate; a local profile does not authorize either connection.
+
+### Pi package intake (OV-046)
+
+The [pinned source comparison](../references.md#pi-package-intake-and-original-source-correction-ov-046)
+selects subscription image execution, Kling image/video task lifecycle, scoped web/video extraction
+and usage-ledger calendar/retention patterns for further integration. The Pi Claude bridge is a
+comparison for SDK abort/resume and tool-result behavior; it writes another Claude session and
+cannot be loaded as a model-only adapter. Source reading alone does not
+make these plugins installable in Fleet: Pi ExtensionAPI/TUI hooks are not ZCode plugin contracts.
+The newer standalone Chord facet host offers typed cross-process services and replicated state;
+its coding-agent presentation path is under `experimental/`, while Pi durable is a separate
+experimental Session writer. Neither can be loaded as a ZCode plugin or replace the existing owner.
+Adapt useful Skills/MCP declarations or a bounded licensed adapter through existing owners; do not
+load a second Pi runtime, duplicate MCP client, credential store or usage database. Do not import
+automatic reset-card consumption. Preserve the original installer until staged grants, revocation,
+keep-data uninstall and native result rendering are verified. No package was installed by this audit.
+
+### Candidate catalog origin and intake
+
+The default source is still `https://cdn-zcode.z.ai/zcode/official-plugin/marketplace.json`
+(`packages/shared/src/plugin-marketplaces.ts`). On inspection it lists 26 URL/ZIP entries;
+their archives are delivered by ZCode's CDN, including GitHub 0.1.2. This is ZCode's packaging of
+GitHub workflows, not a GitHub-maintained plugin. Local bundled definitions separately seed the
+same marketplace identity; `official-marketplace.ts` merges bundled/CDN partitions. A listed
+plugin is not necessarily downloaded when shown; install follows that entry's source and digest.
+
+Marketplace independence is not implemented. Preserve the existing installer and lifecycle, then
+review license, instructions, runtime dependencies, network destinations and actual Fleet support
+per package. Retain useful bundled packages; admit reviewed packages to a Fleet-maintained catalog.
+Do not bulk relabel, mirror or publish the upstream catalog, or assume the host license covers each
+plugin. The ZCode source can remain an explicitly identified optional source; changing the default
+and hosting/distributing packages requires the concrete intake/release decision. Catalog delivery,
+archive delivery and runtime service use are three separate boundaries.
+
+The bundled Fleet guide uses ZCode's original guide-plugin identity and lifecycle. Its local UI
+reader and Agent skill share source Markdown; see [services](services.md#candidate-local-help-and-agent-guide).
+
+### ZCode development guidance and lifecycle gaps
+
+At the candidate pin, root `README.md` covers Desktop/Web/CLI development and packaging;
+`apps/zcode-cli/README.md:41–137` explains local plugin directories, manifest components, MCP and
+variable/data paths. `AGENTS.md`, `DESIGN.md` and architecture-governance supply code conventions.
+This is usable source guidance, not a native UI plugin SDK: `contracts/src/plugins/index.ts:97,141`
+has no main-page/right-tool contribution, and diagnostic manifest fields are not mounted features.
+The feature-boundary-planner skill's `docs/skills/feature-boundary-graph.md` link is absent at this pin.
+
+The declared `plugin-creator` definition (`bootstrap/src/app/official-plugin-definitions.ts:244`)
+references scaffolding/validation guides that were not found in the candidate/upstream
+`plugin-creator-plugin` source or inspected runtime assets. Verify packaged availability before
+claiming Agent authoring works. The creator UI currently requires the official Skill ID.
+
+Keep the existing dependency resolution, ZIP digest/path protections and atomic activation rollback. Settings Skill, command and subagent readers must use the CLI's `ZCODE_STORAGE_DIR` precedence, and local UI user roots must honor the existing desktop-home override; otherwise a scoped runtime and its settings can show different cached plugins. Opening the candidate store must only read its local inventory; the inherited automatic ZCode CDN refresh is retired. Explicit Refresh retains the original marketplace command and third-party source identity. The shared node_repl host remains in runtime inventory but is not a separate settings switch; Browser/Computer Use own the visible controls. The Browser Use content package keeps its identity and MIT author attribution while its visible Fleet wording is versioned with its seeded manifest. This is not a Fleet-owned or fully independent catalog.
+Close these concrete gaps before expanding the catalog: `adapters/src/plugins/index.ts:366` allows
+third-party hooks; installation defaults to enabled (`bootstrap/src/plugins.ts:733`) without a
+per-package capability grant review. Desktop uninstall now passes the existing `keepData: true`
+policy, removes activation/configuration and optional package cache, and preserves plugin user
+data. The original confirmation names that distinction; no extra control was added. CLI explicit
+removal semantics remain unchanged. Reserved `generated-commands` is derived data: materialization
+stages and replaces its current manifest snapshot, rejects symlink redirects and restores the old
+snapshot on activation failure, so reinstallation cannot revive removed commands. Temporary local
+install/uninstall/reinstall and failure tests cover both marketplace and builtin paths.
+Project-scoped config exists; active-session revocation needs verification. Atomic failed-update
+rollback does not prove runtime health checking or user-selected rollback to an older version.
+All CLI paths above are relative to `.fleet/zcode/apps/zcode-cli/packages/`. These findings define
+acceptance work, not completed controls or authorization to install an unreviewed plugin.
 
 ### Optional voice-input Component (planned)
 

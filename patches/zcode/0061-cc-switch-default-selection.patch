@@ -1,0 +1,137 @@
+diff --git a/package.json b/package.json
+index 5a2daae..d0a2ee4 100644
+--- a/package.json
++++ b/package.json
+@@ -55,7 +55,8 @@
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+     "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+-    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests"
++    "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests",
++    "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx b/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
+index b352921..0516e02 100644
+--- a/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
+@@ -51,7 +51,7 @@ export function CcSwitchImportSection({
+       const result = await providerSettingsService.previewCcSwitchImport(path);
+       if (!mounted.current) return;
+       setPreview(result);
+-      setSelected([]);
++      setSelected(result.rows.filter((row) => row.eligible).map((row) => row.id));
+       setFailedRows([]);
+     } catch {
+       if (mounted.current) {
+diff --git a/packages/ui/test/ccSwitchDefaults.browser.tsx b/packages/ui/test/ccSwitchDefaults.browser.tsx
+new file mode 100644
+index 0000000..1002f42
+--- /dev/null
++++ b/packages/ui/test/ccSwitchDefaults.browser.tsx
+@@ -0,0 +1,104 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { PlatformProvider } from "../src/hooks/usePlatform.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { CcSwitchImportSection } from "../src/settings/model-provider-section/CcSwitchImportSection.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++
++async function run() {
++  const results: Array<{ name: string; error?: string }> = [];
++  for (const locale of ["zh-CN", "en-US"] as const) {
++    const container = document.createElement("div");
++    document.body.append(container);
++    const root = createRoot(container);
++    const imports: Array<{ ids: string[] }> = [];
++    const row = (id: string, eligible = true, extra = {}) => ({
++      id,
++      name: id,
++      eligible,
++      appType: "claude",
++      modelIds: [id],
++      baseUrl: "https://fixture.invalid/v1",
++      ...extra,
++    });
++    const rows = [
++      row("available"),
++      row("alias", true, { duplicateOf: "available", appType: "codex" }),
++      row("optional"),
++      row("bound", false, { reason: "already-imported", existingProviderName: "Saved connection" }),
++      row("subscription", false, { reason: "oauth-account-not-supported" }),
++    ];
++    try {
++      await act(async () => {
++        root.render(
++          <ServiceProvider
++            services={
++              {
++                providerSettingsService: {
++                  async previewCcSwitchImport() {
++                    return { path: "fixture.db", revision: "fixture", rows };
++                  },
++                  async importCcSwitchProviders(input: { ids: string[] }) {
++                    imports.push(input);
++                    return { results: input.ids.map((id) => ({ id, providerId: "saved" })) };
++                  },
++                },
++              } as never
++            }
++          >
++            <PlatformProvider platform={{ canSelectFilePath: false } as never}>
++              <ZCodeIntlProvider initialLocale={locale}>
++                <CcSwitchImportSection onBack={() => {}} onComplete={() => {}} />
++              </ZCodeIntlProvider>
++            </PlatformProvider>
++          </ServiceProvider>,
++        );
++      });
++      const boxes = [...container.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')];
++      check(
++        boxes.filter((box) => box.dataset.state === "checked").length === 2,
++        "importable groups were not selected automatically",
++      );
++      check(
++        boxes.filter((box) => box.disabled).every((box) => box.dataset.state === "unchecked"),
++        "bound/unsupported rows were selected",
++      );
++      const optional = boxes.find((box) => box.getAttribute("aria-label") === "optional")!;
++      await act(async () => {
++        optional.click();
++      });
++      const submit = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
++        /导入|Import/.test(button.textContent ?? ""),
++      )!;
++      check(!submit.disabled, "ready import still required manual selection");
++      await act(async () => {
++        submit.click();
++      });
++      check(
++        JSON.stringify(imports[0]?.ids) === JSON.stringify(["available", "alias"]),
++        "default import lost the model-union group or ignored an opt-out",
++      );
++      results.push({
++        name: `${locale}: automatically selects importable groups, excludes bound/unsupported rows and respects deselection`,
++      });
++    } catch (error) {
++      results.push({
++        name: `${locale}: CC Switch defaults`,
++        error: error instanceof Error ? error.stack : String(error),
++      });
++    } finally {
++      await act(async () => {
++        root.unmount();
++      });
++      container.remove();
++    }
++  }
++  return results;
++}
++(window as unknown as { __ccSwitchDefaultTests: ReturnType<typeof run> }).__ccSwitchDefaultTests =
++  run();

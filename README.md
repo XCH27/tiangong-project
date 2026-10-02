@@ -1,80 +1,63 @@
 # Fleet
 
-A **local-first desktop workbench where a person and their agents work on the same artifacts in the
-same place** — not a chat window that drives other applications from outside. Fleet is a fork of
-[Craft Agents](https://github.com/craft-ai-agents/craft-agents-oss) (Apache-2.0).
-
-Targets: **Windows, macOS and Linux** desktop; a later phone connector for a user-owned desktop.
+A local-first desktop workbench where a person and their Agents operate the same native
+artifacts: documents, design, canvas, browser evidence and media. Fleet targets Windows, macOS
+and Linux; a later phone connector uses a user-owned desktop runtime.
 
 ## Status
 
-`app/` starts from official Craft Agents v0.13.4. The current bounded change separates the
-All Conversations/Board entries and moves the existing What's New and Craft menu entry points;
-every difference is declared in `docs/UPSTREAM-DELTA.tsv`. Conversation/Project storage,
-Workspace design, composer and right-panel changes remain on hold.
-What is planned and in progress: [`TODO.md`](TODO.md). What changed and why the project restarted:
-[`CHANGELOG.md`](CHANGELOG.md).
+**ZCode is the selected reconstruction direction (OV-027).** The active development candidate is
+`.fleet/zcode`. Its default executor is full Pi SDK 0.99.1 beneath the existing ZCode Host
+(OV-069). AgentRuntime retains admission, permissions, context and canonical storage; Pi drives
+the model/tool continuation. No user-data migration or whole-Host replacement occurred. Kernel
+verification precedes feature-page expansion; contextual Agent operations remain a core requirement.
 
-## Technology stack
+`app/` is the retained Craft Agents v0.13.4 branch with declared corrections. It remains useful
+for reference, recovery and comparison; it is not the current candidate. Reference and prototype
+tests do not establish complete Fleet feature support. See [capability status](docs/capabilities.md).
 
-| Layer | Choice |
-|---|---|
-| Desktop shell | Electron 39 (`app/apps/electron`) |
-| UI | React 18, Tailwind CSS 4, Jotai (`app/packages/ui`, renderer) |
-| Language / runtime | TypeScript 5, Bun 1.3 |
-| Agent runtime | Claude Agent SDK and Craft's Pi runtime (`app/packages/shared`, `app/packages/pi-agent-server`) |
-| Server | Craft server core over WebSocket RPC (`app/packages/server-core`, `app/packages/server`) |
-| Other clients | Web UI, CLI, viewer (`app/apps/webui`, `app/apps/cli`, `app/apps/viewer`) |
-
-## Quick start
+## Working on the project
 
 ```bash
-bash scripts/init.sh            # wire the commit gates, check toolchain and Craft pins
-cd app && bun install
-bun run electron:dev            # run the desktop app in development mode
+bash scripts/init.sh
 ```
 
-Development mode never auto-updates. **Do not hand out a packaged build yet**: packaged Craft
-downloads and installs upstream Craft updates on its own — see
-[`docs/engineering.md`](docs/engineering.md#building-and-packaging).
+Then use [candidate setup and checks](docs/engineering.md#zcode-candidate). Preserve existing dirty
+work; do not recreate or reapply patches over an occupied candidate. The retained Craft branch
+has a [separate setup](docs/engineering.md#retained-craft-setup) and verification path.
 
-Full verification: `bash scripts/fleet-verify.sh`.
+No signed Fleet release or production updater feed is ready. Packaging requirements and
+branch-specific limitations live in [Engineering](docs/engineering.md#building-and-packaging).
 
 ## Repository layout
 
-| Path | What it is |
+| Path | Role |
 |---|---|
-| `app/` | Craft Agents source. Every difference from upstream is declared in `docs/UPSTREAM-DELTA.tsv`. |
-| `docs/` | Product and engineering documentation (tree below). |
-| `scripts/` | Repository gates and tooling; kept outside `app/` so `app/` can stay identical to upstream. |
-| `源码参考/` | Reference source checkouts (symlink to `/Volumes/AIGC/天工参考/源码参考/`, untracked). |
-| `UI参考/` | UI kits and captures (symlink, untracked). Not product authority. |
+| `.fleet/zcode/` | Active isolated ZCode candidate; ignored working checkout with its own Git state |
+| `patches/zcode/` | Ordered, reviewable reconstruction deltas for that candidate |
+| `app/` | Retained Craft implementation; changes declared in `docs/UPSTREAM-DELTA.tsv` |
+| `docs/` | Product meaning, decisions, contracts, status and source evidence |
+| `scripts/` | Repository checks and explicitly scoped offline research probes |
+| `源码参考/`, `UI参考/` | Untracked reference symlinks into `/Volumes/AIGC/天工参考/`; never product authority |
 
 ## Documentation
 
-```
-AGENTS.md                     collaboration and code-development rules (agents start here)
-README.md                     this file
-DESIGN.md                     visual style, layout and interaction specification
-CHANGELOG.md                  releases and major changes
-TODO.md                       development plan and current progress
-docs/
-  product.md                  what Fleet is and is not: scope, rules, vision, glossary
-  capabilities.md             the register: capabilities, acceptance, matrix, pages, Craft map
-  decisions.md                decisions, hard constraints, the owner's exact words
-  architecture.md             cross-module invariants, authorities, code map
-  engineering.md              workflow, gates, tests, components, packaging and updates
-  references.md               which open-source project to reference for what, and where
-  UPSTREAM-DELTA.tsv          every declared difference from upstream Craft
-  modules/                    one self-contained document per module
-    baseline.md shell.md services.md          R0 baseline, bounded R1 entry slice, queued R2
-    agent-core.md context.md browser.md       feature modules, each with its
-    canvas.md media.md workflow.md            execution rows and references
-    remote.md marketplace.md components.md
-  research/                   raw research evidence
-```
+Start with [AGENTS.md](AGENTS.md) for collaboration rules and task routing.
+
+| Question | Canonical home |
+|---|---|
+| What is Fleet, and what must remain possible? | [Product](docs/product.md) |
+| What is being done next? | [TODO](TODO.md) |
+| What works, where, and what is the acceptance criterion? | [Capabilities](docs/capabilities.md) |
+| What did the owner decide? | [Decisions](docs/decisions.md) |
+| What must stay consistent across modules? | [Architecture](docs/architecture.md) |
+| How do I build, test, reconstruct and package? | [Engineering](docs/engineering.md) |
+| How must it look and interact? | [Design](DESIGN.md) |
+| How does a particular module work? | Its routed file in [modules](docs/modules/) |
+| What source or experiment supports a choice? | [References](docs/references.md) |
+| What changed? | [Changelog](CHANGELOG.md) |
 
 ## License
 
-Craft Agents is Apache-2.0; see `app/LICENSE` and `app/NOTICE`. Reference projects keep their own
-licenses, recorded in [`docs/references.md`](docs/references.md).
+Craft Agents and ZCode source are Apache-2.0; preserve their notices and attribution. Other
+references and admitted dependencies retain their own licenses; see [References](docs/references.md).

@@ -1,0 +1,78 @@
+diff --git a/packages/services/test/model-preferences.test.ts b/packages/services/test/model-preferences.test.ts
+index 8fa9c4f..549c8b8 100644
+--- a/packages/services/test/model-preferences.test.ts
++++ b/packages/services/test/model-preferences.test.ts
+@@ -14,6 +14,8 @@ import {
+   parseModelConfig,
+   parseProviderConfig,
+   ProviderRegistry,
++  ModelConfig,
++  ModelPropertiesConfig,
+   resolveInitialModelSelection,
+ } from "@zcode/provider";
+ import { createModelCatalogPort } from "../../../apps/zcode-cli/packages/bootstrap/src/app/model-catalog-port.js";
+@@ -24,6 +26,22 @@ import {
+ 
+ const selection = (modelId: string) => ({ providerId: "synthetic", modelId });
+ 
++test("clearing optional context choices cannot invalidate an otherwise complete model", () => {
++  const model = createRegistryModelConfig(parseModelConfig({
++    enabled: true,
++    properties: { contextWindow: 256000, contextWindows: [256000, 500000], requiresMfjsToolSchema: false,
++      inputFormat: { supportsText: true, supportsImage: false, supportsVideo: false, supportsAudio: false, supportsPdf: false },
++      outputFormat: { supportsText: true }, supportsToolCall: true, supportsJsonSchemaOutput: false,
++      supportsNativeWebSearch: false, supportsMidConversationSystem: false },
++    optionSpecs: { reasoningLevel: { values: ["off"], map: "{}" }, maxOutputTokens: { max: 4096, map: "{}" } },
++  }));
++  assert.ok(model.ok);
++  const cleared = createRegistryModelConfig(model.config.overlay(new ModelConfig({ properties: new ModelPropertiesConfig({ contextWindows: null }) })));
++  assert.ok(cleared.ok);
++  assert.equal(cleared.config.properties.contextWindows, null);
++  assert.equal(cleared.config.properties.contextWindow, 256000);
++});
++
+ test("a preference read started before a change cannot publish old data at the new revision", async () => {
+   let changed = () => {};
+   let release!: (value: ModelPreferences) => void;
+diff --git a/packages/shared/src/model-config.ts b/packages/shared/src/model-config.ts
+index d6d5f41..eb0922a 100644
+--- a/packages/shared/src/model-config.ts
++++ b/packages/shared/src/model-config.ts
+@@ -83,6 +83,7 @@ export const completeModelPropertiesDataSchema = z
+       .max(16)
+       .refine((values) => new Set(values).size === values.length)
+       .readonly()
++      .nullable()
+       .optional(),
+     inputFormat: completeModelInputFormatDataSchema,
+     outputFormat: completeModelOutputFormatDataSchema,
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+index 2d0596f..947d216 100644
+--- a/scripts/test-usage-hooks.mjs
++++ b/scripts/test-usage-hooks.mjs
+@@ -4,12 +4,25 @@ import { tmpdir } from "node:os";
+ import { join, resolve } from "node:path";
+ import { createRequire } from "node:module";
+ import { spawn } from "node:child_process";
++import { spawnSync } from "node:child_process";
+ 
+ const require = createRequire(import.meta.url);
+ const { build } = createRequire(new URL("../apps/zcode-cli/package.json", import.meta.url))(
+   "esbuild",
+ );
+ const root = resolve(import.meta.dirname, "..");
++// Reuse the development review records: a self-check must not start another Electron
++// beside the visible candidate. This optional guard does not make standalone builds depend on Fleet.
++const reviews = resolve(root, "../../.fleet/reviews");
++for (const name of ["project-audit/desktop", "native-executor", "attachment-preview", "model-settings"]) {
++  let saved;
++  try { saved = JSON.parse(await readFile(join(reviews, name, "review.json"), "utf8")); }
++  catch { continue; }
++  if (!Number.isSafeInteger(saved.pid) || saved.pid <= 0 || saved.executable !== require("electron")) continue;
++  try { process.kill(saved.pid, 0); } catch (error) { if (error.code === "ESRCH") continue; throw error; }
++  if (process.platform !== "win32" && !/Fleet|Electron/i.test(spawnSync("ps", ["-p", String(saved.pid), "-o", "comm="], { encoding: "utf8" }).stdout)) continue;
++  throw new Error("Close the existing Fleet review before renderer self-checks; no second Electron was started.");
++}
+ const entry = process.argv[2] ?? "packages/ui/test/usageHooks.browser.tsx";
+ const resultKey = process.argv[3] ?? "__usageHookTests";
+ if (!/^__[a-zA-Z0-9]+$/.test(resultKey)) throw new Error("Invalid renderer result key");

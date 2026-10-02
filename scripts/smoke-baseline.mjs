@@ -154,17 +154,22 @@ try {
     assert.ok(!directFiles.some(file => file.name === 'nested-fixture.md'));
     await assert.rejects(rpc('fs:search', fixtureFile, ''), /ENOTDIR|directory/i);
   }
-  const oldProject = await rpc('projects:create', workspace.id, { name: 'Previous resource record' });
-  await rpc('projects:uploadAsset', workspace.id, oldProject.slug, { filename: 'retained.txt', base64: Buffer.from('preserved asset').toString('base64') });
-  const assets = await rpc('projects:listAssets', workspace.id, oldProject.slug);
+  await assert.rejects(rpc('projects:create', workspace.id, { name: 'No folder' }), /Choose a project folder first/);
+  const projectFolder = join(workspaceRoot, 'folder-fixture');
+  const folderProject = await rpc('projects:create', workspace.id, { name: 'Ignored by folder identity', workingDirectory: projectFolder });
+  const reopenedProject = await rpc('projects:create', workspace.id, { name: 'Same folder', workingDirectory: projectFolder });
+  assert.equal(reopenedProject.id, folderProject.id, 'opening one folder twice reuses its Project');
+  await rpc('projects:uploadAsset', workspace.id, folderProject.slug, { filename: 'retained.txt', base64: Buffer.from('preserved asset').toString('base64') });
+  const assets = await rpc('projects:listAssets', workspace.id, folderProject.slug);
   assert.equal(assets.length, 1);
   assert.equal(await rpc('file:read', assets[0].absolutePath), 'preserved asset');
-  assert.equal((await rpc('projects:getOne', workspace.id, oldProject.slug)).config.id, oldProject.id);
+  assert.equal((await rpc('projects:getOne', workspace.id, folderProject.slug)).config.id, folderProject.id);
   checks.push(FLEET_CORRECTIONS ? 'Project-root file lookup, surfaced read failure and preserved nested-record assets' : 'Project-root file lookup and preserved nested-record assets');
   const session = await rpc('sessions:create', workspace.id, { name: 'Offline conversation', workingDirectory: 'none', permissionMode: 'safe' });
   assert.ok(!session.workingDirectory, "a folderless session has no working directory (upstream: undefined)");
-  const projectSession = await rpc('sessions:create', workspace.id, { workingDirectory: workspaceRoot, permissionMode: 'safe' });
-  assert.equal(projectSession.workingDirectory, workspaceRoot);
+  const projectSession = await rpc('sessions:create', workspace.id, { projectId: folderProject.id, permissionMode: 'safe' });
+  assert.equal(projectSession.workingDirectory, projectFolder);
+  assert.equal(projectSession.projectId, folderProject.id);
   if (FLEET_CORRECTIONS) {
     // Upstream does not know the 'workspace_root' token and stores it as a literal path.
     const tokenSession = await rpc('sessions:create', workspace.id, { workingDirectory: 'workspace_root', permissionMode: 'safe' });

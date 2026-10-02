@@ -1,22 +1,48 @@
 # DESIGN — visual style, layout and interaction
 
-Craft Agents decides every visual value: colour, opacity, type, spacing, radius, elevation, icons and
-motion. For the surfaces the owner named, ZCode and Cindy supply **layout and interaction**, never
-values — the R1 contract lists the exact components. This file owns the values;
-[`docs/engineering.md`](docs/engineering.md#component-development) owns how components are built.
+Fleet requires one coherent visual language. The numeric tables below record the retained
+Craft look pin; the active ZCode candidate preserves its own original primitives and tokens in
+bounded corrections. They are different source scopes, not permission to mix arbitrary values.
+A future unified visual-system change needs its own reviewed mapping and rendered acceptance.
+ZCode supplies the selected conversation/settings reconstruction flow; Craft preserves valuable
+Agent interaction; Cindy supplies named source comparisons. [Engineering](docs/engineering.md#component-development)
+owns implementation, and each module owns its feature interaction.
 
-> **Scope:** the decidable numbers an agent needs to render a surface without inventing a visual
-> language. This file records the v0.10.5 look-pin values. Start from the current production
-> component and compare it with rolling Craft as required by AGENTS Step 0; use the look pin to
-> verify visual choices. Correct a misrecorded measurement from source. A better rolling-Craft
-> interaction or value may be admitted with an explicit reason and a matching update here; the
-> older pin is not an instruction to restore a discarded component or shell.
->
-> **Provenance:** every table below is measured from
-> `源码参考/software/craft-agents-oss-v0.10.5/apps/electron/src/renderer/` and
-> `app/packages/ui/src/styles/index.css`, not designed. These are look-pin measurements, not a claim that every rebuilt v0.13.4 value was remeasured.
-> Current-component comparison follows AGENTS Step 0; better admitted upstream behavior may be
-> retained without treating the older shell as the product.
+For `app/`, compare rolling Craft and use the look pin to verify values. For `.fleet/zcode`,
+compare the pinned ZCode component, the [candidate design guide](.fleet/zcode/DESIGN.md),
+and its existing `styles.css`/shared controls. Root product and scope decisions take precedence.
+The tables do not claim every candidate or v0.13.4 value was remeasured. Do not port an older
+component tree or replace an already-working control simply to match a different host's class name.
+
+Candidate Model Settings follows ZCode’s own `StatusCards` and Button typography: account/provider
+titles use `text-ui-lg` and semibold; primary labels, quota text and action/state text use
+`text-ui-base`; reset timestamps remain `text-ui-sm`. These follow the user’s UI font-size token
+(default 14px), not a second size scale. Page headings retain the original responsive classes.
+Desktop zoom is a separate preference; restore temporary QA zoom before presenting a comparison.
+
+## Plugin UI contract
+
+OV-026 requires Agent-authored plugins to belong to the same product. This is a proposed extension
+contract, not an implemented UI kit. Runtime/authoring ownership is in
+[`components.md`](docs/modules/components.md#agent-authored-native-plugins).
+
+- The host renders navigation entries, panel headers, settings frames, permission prompts and
+  failure/recovery controls. Plugins supply identities, content and operations, not replacement chrome.
+- Standard settings, tables, lists, forms and result cards use versioned shared components/patterns.
+  Agent scaffolds include the real imports, schemas and examples. Reuse existing primitives first;
+  do not create a general page-description language before a concrete consumer requires it.
+- Custom board/editor/canvas bodies use a packaged isolated view with the same SDK primitives and
+  semantic tokens. Publish theme, typography, spacing, radius, elevation, icons, density, locale,
+  reduced-motion and viewport context; subscribe to changes and reapply after reload/reparent.
+- Check normal/loading/empty/denied/error/stale/disabled states, keyboard navigation, accessible
+  labels, focus restore, narrow widths and light/dark plus English/Chinese. Missing capabilities
+  have a named recovery action rather than a dead button or another settings home.
+- Validate imports/API versions, token use and prohibited host/private-API access at package time.
+  Test context binding and state transitions at runtime. Custom CSS can defeat token conventions:
+  passing a linter is not proof of appearance or accessibility. Host-rendered standard controls give
+  stronger consistency; custom domain bodies still require rendered checks and owner acceptance.
+- Domain-engine drawing coordinates/colors can be content, not UI tokens. Keep those inside the
+  declared editor surface; do not ban image colors or canvas dimensions to enforce shell styling.
 
 ## 0. Why this file exists
 
@@ -227,11 +253,11 @@ keyboard behavior:
 
 ### Model connection and tokenized model field
 
-- Settings labels the user concept **Model**, not Provider. Provider is a metadata row/group inside
-  the model workflow.
+- The active candidate manages model services/accounts in the existing provider list and detail
+  form. Do not rename or regroup it from the retained Craft tokenized-field experiment below.
 - Add/edit expands in the existing page. A menu owns provider choice; the form is not placed inside
   that menu and does not navigate to onboarding.
-- Selected model chips render inside the combobox before the text caret. Search and custom-ID
+- Where a retained tokenized model field exists, chips render before the text caret. Search and custom-ID
   creation use that same text value. A second search field, a chip row below the input, or an
   internal `pi/` display prefix fails the component contract.
 - Chips are buttons with an accessible remove name, Backspace/Delete behavior and visible
@@ -239,6 +265,30 @@ keyboard behavior:
   labelled result/action so Enter never ambiguously saves the surrounding form.
 - Provider icons come from one admitted icon projection. A missing brand uses the shared generic
   model/provider icon; it never introduces a one-off glyph or hand-drawn SVG.
+  In the ZCode candidate, `ProviderLogo` maps existing asset keys to pinned Lobe Icons
+  static SVGs, bundled locally. Preserve each caller's icon slot and semantic foreground;
+  brand color variants may retain their supplied fills. Action icons remain Lucide.
+
+### Candidate component-library boundary
+
+The current candidate keeps `packages/ui/components.json` (shadcn radix-mira), the existing
+`components/ui` wrappers and `styles.css` tokens. New pages compose these controls rather than
+importing another general-purpose library or copying preview HTML. Lucide owns action icons;
+`ProviderLogo` owns Lobe brand assets. Compact provider catalog cards use a shared-size neutral
+backplate; supplied brand colors remain intact. Subscription/API choice uses the existing
+`SettingsSegmentedTabs`; credentials and manual models use the same `ProviderDraft*` row controls.
+Keep button roles, keyboard confirmation, persistent removal, busy/failed/saved states and spacing
+consistent at the shared component, not separately in every caller. The
+[TraeWork/open-source comparison](docs/references.md#shared-ui-library-comparison) supplies source
+and licensing evidence; TraeWork is an organizational reference, not a replacement theme.
+
+OV-049/057/058 keep ZCode's Usage summary → heatmap → trend → model-chart hierarchy.
+Tokens and cache remain in the model card. One API-equivalent Cost section uses the same
+range, groups positive priced requests by model or project, and segments bars by recorded
+request source with the original Token-meter tones. Unpriced and zero requests remain in
+coverage and model usage rather than empty monetary bars. The source legend sits below the
+bars; Activity shares model focus without repeating the cache metric. Saved historical
+payments are compatibility data, not a visible cost chart or an inferred invoice.
 
 ### Model picker, reasoning and runtime modes
 
@@ -247,18 +297,24 @@ keyboard behavior:
 - Model detail is a compact two-column list: `Model`, `Provider/runtime`, `Input`, `Reasoning`,
   `Context`. Values align right, truncate safely and use `—` for unknown. The list does not replace
   unknown with zero or infer support from a model name.
-- Reasoning effort and runtime speed are separate controls in state/request data. They may share one
-  compact menu: exact effort rows first, then a separated fast/service toggle with usage impact.
-  Speed is never styled as the “highest” reasoning tier.
+- Reasoning effort and runtime speed are separate fields in state/request data. The candidate
+  combines model selection and exact effort rows in one composer entry (OV-074). OV-075 places
+  Fast, Effort and Model in compact rows. Context appears only for evidenced executable choices and uses the same submenu/radio treatment;
+  fixed capacity is inspectable in the original Token ring before first inference. Effort and Model open
+  submenus; the composer menu has no Model Settings link. Fast uses the existing switch style. Insufficient width uses the original Brain icon and full
+  accessible tooltip, driven by the existing toolbar fit owner. Its hint describes
+  the selected model/connection's sourced allowance or API-rate impact. Speed never becomes
+  a reasoning tier or a universal price multiplier.
 - More than 50 model rows require windowing or an equivalent measured bound. Search remains visible
   while the result list scrolls.
 
 ### Context indicator, quota bars and turn footer
 
 - The composer owns one compact context indicator. Its detail owns one primary context bar;
-  authenticated subscription windows may add one or two labelled quota bars only for the selected
-  membership connection. Multiple decorative rings or persistent zero-value quota tracks are
-  forbidden.
+  authenticated subscription windows follow the current model’s last served account (OV-061),
+  with the unsent default marked provisional. No independent account picker is added. There are
+  no Settings/Usage page links in this detail; multiple decorative rings or persistent
+  zero-value quota tracks are forbidden.
 - Counts and shares for one category occupy one row. All numbers use tabular figures and locale
   formatting; percent bars expose their label/value to assistive technology.
 - A turn footer may rest at `opacity-0`, but `group-hover`, `group-focus-within` and an explicit
@@ -295,6 +351,9 @@ ordinary connection editing.
   not enough to decide with, so every surface needing a third case invented one.
 
 ## 10. Required states
+
+Use the states relevant to the real interaction; do not add empty/loading/offline machinery to
+static controls or expose implementation notes merely to satisfy a generic checklist.
 
 Every surface ships the applicable states from
 [`capabilities.md`](docs/capabilities.md#page-structure) §4 using the shared components:

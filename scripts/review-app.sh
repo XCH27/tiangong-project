@@ -17,6 +17,10 @@
 #   SKIP_BUILD=1 bash scripts/review-app.sh    # reuse the last electron:build output
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ "${1:-}" = "--zcode" ]; then
+  shift
+  exec node "$ROOT/scripts/review-zcode.mjs" "$@"
+fi
 BUN="$(command -v bun)"
 REVIEW="${REVIEW_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/fleet-review.XXXXXX")}"
 mkdir -p "$REVIEW/home" "$REVIEW/profile" "$REVIEW/electron"

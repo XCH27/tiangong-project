@@ -1,0 +1,358 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts b/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
+index 3e59b47..156d5d2 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/session-facade.ts
+@@ -479,6 +479,7 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
+           ? { options: { ...registrySelection.selection.options } }
+           : {}),
+       };
++      if (!options?.transient) await persistSessionModelSelection(deps, sessionSelection);
+       deps.runtime.setSessionModelSelection(sessionSelection);
+       if (!options?.transient) {
+         deps.runtime.recordPendingModelChange({
+@@ -487,7 +488,6 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
+           toModel: sessionSelection,
+           toModelLabel: model,
+         });
+-        await persistSessionModelSelection(deps);
+       }
+       deps.logger.info("Session model updated", {
+         ...traceContextToLogContext(deps.traceContext),
+@@ -519,14 +519,15 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
+           currentSelection.options?.reasoningLevel,
+         );
+         const thoughtLevel = requireRegistryThoughtLevel(registrySelection, level);
+-        deps.runtime.setSessionModelSelection({
++        const nextSelection: ModelSelection = {
+           ...currentSelection,
+           options: {
+             ...currentSelection.options,
+             reasoningLevel: thoughtLevel,
+           },
+-        });
+-        await persistSessionModelSelection(deps);
++        };
++        await persistSessionModelSelection(deps, nextSelection);
++        deps.runtime.setSessionModelSelection(nextSelection);
+         deps.logger.info("Session reasoning effort updated", {
+           ...traceContextToLogContext(deps.traceContext),
+           event: "session.reasoning_effort.updated",
+@@ -645,10 +646,11 @@ async function closeSessionResourceWithinDeadline(
+   });
+ }
+ 
+-async function persistSessionModelSelection(deps: CreateSessionFacadeDeps): Promise<void> {
++async function persistSessionModelSelection(
++  deps: CreateSessionFacadeDeps,
++  selection: ModelSelection,
++): Promise<void> {
+   if (!deps.sessionStore.saveSessionEntry) return;
+-  const selection = deps.runtime.getSessionModelSelection();
+-  if (!selection) return;
+   const timestamp = Date.now();
+   try {
+     await deps.sessionStore.saveSessionEntry({
+@@ -667,7 +669,7 @@ async function persistSessionModelSelection(deps: CreateSessionFacadeDeps): Prom
+       },
+     });
+   } catch (error) {
+-    // 选型已经在当前 runtime 生效；持久化失败不能反向伪装成切换失败，但必须留生产日志。
++    // The caller has not published this selection; failure must keep the previous runtime state.
+     deps.logger.warn("Session model selection persistence failed", {
+       ...traceContextToLogContext(deps.traceContext),
+       error: error instanceof Error ? error.message : String(error),
+@@ -678,6 +680,7 @@ async function persistSessionModelSelection(deps: CreateSessionFacadeDeps): Prom
+       status: "failed",
+       thoughtLevel: selection.options?.reasoningLevel,
+     });
++    throw error;
+   }
+ }
+ 
+diff --git a/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts b/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts
+new file mode 100644
+index 0000000..25b71f3
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts
+@@ -0,0 +1,246 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { createRootTraceContext, SESSION_ENTRY_MODEL_SELECTION } from "@zcode/contracts";
++import {
++  createRegistryModelConfig,
++  createRegistryProviderConfig,
++  parseModelConfig,
++  parseProviderConfig,
++  ProviderRegistry,
++} from "@zcode/provider";
++import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
++import { applySubmissionExecutionState } from "../../core/src/runtime/methods/turn-model.js";
++import { createSessionFacade } from "../src/app/session-facade.js";
++
++const original = { providerId: "fixture", modelId: "first", options: { reasoningLevel: "medium" } };
++const requested = { providerId: "fixture", modelId: "second", options: { reasoningLevel: "high" } };
++
++async function fixture() {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-kernel-commit-"));
++  const path = join(dir, "session.sqlite");
++  let store = new SqliteSessionStore({ dbPath: path });
++  const sessionId = "session" as never;
++  await store.createSession({
++    id: sessionId,
++    projectID: "project" as never,
++    directory: dir,
++    slug: "fixture",
++    title: "fixture",
++    version: "fixture",
++  });
++  await store.saveSessionEntry({
++    id: `${sessionId}:runtime-model-selection`,
++    sessionID: sessionId,
++    type: SESSION_ENTRY_MODEL_SELECTION,
++    touchSession: false,
++    time: { created: 1, updated: 1 },
++    data: original,
++  });
++  const provider = createRegistryProviderConfig(
++    parseProviderConfig({
++      group: "standard-personal",
++      api: { type: "openai-chat-completions", baseUrl: "https://fixture.invalid/v1" },
++      access: { type: "api-key", apiKey: "synthetic" },
++    }),
++  );
++  const model = createRegistryModelConfig(
++    parseModelConfig({
++      enabled: true,
++      properties: {
++        contextWindow: 4096,
++        requiresMfjsToolSchema: false,
++        inputFormat: {
++          supportsText: true,
++          supportsImage: false,
++          supportsAudio: false,
++          supportsVideo: false,
++          supportsPdf: false,
++        },
++        outputFormat: { supportsText: true },
++        supportsToolCall: true,
++        supportsJsonSchemaOutput: false,
++        supportsNativeWebSearch: false,
++        supportsMidConversationSystem: false,
++      },
++      optionSpecs: {
++        maxOutputTokens: { max: 512, map: "{}" },
++        reasoningLevel: { values: ["medium", "high"], map: "{}" },
++      },
++    }),
++  );
++  assert.ok(provider.ok, JSON.stringify(provider));
++  assert.ok(model.ok, JSON.stringify(model));
++  const registry = new ProviderRegistry([
++    {
++      providerId: "fixture",
++      config: provider.config,
++      models: ["first", "second"].map((modelId) => ({ modelId, config: model.config })),
++    },
++  ]);
++  let current = structuredClone(original);
++  let fail = false;
++  let gate: Promise<void> | undefined;
++  const started = Promise.withResolvers<void>();
++  const events: unknown[] = [];
++  const pendingChanges: unknown[] = [];
++  const writer = {
++    async saveSessionEntry(entry: Parameters<typeof store.saveSessionEntry>[0]) {
++      started.resolve();
++      if (gate) await gate;
++      if (fail) throw new Error("synthetic disk write failed");
++      await store.saveSessionEntry(entry);
++    },
++  };
++  const trace = createRootTraceContext({ sessionId });
++  const runtime = {
++    sessionId,
++    sessionStore: writer,
++    getSessionModelSelection: () => current,
++    setSessionModelSelection: (selection: typeof original) => {
++      current = selection;
++    },
++    emitModelSelected: async (event: unknown) => {
++      events.push(event);
++    },
++    recordPendingModelChange: (change: unknown) => {
++      pendingChanges.push(change);
++    },
++    logger: { warn() {} },
++  };
++  const facade = createSessionFacade({
++    runtime,
++    sessionId,
++    sessionStore: writer,
++    providerRegistry: registry,
++    configResult: { config: { ui: { locale: "en-US" } } },
++    traceContext: trace,
++    logger: { info() {}, warn() {} },
++  } as never);
++  return {
++    runtime,
++    facade,
++    trace,
++    events,
++    pendingChanges,
++    started,
++    get current() {
++      return current;
++    },
++    block(promise: Promise<void>) {
++      gate = promise;
++    },
++    fail(value: boolean) {
++      fail = value;
++    },
++    async persisted() {
++      store.close();
++      store = new SqliteSessionStore({ dbPath: path });
++      return (
++        await store.sessionEntries({ sessionID: sessionId, type: SESSION_ENTRY_MODEL_SELECTION })
++      )[0]?.data;
++    },
++    async submit(executionOnly = false) {
++      return applySubmissionExecutionState(
++        runtime as never,
++        { modelSelection: requested } as never,
++        trace,
++        executionOnly ? ({ selectionScope: "execution" } as never) : undefined,
++        { ...requested, optionSpecs: { reasoningLevel: { values: ["medium", "high"] } } } as never,
++      );
++    },
++    async close() {
++      store.close();
++      await rm(dir, { recursive: true, force: true });
++    },
++  };
++}
++
++test("submission does not switch or publish a model until its persisted selection commits", async () => {
++  const f = await fixture();
++  const release = Promise.withResolvers<void>();
++  let pending: ReturnType<typeof f.submit> | undefined;
++  try {
++    f.block(release.promise);
++    pending = f.submit();
++    await f.started.promise;
++    assert.deepEqual(f.current, original);
++    assert.equal(f.events.length, 0);
++    release.resolve();
++    await pending;
++    assert.deepEqual(f.current, requested);
++    assert.deepEqual(await f.persisted(), requested);
++    assert.equal(f.events.length, 1);
++  } finally {
++    release.resolve();
++    await pending?.catch(() => {});
++    await f.close();
++  }
++});
++
++test("failed submission selection leaves memory and cold recovery unchanged, then permits retry", async () => {
++  const f = await fixture();
++  try {
++    f.fail(true);
++    await assert.rejects(f.submit(), /disk write failed/);
++    assert.deepEqual(f.current, original);
++    assert.deepEqual(await f.persisted(), original);
++    assert.equal(f.events.length, 0);
++    f.fail(false);
++    await f.submit();
++    assert.deepEqual(await f.persisted(), requested);
++  } finally {
++    await f.close();
++  }
++});
++
++test("execution-scoped models do not overwrite the conversation selection", async () => {
++  const f = await fixture();
++  try {
++    f.fail(true);
++    await f.submit(true);
++    assert.deepEqual(f.current, original);
++    assert.deepEqual(await f.persisted(), original);
++    assert.equal(f.events.length, 0);
++  } finally {
++    await f.close();
++  }
++});
++
++for (const method of ["model", "effort"] as const) {
++  test(`the app facade rejects failed ${method} saves without advertising an in-memory switch`, async () => {
++    const f = await fixture();
++    const change = () =>
++      method === "model" ? f.facade.setModel(requested) : f.facade.setThoughtLevel("high");
++    const expected =
++      method === "model" ? requested : { ...original, options: { reasoningLevel: "high" } };
++    try {
++      f.fail(true);
++      await assert.rejects(change(), /disk write failed/);
++      assert.deepEqual(f.current, original);
++      assert.deepEqual(await f.persisted(), original);
++      assert.equal(f.pendingChanges.length, 0);
++      f.fail(false);
++      await change();
++      assert.deepEqual(f.current, expected);
++      assert.deepEqual(await f.persisted(), expected);
++    } finally {
++      await f.close();
++    }
++  });
++}
++
++test("explicit transient model selection remains transient", async () => {
++  const f = await fixture();
++  try {
++    f.fail(true);
++    await f.facade.setModel(requested, { transient: true });
++    assert.deepEqual(f.current, requested);
++    assert.deepEqual(await f.persisted(), original);
++    assert.equal(f.pendingChanges.length, 0);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+index 563deb2..b186a44 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model.ts
+@@ -55,8 +55,9 @@ export async function applySubmissionExecutionState(
+     });
+     if (modelExecution?.selectionScope !== "execution") {
+       const appliedSelection = cloneModelSelection(selection);
+-      runtime.setSessionModelSelection(appliedSelection);
+       await persistRuntimeModelSelection(runtime, appliedSelection);
++      // Publish only the selection cold recovery can read; a failed save aborts admission.
++      runtime.setSessionModelSelection(appliedSelection);
+       if (!sameModelSelection(previousSelection, appliedSelection)) {
+         await runtime.emitModelSelected({
+           model,
+@@ -114,5 +115,6 @@ export async function persistRuntimeModelSelection(
+       status: "failed",
+       thoughtLevel: selection.options?.reasoningLevel,
+     });
++    throw error;
+   }
+ }
+diff --git a/package.json b/package.json
+index 900c569..73b9e35 100644
+--- a/package.json
++++ b/package.json
+@@ -47,7 +47,7 @@
+     "architecture:report": "node scripts/architecture/architecture-check.mjs report",
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+-    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
++    "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",

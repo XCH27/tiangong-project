@@ -1,4 +1,7 @@
-# SPEC — R0 Craft v0.13.4 baseline stabilization
+# SPEC — Retained Craft baseline and preservation evidence
+
+**Code scope:** `app/` paths and unqualified Craft observations describe the retained branch;
+`.fleet/zcode` sections describe the active candidate. [Current order](../../TODO.md) overrides old branch sequencing.
 
 > Spec status: **active**
 > Owner acceptance date: —
@@ -26,7 +29,7 @@
 | INFO-01 | Workspace files and file tools | wired but not visually checked | R0,R3 / INFO-01-A | P-11 |
 | INFO-06 | Search indexing and retrieval | wired but not visually checked | R0,R3 / INFO-06-A | P-06 |
 | EXEC-03 | Terminal and local execution | wired but not visually checked | R0,R4,R18 / EXEC-03-A | P-19 |
-| EXEC-05 | Runtime/provider adapters | Craft Claude/Pi lanes wired but not visually checked; general CLI adapters not implemented | R0,R6 / EXEC-05-A | P-21 |
+| EXEC-05 | Runtime/provider adapters | candidate Pi, Claude native and retained Craft lanes wired but not visually checked; native governed execution and general CLI adapters not implemented | R0,R6 / EXEC-05-A | P-21 |
 | EXEC-08 | Inherited execution isolation | wired but not visually checked | R0,R2 inherited-boundary verification; second sandbox excluded / EXEC-08-A | P-18,P-24 |
 | EXEC-15 | Specified local-app Computer Use Component | not implemented | R16 after R0 + Component foundation / EXEC-15-A | P-18,P-56 |
 | ORCH-08 | Diagnostics, health and recovery | not implemented | R0,R2,R18 / ORCH-08-A | P-52 |
@@ -41,6 +44,8 @@ Fleet release merely because it matches upstream: hosted-service independence, r
 features and owner visual acceptance remain explicit criteria.
 
 ## Current slice
+
+This section records the retained Craft correction. It is not the current candidate work queue.
 
 - **Objective:** complete documentation/source preparation and a proposed Craft disposition before
   the owner-requested joint walkthrough. Implement only concrete corrections approved afterward.

@@ -1,0 +1,211 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 4aaa76f..04494cc 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -684,3 +684,11 @@ completion value for safety until the request budget contract accepts unknowns.
+ reasoning list is omitted from display and Agent choices, while automatic execution remains.
+ Changing account/model invalidates the old measured occupancy as before. This projection must
+ not change which model, credential or tool executor receives the turn.
++
++For an ordinary API-key OpenAI Chat or Responses route, an output limit sourced only from the
++universal runtime fallback remains an internal turn budget: the request map removes the SDK's
++output-limit field and lets the provider apply its default. A model-specific observed, recommended
++or user-corrected limit/map still goes on the wire. Anthropic Messages requires `max_tokens`, and
++subscription/plan adapters retain their native request contract. This is not a claim that an
++unknown model supports the whole fallback window or output size; provider-specific validation
++and other route budgets remain open.
+diff --git a/apps/zcode-cli/packages/adapters/src/model/model-execution.ts b/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
+index b81a84e..e73ba75 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/model-execution.ts
+@@ -188,9 +188,30 @@ export class AiSdkModelExecution {
+     readonly providerConfig: RegistryProviderConfig;
+     readonly supportsJsonSchemaOutput: boolean;
+     readonly optionSpecs: ModelOptionMapSpecs;
++    readonly omitUnsourcedOutputLimit?: boolean;
+   }): AiSdkBoundModelResolution {
+     const snapshot = this.captureModelSnapshot(input);
+-    const optionMaps = compileModelOptionMaps(input.optionSpecs);
++    // The Agent keeps its bounded internal budget. OpenAI-compatible API routes can let the
++    // provider choose a wire output limit when the model has reported no model-specific limit.
++    // Anthropic Messages requires max_tokens, and account/plan routes keep their own contract.
++    const omitOutputLimit =
++      input.omitUnsourcedOutputLimit === true &&
++      input.providerConfig.access.type === "api-key" &&
++      (input.providerConfig.api.type === "openai-chat-completions" ||
++        input.providerConfig.api.type === "openai-responses");
++    const optionMaps = compileModelOptionMaps(
++      omitOutputLimit
++        ? {
++            ...input.optionSpecs,
++            maxOutputTokens: {
++              map:
++                input.providerConfig.api.type === "openai-responses"
++                  ? '{"max_output_tokens": null}'
++                  : '{"max_tokens": null, "max_completion_tokens": null}',
++            },
++          }
++        : input.optionSpecs,
++    );
+     return {
+       // 这里只构造不执行请求的基础 Model；真正请求必须通过 resolveRequest 绑定完整 options。
+       resolved: this.resolveSnapshot(snapshot, undefined, undefined, undefined),
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner.ts b/apps/zcode-cli/packages/adapters/src/model/runner.ts
+index 5e0b8d1..244bc7d 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner.ts
+@@ -76,6 +76,7 @@ export interface CreateAiSdkModelOptions {
+   providerId: string;
+   modelId: string;
+   contextWindowEvidence?: number | null;
++  omitUnsourcedOutputLimit?: boolean;
+   providerConfig: RegistryProviderConfig;
+   modelConfig: RegistryModelConfig;
+   displayName?: string;
+@@ -157,6 +158,7 @@ export class AiSdkModelAdapter {
+       providerConfig: options.providerConfig,
+       supportsJsonSchemaOutput: options.modelConfig.properties.supportsJsonSchemaOutput,
+       optionSpecs: options.modelConfig.optionSpecs,
++      omitUnsourcedOutputLimit: options.omitUnsourcedOutputLimit,
+     });
+     const properties = options.modelConfig.properties;
+     const resolved = {
+diff --git a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+index ebc46a1..cc25cc1 100644
+--- a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+@@ -134,6 +134,8 @@ function bind(
+     apiKeyEnabledFlags,
+     autoSwitchCredentials,
+     speedMapping,
++    omitUnsourcedOutputLimit,
++    outputLimitMap,
+   }: {
+     baseUrl?: string;
+     access?: Access;
+@@ -144,6 +146,8 @@ function bind(
+     apiKeyEnabledFlags?: boolean[];
+     autoSwitchCredentials?: boolean;
+     speedMapping?: "openai-priority" | "anthropic-fast";
++    omitUnsourcedOutputLimit?: boolean;
++    outputLimitMap?: string;
+   } = {},
+ ) {
+   const validated = createRegistryProviderConfig(
+@@ -172,7 +176,12 @@ function bind(
+     modelId: MODEL,
+     providerConfig: validated.config,
+     supportsJsonSchemaOutput: false,
+-    optionSpecs: { ...SPECS, speedMode: speedMapping },
++    optionSpecs: {
++      ...SPECS,
++      ...(outputLimitMap ? { maxOutputTokens: { map: outputLimitMap } } : {}),
++      speedMode: speedMapping,
++    },
++    omitUnsourcedOutputLimit,
+   });
+ }
+ 
+@@ -185,6 +194,26 @@ async function run(binding: ReturnType<typeof bind>, requestKey?: string) {
+   assert.equal(result.text, "OK");
+ }
+ 
++test("unknown output limits stay internal on optional API formats while required Messages still sends one", async () => {
++  for (const api of ["openai-chat-completions", "openai-responses", "anthropic-messages"] as const) {
++    const outputField = api === "openai-responses" ? "max_output_tokens" : "max_tokens";
++    const outputLimitMap = `{\"${outputField}\": maxOutputTokens}`;
++    const { execution, requests } = fixture();
++    await run(bind(execution, { api, outputLimitMap, omitUnsourcedOutputLimit: true }));
++    const body = requests[0]!.body;
++    if (api === "anthropic-messages") {
++      assert.equal(body.max_tokens, OPTIONS.maxOutputTokens);
++    } else {
++      assert.equal("max_output_tokens" in body, false);
++      assert.equal("max_tokens" in body, false);
++      assert.equal("max_completion_tokens" in body, false);
++    }
++    const known = fixture();
++    await run(bind(known.execution, { api, outputLimitMap }));
++    assert.equal(known.requests[0]!.body[outputField], OPTIONS.maxOutputTokens);
++  }
++});
++
+ test("disabled primary uses the active backup without enabling automatic switching", async () => {
+   for (const api of ["anthropic-messages", "openai-chat-completions", "openai-responses"] as const) {
+     const { execution, requests } = fixture();
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+index 809a998..b234c57 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts
+@@ -71,12 +71,17 @@ export class ApiProviderModelRuntime {
+     // 输出预算属于单次请求，由 Agent 执行链显式决定，不能在 ModelFactory 中静默绑定。
+     // Selection 已在上面的 Registry 边界完成校验，Factory 不再承担任何缺省修复。
+     const normalReasoningLevel = target.selection.options!.reasoningLevel!;
++    const reportedOutputLimit = registryModel.evidenceConfig?.optionSpecs?.maxOutputTokens;
+     return this.#modelAdapter.createModel({
+       providerId: provider.providerId,
+       modelId: registryModel.modelId,
+       ...(registryModel.evidenceConfig
+         ? { contextWindowEvidence: registryModel.evidenceConfig.properties?.contextWindow ?? null }
+         : {}),
++      omitUnsourcedOutputLimit:
++        registryModel.evidenceConfig !== undefined &&
++        reportedOutputLimit?.max == null &&
++        !reportedOutputLimit?.map,
+       providerConfig: provider.config,
+       modelConfig: config,
+       ...(provider.config.access.type === "zhipu-account" &&
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index e67ef4b..44c53ac 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -242,8 +242,12 @@ test("unreported capability fields never become provider facts through the runti
+       const runtimeModel = new ApiProviderModelRuntime({
+         registry: f.runtime.registryService,
+         modelAdapter: {
+-          createModel: (options: any) =>
+-            createModel({
++          createModel: (options: any) => {
++            assert.equal(
++              options.omitUnsourcedOutputLimit,
++              model.evidenceConfig?.optionSpecs?.maxOutputTokens?.max == null,
++            );
++            return createModel({
+               providerId: options.providerId,
+               modelId: options.modelId,
+               properties: options.modelConfig.properties,
+@@ -258,7 +262,8 @@ test("unreported capability fields never become provider facts through the runti
+                   throw Error("No inference in evidence fixture");
+                 },
+               },
+-            }),
++            });
++          },
+         },
+       });
+       runtimeModel.start();
+@@ -274,7 +279,7 @@ test("unreported capability fields never become provider facts through the runti
+     };
+     assert.equal(bound().contextWindowEvidence, null);
+     f.setFetch(async () =>
+-      Response.json({ data: [{ id: "unknown-model", context_window: 480_000 }] }),
++      Response.json({ data: [{ id: "unknown-model", context_window: 480_000, max_output_tokens: 8192 }] }),
+     );
+     await f.service.discoverModels(f.providerId);
+     model = (await f.models()).find((item) => item.modelId === "unknown-model")!;
+@@ -283,6 +288,7 @@ test("unreported capability fields never become provider facts through the runti
+     assert.equal((await selectionModel()).evidenceConfig?.properties?.contextWindow, 480_000);
+     assert.equal(catalog().contextWindow, 480_000);
+     assert.equal(picker().contextWindow, 480_000);
++    assert.equal(picker().maxOutputTokens, 8192);
+     assert.equal(bound().contextWindowEvidence, 480_000);
+     f.setFetch(async () => Response.json({ data: [{ id: "unknown-model" }] }));
+     await f.service.discoverModels(f.providerId);
+@@ -293,6 +299,7 @@ test("unreported capability fields never become provider facts through the runti
+     assert.equal((await selectionModel()).evidenceConfig?.properties?.contextWindow, undefined);
+     assert.equal(catalog().contextWindow, undefined);
+     assert.equal(picker().contextWindow, undefined);
++    assert.equal(picker().maxOutputTokens, undefined);
+     assert.equal(bound().contextWindowEvidence, null);
+     assert.equal(model.effectiveConfig.properties?.contextWindow, 200_000);
+   } finally {

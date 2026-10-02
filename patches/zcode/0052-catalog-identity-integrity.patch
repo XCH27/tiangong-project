@@ -1,0 +1,178 @@
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -116,6 +116,9 @@
+       if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim())
+         continue;
+       if (goModels && !goModels.has(item.id)) continue;
++      if (models.has(item.id)) {
++        throw new Error("The provider returned duplicate model IDs; saved models were not changed");
++      }
+       const name =
+         typeof item.name === "string"
+           ? item.name
+@@ -168,11 +171,16 @@
+     if (!Array.isArray(body.models)) {
+       throw new Error(`The provider returned an unsupported ${route} catalog`);
+     }
++    const routeIds = new Set<string>();
+     for (const value of body.models) {
+       if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+       const item = value as Record<string, unknown>;
+       const id = typeof item.id === "string" ? item.id.trim() : "";
+       if (!id) continue;
++      if (routeIds.has(id)) {
++        throw new Error(`The provider returned duplicate model IDs in ${route}`);
++      }
++      routeIds.add(id);
+       const reportedOutputs = item.output_modalities;
+       if (Array.isArray(reportedOutputs) && !reportedOutputs.includes(output)) {
+         throw new Error(`The provider returned a conflicting ${route} output for ${id}`);
+diff --git a/packages/services/src/model-provider/subscriptionCatalog.ts b/packages/services/src/model-provider/subscriptionCatalog.ts
+--- a/packages/services/src/model-provider/subscriptionCatalog.ts
++++ b/packages/services/src/model-provider/subscriptionCatalog.ts
+@@ -166,7 +166,15 @@
+         ? (item.model ?? item.modelId ?? item.id ?? meta.model ?? meta.modelId)
+         : item.slug,
+     );
+-    if (!id) continue;
++    if (!id || !id.trim()) {
++      if (kind === "openai-codex") {
++        throw new Error("Subscription model catalog contains an empty model ID");
++      }
++      continue;
++    }
++    if (models.has(id)) {
++      throw new Error("Subscription model catalog contains duplicate model IDs");
++    }
+     const context = positive(item.context_window ?? item.contextWindow ?? meta.totalContextTokens);
+     const output = positive(
+       item.max_output_tokens ?? item.max_completion_tokens ?? item.maxCompletionTokens,
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -204,6 +204,26 @@
+       .models.map((m) => m.modelId);
+     assert.ok(ids.includes("gpt-4.1-mini"));
+     assert.ok(!ids.includes("gpt-4.1"));
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("duplicate API model IDs reject the entire refresh without changing the saved catalog", async () => {
++  const f = await fixture();
++  try {
++    await f.service.discoverModels(f.providerId);
++    const before = await f.disk();
++    f.setFetch(async () =>
++      Response.json({ data: [{ id: "gpt-4.1" }, { id: "gpt-4.1", context_window: 42 }] }),
++    );
++    await assert.rejects(f.service.discoverModels(f.providerId), /duplicate model IDs/);
++    assert.equal(await f.disk(), before);
++    await f.restart();
++    assert.deepEqual(
++      (await f.models()).map((model) => model.modelId),
++      ["gpt-4.1", "gpt-4.1-mini"],
++    );
+   } finally {
+     await f.dispose();
+   }
+@@ -724,6 +744,35 @@
+   }
+ });
+ 
++test("one xAI ID may advertise both chat and image output in different catalogs", async () => {
++  const f = await fixture();
++  try {
++    const provider = (await f.service.getView()).providers.find(
++      (row) => row.providerId === f.providerId,
++    )!;
++    await f.service.savePersonalProviderOverlay(f.providerId, {
++      ...provider.personalConfig,
++      api: { type: "openai-responses", baseUrl: "https://api.x.ai/v1" },
++      access: { type: "api-key", apiKey: "synthetic" },
++    });
++    f.setFetch(async (input) => {
++      const path = new URL(String(input)).pathname;
++      if (path === "/v1/language-models")
++        return Response.json({ models: [{ id: "grok-both", output_modalities: ["text"] }] });
++      if (path === "/v1/image-generation-models")
++        return Response.json({ models: [{ id: "grok-both", output_modalities: ["image"] }] });
++      if (path === "/v1/video-generation-models") return Response.json({ models: [] });
++      throw new Error(`Unexpected ${path}`);
++    });
++    await f.service.discoverModels(f.providerId);
++    const model = (await f.models()).find((row) => row.modelId === "grok-both")!;
++    assert.equal(model.effectiveConfig.properties?.outputFormat?.supportsText, true);
++    assert.equal(model.effectiveConfig.properties?.outputFormat?.supportsImage, true);
++  } finally {
++    await f.dispose();
++  }
++});
++
+ test("a video-only catalog denial does not hide the key's available image models", async () => {
+   const f = await fixture();
+   try {
+@@ -757,6 +806,37 @@
+   }
+ });
+ 
++test("duplicate IDs inside one xAI media catalog cannot change the saved media model", async () => {
++  const f = await fixture();
++  try {
++    const provider = (await f.service.getView()).providers.find(
++      (row) => row.providerId === f.providerId,
++    )!;
++    await f.service.savePersonalProviderOverlay(f.providerId, {
++      ...provider.personalConfig,
++      api: { type: "openai-responses", baseUrl: "https://api.x.ai/v1" },
++      access: { type: "api-key", apiKey: "synthetic" },
++    });
++    f.setFetch(async (input) => {
++      const path = new URL(String(input)).pathname;
++      if (path === "/v1/language-models") return Response.json({ models: [] });
++      if (path === "/v1/image-generation-models")
++        return Response.json({
++          models: [
++            { id: "grok-image", output_modalities: ["image"] },
++            { id: "grok-image", output_modalities: ["image"], context_length: 1 },
++          ],
++        });
++      throw new Error(`Unexpected ${path}`);
++    });
++    const before = await f.disk();
++    await assert.rejects(f.service.discoverModels(f.providerId), /duplicate model IDs/);
++    assert.equal(await f.disk(), before);
++  } finally {
++    await f.dispose();
++  }
++});
++
+ test("OpenCode Go discovery only merges models declared for the saved wire protocol", async () => {
+   const f = await fixture();
+   try {
+diff --git a/packages/services/test/subscription-catalog.test.ts b/packages/services/test/subscription-catalog.test.ts
+--- a/packages/services/test/subscription-catalog.test.ts
++++ b/packages/services/test/subscription-catalog.test.ts
+@@ -28,6 +28,20 @@
+   assert.equal(result.models[0]?.config.properties?.contextWindow, 300000);
+   assert.deepEqual(result.models[0]?.config.optionSpecs?.reasoningLevel?.values, ["low", "high"]);
+   assert.equal(result.models[1]?.config.properties, undefined);
++});
++
++test("Codex account catalog rejects ambiguous IDs before they can enter model settings", () => {
++  assert.throws(
++    () =>
++      parseNativeSubscriptionCatalog("openai-codex", {
++        models: [{ slug: "gpt-6-sol" }, { slug: "gpt-6-sol", context_window: 1 }],
++      }),
++    /duplicate model IDs/,
++  );
++  assert.throws(
++    () => parseNativeSubscriptionCatalog("openai-codex", { models: [{ slug: " " }] }),
++    /empty model ID/,
++  );
+ });
+ test("Grok catalog excludes unsupported protocols and does not infer capabilities from names", () => {
+   const result = parseNativeSubscriptionCatalog("xai", {

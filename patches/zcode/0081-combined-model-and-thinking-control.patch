@@ -1,0 +1,528 @@
+diff --git a/package.json b/package.json
+index ab58364..82d592c 100644
+--- a/package.json
++++ b/package.json
+@@ -63,6 +63,7 @@
+     "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests",
+     "test:chatgpt-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/chatgptConnection.browser.test.tsx __chatgptConnectionTests --desktop-styles",
+     "test:model-settings-tool-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/modelSettingsTool.browser.test.tsx __modelSettingsToolTests --desktop-styles",
++    "test:combined-model-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/combinedModelControl.browser.test.tsx __combinedModelTests --desktop-styles",
+     "test:settings-typography": "node scripts/test-usage-hooks.mjs packages/ui/test/settingsTypography.browser.test.tsx __settingsTypographyTests --desktop-styles"
+   },
+   "dependencies": {
+diff --git a/packages/ui/src/ModelConfigSelect.tsx b/packages/ui/src/ModelConfigSelect.tsx
+index d907d77..b8b9302 100644
+--- a/packages/ui/src/ModelConfigSelect.tsx
++++ b/packages/ui/src/ModelConfigSelect.tsx
+@@ -133,6 +133,9 @@ function getModelTriggerLabelClassName({
+ }
+ 
+ interface ModelConfigSelectProps {
++  /** Existing host menus can contribute scoped options without another toolbar trigger. */
++  leadingContent?: ReactNode;
++  triggerIcon?: ReactNode;
+   modelGroups: readonly ModelSelectGroup[];
+   normalizedValue: string;
+   triggerLabel: string;
+@@ -184,6 +187,8 @@ interface ModelConfigSelectProps {
+ }
+ 
+ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
++  leadingContent,
++  triggerIcon,
+   modelGroups,
+   normalizedValue,
+   triggerLabel,
+@@ -496,10 +501,12 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+           triggerClassName,
+         )}
+       >
+-        <PackageIcon
+-          className={cn("pointer-events-none size-4 shrink-0 text-current", triggerIconClassName)}
+-          aria-hidden="true"
+-        />
++        {triggerIcon ?? (
++          <PackageIcon
++            className={cn("pointer-events-none size-4 shrink-0 text-current", triggerIconClassName)}
++            aria-hidden="true"
++          />
++        )}
+         <span className={triggerLabelClassName} title={currentTriggerTitle}>
+           <RollingToolbarLabel
+             label={currentTriggerLabel}
+@@ -568,6 +575,7 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+             input?.focus();
+           }}
+         >
++          {leadingContent}
+           {leadingItems !== undefined && leadingItems.length > 0 ? (
+             <>
+               {renderModelItems(leadingItems)}
+diff --git a/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+new file mode 100644
+index 0000000..eb73743
+--- /dev/null
++++ b/packages/ui/src/chat-input-toolbar/ComposerModelControl.tsx
+@@ -0,0 +1,138 @@
++import type { ComponentProps } from "react";
++import { BrainIcon, ZapIcon } from "lucide-react";
++import type { ZCodeConfigOption, ZCodeProvider } from "@zcode/shared";
++import { TID_CHAT_THOUGHT_LEVEL_SELECT_ITEM, testId } from "@zcode/shared";
++import { ModelConfigSelect } from "@/ModelConfigSelect.js";
++import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import {
++  DropdownMenuItem,
++  DropdownMenuLabel,
++  DropdownMenuRadioGroup,
++  DropdownMenuRadioItem,
++  DropdownMenuSeparator,
++} from "@/components/ui/dropdown-menu.js";
++import { getThoughtLevelLabel } from "./thoughtLevelOptions.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { cn } from "@/components/lib/utils.js";
++
++/** One host model picker; effort/Fast remain independent, composer-owned request fields. */
++export function ComposerModelControl({
++  model,
++  thought,
++  provider,
++  onThoughtChange,
++  speed,
++}: {
++  model: ComponentProps<typeof ModelConfigSelect>;
++  thought?: ZCodeConfigOption | null;
++  provider?: ZCodeProvider;
++  onThoughtChange(value: string): void;
++  speed?: { value: "standard" | "fast"; note: string; onChange(value: "standard" | "fast"): void };
++}) {
++  const { intl } = useZCodeIntl();
++  const entries = thought?.type === "select" ? (thought.options ?? []) : [];
++  const current = entries.find((entry) => entry.value === String(thought?.currentValue));
++  const thoughtLabel =
++    current && thought
++      ? getThoughtLevelLabel(intl, provider, thought, current)
++      : entries.length
++        ? intl.formatMessage({ id: "chat.toolbar.thoughtLevel.placeholder" })
++        : undefined;
++  const fullLabel = [
++    model.tooltipTitle ?? model.triggerLabel,
++    thoughtLabel,
++    speed?.value === "fast" ? intl.formatMessage({ id: "chat.toolbar.speed.label" }) : null,
++  ]
++    .filter(Boolean)
++    .join(" · ");
++  const menuOptions =
++    entries.length || speed ? (
++      <>
++        <div className="flex items-center justify-between gap-2 pr-1">
++          <DropdownMenuLabel>
++            {intl.formatMessage({ id: "chat.toolbar.options.thinking" })}
++          </DropdownMenuLabel>
++          {speed ? (
++            <ControlHintTooltip
++              title={intl.formatMessage({ id: "chat.toolbar.speed.tooltipTitle" })}
++              description={speed.note}
++              side="left"
++              align="start"
++              className="z-[70]"
++            >
++              <DropdownMenuItem
++                disabled={model.disabled}
++                aria-label={intl.formatMessage({
++                  id:
++                    speed.value === "fast"
++                      ? "chat.toolbar.speed.disable"
++                      : "chat.toolbar.speed.enable",
++                })}
++                className={cn(
++                  "size-7 min-h-7 justify-center p-0",
++                  speed.value === "fast" && "bg-menu-hover",
++                )}
++                onSelect={(event) => {
++                  event.preventDefault();
++                  speed.onChange(speed.value === "fast" ? "standard" : "fast");
++                }}
++              >
++                <ZapIcon
++                  className={cn(
++                    "size-4",
++                    speed.value === "fast" ? "fill-current" : "text-foreground-subtle",
++                  )}
++                />
++              </DropdownMenuItem>
++            </ControlHintTooltip>
++          ) : null}
++        </div>
++        <DropdownMenuRadioGroup
++          value={current?.value ?? ""}
++          onValueChange={(next) => {
++            if (entries.some((entry) => entry.value === next)) onThoughtChange(next);
++          }}
++        >
++          {entries.map((entry) => (
++            <DropdownMenuRadioItem
++              key={entry.value}
++              value={entry.value}
++              disabled={model.disabled}
++              data-testid={testId(TID_CHAT_THOUGHT_LEVEL_SELECT_ITEM, entry.value)}
++            >
++              {getThoughtLevelLabel(intl, provider, thought!, entry)}
++            </DropdownMenuRadioItem>
++          ))}
++        </DropdownMenuRadioGroup>
++        <DropdownMenuSeparator />
++      </>
++    ) : undefined;
++  return (
++    <ModelConfigSelect
++      {...model}
++      tooltipTitle={fullLabel}
++      leadingContent={menuOptions}
++      triggerIcon={
++        <BrainIcon
++          className="pointer-events-none hidden size-4 shrink-0 group-data-[composer-model-icon=true]/toolbar:inline-flex"
++          aria-hidden="true"
++        />
++      }
++      triggerBadge={
++        <>
++          {thoughtLabel ? (
++            <span className="min-w-0 truncate text-foreground-subtle group-data-[composer-model-icon=true]/toolbar:hidden">
++              {thoughtLabel}
++            </span>
++          ) : null}
++          {speed?.value === "fast" ? (
++            <ZapIcon
++              className="size-3.5 shrink-0 fill-current group-data-[composer-model-icon=true]/toolbar:hidden"
++              aria-hidden="true"
++            />
++          ) : null}
++        </>
++      }
++    />
++  );
++}
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index edd5655..4dc2d65 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -39,7 +39,7 @@ import type {
+   SessionPhase,
+   SessionUsageState,
+ } from "@zcode/shared/zcode-protocol-v4";
+-import { ModelConfigSelect, type ModelSelectGroup } from "@/ModelConfigSelect.js";
++import { type ModelSelectGroup } from "@/ModelConfigSelect.js";
+ import { Button } from "@/components/ui/button.js";
+ import { ChatContextUsage } from "@/chat-input-toolbar/display.js";
+ import { contextWindowForSelectedModel } from "@/lib/contextUsageModelScope.js";
+@@ -51,7 +51,7 @@ import {
+   hasChatStartPlanBalance,
+   type ChatStartPlanBalanceConfig,
+ } from "@/chat-input-toolbar/StartPlanContextBalance.js";
+-import { ThoughtLevelCycleControl } from "@/chat-input-toolbar/ThoughtLevelCycleControl.js";
++import { ComposerModelControl } from "@/chat-input-toolbar/ComposerModelControl.js";
+ import { getNextThoughtLevelValue } from "@/chat-input-toolbar/thoughtLevelOptions.js";
+ import { modelSupportsFast } from "@/lib/modelThoughtOption.js";
+ import type { V4ComposerConfigPicker } from "@/v4/composer/configPickerState.js";
+@@ -407,7 +407,6 @@ function V4ComposerModelControlsImpl({
+   });
+   const openSettingsTab = useTabStore((state) => state.openSettingsTab);
+   const modelTriggerRef = useRef<HTMLSpanElement | null>(null);
+-  const thoughtTriggerRef = useRef<HTMLSpanElement | null>(null);
+   // Ctrl+M 热键：递增 openRequestKey 请求 ModelConfigSelect 打开菜单（旧 handleOpenModelMenuShortcut 语义）。
+   const [modelMenuOpenRequestKey, setModelMenuOpenRequestKey] = useState(0);
+   const [recoveryPending, setRecoveryPending] = useState(false);
+@@ -416,15 +415,12 @@ function V4ComposerModelControlsImpl({
+   }, []);
+   const handleModelPickerOpenChange = useCallback(
+     (open: boolean) => {
+-      onConfigPickerOpenChange("model", open);
++      onConfigPickerOpenChange(
++        !open && activeConfigPicker === "thought" ? "thought" : "model",
++        open,
++      );
+     },
+-    [onConfigPickerOpenChange],
+-  );
+-  const handleThoughtPickerOpenChange = useCallback(
+-    (open: boolean) => {
+-      onConfigPickerOpenChange("thought", open);
+-    },
+-    [onConfigPickerOpenChange],
++    [activeConfigPicker, onConfigPickerOpenChange],
+   );
+ 
+   const modelOption = modelSelectionView?.providers.some((provider) => provider.models.length > 0)
+@@ -1000,7 +996,6 @@ function V4ComposerModelControlsImpl({
+   // 工具条热键已转正为命令表命令：tooltip 快捷键文案读生效表，
+   // 改绑后按钮提示即时跟随（不能用硬编码文案）。
+   const modelShortcutLabel = useShortcutCommandLabel("openModelMenu");
+-  const thoughtShortcutLabel = useShortcutCommandLabel("cycleThoughtLevel");
+   const isModelOptionLocked = useCallback(() => false, []);
+ 
+   // 键盘热键（旧 useToolbarShortcutBindings）：Ctrl+M 打开模型菜单、Ctrl+T 循环思考深度。
+@@ -1080,37 +1075,10 @@ function V4ComposerModelControlsImpl({
+           })}
+         </span>
+       ) : modelMenuVisible ? (
+-        <ModelConfigSelect
+-          modelGroups={modelSelectGroups}
+-          normalizedValue={normalizedModelValue}
+-          triggerLabel={modelTriggerDisplay.modelLabel}
+-          triggerLabelValue={modelTriggerDisplay.modelLabel}
+-          showManageModelsAction={showManageModelsAction}
+-          manageModelsLabel={manageModelsLabel}
+-          onManageModels={handleOpenModelProviderSettings}
+-          lockReasonMessage={intl.formatMessage({
+-            id: "chat.toolbar.modelSwitch.lockedByRunningTask",
+-          })}
+-          isItemLocked={isModelOptionLocked}
+-          onValueChange={handleModelValueChange}
+-          disabled={disabled || recoveryPending || modelSelectionState.status !== "ready"}
+-          tooltipTitle={modelTriggerDisplay.fullLabel}
+-          shortcutLabel={modelShortcutLabel}
+-          triggerRef={modelTriggerRef}
+-          open={activeConfigPicker === "model"}
+-          onOpenChange={handleModelPickerOpenChange}
+-          openRequestKey={modelMenuOpenRequestKey}
+-          labelVisibilityClassName="hidden @sm/composer:inline-flex"
+-          indicatorClassName="block group-data-[composer-model-icon=true]/toolbar:hidden"
+-          triggerLabelClassName="block min-w-0 text-left group-data-[composer-model-icon=true]/toolbar:hidden [&>span]:max-w-full [&>span>span]:block [&>span>span]:truncate"
+-          triggerClassName="composer-model-trigger group-data-[composer-model-icon=true]/toolbar:size-7 group-data-[composer-model-icon=true]/toolbar:p-0 group-data-[composer-model-icon=true]/toolbar:gap-0 group-data-[composer-model-icon=true]/toolbar:justify-center"
+-          triggerIconClassName="hidden group-data-[composer-model-icon=true]/toolbar:inline-flex"
+-          focusSelectorOnClose={V4_COMPOSER_INPUT_SELECTOR}
+-          providerSubmenuClassName={providerSubmenuClassName}
+-        />
+-      ) : null}
+-      {thoughtOption ? (
+-        <ThoughtLevelCycleControl
++        <ComposerModelControl
++          thought={thoughtOption}
++          provider={displayProvider}
++          onThoughtChange={handleThoughtValueChange}
+           speed={
+             supportsFast || fastEnabled
+               ? {
+@@ -1120,19 +1088,37 @@ function V4ComposerModelControlsImpl({
+                 }
+               : undefined
+           }
+-          composerCollapsePriority={3}
+-          labelVisibilityClassName="inline-flex"
+-          indicatorClassName="block"
+-          option={thoughtOption}
+-          onValueChange={handleThoughtValueChange}
+-          disabled={disabled || recoveryPending}
+-          intl={intl}
+-          provider={displayProvider}
+-          shortcutLabel={thoughtShortcutLabel}
+-          triggerRef={thoughtTriggerRef}
+-          open={activeConfigPicker === "thought"}
+-          onOpenChange={handleThoughtPickerOpenChange}
+-          restoreFocusSelector={V4_COMPOSER_INPUT_SELECTOR}
++          model={{
++            modelGroups: modelSelectGroups,
++            normalizedValue: normalizedModelValue,
++            triggerLabel: modelTriggerDisplay.modelLabel,
++            triggerLabelValue: modelTriggerDisplay.modelLabel,
++            showManageModelsAction: showManageModelsAction,
++            manageModelsLabel: manageModelsLabel,
++            onManageModels: handleOpenModelProviderSettings,
++            lockReasonMessage: intl.formatMessage({
++              id: "chat.toolbar.modelSwitch.lockedByRunningTask",
++            }),
++            isItemLocked: isModelOptionLocked,
++            onValueChange: handleModelValueChange,
++            disabled: disabled || recoveryPending || modelSelectionState.status !== "ready",
++            tooltipTitle: modelTriggerDisplay.fullLabel,
++            shortcutLabel: modelShortcutLabel,
++            triggerRef: modelTriggerRef,
++            open: activeConfigPicker === "model" || activeConfigPicker === "thought",
++            onOpenChange: handleModelPickerOpenChange,
++            openRequestKey: modelMenuOpenRequestKey,
++            labelVisibilityClassName: "hidden @sm/composer:inline-flex",
++            indicatorClassName: "block group-data-[composer-model-icon=true]/toolbar:hidden",
++            triggerLabelClassName:
++              "block min-w-0 text-left group-data-[composer-model-icon=true]/toolbar:hidden [&>span]:max-w-full [&>span>span]:block [&>span>span]:truncate",
++            triggerClassName:
++              "composer-model-trigger group-data-[composer-model-icon=true]/toolbar:size-7 group-data-[composer-model-icon=true]/toolbar:p-0 group-data-[composer-model-icon=true]/toolbar:gap-0 group-data-[composer-model-icon=true]/toolbar:justify-center",
++            triggerIconClassName:
++              "hidden group-data-[composer-model-icon=true]/toolbar:inline-flex",
++            focusSelectorOnClose: V4_COMPOSER_INPUT_SELECTOR,
++            providerSubmenuClassName: providerSubmenuClassName,
++          }}
+         />
+       ) : null}
+     </>
+diff --git a/packages/ui/test/combinedModelControl.browser.test.tsx b/packages/ui/test/combinedModelControl.browser.test.tsx
+new file mode 100644
+index 0000000..098e257
+--- /dev/null
++++ b/packages/ui/test/combinedModelControl.browser.test.tsx
+@@ -0,0 +1,166 @@
++import { act, useState } from "react";
++import { createRoot } from "react-dom/client";
++import { ComposerModelControl } from "../src/chat-input-toolbar/ComposerModelControl.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { useComposerToolbarFit } from "../src/prompt-editor/useComposerToolbarFit.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
++const results: { name: string; error?: string }[] = [];
++let writes: string[] = [];
++
++function Fixture({ width, unknown = false }: { width: number; unknown?: boolean }) {
++  const ref = useComposerToolbarFit();
++  const [thought, setThought] = useState(unknown ? "unobserved" : "medium");
++  const [model, setModel] = useState("a");
++  const [speed, setSpeed] = useState<"standard" | "fast">("standard");
++  return (
++    <div ref={ref} className="group/toolbar flex items-center gap-3" style={{ width }}>
++      <div data-composer-leading-actions className="min-w-0 flex-1">
++        <div
++          data-composer-leading-content
++          className="inline-flex items-center gap-2 whitespace-nowrap"
++        >
++          <button style={{ width: 28 }}>+</button>
++          <ComposerModelControl
++            provider="zcode"
++            thought={
++              {
++                type: "select",
++                id: "reasoningLevel",
++                name: "Thinking",
++                currentValue: thought,
++                options: ["low", "medium", "high"].map((value) => ({ value, name: value })),
++              } as never
++            }
++            onThoughtChange={(next) => {
++              writes.push(`thought:${next}`);
++              setThought(next);
++            }}
++            speed={{
++              value: speed,
++              note: "Synthetic provider-specific allowance note",
++              onChange: (next) => {
++                writes.push(`speed:${next}`);
++                setSpeed(next);
++              },
++            }}
++            model={{
++              modelGroups: [
++                {
++                  key: "provider",
++                  label: "Connected provider",
++                  directItems: true,
++                  items: [
++                    { key: "a", value: "a", name: "A deliberately long model name" },
++                    { key: "b", value: "b", name: "Another model" },
++                  ],
++                },
++              ],
++              normalizedValue: model,
++              triggerLabel: model === "a" ? "A deliberately long model name" : "Another model",
++              showManageModelsAction: false,
++              lockReasonMessage: "Locked",
++              isItemLocked: () => false,
++              onValueChange: (next) => {
++                writes.push(`model:${next}`);
++                setModel(next);
++              },
++              triggerClassName:
++                "composer-model-trigger group-data-[composer-model-icon=true]/toolbar:size-7 group-data-[composer-model-icon=true]/toolbar:p-0 group-data-[composer-model-icon=true]/toolbar:gap-0",
++              triggerLabelClassName: "group-data-[composer-model-icon=true]/toolbar:hidden",
++              indicatorClassName: "group-data-[composer-model-icon=true]/toolbar:hidden",
++              focusSelectorOnClose: null,
++            }}
++          />
++        </div>
++      </div>
++      <div data-composer-trailing-actions style={{ width: 32 }}>
++        <button>↑</button>
++      </div>
++    </div>
++  );
++}
++
++(window as unknown as Record<string, unknown>).__combinedModelTests = (async () => {
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const dark of [false, true])
++      for (const width of [560, 150]) {
++        const name = `${locale}, ${dark ? "dark" : "light"}, ${width}px: one model/effort entry and scoped Fast`;
++        document.documentElement.classList.toggle("dark", dark);
++        const node = document.createElement("div");
++        document.body.append(node);
++        const root = createRoot(node);
++        writes = [];
++        try {
++          await act(async () =>
++            root.render(
++              <ZCodeIntlProvider initialLocale={locale}>
++                <TooltipProvider><Fixture width={width} /></TooltipProvider>
++              </ZCodeIntlProvider>,
++            ),
++          );
++          await act(async () => {
++            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
++          });
++          const trigger =
++            node.querySelector<HTMLButtonElement>('[data-testid="chat-model-select-trigger"]') ??
++            node.querySelector<HTMLButtonElement>(".composer-model-trigger");
++          check(trigger, "Combined model entry is missing");
++          check(
++            node.querySelectorAll('[data-chat-toolbar-popover-trigger="true"]').length === 1,
++            "The old separate thought trigger survived",
++          );
++          check(writes.length === 0, "Mount/resize changed model or effort");
++          if (width === 150) {
++            check(
++              node.querySelector('[data-composer-model-icon="true"]'),
++              "Narrow toolbar did not collapse",
++            );
++            check(
++              trigger!.getBoundingClientRect().width <= 30,
++              "Narrow control retained a long model label",
++            );
++            const brain = trigger!.querySelector<SVGElement>(".lucide-brain");
++            check(
++              brain && getComputedStyle(brain).display !== "none",
++              "Compact model did not use the original Brain icon",
++            );
++          }
++          await act(async () => {
++            trigger!.dispatchEvent(
++              new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
++            );
++            trigger!.dispatchEvent(
++              new PointerEvent("pointerup", { bubbles: true, button: 0, pointerType: "mouse" }),
++            );
++          });
++          const fast = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
++            (element) =>
++              element.getAttribute("aria-label")?.toLowerCase().includes(locale === "zh-CN" ? "快速" : "fast"),
++          );
++          check(fast, "The menu lost its Fast action");
++          await act(async () => fast!.click());
++          check(writes.at(-1) === "speed:fast", "Fast was translated into an effort change");
++          const high = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
++            (element) => element.textContent?.trim() === (locale === "zh-CN" ? "高" : "High"),
++          );
++          check(high, "Only the evidenced effort rows should be present");
++          await act(async () => high!.click());
++          check(
++            writes.at(-1) === "thought:high",
++            "Effort selection did not use its existing callback",
++          );
++          results.push({ name });
++        } catch (error) {
++          results.push({ name, error: String(error) });
++        } finally {
++          await act(async () => root.unmount());
++          node.remove();
++        }
++      }
++  return results;
++})();

@@ -1,0 +1,1907 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 95f68e3..8cb7a5f 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -490,3 +490,41 @@ Historical usage reads do not require a configured model or active conversation.
+ local control-plane carrier (also used by global workflows) when no reusable local workspace client
+ exists. Read the same Session SQLite ledger over v4/usage/stats; do not select an arbitrary remote
+ workspace, create a conversation, start inference or add another storage owner.
++
++### CC Switch import correction
++
++Read the external database in one read-only transaction. Translate the source client's actual wire
++URL semantics, not just its displayed base URL: Claude's Chat/Responses proxy adds /v1, while Codex
++adds it only to a bare origin. Strip Claude's local [1M] marker before deduplicating upstream model
++IDs; the marker alone does not prove a context limit. Include explicit catalog and subagent models.
++Import API-key configurations whose declared protocol is supported, including compatible Claude
++Desktop/OpenCode/Pi/OpenClaw shapes; reject OAuth, scripts and unrepresentable per-model routes.
++
++Match existing connections by protocol, credential and canonical/source URL in ProviderSettings,
++not a process-local imported-ID map. Reimport completes the same connection, preserves disabled
++models/manual corrections/defaults and retries missing model writes. Exact known endpoint templates
++supply brand/key-management metadata and plan categorization without inheriting template model lists;
++arbitrary names/hosts do not. Same-key connections across catalog-proven equivalent service routes
++are already bound: retain their current protocol rather than creating or switching a route.
++Selected repair disables erroneous local-marker aliases after their canonical model exists, without
++deleting historical model data. No source changes, inference or default-account/model changes.
++
++Preview → existing ProviderSettings owner → connection/model writes → refreshed settings/picker.
++The preview shows converted protocol/models and whether the selected existing connection is completed.
++A missing upstream model-list endpoint is a localized informational state, not a broken saved key.
++
++
++### Billing and projectless usage correction (OV-052)
++
++Provider-reported billing periods/currency reuse the existing subscription metadata cache and
++account/revision check. A one-period active_start/active_until can prefill the existing fee form;
++long-running subscription start dates cannot stand in for a current billing cycle. Preserve exact
++absolute boundaries unless the user edits dates, and reject late metadata after account or field
++changes. Discounts and list prices never become actual payments without an invoice fact.
++Current live ChatGPT responses expose dates/currency/discounts but no amount paid. No payment is
++automatically fabricated or saved. Amount acquisition remains incomplete for these responses.
++
++Project cost projection uses the existing registered local project list. Conversation backing roots,
++unregistered paths and null history group under Other without rewriting immutable usage facts or
++removing them from account-period allocation. Agent-editable statistics must reuse the existing
++Session/permission and Settings owners; that contextual bridge is not implemented by this change.
+diff --git a/packages/provider/src/endpoint-template.ts b/packages/provider/src/endpoint-template.ts
+new file mode 100644
+index 0000000..652550b
+--- /dev/null
++++ b/packages/provider/src/endpoint-template.ts
+@@ -0,0 +1,25 @@
++import type { ProviderSettingsTemplateView } from "./facades.js";
++
++/** Match existing catalogue metadata without inheriting its model membership or changing a route. */
++export function matchEndpointTemplate(
++  baseUrl: string | null | undefined,
++  templates: readonly ProviderSettingsTemplateView[],
++  apiType?: string | null,
++): ProviderSettingsTemplateView | undefined {
++  const route = (value: string | null | undefined) => {
++    try {
++      const url = new URL(value ?? "");
++      return `${url.origin}${url.pathname.replace(/\/+$/, "").replace(/\/v1$/, "")}`;
++    } catch {
++      return undefined;
++    }
++  };
++  const target = route(baseUrl);
++  return target
++    ? templates.find(
++        (template) =>
++          (!apiType || template.config.api?.type === apiType) &&
++          route(template.config.api?.baseUrl) === target,
++      )
++    : undefined;
++}
+diff --git a/packages/provider/src/index.ts b/packages/provider/src/index.ts
+index b148ce6..2cb2fdf 100644
+--- a/packages/provider/src/index.ts
++++ b/packages/provider/src/index.ts
+@@ -14,3 +14,4 @@ export * from "./resolver.js";
+ export * from "./registry.js";
+ export * from "./registry-service.js";
+ export * from "./sources.js";
++export { matchEndpointTemplate } from "./endpoint-template.js";
+diff --git a/packages/services/src/model-provider/ccSwitchImport.ts b/packages/services/src/model-provider/ccSwitchImport.ts
+index e358285..74fc9c8 100644
+--- a/packages/services/src/model-provider/ccSwitchImport.ts
++++ b/packages/services/src/model-provider/ccSwitchImport.ts
+@@ -3,8 +3,15 @@ import { realpath, stat } from "node:fs/promises";
+ import { createRequire } from "node:module";
+ import { homedir } from "node:os";
+ import { extname, join, resolve } from "node:path";
+-import { parse as parseToml } from "smol-toml";
+-import type { ProviderConfigObject, ProviderSettingsFacade } from "@zcode/provider";
++import { parseCandidate, type Candidate } from "./ccSwitchImportConfig.js";
++import {
++  isApiKeyAccess,
++  matchEndpointTemplate,
++  type ProviderConfigObject,
++  type ProviderSettingsFacade,
++  type ProviderSettingsProviderView,
++  type ProviderSettingsView,
++} from "@zcode/provider";
+ 
+ // 与既有 Host Repo 一致，避免打包器把 node:sqlite 改写成 npm sqlite。
+ const { DatabaseSync } = createRequire(import.meta.url)(
+@@ -17,6 +24,8 @@ export interface CcSwitchImportRow {
+   readonly appType: string;
+   readonly baseUrl: string;
+   readonly modelIds: readonly string[];
++  readonly apiType?: NonNullable<ProviderConfigObject["api"]>["type"];
++  readonly existingProviderName?: string;
+   readonly eligible: boolean;
+   readonly reason?: string;
+ }
+@@ -47,37 +56,46 @@ export interface CcSwitchImportAdapter {
+   import(input: CcSwitchImportInput): Promise<CcSwitchImportResult>;
+ }
+ 
+-type ImportOwner = Pick<ProviderSettingsFacade, "createPersonalProvider" | "addPersonalModel">;
+-type ApiType = NonNullable<ProviderConfigObject["api"]>["type"];
+-type RecordValue = Record<string, unknown>;
+-interface Candidate {
+-  readonly row: CcSwitchImportRow;
+-  readonly config?: ProviderConfigObject;
+-}
++type ImportOwner = Pick<
++  ProviderSettingsFacade,
++  | "createPersonalProvider"
++  | "addPersonalModel"
++  | "savePersonalProviderOverlay"
++  | "setPersonalModelEnabled"
++> & { getView(): ProviderSettingsView | Promise<ProviderSettingsView> };
+ 
+ /** 外部文件只读；预览不保存密钥快照，确认时重新读取并校验版本后才调用现有写入 Owner。 */
+ export function createCcSwitchImportAdapter(
+   owner: ImportOwner,
+   defaultPath = join(homedir(), ".cc-switch", "cc-switch.db"),
+ ): CcSwitchImportAdapter {
+-  const imported = new Map<string, { providerId: string; error?: string }>();
+   let pending: Promise<unknown> = Promise.resolve();
+-  const sourceKey = (path: string, id: string) => JSON.stringify([path, id]);
+   return {
+     async preview(path) {
+       const source = await readSource(path ?? defaultPath);
++      const view = await owner.getView();
+       return {
+         path: source.path,
+         revision: source.revision,
+-        rows: source.candidates.map(({ row }) =>
+-          imported.has(sourceKey(source.path, row.id))
+-            ? { ...row, eligible: false, reason: "already-imported" }
+-            : row,
+-        ),
++        rows: source.candidates.map((candidate) => {
++          if (!candidate.row.eligible) return candidate.row;
++          const existing = findExisting(candidate, view);
++          const complete =
++            existing &&
++            (isComplete(candidate, existing, view) ||
++              existing.effectiveConfig.api?.type !== candidate.config?.api?.type);
++          return {
++            ...candidate.row,
++            ...(existing
++              ? { existingProviderName: existing.providerName ?? existing.providerId }
++              : {}),
++            ...(complete ? { eligible: false, reason: "already-imported" } : {}),
++          };
++        }),
+       };
+     },
+     import(input) {
+-      // 同一 Host 的重复点击排队；创建成功即记录 ID，后续模型失败也不能重建第二个 Provider。
++      // 同一 Host 的重复点击排队；每次从 Provider Owner 识别已保存连接，重启后仍然有效。
+       const operation = pending.then(async (): Promise<CcSwitchImportResult> => {
+         if (!Array.isArray(input.ids) || input.ids.some((id) => typeof id !== "string")) {
+           throw new Error("Invalid CC Switch selection");
+@@ -89,12 +107,6 @@ export function createCcSwitchImportAdapter(
+         const candidates = new Map(source.candidates.map((item) => [item.row.id, item]));
+         const results: CcSwitchImportResult["results"][number][] = [];
+         for (const id of new Set(input.ids)) {
+-          const key = sourceKey(source.path, id);
+-          const previous = imported.get(key);
+-          if (previous) {
+-            results.push({ id, ...previous, skipped: true });
+-            continue;
+-          }
+           const candidate = candidates.get(id);
+           if (!candidate?.row.eligible || !candidate.config) {
+             results.push({ id, error: candidate?.row.reason ?? "source-row-unavailable" });
+@@ -102,19 +114,66 @@ export function createCcSwitchImportAdapter(
+           }
+           let providerId: string | undefined;
+           try {
+-            ({ providerId } = await owner.createPersonalProvider({
+-              providerName: candidate.row.name,
+-              initialConfig: candidate.config,
+-            }));
+-            imported.set(key, { providerId });
++            const view = await owner.getView();
++            let existing = findExisting(candidate, view);
++            if (
++              existing &&
++              (isComplete(candidate, existing, view) ||
++                existing.effectiveConfig.api?.type !== candidate.config.api?.type)
++            ) {
++              results.push({ id, providerId: existing.providerId, skipped: true });
++              continue;
++            }
++            const decoration = resolveDecoration(candidate, view);
++            if (existing) providerId = existing.providerId;
++            else {
++              ({ providerId } = await owner.createPersonalProvider({
++                providerName: candidate.row.name,
++                initialConfig: { ...candidate.config, ...decoration.config },
++              }));
++              existing = (await owner.getView()).providers.find((p) => p.providerId === providerId);
++            }
+             for (const modelId of candidate.row.modelIds) {
+-              await owner.addPersonalModel(providerId, modelId, {}, true);
++              if (
++                (await owner.getView()).providers
++                  .find((p) => p.providerId === providerId)
++                  ?.models.some((m) => m.modelId === modelId)
++              )
++                continue;
++              await owner.addPersonalModel(
++                providerId,
++                modelId,
++                candidate.models?.get(modelId) ?? {},
++                true,
++              );
++            }
++            // 错导的本地标记行保留数据但停止参与选择；真正的上游 ID 已补齐。
++            for (const alias of candidate.localAliases ?? []) {
++              if (
++                (await owner.getView()).providers
++                  .find((p) => p.providerId === providerId)
++                  ?.models.some((m) => m.modelId === alias)
++              )
++                await owner.setPersonalModelEnabled(providerId, alias, false);
+             }
++            // 重试复用已保存连接；保留启停、备用密钥和用户覆盖，只补来源明确的路由/品牌信息。
++            await owner.savePersonalProviderOverlay(providerId, {
++              ...(await owner.getView()).providers.find((p) => p.providerId === providerId)
++                ?.personalConfig,
++              api: { ...existing?.personalConfig?.api, ...candidate.config.api },
++              ...decoration.config,
++              ...(decoration.keyUrl && isApiKeyAccess(existing?.effectiveConfig.access)
++                ? {
++                    access: {
++                      ...existing.effectiveConfig.access,
++                      apiKeyManagementUrl: decoration.keyUrl,
++                    },
++                  }
++                : {}),
++            });
+             results.push({ id, providerId });
+           } catch {
+-            // 底层解析/保存异常可能带配置片段；跨 RPC 只返回固定错误码，不回传原异常。
+             const error = providerId ? "model-import-failed" : "provider-import-failed";
+-            if (providerId) imported.set(key, { providerId, error });
+             results.push({ id, ...(providerId ? { providerId } : {}), error });
+           }
+         }
+@@ -153,186 +212,101 @@ async function readSource(input: string) {
+   }
+ }
+ 
+-function record(value: unknown): RecordValue {
+-  return value && typeof value === "object" && !Array.isArray(value) ? (value as RecordValue) : {};
+-}
+-
+-function text(value: unknown): string {
+-  return typeof value === "string" ? value.trim() : "";
++function normalizedUrl(value: string | undefined | null) {
++  if (!value) return "";
++  try {
++    const u = new URL(value);
++    return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
++  } catch {
++    return value;
++  }
+ }
+-
+-function first(...values: unknown[]): string {
+-  return values.map(text).find(Boolean) ?? "";
++function findExisting(candidate: Candidate, view: ProviderSettingsView) {
++  const config = candidate.config;
++  if (!config?.api || !config.access || !("apiKey" in config.access)) return undefined;
++  const apiKey = config.access.apiKey;
++  const sourceUrls = [candidate.row.baseUrl, candidate.sourceBaseUrl].map(normalizedUrl);
++  const sourceTemplate = matchEndpointTemplate(
++    candidate.row.baseUrl,
++    view.providerTemplates,
++    config.api.type,
++  );
++  const serviceKey = (template: typeof sourceTemplate) =>
++    template?.catalog
++      ? JSON.stringify([
++          template.catalog.vendorId,
++          template.catalog.serviceId,
++          template.catalog.region ?? "",
++        ])
++      : undefined;
++  const matches = view.providers.filter((provider) => {
++    const access = provider.effectiveConfig.access;
++    const destinationTemplate = matchEndpointTemplate(
++      provider.effectiveConfig.api?.baseUrl,
++      view.providerTemplates,
++      provider.effectiveConfig.api?.type,
++    );
++    const sameService =
++      serviceKey(sourceTemplate) && serviceKey(sourceTemplate) === serviceKey(destinationTemplate);
++    return (
++      provider.personalConfig &&
++      ((provider.effectiveConfig.api?.type === config.api?.type &&
++        sourceUrls.includes(normalizedUrl(provider.effectiveConfig.api?.baseUrl))) ||
++        sameService) &&
++      access &&
++      "apiKey" in access &&
++      [access.apiKey, ...(access.additionalApiKeys ?? [])].includes(apiKey)
++    );
++  });
++  // 同协议优先补缺模型；只有目录证明同服务时才识别跨协议绑定，且不改既有传输配置。
++  return (
++    matches.find(
++      (p) =>
++        p.providerName === candidate.row.name && p.effectiveConfig.api?.type === config.api?.type,
++    ) ??
++    matches.find((p) => p.effectiveConfig.api?.type === config.api?.type) ??
++    matches[0]
++  );
+ }
+-
+-function parseObject(value: unknown): RecordValue {
+-  if (typeof value !== "string") throw new Error("Invalid JSON");
+-  const parsed: unknown = JSON.parse(value);
+-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+-    throw new Error("Invalid JSON");
+-  return parsed as RecordValue;
+-}
+-
+-function parseCandidate(raw: RecordValue): Candidate {
+-  const appType = text(raw.app_type);
+-  const id = JSON.stringify([appType, text(raw.id)]);
+-  const row = { id, appType, name: text(raw.name), baseUrl: "", modelIds: [] as string[] };
+-  try {
+-    const settings = parseObject(raw.settings_config);
+-    const meta = parseObject(raw.meta ?? "{}");
+-    const env = record(settings.env);
+-    const auth = record(settings.auth);
+-    const toml =
+-      appType === "codex" && typeof settings.config === "string" ? parseToml(settings.config) : {};
+-    const active = record(record(toml.model_providers)[text(toml.model_provider)]);
+-    let apiKey = "";
+-    let apiType: ApiType;
+-    if (appType === "claude") {
+-      row.baseUrl = first(
+-        env.ANTHROPIC_BASE_URL,
+-        settings.base_url,
+-        settings.baseURL,
+-        settings.apiEndpoint,
+-      );
+-      apiKey = first(
+-        env.ANTHROPIC_AUTH_TOKEN,
+-        env.ANTHROPIC_API_KEY,
+-        env.OPENROUTER_API_KEY,
+-        env.GOOGLE_API_KEY,
+-        env.OPENAI_API_KEY,
+-        env.GEMINI_API_KEY,
+-        settings.apiKey,
+-        settings.api_key,
+-      );
+-      apiType = protocol(
+-        first(meta.apiFormat, settings.api_format, settings.apiFormat) || "anthropic",
+-      );
+-      row.modelIds = [
+-        env.ANTHROPIC_MODEL,
+-        env.ANTHROPIC_DEFAULT_HAIKU_MODEL,
+-        env.ANTHROPIC_DEFAULT_SONNET_MODEL,
+-        env.ANTHROPIC_DEFAULT_OPUS_MODEL,
+-      ]
+-        .map(text)
+-        .filter(Boolean);
+-    } else if (appType === "codex") {
+-      row.baseUrl = first(active.base_url, toml.base_url, settings.base_url, settings.baseURL);
+-      apiKey = first(
+-        auth.OPENAI_API_KEY,
+-        // CC Switch 不从 Codex 保留 Provider 的 table 读取 bearer，只接受顶层兼容字段。
+-        ["amazon-bedrock", "amazon-bedrock-runtime", "openai", "ollama", "lmstudio"].includes(
+-          text(toml.model_provider),
+-        )
+-          ? undefined
+-          : active.experimental_bearer_token,
+-        toml.experimental_bearer_token,
+-      );
+-      apiType = protocol(
+-        first(
+-          meta.apiFormat,
+-          settings.api_format,
+-          settings.apiFormat,
+-          active.wire_api,
+-          toml.wire_api,
+-        ) || "responses",
+-      );
+-      row.modelIds = [text(toml.model)].filter(Boolean);
+-    } else if (appType === "gemini") {
+-      row.baseUrl = first(env.GOOGLE_GEMINI_BASE_URL, settings.base_url, settings.baseURL);
+-      apiKey = first(env.GEMINI_API_KEY, env.GOOGLE_API_KEY, settings.apiKey, settings.api_key);
+-      row.modelIds = [text(env.GEMINI_MODEL)].filter(Boolean);
+-    }
+-    row.modelIds = [...new Set(row.modelIds)];
+-    const oauth =
+-      ["codex_oauth", "github_copilot", "xai_oauth"].includes(text(meta.providerType)) ||
+-      (appType === "codex" && raw.id === "codex-official" && raw.category === "official") ||
+-      record(meta.authBinding).source === "managed_account" ||
+-      /chatgpt\.com\/backend-api|githubcopilot\.com/.test(row.baseUrl) ||
+-      /^sk-ant-oat|^ya29\.|^eyJ[^.]*\.|^\s*\{/.test(apiKey) ||
+-      (!apiKey && (auth.tokens !== undefined || auth.access_token !== undefined));
+-    let reason = oauth
+-      ? "oauth-account-not-supported"
+-      : appType === "gemini"
+-        ? "gemini-native-protocol-not-supported"
+-        : !["claude", "codex"].includes(appType)
+-          ? "app-not-supported"
+-          : !apiType
+-            ? "protocol-not-supported"
+-            : !apiKey
+-              ? "api-key-missing"
+-              : !row.baseUrl
+-                ? "base-url-missing"
+-                : undefined;
+-    // Full URL 与额外认证头依赖 CC Switch 代理的行为，当前 API Adapter 不能无损复现。
+-    if (!reason && meta.isFullUrl === true) reason = "full-endpoint-url-not-supported";
+-    if (
+-      !reason &&
+-      [settings.headers, active.http_headers, active.env_http_headers].some(
+-        (headers) => Object.keys(record(headers)).length > 0,
+-      )
+-    )
+-      reason = "custom-headers-not-supported";
+-    if (row.baseUrl) {
++function resolveDecoration(candidate: Candidate, view: ProviderSettingsView) {
++  const url = normalizedUrl(candidate.row.baseUrl);
++  const exact = matchEndpointTemplate(url, view.providerTemplates, candidate.config?.api?.type);
++  const brand =
++    exact ??
++    view.providerTemplates.find((t) => {
+       try {
+-        const url = new URL(row.baseUrl);
+-        if (!["https:", "http:"].includes(url.protocol)) reason ??= "invalid-base-url";
+-        if (
+-          url.username ||
+-          url.password ||
+-          url.search ||
+-          url.hash ||
+-          (apiKey && row.baseUrl.includes(apiKey))
+-        ) {
+-          reason = "credential-bearing-url-not-supported";
+-          row.baseUrl = `${url.protocol}//${url.host}`;
+-        }
++        return new URL(t.config.api?.baseUrl ?? "").origin === new URL(url).origin;
+       } catch {
+-        row.baseUrl = "";
+-        reason ??= "invalid-base-url";
++        return false;
+       }
+-    }
+-    // 即使来源把密钥误填进名称/模型，预览也不能把已识别密钥带到 Renderer。
+-    if (apiKey) {
+-      row.name = row.name.replaceAll(apiKey, "[redacted]");
+-      row.modelIds = row.modelIds.map((model) => model.replaceAll(apiKey, "[redacted]"));
+-    }
+-    return {
+-      row: { ...row, eligible: !reason, ...(reason ? { reason } : {}) },
+-      ...(!reason && apiType
+-        ? {
+-            config: {
+-              access: { type: "api-key", apiKey },
+-              api: { type: apiType, baseUrl: row.baseUrl },
+-            },
+-          }
+-        : {}),
+-    };
+-  } catch {
+-    return { row: { ...row, eligible: false, reason: "invalid-provider-config" } };
+-  }
++    });
++  return {
++    keyUrl: isApiKeyAccess(exact?.config.access)
++      ? exact.config.access.apiKeyManagementUrl
++      : undefined,
++    config: brand?.config.logo
++      ? { logo: brand.config.logo }
++      : new URL(url).hostname === "ark.cn-beijing.volces.com"
++        ? { logo: { type: "builtin" as const, key: "volcengine" } }
++        : {},
++  };
+ }
+-
+-function protocol(value: string): ApiType {
+-  const normalized = value.toLowerCase();
+-  if (
+-    ["anthropic", "anthropic_messages", "anthropic-messages", "claude", "messages"].includes(
+-      normalized,
++function isComplete(
++  candidate: Candidate,
++  existing: ProviderSettingsProviderView,
++  view: ProviderSettingsView,
++) {
++  const decoration = resolveDecoration(candidate, view);
++  return (
++    normalizedUrl(existing.effectiveConfig.api?.baseUrl) === normalizedUrl(candidate.row.baseUrl) &&
++    (!decoration.keyUrl ||
++      (isApiKeyAccess(existing.effectiveConfig.access) &&
++        existing.effectiveConfig.access.apiKeyManagementUrl === decoration.keyUrl)) &&
++    (!decoration.config.logo ||
++      JSON.stringify(existing.effectiveConfig.logo) === JSON.stringify(decoration.config.logo)) &&
++    candidate.row.modelIds.every((id) => existing.models.some((m) => m.modelId === id)) &&
++    (candidate.localAliases ?? []).every(
++      (id) => !existing.models.some((m) => m.modelId === id && m.enabled),
+     )
+-  )
+-    return "anthropic-messages";
+-  if (
+-    [
+-      "chat",
+-      "chat_completions",
+-      "chat-completions",
+-      "openai_chat",
+-      "openai-chat",
+-      "openai_chat_completions",
+-      "openai-chat-completions",
+-    ].includes(normalized)
+-  )
+-    return "openai-chat-completions";
+-  if (["responses", "openai_responses", "openai-responses"].includes(normalized))
+-    return "openai-responses";
+-  return undefined;
++  );
+ }
+diff --git a/packages/services/src/model-provider/ccSwitchImportConfig.ts b/packages/services/src/model-provider/ccSwitchImportConfig.ts
+new file mode 100644
+index 0000000..f50bbf5
+--- /dev/null
++++ b/packages/services/src/model-provider/ccSwitchImportConfig.ts
+@@ -0,0 +1,278 @@
++import { parse as parseToml } from "smol-toml";
++import type { ModelConfigObject, ProviderConfigObject } from "@zcode/provider";
++import { readDiscoveredModelMetadata } from "./modelDiscoveryMetadata.js";
++import type { CcSwitchImportRow } from "./ccSwitchImport.js";
++type ApiType = NonNullable<ProviderConfigObject["api"]>["type"];
++type RecordValue = Record<string, unknown>;
++export interface Candidate {
++  row: CcSwitchImportRow;
++  config?: ProviderConfigObject;
++  sourceBaseUrl?: string;
++  models?: Map<string, ModelConfigObject>;
++  localAliases?: string[];
++}
++
++function record(value: unknown): RecordValue {
++  return value && typeof value === "object" && !Array.isArray(value) ? (value as RecordValue) : {};
++}
++
++function text(value: unknown): string {
++  return typeof value === "string" ? value.trim() : "";
++}
++
++function first(...values: unknown[]): string {
++  return values.map(text).find(Boolean) ?? "";
++}
++
++function parseObject(value: unknown): RecordValue {
++  if (typeof value !== "string") throw new Error("Invalid JSON");
++  const parsed: unknown = JSON.parse(value);
++  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
++    throw new Error("Invalid JSON");
++  return parsed as RecordValue;
++}
++
++export function parseCandidate(raw: RecordValue): Candidate {
++  const appType = text(raw.app_type);
++  const id = JSON.stringify([appType, text(raw.id)]);
++  const row = { id, appType, name: text(raw.name), baseUrl: "", modelIds: [] as string[] };
++  try {
++    const settings = parseObject(raw.settings_config);
++    const meta = parseObject(raw.meta ?? "{}");
++    const env = record(settings.env);
++    const claude = appType === "claude" || appType === "claude-desktop";
++    const auth = record(settings.auth);
++    const toml =
++      appType === "codex" && typeof settings.config === "string" ? parseToml(settings.config) : {};
++    const active = record(record(toml.model_providers)[text(toml.model_provider)]);
++    let apiKey = "";
++    let apiType: ApiType;
++    if (claude) {
++      row.baseUrl = first(
++        env.ANTHROPIC_BASE_URL,
++        settings.base_url,
++        settings.baseURL,
++        settings.apiEndpoint,
++      );
++      apiKey = first(
++        env.ANTHROPIC_AUTH_TOKEN,
++        env.ANTHROPIC_API_KEY,
++        env.OPENROUTER_API_KEY,
++        env.GOOGLE_API_KEY,
++        env.OPENAI_API_KEY,
++        env.GEMINI_API_KEY,
++        settings.apiKey,
++        settings.api_key,
++      );
++      apiType = protocol(
++        first(meta.apiFormat, settings.api_format, settings.apiFormat) ||
++          (settings.openrouter_compat_mode ? "openai_chat" : "anthropic"),
++      );
++      row.modelIds = [
++        env.ANTHROPIC_MODEL,
++        env.ANTHROPIC_DEFAULT_HAIKU_MODEL,
++        env.ANTHROPIC_DEFAULT_SONNET_MODEL,
++        env.ANTHROPIC_DEFAULT_OPUS_MODEL,
++        env.ANTHROPIC_DEFAULT_FABLE_MODEL,
++        env.CLAUDE_CODE_SUBAGENT_MODEL,
++      ]
++        .map(text)
++        .filter(Boolean);
++    } else if (appType === "codex") {
++      row.baseUrl = first(active.base_url, toml.base_url, settings.base_url, settings.baseURL);
++      apiKey = first(
++        auth.OPENAI_API_KEY,
++        // CC Switch 不从 Codex 保留 Provider 的 table 读取 bearer，只接受顶层兼容字段。
++        ["amazon-bedrock", "amazon-bedrock-runtime", "openai", "ollama", "lmstudio"].includes(
++          text(toml.model_provider),
++        )
++          ? undefined
++          : active.experimental_bearer_token,
++        toml.experimental_bearer_token,
++      );
++      apiType = protocol(
++        first(
++          meta.apiFormat,
++          settings.api_format,
++          settings.apiFormat,
++          active.wire_api,
++          toml.wire_api,
++        ) || "responses",
++      );
++      row.modelIds = [text(toml.model)].filter(Boolean);
++    } else if (["opencode", "pi", "openclaw"].includes(appType)) {
++      const options = record(settings.options);
++      row.baseUrl = first(options.baseURL, settings.baseUrl);
++      apiKey = first(options.apiKey, settings.apiKey);
++      const sdk = text(settings.npm);
++      apiType = protocol(
++        first(meta.apiFormat, settings.api) ||
++          (sdk === "@ai-sdk/anthropic"
++            ? "anthropic"
++            : sdk === "@ai-sdk/openai-compatible"
++              ? "chat"
++              : sdk === "@ai-sdk/openai"
++                ? "responses"
++                : ""),
++      );
++    } else if (appType === "gemini") {
++      row.baseUrl = first(env.GOOGLE_GEMINI_BASE_URL, settings.base_url, settings.baseURL);
++      apiKey = first(env.GEMINI_API_KEY, env.GOOGLE_API_KEY, settings.apiKey, settings.api_key);
++      row.modelIds = [text(env.GEMINI_MODEL)].filter(Boolean);
++    }
++    const sourceBaseUrl = row.baseUrl;
++    // CC Switch 的 Claude 代理拼 /v1/chat/completions；Fleet 的 SDK 只拼 /chat/completions。
++    if (row.baseUrl && apiType && apiType !== "anthropic-messages") {
++      const url = new URL(row.baseUrl);
++      const path = url.pathname.replace(/\/+$/, "");
++      if ((claude && !path.endsWith("/v1")) || (appType === "codex" && !path))
++        url.pathname = `${path}/v1`;
++      row.baseUrl = url.toString().replace(/\/$/, "");
++    }
++    const models = new Map<string, ModelConfigObject>();
++    const localAliases: string[] = [];
++    const addModel = (id: unknown, metadata: unknown = {}) => {
++      const original = text(id);
++      // 只处理有明确 CC Switch 语义的 Claude 本地标记，不泛化剥离真实 API ID 后缀。
++      const modelId = claude ? original.replace(/\[1m\]$/i, "").trim() : original;
++      if (!modelId) return;
++      if (modelId !== original) localAliases.push(original);
++      models.set(modelId, { ...models.get(modelId), ...readImportMetadata(metadata) });
++    };
++    row.modelIds.forEach((id) => addModel(id));
++    if (Array.isArray(settings.modelCatalog))
++      for (const value of settings.modelCatalog) addModel(record(value).model, value);
++    if (Array.isArray(settings.models))
++      for (const value of settings.models) addModel(record(value).id, value);
++    else for (const [id, value] of Object.entries(record(settings.models))) addModel(id, value);
++    row.modelIds = [...models.keys()];
++    const oauth =
++      (claude && raw.category === "official" && !apiKey) ||
++      ["codex_oauth", "github_copilot", "xai_oauth"].includes(text(meta.providerType)) ||
++      (appType === "codex" && raw.id === "codex-official" && raw.category === "official") ||
++      record(meta.authBinding).source === "managed_account" ||
++      /chatgpt\.com\/backend-api|githubcopilot\.com/.test(row.baseUrl) ||
++      /^sk-ant-oat|^ya29\.|^eyJ[^.]*\.|^\s*\{/.test(apiKey) ||
++      (!apiKey && (auth.tokens !== undefined || auth.access_token !== undefined));
++    let reason = oauth
++      ? "oauth-account-not-supported"
++      : appType === "gemini"
++        ? "gemini-native-protocol-not-supported"
++        : !["claude", "claude-desktop", "codex", "opencode", "pi", "openclaw"].includes(appType)
++          ? "app-not-supported"
++          : !apiType
++            ? "protocol-not-supported"
++            : !apiKey
++              ? "api-key-missing"
++              : !row.baseUrl
++                ? "base-url-missing"
++                : undefined;
++    // Full URL 与额外认证头依赖 CC Switch 代理的行为，当前 API Adapter 不能无损复现。
++    if (!reason && meta.isFullUrl === true) reason = "full-endpoint-url-not-supported";
++    const modelValues = Array.isArray(settings.models)
++      ? settings.models
++      : Object.values(record(settings.models));
++    if (
++      !reason &&
++      modelValues.some((value) => {
++        const model = record(value);
++        return (
++          Object.keys(record(model.provider)).length > 0 ||
++          (model.api !== undefined && protocol(text(model.api)) !== apiType)
++        );
++      })
++    )
++      reason = "per-model-route-not-supported";
++    if (
++      !reason &&
++      [
++        settings.headers,
++        record(settings.options).headers,
++        active.http_headers,
++        active.env_http_headers,
++      ].some((headers) => Object.keys(record(headers)).length > 0)
++    )
++      reason = "custom-headers-not-supported";
++    if (row.baseUrl) {
++      try {
++        const url = new URL(row.baseUrl);
++        if (!["https:", "http:"].includes(url.protocol)) reason ??= "invalid-base-url";
++        if (
++          url.username ||
++          url.password ||
++          url.search ||
++          url.hash ||
++          (apiKey && row.baseUrl.includes(apiKey))
++        ) {
++          reason = "credential-bearing-url-not-supported";
++          row.baseUrl = `${url.protocol}//${url.host}`;
++        }
++      } catch {
++        row.baseUrl = "";
++        reason ??= "invalid-base-url";
++      }
++    }
++    // 即使来源把密钥误填进名称/模型，预览也不能把已识别密钥带到 Renderer。
++    if (apiKey) {
++      row.name = row.name.replaceAll(apiKey, "[redacted]");
++      row.modelIds = row.modelIds.map((model) => model.replaceAll(apiKey, "[redacted]"));
++    }
++    return {
++      row: { ...row, apiType, eligible: !reason, ...(reason ? { reason } : {}) },
++      sourceBaseUrl,
++      models,
++      localAliases,
++      ...(!reason && apiType
++        ? {
++            config: {
++              access: { type: "api-key", apiKey },
++              api: { type: apiType, baseUrl: row.baseUrl },
++            },
++          }
++        : {}),
++    };
++  } catch {
++    return { row: { ...row, eligible: false, reason: "invalid-provider-config" } };
++  }
++}
++
++function readImportMetadata(value: unknown): ModelConfigObject {
++  const model = record(value);
++  const limit = record(model.limit);
++  const input = model.inputModalities ?? model.input ?? record(model.modalities).input;
++  const rawContext = model.contextWindow ?? limit.context;
++  const context =
++    typeof rawContext === "string" && /^\d+$/.test(rawContext) ? Number(rawContext) : rawContext;
++  return readDiscoveredModelMetadata({
++    context_window: context,
++    max_output_tokens: model.maxTokens ?? limit.output,
++    input_modalities: input,
++    output_modalities: record(model.modalities).output,
++  });
++}
++
++function protocol(value: string): ApiType {
++  const normalized = value.toLowerCase();
++  if (
++    ["anthropic", "anthropic_messages", "anthropic-messages", "claude", "messages"].includes(
++      normalized,
++    )
++  )
++    return "anthropic-messages";
++  if (
++    [
++      "chat",
++      "chat_completions",
++      "chat-completions",
++      "openai_chat",
++      "openai-chat",
++      "openai_chat_completions",
++      "openai-chat-completions",
++      "openai-completions",
++    ].includes(normalized)
++  )
++    return "openai-chat-completions";
++  if (["responses", "openai_responses", "openai-responses"].includes(normalized))
++    return "openai-responses";
++  return undefined;
++}
+diff --git a/packages/services/src/model-provider/codexSubscriptionMetadata.ts b/packages/services/src/model-provider/codexSubscriptionMetadata.ts
+index 8e2a9bf..de9e93a 100644
+--- a/packages/services/src/model-provider/codexSubscriptionMetadata.ts
++++ b/packages/services/src/model-provider/codexSubscriptionMetadata.ts
+@@ -7,8 +7,20 @@ export interface SubscriptionMembership {
+   observedAt?: number;
+   stale?: boolean;
+ }
++export interface SubscriptionBillingPeriod {
++  start: number;
++  end: number;
++  currency: "USD" | "CNY" | "EUR" | "GBP" | "JPY";
++  source: "subscription";
++  observedAt: number;
++}
+ export type CodexMembershipResult =
+-  | { status: "available"; membership?: SubscriptionMembership; plan?: string }
++  | {
++      status: "available";
++      membership?: SubscriptionMembership;
++      plan?: string;
++      billing?: SubscriptionBillingPeriod;
++    }
+   | { status: "unavailable" };
+ 
+ export function parseCodexMembership(
+@@ -34,9 +46,33 @@ export function parseCodexMembership(
+     return { status: "unavailable" };
+   const activeUntil = Date.parse(raw);
+   if (!Number.isFinite(activeUntil) || activeUntil <= 0) return { status: "unavailable" };
++  const start = typeof body.active_start === "string" ? Date.parse(body.active_start) : NaN;
++  const currency =
++    typeof body.billing_currency === "string" ? body.billing_currency.toUpperCase() : "";
++  const maxDays =
++    body.billing_period === "monthly"
++      ? 32
++      : body.billing_period === "annual" || body.billing_period === "yearly"
++        ? 370
++        : 0;
++  // active_start 可能是多年订阅的起点；只有接口给出一个完整单期时才作为当前账期，不能反推日期。
++  const billing =
++    Number.isFinite(start) &&
++    start < activeUntil &&
++    activeUntil - start <= maxDays * 86400000 &&
++    ["USD", "CNY", "EUR", "GBP", "JPY"].includes(currency)
++      ? {
++          start,
++          end: activeUntil,
++          currency: currency as SubscriptionBillingPeriod["currency"],
++          source: "subscription" as const,
++          observedAt: now,
++        }
++      : undefined;
+   return {
+     status: "available",
+     plan,
++    ...(billing ? { billing } : {}),
+     membership: {
+       activeUntil,
+       source: "subscription",
+@@ -155,7 +191,12 @@ export async function readCodexMembership(
+     account.membership &&
+     account.membership.activeUntil > now()
+   )
+-    return account;
++    return {
++      ...account,
++      ...(subscription.status === "available" && subscription.billing
++        ? { billing: subscription.billing }
++        : {}),
++    };
+   if (subscription.status === "available") return subscription;
+   return account;
+ }
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+index c1f5c24..a75c727 100644
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -2,6 +2,8 @@ import {
+   getEnabledApiKeys,
+   type ProviderSettingsProviderView,
+   type ModelConfigObject,
++  type ProviderSettingsTemplateView,
++  matchEndpointTemplate,
+ } from "@zcode/provider";
+ import { readDiscoveredModelMetadata } from "./modelDiscoveryMetadata.js";
+ import type { SubscriptionConnectionOwner } from "./subscriptionConnections.js";
+@@ -20,6 +22,7 @@ export async function discoverConnectionModels(
+   provider: ProviderSettingsProviderView,
+   fetch: typeof globalThis.fetch,
+   subscriptions?: SubscriptionConnectionOwner,
++  templates: readonly ProviderSettingsTemplateView[] = [],
+ ): Promise<ModelDiscoveryResult> {
+   const config = provider.effectiveConfig;
+   if (config.access?.type === "subscription") {
+@@ -50,6 +53,12 @@ export async function discoverConnectionModels(
+     headers.set("Authorization", `Bearer ${apiKey}`);
+   }
+   const url = new URL(`${base.origin}${path}/models`);
++  // Go 的统一目录混有 Messages/Chat/Responses 模型；只合并当前协议已声明的路由。
++  const goTemplate =
++    base.hostname === "opencode.ai" && /^\/zen\/go(?:\/v1)?$/.test(path)
++      ? matchEndpointTemplate(config.api.baseUrl, templates, config.api.type)
++      : undefined;
++  const goModels = goTemplate ? new Set(goTemplate.config.builtinModelIds ?? []) : undefined;
+   const models = new Map<string, DiscoveredModel>();
+   const deadline = AbortSignal.timeout(20_000);
+   for (let page = 0; page < 20; page++) {
+@@ -74,6 +83,7 @@ export async function discoverConnectionModels(
+     for (const item of body.data) {
+       if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim())
+         continue;
++      if (goModels && !goModels.has(item.id)) continue;
+       const name =
+         typeof item.name === "string"
+           ? item.name
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 7f37dcf..acd0427 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -200,7 +200,12 @@ export function createProviderSettingsService(
+       if (existing?.identity === identity) return existing.request;
+       // 页面探测挂载和并行读取共享同一次目录请求；保存仍走 Facade 的串行写入。
+       const request = (async () => {
+-        const catalog = await discoverConnectionModels(provider, fetch, subscriptions);
++        const catalog = await discoverConnectionModels(
++          provider,
++          fetch,
++          subscriptions,
++          facade.getView().providerTemplates,
++        );
+         await facade.mergeDiscoveredModels(
+           id,
+           catalog.models,
+diff --git a/packages/services/src/model-provider/subscriptionUsage.ts b/packages/services/src/model-provider/subscriptionUsage.ts
+index df1fb70..aed02a4 100644
+--- a/packages/services/src/model-provider/subscriptionUsage.ts
++++ b/packages/services/src/model-provider/subscriptionUsage.ts
+@@ -1,7 +1,10 @@
+ import type { OAuthCredential } from "@earendil-works/pi-ai";
+ import type { SubscriptionKind } from "./subscriptionConnectionTypes.js";
+ import { subscriptionActiveUntil } from "./subscriptionAccountIdentity.js";
+-import type { SubscriptionMembership } from "./codexSubscriptionMetadata.js";
++import type {
++  SubscriptionMembership,
++  SubscriptionBillingPeriod,
++} from "./codexSubscriptionMetadata.js";
+ import { GROK_SUBSCRIPTION_BASE_URL, grokSubscriptionHeaders } from "./subscriptionCatalog.js";
+ 
+ export interface SubscriptionUsageWindow {
+@@ -24,6 +27,7 @@ export type SubscriptionUsageResult = {
+       plan?: string;
+       /** Provider-reported current paid term, not token expiry or the next quota reset. */
+       membership?: SubscriptionMembership;
++      billing?: SubscriptionBillingPeriod;
+       membershipReadFailed?: boolean;
+       resetsAvailable?: number;
+       refreshError?: "auth-required" | "rate-limited" | "unavailable" | "unsupported";
+diff --git a/packages/services/src/model-provider/subscriptionUsageCache.ts b/packages/services/src/model-provider/subscriptionUsageCache.ts
+index e72249b..75dd6fa 100644
+--- a/packages/services/src/model-provider/subscriptionUsageCache.ts
++++ b/packages/services/src/model-provider/subscriptionUsageCache.ts
+@@ -102,6 +102,7 @@ export function createSubscriptionUsageReader(options: {
+                   ...result,
+                   plan: membership.plan ?? result.plan,
+                   membership: membership.membership,
++                  billing: membership.billing,
+                 };
+               else
+                 result = {
+diff --git a/packages/services/test/cc-switch-import.test.ts b/packages/services/test/cc-switch-import.test.ts
+index e976adb..609e511 100644
+--- a/packages/services/test/cc-switch-import.test.ts
++++ b/packages/services/test/cc-switch-import.test.ts
+@@ -311,33 +311,267 @@ test("Codex TOML bearer key uses only the active provider and partial failures r
+     },
+   ]);
+   try {
+-    const calls: unknown[] = [];
+-    const adapter = createCcSwitchImportAdapter(
+-      {
+-        async createPersonalProvider(input) {
+-          calls.push(input);
+-          return { providerId: "created", view: {} as never };
+-        },
+-        async addPersonalModel() {
+-          throw new Error(`Do not expose ${CLAUDE_KEY}`);
++    let creates = 0;
++    let failures = 1;
++    const make = () =>
++      createCcSwitchImportAdapter(
++        {
++          getView: () => f.runtime.providerSettings.getView(),
++          createPersonalProvider: async (input) => {
++            creates++;
++            return f.runtime.providerSettings.createPersonalProvider(input);
++          },
++          savePersonalProviderOverlay: (...args) =>
++            f.runtime.providerSettings.savePersonalProviderOverlay(...args),
++          setPersonalModelEnabled: (...args) =>
++            f.runtime.providerSettings.setPersonalModelEnabled(...args),
++          addPersonalModel: async (...args) => {
++            if (failures-- > 0) throw new Error(`Do not expose ${CLAUDE_KEY}`);
++            return f.runtime.providerSettings.addPersonalModel(...args);
++          },
+         },
+-      },
+-      f.path,
+-    );
++        f.path,
++      );
++    const adapter = make();
+     const preview = await adapter.preview();
+     assert.equal(preview.rows[0]!.eligible, true);
+     const input = { ...preview, ids: [preview.rows[0]!.id] };
+     const first = await adapter.import(input);
+-    assert.deepEqual(first.results, [
+-      { id: input.ids[0], providerId: "created", error: "model-import-failed" },
+-    ]);
+-    assert.equal((await adapter.import(input)).results[0]!.skipped, true);
+-    assert.equal(calls.length, 1);
++    assert.equal(first.results[0]!.error, "model-import-failed");
++    const retried = await make().import(input);
++    assert.equal(retried.results[0]!.providerId, first.results[0]!.providerId);
++    assert.equal(retried.results[0]!.error, undefined);
++    assert.equal(creates, 1);
++    assert.equal((await make().preview()).rows[0]!.reason, "already-imported");
++    const saved = (await f.service.getView()).providers.find(
++      (p) => p.providerId === first.results[0]!.providerId,
++    )!;
++    assert.equal((saved.effectiveConfig.access as { apiKey: string }).apiKey, "synthetic-active");
++    assert.equal(JSON.stringify(first).includes(CLAUDE_KEY), false);
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("Claude proxy paths and local markers become Fleet routes, include subagent/catalog models and survive reimport", async () => {
++  const f = await fixture([
++    {
++      id: "go",
++      app: "claude",
++      name: "OpenCode Go",
++      settings: {
++        env: {
++          ANTHROPIC_BASE_URL: "https://opencode.ai/zen/go",
++          ANTHROPIC_API_KEY: CLAUDE_KEY,
++          ANTHROPIC_MODEL: "glm-5.2",
++          ANTHROPIC_DEFAULT_SONNET_MODEL: "glm-5.2[1M]",
++          CLAUDE_CODE_SUBAGENT_MODEL: "deepseek-v4-flash",
++        },
++      },
++      meta: { apiFormat: "openai_chat" },
++    },
++  ]);
++  try {
++    const preview = await f.service.previewCcSwitchImport(f.path);
++    assert.equal(preview.rows[0]!.baseUrl, "https://opencode.ai/zen/go/v1");
++    assert.deepEqual(preview.rows[0]!.modelIds, ["glm-5.2", "deepseek-v4-flash"]);
++    const input = { ...preview, ids: [preview.rows[0]!.id] };
++    const { results } = await f.service.importCcSwitchProviders(input);
++    assert.equal(results[0]!.error, undefined);
++    const id = results[0]!.providerId!;
++    let saved = (await f.service.getView()).providers.find((p) => p.providerId === id)!;
++    assert.equal(saved.templateId, undefined, "import does not inherit unrelated template models");
++    assert.equal(saved.effectiveConfig.logo?.key, "opencode");
++    assert.equal(saved.effectiveConfig.api?.type, "openai-chat-completions");
++    assert.equal(saved.effectiveConfig.api?.baseUrl, "https://opencode.ai/zen/go/v1");
++    assert.deepEqual(
++      saved.models.filter((m) => m.enabled).map((m) => m.modelId),
++      ["glm-5.2", "deepseek-v4-flash"],
++    );
++    const sent: Request[] = [];
++    const execution = new AiSdkModelExecution(
++      { env: {} },
++      {
++        transport: async (input, init) => {
++          sent.push(new Request(input, init));
++          return Response.json({
++            id: "fixture",
++            object: "chat.completion",
++            created: 0,
++            model: "glm-5.2",
++            choices: [
++              { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
++            ],
++            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
++          });
++        },
++      },
++    );
++    const config = createRegistryProviderConfig(parseProviderConfig(saved.effectiveConfig));
++    assert.ok(config.ok);
++    const binding = execution.bindModel({
++      providerId: id,
++      modelId: "glm-5.2",
++      providerConfig: config.config,
++      supportsJsonSchemaOutput: false,
++      optionSpecs: { reasoningLevel: { map: "{}" }, maxOutputTokens: { map: "{}" } },
++    });
++    await binding
++      .resolveRequest({ options: { reasoningLevel: "default", maxOutputTokens: 8 } })
++      .model.doGenerate({
++        prompt: [{ role: "user", content: [{ type: "text", text: "fixture" }] }],
++        maxOutputTokens: 8,
++      });
++    assert.equal(sent[0]!.url, "https://opencode.ai/zen/go/v1/chat/completions");
++    assert.equal((await sent[0]!.json()).model, "glm-5.2");
++    await f.service.setPersonalModelEnabled(id, "glm-5.2", false);
++    const fresh = createCcSwitchImportAdapter(f.runtime.providerSettings);
++    assert.equal((await fresh.preview(f.path)).rows[0]!.reason, "already-imported");
++    await fresh.import(input);
++    saved = (await f.service.getView()).providers.find((p) => p.providerId === id)!;
++    assert.equal(saved.models.find((m) => m.modelId === "glm-5.2")!.enabled, false);
++    assert.equal((await f.service.getView()).providers.filter((p) => p.personalConfig).length, 1);
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("repair reuses old imports, disables only source marker rows and preserves source/default/manual choices", async () => {
++  const f = await fixture([
++    {
++      id: "go",
++      app: "claude",
++      name: "OpenCode Go",
++      settings: {
++        env: {
++          ANTHROPIC_BASE_URL: "https://opencode.ai/zen/go",
++          ANTHROPIC_API_KEY: CLAUDE_KEY,
++          ANTHROPIC_MODEL: "glm-5.2[1M]",
++        },
++      },
++      meta: { apiFormat: "openai_chat" },
++    },
++  ]);
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      providerName: "OpenCode Go",
++      initialConfig: {
++        api: { type: "openai-chat-completions", baseUrl: "https://opencode.ai/zen/go" },
++        access: { type: "api-key", apiKey: CLAUDE_KEY },
++      },
++    });
++    await f.service.addPersonalModel(providerId, "glm-5.2[1M]", {}, true);
++    const before = await readFile(f.path);
++    const preview = await f.service.previewCcSwitchImport(f.path);
++    assert.equal(preview.rows[0]!.existingProviderName, "OpenCode Go");
++    const result = await f.service.importCcSwitchProviders({
++      ...preview,
++      ids: [preview.rows[0]!.id],
++    });
++    assert.equal(result.results[0]!.providerId, providerId);
++    assert.equal(result.results[0]!.error, undefined);
++    const p = (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++    assert.equal(p.models.find((m) => m.modelId === "glm-5.2[1M]")!.enabled, false);
++    assert.equal(p.models.find((m) => m.modelId === "glm-5.2")!.enabled, true);
++    assert.deepEqual(await readFile(f.path), before);
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("native client shapes preserve explicit models and context without borrowing OAuth or scripts", async () => {
++  const f = await fixture([
++    {
++      id: "desktop",
++      app: "claude-desktop",
++      settings: {
++        env: {
++          ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
++          ANTHROPIC_API_KEY: CLAUDE_KEY,
++          ANTHROPIC_MODEL: "deepseek-v4-pro[1m]",
++        },
++      },
++    },
++    {
++      id: "open",
++      app: "opencode",
++      settings: {
++        npm: "@ai-sdk/openai-compatible",
++        options: { baseURL: "https://gateway.example/v1", apiKey: CLAUDE_KEY },
++        models: {
++          "explicit-model": {
++            limit: { context: 262144, output: 32768 },
++            modalities: { input: ["text", "image"], output: ["text"] },
++          },
++        },
++      },
++    },
++    {
++      id: "catalog",
++      app: "codex",
++      settings: {
++        auth: { OPENAI_API_KEY: CODEX_KEY },
++        config:
++          'model_provider="custom"\nmodel="chosen"\n[model_providers.custom]\nbase_url="https://gateway.example"\nwire_api="responses"',
++        modelCatalog: [{ model: "another", contextWindow: 524288, inputModalities: ["text"] }],
++      },
++    },
++  ]);
++  try {
++    const preview = await f.service.previewCcSwitchImport(f.path);
++    assert.ok(preview.rows.every((r) => r.eligible));
++    const result = await f.service.importCcSwitchProviders({
++      ...preview,
++      ids: preview.rows.map((r) => r.id),
++    });
++    assert.ok(result.results.every((r) => !r.error));
++    const providers = (await f.service.getView()).providers;
++    const custom = providers.find((p) => p.models.some((m) => m.modelId === "explicit-model"))!;
++    assert.equal(custom.models[0]!.effectiveConfig.properties?.contextWindow, 262144);
++    assert.equal(custom.models[0]!.effectiveConfig.properties?.inputFormat?.supportsImage, true);
++    const catalog = providers.find((p) => p.models.some((m) => m.modelId === "another"))!;
++    assert.equal(catalog.effectiveConfig.api?.baseUrl, "https://gateway.example/v1");
+     assert.equal(
+-      (calls[0] as { initialConfig: { access: { apiKey: string } } }).initialConfig.access.apiKey,
+-      "synthetic-active",
++      catalog.models.find((m) => m.modelId === "another")!.effectiveConfig.properties
++        ?.contextWindow,
++      524288,
+     );
+-    assert.equal(JSON.stringify(first).includes(CLAUDE_KEY), false);
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("an already-bound official service/key is not recreated through another client's wire route", async () => {
++  const f = await fixture([
++    {
++      id: "ds",
++      app: "openclaw",
++      name: "DeepSeek V4",
++      settings: {
++        api: "openai-completions",
++        baseUrl: "https://api.deepseek.com",
++        apiKey: CLAUDE_KEY,
++        models: [{ id: "deepseek-v4-pro" }],
++      },
++    },
++  ]);
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "deepseek",
++      providerName: "My existing API",
++      initialConfig: { access: { type: "api-key", apiKey: CLAUDE_KEY } },
++    });
++    const before = await f.service.getView();
++    const preview = await f.service.previewCcSwitchImport(f.path);
++    assert.equal(preview.rows[0]!.eligible, false);
++    assert.equal(preview.rows[0]!.existingProviderName, "My existing API");
++    const result = await f.service.importCcSwitchProviders({
++      ...preview,
++      ids: [preview.rows[0]!.id],
++    });
++    assert.equal(result.results[0]!.providerId, providerId);
++    assert.equal(result.results[0]!.skipped, true);
++    assert.deepEqual((await f.service.getView()).providers, before.providers);
+   } finally {
+     await f.dispose();
+   }
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index f5da7a1..7760094 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -512,3 +512,27 @@ test("explicit API modality and limits survive discovery, update, restart and ch
+     await f.dispose();
+   }
+ });
++
++test("OpenCode Go discovery only merges models declared for the saved wire protocol", async () => {
++  const f = await fixture();
++  try {
++    const p = (await f.service.getView()).providers.find((p) => p.providerId === f.providerId)!;
++    await f.service.savePersonalProviderOverlay(f.providerId, {
++      ...p.personalConfig,
++      api: { type: "openai-chat-completions", baseUrl: "https://opencode.ai/zen/go/v1" },
++    });
++    f.setFetch(async (input) => {
++      assert.equal(String(input), "https://opencode.ai/zen/go/v1/models");
++      return Response.json({
++        data: [{ id: "glm-5.2" }, { id: "minimax-m3" }, { id: "gpt-6-luna" }],
++      });
++    });
++    await f.service.discoverModels(f.providerId);
++    assert.deepEqual(
++      (await f.models()).map((m) => m.modelId),
++      ["glm-5.2"],
++    );
++  } finally {
++    await f.dispose();
++  }
++});
+diff --git a/packages/services/test/subscription-usage.test.ts b/packages/services/test/subscription-usage.test.ts
+index 082a6eb..f2325ec 100644
+--- a/packages/services/test/subscription-usage.test.ts
++++ b/packages/services/test/subscription-usage.test.ts
+@@ -358,3 +358,31 @@ test("membership selects only the matching workspace entitlement and does not in
+   if (pro.status === "available") assert.equal(pro.plan, "pro");
+   else assert.fail();
+ });
++
++test("billing acquisition preserves exact period/currency and never treats a discount as paid fee", () => {
++  const payload = {
++    account_id: "account-a",
++    active_start: "2026-09-10T08:00:00Z",
++    active_until: "2026-10-10T08:00:00Z",
++    billing_period: "monthly",
++    billing_currency: "cny",
++    entitlement: { discount: { amount: 549 } },
++  };
++  const result = parseCodexMembership(payload, "account-a", 100);
++  assert.equal(result.status, "available");
++  if (result.status !== "available") return;
++  assert.equal(result.billing?.currency, "CNY");
++  assert.equal(result.billing?.start, Date.parse(payload.active_start));
++  assert.equal("amount" in (result.billing ?? {}), false);
++  assert.equal(
++    parseCodexMembership({ ...payload, account_id: "other" }, "account-a", 100).status,
++    "unavailable",
++  );
++  const older = parseCodexMembership(
++    { ...payload, active_start: "2024-09-10T08:00:00Z" },
++    "account-a",
++    100,
++  );
++  assert.equal(older.status, "available");
++  if (older.status === "available") assert.equal(older.billing, undefined);
++});
+diff --git a/packages/services/test/usage-cost-report.test.ts b/packages/services/test/usage-cost-report.test.ts
+index e00571f..4805d5b 100644
+--- a/packages/services/test/usage-cost-report.test.ts
++++ b/packages/services/test/usage-cost-report.test.ts
+@@ -320,3 +320,48 @@ test("model and project provenance stays distinct across price revisions and acc
+     [],
+   );
+ });
++
++test("unregistered paths and projectless usage share Other without dropping their fee weight", () => {
++  const payment: SubscriptionPayment = {
++    id: "bill",
++    providerId: "p",
++    accountId: "a",
++    accountLabel: "A",
++    start: 0,
++    end: 100,
++    amount: 90,
++    currency: "USD",
++  };
++  const row = (workspacePath: string | null): UsageAccountingRow => ({
++    providerId: "p",
++    accountId: "a",
++    workspacePath,
++    modelId: "m",
++    speedMode: "standard",
++    requestCount: 1,
++    reportedCount: 1,
++    inputTokens: 100,
++    outputTokens: 10,
++    cacheReadTokens: 0,
++    cacheInputTokens: 100,
++    cacheReportedCount: 1,
++    estimatedUsd: 1,
++    pricedCount: 1,
++    estimatedCredits: 1,
++    creditCount: 1,
++    firstAt: 1,
++    lastAt: 2,
++    priceVersions: "v",
++  });
++  const rows = [row("/project"), row("/conversation-backing"), row(null)];
++  const report = buildUsageCostReport(rows, { payment, projectPaths: ["/project"] });
++  assert.equal(report.summary.actualAmount, 90);
++  assert.equal(report.projects.find((p) => p.workspacePath === null)?.actualAmount, 60);
++  assert.equal(report.projects.find((p) => p.workspacePath === "/project")?.actualAmount, 30);
++  assert.equal(
++    buildUsageCostReport(rows, { payment, projectPaths: ["/project"], workspacePath: null }).summary
++      .actualAmount,
++    60,
++  );
++  assert.equal(rows[1]!.workspacePath, "/conversation-backing");
++});
+diff --git a/packages/shared/src/usage-cost-report.ts b/packages/shared/src/usage-cost-report.ts
+index 6c34992..726f689 100644
+--- a/packages/shared/src/usage-cost-report.ts
++++ b/packages/shared/src/usage-cost-report.ts
+@@ -40,10 +40,11 @@ export interface UsageCostReport {
+ export interface UsageCostReportOptions {
+   payment?: SubscriptionPayment;
+   workspacePath?: string | null;
++  /** Existing registered projects; other paths are grouped as Other without changing ledger facts. */
++  projectPaths?: readonly string[];
+ }
+ 
+ const compareId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+-const workspace = (row: UsageAccountingRow) => row.workspacePath ?? null;
+ type SumField =
+   | "requestCount"
+   | "reportedCount"
+@@ -109,6 +110,9 @@ export function buildUsageCostReport(
+   options: UsageCostReportOptions = {},
+ ): UsageCostReport {
+   const { payment } = options;
++  const projects = options.projectPaths ? new Set(options.projectPaths) : undefined;
++  const workspace = (row: UsageAccountingRow) =>
++    row.workspacePath && (!projects || projects.has(row.workspacePath)) ? row.workspacePath : null;
+   const matchesAccount = (row: UsageAccountingRow) =>
+     !payment ||
+     (row.providerId === payment.providerId &&
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 12d2a21..1e6f283 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,5 +1,15 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
++  "settings.modelProvider.import.boundExisting": "Already connected: {name}",
++  "settings.usage.payments.billingRead":
++    "Billing dates and currency loaded; the provider did not return an amount paid.",
++  "settings.modelProvider.import.completeExisting": "Complete existing connection: {name}",
++  "settings.modelProvider.discovery.noCatalog":
++    "No model-list endpoint is available here. Saved models are retained; you can also add IDs manually.",
++  "settings.modelProvider.discovery.unauthorized":
++    "Model-list access was denied. Check the saved key and service permissions.",
++  "settings.modelProvider.discovery.failed":
++    "Could not read the model list. Saved models are unchanged.",
+   "settings.modelProvider.connectionsTitle": "Connected services",
+   "settings.modelProvider.connection.saveFirst":
+     "Save the connection changes before testing a model.",
+@@ -2949,7 +2959,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.catalog.save": "Add and configure models",
+   "settings.modelProvider.import.title": "Import from CC Switch",
+   "settings.modelProvider.import.description":
+-    "Import selected API connections read-only, without changing CC Switch, testing connections, or switching your default model.",
++    "Import API and plan-key connections. Existing connections are completed; account login tokens are not imported.",
+   "settings.modelProvider.import.readFailed":
+     "No readable CC Switch database found. Choose a database file.",
+   "settings.modelProvider.import.sourceChanged":
+@@ -2960,7 +2970,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.import.unsupportedProtocol":
+     "This upstream protocol is not supported yet",
+   "settings.modelProvider.import.subscriptionUnsupported":
+-    "Authorize subscription accounts in this app",
++    "Login tokens are not imported. Use the service’s supported authorization flow.",
+   "settings.modelProvider.import.unsupportedHeaders":
+     "Import does not support this connection’s custom headers yet.",
+   "settings.modelProvider.import.unsupportedEndpoint":
+@@ -7115,7 +7125,7 @@ const enUS: Record<string, string> = {
+   "settings.usage.costAnalysis.unit": "Cost per 1M tokens",
+   "settings.usage.costAnalysis.models": "Model costs",
+   "settings.usage.costAnalysis.projects": "Project costs",
+-  "settings.usage.costAnalysis.unassigned": "Unassigned project",
++  "settings.usage.costAnalysis.unassigned": "Other",
+   "settings.usage.costAnalysis.priced": "priced",
+   "settings.usage.costAnalysis.api": "API",
+   "settings.usage.costAnalysis.actual": "Paid",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index b0ab4cd..b343a09 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,5 +1,13 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
++  "settings.modelProvider.import.boundExisting": "已绑定：{name}",
++  "settings.usage.payments.billingRead": "已读取账期与币种；服务商未返回实付金额。",
++  "settings.modelProvider.import.completeExisting": "补全已有连接：{name}",
++  "settings.modelProvider.discovery.noCatalog":
++    "此地址未提供模型列表。已保存的模型仍保留，也可手动添加。",
++  "settings.modelProvider.discovery.unauthorized":
++    "模型列表读取未获授权，请检查已保存的密钥和服务权限。",
++  "settings.modelProvider.discovery.failed": "暂时无法读取模型列表，已保存的模型未改变。",
+   "settings.modelProvider.connectionsTitle": "已添加的服务",
+   "settings.modelProvider.connection.saveFirst": "请先保存连接更改，再测试模型。",
+   "settings.modelProvider.discovery.removeDraft": "移除模型草稿 {number}",
+@@ -2753,7 +2761,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.catalog.save": "添加并配置模型",
+   "settings.modelProvider.import.title": "从 CC Switch 导入",
+   "settings.modelProvider.import.description":
+-    "只读导入选中的 API 配置，不修改 CC Switch，不测试连接或切换默认模型。",
++    "导入 API 和套餐密钥配置；已有连接只补全，账号登录状态不导入。",
+   "settings.modelProvider.import.readFailed": "未找到可读取的 CC Switch 数据库，请选择数据库文件。",
+   "settings.modelProvider.import.sourceChanged":
+     "来源已变更或无法导入，请重新选择数据库文件后重试。",
+@@ -2761,7 +2769,8 @@ const zhCN: Record<string, string> = {
+     "部分供应商未完整导入。已创建的供应商会保留，请到配置页检查。",
+   "settings.modelProvider.import.alreadyImported": "已导入",
+   "settings.modelProvider.import.unsupportedProtocol": "暂不支持此连接使用的上游格式",
+-  "settings.modelProvider.import.subscriptionUnsupported": "订阅账号需要在本软件中授权连接",
++  "settings.modelProvider.import.subscriptionUnsupported":
++    "不导入登录令牌。请使用该服务支持的官方授权方式。",
+   "settings.modelProvider.import.unsupportedHeaders": "此配置包含自定义请求头，暂不支持导入。",
+   "settings.modelProvider.import.unsupportedEndpoint": "此配置使用完整端点，请手动核对请求地址。",
+   "settings.modelProvider.import.unsupportedClient": "暂不支持导入这种客户端配置。",
+@@ -6766,7 +6775,7 @@ const zhCN: Record<string, string> = {
+   "settings.usage.costAnalysis.unit": "百万 Token 单价",
+   "settings.usage.costAnalysis.models": "模型费用",
+   "settings.usage.costAnalysis.projects": "项目费用",
+-  "settings.usage.costAnalysis.unassigned": "未归属项目",
++  "settings.usage.costAnalysis.unassigned": "其他",
+   "settings.usage.costAnalysis.priced": "已计价",
+   "settings.usage.costAnalysis.api": "API",
+   "settings.usage.costAnalysis.actual": "实付",
+diff --git a/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx b/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
+index 97b83cb..9df2364 100644
+--- a/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
+@@ -91,7 +91,9 @@ export function CcSwitchImportSection({
+         ? "unsupportedClient"
+         : code === "already-imported"
+           ? "alreadyImported"
+-          : code === "gemini-native-protocol-not-supported" || code === "protocol-not-supported"
++          : code === "gemini-native-protocol-not-supported" ||
++              code === "protocol-not-supported" ||
++              code === "per-model-route-not-supported"
+             ? "unsupportedProtocol"
+             : code === "oauth-account-not-supported"
+               ? "subscriptionUnsupported"
+@@ -141,13 +143,37 @@ export function CcSwitchImportSection({
+                 <span className="text-ui-sm font-normal text-foreground-subtle">{row.appType}</span>
+               </div>
+               <p className="break-all text-ui-sm text-foreground-subtle">{row.baseUrl}</p>
++              {row.apiType ? (
++                <p className="text-ui-sm text-foreground-subtle">
++                  {row.apiType === "anthropic-messages"
++                    ? "Anthropic Messages"
++                    : row.apiType === "openai-responses"
++                      ? "OpenAI Responses"
++                      : "OpenAI Chat Completions"}
++                </p>
++              ) : null}
+               {row.modelIds.length ? (
+                 <p className="break-words text-ui-sm text-foreground-subtle">
+                   {row.modelIds.join(" · ")}
+                 </p>
+               ) : null}
+               {!row.eligible ? (
+-                <p className="text-ui-sm text-foreground-subtle">{reason(row.reason)}</p>
++                <p className="text-ui-sm text-foreground-subtle">
++                  {row.existingProviderName
++                    ? intl.formatMessage(
++                        { id: "settings.modelProvider.import.boundExisting" },
++                        { name: row.existingProviderName },
++                      )
++                    : reason(row.reason)}
++                </p>
++              ) : null}
++              {row.eligible && row.existingProviderName ? (
++                <p className="text-ui-sm text-foreground-subtle">
++                  {intl.formatMessage(
++                    { id: "settings.modelProvider.import.completeExisting" },
++                    { name: row.existingProviderName },
++                  )}
++                </p>
+               ) : null}
+               {failedRows.includes(row.id) ? (
+                 <p className="text-ui-sm text-destructive">{t("rowFailed")}</p>
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index a431c33..3a3d9a4 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -34,6 +34,14 @@ export function ModelDiscoverySection({
+   const searchInputRef = useRef<HTMLInputElement>(null);
+   const [busy, setBusy] = useState<"fetch" | null>(null);
+   const [error, setError] = useState<string>();
++  const missingCatalog = /Model list request failed \((404|405)\)/.test(error ?? "");
++  const errorMessage = missingCatalog
++    ? t("noCatalog")
++    : /Model list request failed \((401|403)\)/.test(error ?? "")
++      ? t("unauthorized")
++      : error
++        ? t("failed")
++        : undefined;
+   const generation = useRef(0);
+   const busyRef = useRef(false);
+   const loadCatalog = useCallback(async () => {
+@@ -140,8 +148,11 @@ export function ModelDiscoverySection({
+       ) : null}
+       {error ? (
+         <div className="flex items-center justify-between gap-2">
+-          <p className="min-w-0 text-ui-caption text-destructive" role="alert">
+-            {error}
++          <p
++            className={`min-w-0 text-ui-caption ${missingCatalog ? "text-foreground-subtle" : "text-destructive"}`}
++            role={missingCatalog ? "status" : "alert"}
++          >
++            {errorMessage}
+           </p>
+           <Button
+             type="button"
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index 5964f53..c747ddf 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -22,6 +22,7 @@ import Nvidia from "@lobehub/icons-static-svg/icons/nvidia-color.svg";
+ import Together from "@lobehub/icons-static-svg/icons/together-color.svg";
+ import Gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg";
+ import SiliconCloud from "@lobehub/icons-static-svg/icons/siliconcloud-color.svg";
++import Volcengine from "@lobehub/icons-static-svg/icons/volcengine-color.svg";
+ 
+ type ProviderLogoRef = NonNullable<ProviderConfigObject["logo"]>;
+ 
+@@ -48,6 +49,7 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; color: bool
+   together: { src: Together, color: true },
+   google: { src: Gemini, color: true },
+   siliconflow: { src: SiliconCloud, color: true },
++  volcengine: { src: Volcengine, color: true },
+   "start-plan": { src: startPlanLogo, color: true },
+ };
+ 
+diff --git a/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx b/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx
+index bad1b2d..6babfe1 100644
+--- a/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx
++++ b/packages/ui/src/settings/usage-stats/SubscriptionPaymentEditor.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useState } from "react";
++import { useEffect, useRef, useState } from "react";
+ import { subscriptionPaymentSchema, type SubscriptionPayment } from "@zcode/shared";
+ import { readPaymentAccounts, type PaymentAccount } from "./subscriptionPaymentAccounts.js";
+ import { useServices } from "@/hooks/useServices.js";
+@@ -71,6 +71,13 @@ export function SubscriptionPaymentEditor({
+   );
+   const [busy, setBusy] = useState(false);
+   const [error, setError] = useState<string>();
++  const billingTouched = useRef(false);
++  const [billing, setBilling] = useState<{
++    accountKey: string;
++    start: number;
++    end: number;
++    currency: SubscriptionPayment["currency"];
++  }>();
+   useEffect(() => {
+     if (!open) return;
+     let active = true;
+@@ -93,6 +100,34 @@ export function SubscriptionPaymentEditor({
+       active = false;
+     };
+   }, [open, providerSettingsService, intl]);
++  useEffect(() => {
++    if (editing || !accountKey) return;
++    const account = accounts?.find(
++      (a) => JSON.stringify([a.providerId, a.accountId]) === accountKey,
++    );
++    if (!account || account.accountId === "connection") return;
++    let current = true;
++    void providerSettingsService
++      .getSubscriptionUsage(account.providerId, false, account.accountId)
++      .then((usage) => {
++        if (
++          !current ||
++          billingTouched.current ||
++          usage.status !== "available" ||
++          usage.refreshError ||
++          !usage.billing
++        )
++          return;
++        setBilling({ accountKey, ...usage.billing });
++        setStart(dateText(usage.billing.start));
++        setEnd(dateText(usage.billing.end - 1));
++        setCurrency(usage.billing.currency);
++      })
++      .catch(() => {});
++    return () => {
++      current = false;
++    };
++  }, [editing, accountKey, accounts, providerSettingsService]);
+   const options = [...(accounts ?? [])];
+   if (
+     editing &&
+@@ -109,6 +144,7 @@ export function SubscriptionPaymentEditor({
+       setError(t("required"));
+       return;
+     }
++    const reported = billing?.accountKey === accountKey ? billing : undefined;
+     const parsed = subscriptionPaymentSchema.safeParse({
+       id: editing?.id ?? crypto.randomUUID(),
+       providerId: account.providerId,
+@@ -118,8 +154,15 @@ export function SubscriptionPaymentEditor({
+       start:
+         editing && start === dateText(editing.start)
+           ? editing.start
+-          : new Date(`${start}T00:00:00`).getTime(),
+-      end: editing && end === dateText(editing.end - 1) ? editing.end : nextDay(end),
++          : reported && start === dateText(reported.start)
++            ? reported.start
++            : new Date(`${start}T00:00:00`).getTime(),
++      end:
++        editing && end === dateText(editing.end - 1)
++          ? editing.end
++          : reported && end === dateText(reported.end - 1)
++            ? reported.end
++            : nextDay(end),
+       amount: Number(amount),
+       currency,
+     });
+@@ -168,7 +211,20 @@ export function SubscriptionPaymentEditor({
+             <span>{t("account")}</span>
+             <Select
+               value={accountKey}
+-              onValueChange={setAccountKey}
++              onValueChange={(value) => {
++                billingTouched.current = false;
++                setBilling(undefined);
++                setAmount("");
++                setStart(
++                  dateText(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()),
++                );
++                setEnd(
++                  dateText(
++                    new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getTime(),
++                  ),
++                );
++                setAccountKey(value);
++              }}
+               disabled={accounts === undefined}
+             >
+               <SelectTrigger className="w-full">
+@@ -202,7 +258,10 @@ export function SubscriptionPaymentEditor({
+                 className="[color-scheme:light] dark:[color-scheme:dark]"
+                 type="date"
+                 value={start}
+-                onChange={(e) => setStart(e.target.value)}
++                onChange={(e) => {
++                  billingTouched.current = true;
++                  setStart(e.target.value);
++                }}
+               />
+             </label>
+             <label className="space-y-1 text-ui-sm">
+@@ -211,7 +270,10 @@ export function SubscriptionPaymentEditor({
+                 className="[color-scheme:light] dark:[color-scheme:dark]"
+                 type="date"
+                 value={end}
+-                onChange={(e) => setEnd(e.target.value)}
++                onChange={(e) => {
++                  billingTouched.current = true;
++                  setEnd(e.target.value);
++                }}
+               />
+             </label>
+           </div>
+@@ -228,7 +290,10 @@ export function SubscriptionPaymentEditor({
+             </label>
+             <Select
+               value={currency}
+-              onValueChange={(v) => setCurrency(v as SubscriptionPayment["currency"])}
++              onValueChange={(v) => {
++                billingTouched.current = true;
++                setCurrency(v as SubscriptionPayment["currency"]);
++              }}
+             >
+               <SelectTrigger className="w-24" aria-label={t("currency")}>
+                 <SelectValue />
+@@ -242,6 +307,9 @@ export function SubscriptionPaymentEditor({
+               </SelectContent>
+             </Select>
+           </div>
++          {billing?.accountKey === accountKey ? (
++            <p className="text-ui-sm text-foreground-subtle">{t("billingRead")}</p>
++          ) : null}
+           {error ? (
+             <p role="alert" className="text-ui-sm text-destructive">
+               {error}
+diff --git a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+index 08639d4..a676910 100644
+--- a/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
++++ b/packages/ui/src/settings/usage-stats/UsageCostAnalysis.tsx
+@@ -2,11 +2,14 @@ import { lazy, useEffect, useMemo, useState } from "react";
+ import { MoreHorizontal, Plus } from "lucide-react";
+ import {
+   buildUsageCostReport,
++  isRemoteWorkspaceIdentity,
+   type AppUsageSnapshot,
+   type SubscriptionPayment,
+   type UsageAccountingRow,
+ } from "@zcode/shared";
+ import { useServices } from "@/hooks/useServices.js";
++import { isWorkspaceTab } from "@/store/tabStore.js";
++import { useTabStore } from "@/store/TabStoreProvider.js";
+ import { useSettings } from "@/hooks/useSettingService.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { Button } from "@/components/ui/button.js";
+@@ -36,6 +39,20 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot | n
+   const { intl } = useZCodeIntl();
+   const t = (key: string) => intl.formatMessage({ id: `settings.usage.costAnalysis.${key}` });
+   const { settings, update } = useSettings();
++  const tabs = useTabStore((state) => state.tabs);
++  const projectPaths = useMemo(
++    () =>
++      tabs
++        .filter(isWorkspaceTab)
++        .filter(
++          (tab) =>
++            tab.workspacePurpose !== "conversation" &&
++            !tab.remoteSessionId &&
++            (!tab.workspaceIdentity || !isRemoteWorkspaceIdentity(tab.workspaceIdentity)),
++        )
++        .map((tab) => tab.workspacePath),
++    [tabs],
++  );
+   const { usageStatsService } = useServices();
+   const payments = useMemo(
+     () =>
+@@ -90,8 +107,8 @@ export function UsageCostAnalysis({ snapshot }: { snapshot: AppUsageSnapshot | n
+   const rows =
+     selected === "all" ? (snapshot ? (snapshot.accounting ?? []) : undefined) : periodReading?.rows;
+   const report = useMemo(
+-    () => (rows ? buildUsageCostReport(rows, { payment }) : undefined),
+-    [rows, payment],
++    () => (rows ? buildUsageCostReport(rows, { payment, projectPaths }) : undefined),
++    [rows, payment, projectPaths],
+   );
+   const remove = async () => {
+     if (!payment) return;
+diff --git a/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts b/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts
+index 3472eff..6f2623b 100644
+--- a/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts
++++ b/packages/ui/src/settings/usage-stats/subscriptionPaymentAccounts.ts
+@@ -1,4 +1,5 @@
+ import type { IProviderSettingsService } from "@zcode/services";
++import { matchEndpointTemplate } from "@zcode/provider";
+ import { readProviderSettings } from "@/lib/providerSettingsRead.js";
+ 
+ export type PaymentAccount = { providerId: string; accountId: string; label: string };
+@@ -24,9 +25,9 @@ export async function readPaymentAccounts(
+           label: `${label} · ${account.label ?? account.id}`,
+         }));
+       }
+-      const template = view.providerTemplates.find(
+-        (item) => item.templateId === provider.templateId,
+-      );
++      const template =
++        view.providerTemplates.find((item) => item.templateId === provider.templateId) ??
++        matchEndpointTemplate(provider.effectiveConfig.api?.baseUrl, view.providerTemplates);
+       if (
+         template?.category === "subscription-plan" ||
+         provider.effectiveConfig.access?.type === "zhipu-account"
+diff --git a/packages/ui/test/subscriptionPaymentAccounts.test.ts b/packages/ui/test/subscriptionPaymentAccounts.test.ts
+index 8cb503c..cc6c3cf 100644
+--- a/packages/ui/test/subscriptionPaymentAccounts.test.ts
++++ b/packages/ui/test/subscriptionPaymentAccounts.test.ts
+@@ -48,3 +48,37 @@ test("payment choices share the added-service scope, retaining distinct saved ac
+     { providerId: "plan", accountId: "connection", label: "Plan · Entire connection" },
+   ]);
+ });
++
++test("imported membership-key endpoints appear in payment choices without inheriting preset models", async () => {
++  const view = {
++    providers: [
++      {
++        providerId: "go",
++        providerName: "Imported Go",
++        effectiveConfig: {
++          group: "standard-personal",
++          access: { type: "api-key" },
++          api: { type: "openai-chat-completions", baseUrl: "https://opencode.ai/zen/go/v1" },
++        },
++      },
++      {
++        providerId: "spoof",
++        effectiveConfig: {
++          group: "standard-personal",
++          api: { baseUrl: "https://opencode.ai.example/zen/go/v1" },
++        },
++      },
++    ],
++    providerTemplates: [
++      {
++        templateId: "go-plan",
++        category: "subscription-plan",
++        config: { api: { baseUrl: "https://opencode.ai/zen/go/v1" } },
++      },
++    ],
++  } as unknown as ProviderSettingsView;
++  const service = { getView: async () => view } as unknown as IProviderSettingsService;
++  assert.deepEqual(await readPaymentAccounts(service, "Connection"), [
++    { providerId: "go", accountId: "connection", label: "Imported Go · Connection" },
++  ]);
++});

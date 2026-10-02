@@ -1,0 +1,1796 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude-environment.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude-environment.ts
+index 5b4966c264dfce6de6587d6ae297deb325e357c9..dfa0f8d4595465638fe1402fdec041e169af2207 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude-environment.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude-environment.ts
+@@ -10,6 +10,8 @@ export function claudeNativeEnvironment(
+     "CLAUDE_CODE_OAUTH_TOKEN",
+     "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+     "ANTHROPIC_BASE_URL",
++    // A parent's bare-mode flag must not suppress this subscription's native auth.
++    "CLAUDE_CODE_SIMPLE",
+   ])
+     delete env[key];
+   Object.assign(env, {
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.ts
+index 2b58f9839150da02f6e1e3f9d28a7aa266912487..14d1ab4558dc37473a629d62a2ba8e35ed379d2f 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.ts
+@@ -29,7 +29,9 @@ export async function inspectClaudeNativeConnection(
+       cwd: process.cwd(),
+       env: claudeNativeEnvironment(options.env, options.configDir),
+       abortController: controller,
+-      extraArgs: { bare: null },
++      // Bare mode ignores OAuth/keychain; safe mode keeps native authentication
++      // while disabling discovered customizations. The SDK owns this control path.
++      extraArgs: { "safe-mode": null },
+       tools: [],
+       settingSources: [],
+       persistSession: false,
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude-login.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude-login.ts
+index d432c1d00808471709ecba4a6bbb430b1b1fba19..f283a603bf212a2b3e3e0846469e019f67c7cc66 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude-login.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude-login.ts
+@@ -6,13 +6,19 @@ import { resolveClaudeNativeExecutable } from "./claude-executable.js";
+ export function startClaudeNativeLogin(options: {
+   executable?: string;
+   configDir?: string;
++  env?: Record<string, string | undefined>;
+   timeoutMs?: number;
+ } = {}) {
+   const child = spawn(resolveClaudeNativeExecutable(options.executable), ["auth", "login", "--claudeai"], {
+-    env: claudeNativeEnvironment({}, options.configDir),
++    env: claudeNativeEnvironment(options.env, options.configDir),
+     shell: false,
+     windowsHide: true,
+-    stdio: ["pipe", "ignore", "ignore"],
++    stdio: ["pipe", "ignore", "pipe"],
++  });
++  // Classify the failure without returning OAuth URLs, codes or native secret output.
++  let diagnostics = "";
++  child.stderr?.on("data", (chunk: Buffer) => {
++    diagnostics = (diagnostics + chunk.toString()).slice(-8192);
+   });
+   let settled = false;
+   let terminateTimer: ReturnType<typeof setTimeout> | undefined;
+@@ -37,7 +43,15 @@ export function startClaudeNativeLogin(options: {
+   child.once("error", (error) => settle(error));
+   child.once("close", (code) => {
+     clearTimeout(terminateTimer);
+-    settle(code === 0 ? undefined : new Error("Native CLI login failed; sign in using the official CLI"));
++    const reason = /ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|network|certificate|TLS|proxy/i.test(diagnostics)
++      ? "network"
++      : /timed? ?out|ETIMEDOUT/i.test(diagnostics)
++        ? "timeout"
++        : /invalid_grant|access_denied|unauthorized|authorization failed/i.test(diagnostics)
++          ? "authorization"
++          : "unknown";
++    diagnostics = "";
++    settle(code === 0 ? undefined : new Error(`Native CLI login failed: ${reason} (exit ${code ?? "signal"})`));
+   });
+   // A consumer may cancel before installing its own waiter; never create an unhandled rejection.
+   void completion.promise.catch(() => {});
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
+index 7508ad67a416523f85e16285d83f20d0911cd862..bdc035ae965baae5dbf35eaf57e7a777bfca9d9f 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
+@@ -193,7 +193,8 @@ export function createClaudeNativeAgentPort(
+               ? { effort: effort as "low" | "medium" | "high" | "xhigh" | "max" }
+               : {}),
+             abortController: controller,
+-            extraArgs: { bare: null },
++            // Keep official subscription authentication without ambient customizations.
++            extraArgs: { "safe-mode": null },
+             tools: [],
+             allowedTools: [],
+             disallowedTools: ["ToolSearch"],
+diff --git a/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts b/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
+index 090daf1713358ef0a60cd87d7c61667dda6d836a..9b023f210f233d161b626197376e08d79babd02f 100644
+--- a/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
++++ b/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
+@@ -97,7 +97,9 @@ test("native Claude owns continuation while Host permissions, effect receipts an
+     assert.equal(n.f.effects, 1, "Completed Host tools were replayed on restart");
+     assert.equal((await checkpoint()).continuation.sessionId, beforeRestart.continuation.sessionId,
+       "Host restart used a fresh SDK session instead of native resume: " + n.continuationReasons.join(", "));
+-    const newPrompt = n.payloads.at(-1).messages.at(-1).content;
++    // Safe mode may append a native system frame. Verify the admitted user input,
++    // rather than assuming it is the final native wire message.
++    const newPrompt = n.payloads.at(-1).messages.filter((message: any) => message.role === "user").at(-1).content;
+     assert.ok(JSON.stringify(newPrompt).includes("Continue after Host restart"));
+     assert.equal(JSON.stringify(newPrompt).includes("Use Probe and complete this local task"), false,
+       "Native resume re-submitted the full visible history");
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 5289cfe4fbb191fd5172151c8b8ced281d0e0592..fd57e2a87491d005d6bb394f10caf48dfc89e453 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -22,6 +22,9 @@ export function mapClaudeNativeModels(
+         },
+       },
+       optionSpecs: {
++        // Native execution has no HTTP output-parameter transform. Complete the
++        // shared registry contract without asserting a provider output limit.
++        maxOutputTokens: { map: "{}" },
+         reasoningLevel: {
+           values: ["auto", ...(model.supportedEffortLevels ?? [])],
+           defaultValue: "auto",
+@@ -37,7 +40,9 @@ export function mapClaudeNativeModels(
+ }
+ 
+ /** Node host only, injected alongside the existing subscription and CC Switch adapters. */
+-export function createNativeCliConnectionAdapter(): NativeCliConnectionAdapter {
++export function createNativeCliConnectionAdapter(
++  resolveEnvironment: () => Promise<Record<string, string>> = async () => ({}),
++): NativeCliConnectionAdapter {
+   return {
+     async inspect(access) {
+       if (access.provider !== "claude")
+@@ -45,6 +50,7 @@ export function createNativeCliConnectionAdapter(): NativeCliConnectionAdapter {
+       const { account, models } = await inspectClaudeNativeConnection({
+         executable: access.executable,
+         configDir: access.configDir,
++        env: await resolveEnvironment(),
+       });
+       requireClaudeSubscriptionAccount(account);
+       const accountId = account.email!;
+@@ -60,6 +66,7 @@ export function createNativeCliConnectionAdapter(): NativeCliConnectionAdapter {
+         },
+       };
+     },
+-    login: startClaudeNativeLogin,
++    login: async (options) =>
++      startClaudeNativeLogin({ ...options, env: await resolveEnvironment() }),
+   };
+ }
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index d8bdcc3ddc01b9208a64bb0e22088542b986e90b..5f035ce66e0bd8bf4f6420d16fbc87aeda905088 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -247,7 +247,8 @@ export function createProviderSettingsService(
+           id,
+           result.revision,
+         );
+-      await facade.refresh("subscription-accounts");
++      // The account writer and catalog replacement already publish the local registry.
++      // An unrelated hosted-catalogue failure cannot turn a committed account edit into failure.
+       return result;
+     },
+     async beginSubscriptionLogin(id, method, accountId) {
+@@ -272,7 +273,7 @@ export function createProviderSettingsService(
+           accounts.revision,
+         );
+       return {
+-        ...(await facade.refresh("subscription-login")),
++        ...facade.getView(),
+         authorizedAccountId: receipt.accountId,
+         accountAdded: receipt.added,
+       };
+@@ -283,7 +284,7 @@ export function createProviderSettingsService(
+     async disconnectSubscription(id) {
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+       await subscriptions.disconnect(id);
+-      return facade.refresh("subscription-disconnect");
++      return facade.getView();
+     },
+     getView: async () => {
+       await ensureReady();
+diff --git a/packages/services/src/model-provider/subscriptionRecords.ts b/packages/services/src/model-provider/subscriptionRecords.ts
+index c8209ccb7abe68572a8cc74feb86ee48991750ec..98675193f8bb5bb397a1cae8ea3305daa6b98cab 100644
+--- a/packages/services/src/model-provider/subscriptionRecords.ts
++++ b/packages/services/src/model-provider/subscriptionRecords.ts
+@@ -27,7 +27,7 @@ export function parseSavedConnection(raw: string, kind: SubscriptionKind): Saved
+       throw new Error("Subscription credentials are invalid; sign in again");
+     if (
+       credential.type !== "oauth" ||
+-      ((!credential.access || !credential.refresh) && !(isChatGPTPlanCredential(credential) && credential.reauthRequired === true &&
++      ((!credential.access || !credential.refresh) && !(isChatGPTPlanCredential(credential) && !subscriptionCredentialUsable(credential) &&
+         typeof credential.clientId === "string" && typeof credential.subject === "string")) ||
+       !Number.isFinite(credential.expires)
+     )
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index d394b4771edf01d8c6953038c859d099818e85e7..e2a974936ab7e5937d55c8420f71b927e1df360d 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -376,6 +376,7 @@ import { bindAccountProviderInvalidation } from "./model-provider/accountProvide
+ import { AccountProviderApiClient } from "./model-provider/accountProviderApiClient.js";
+ import { AccountProviderApiKeyResolver } from "./model-provider/accountProviderApiKeyResolver.js";
+ import { createProviderConfigRuntime } from "./model-provider/providerConfigRuntime.js";
++import { createNativeCliConnectionAdapter } from "./model-provider/nativeCliConnectionAdapter.js";
+ import {
+   createProviderRuntimeFromConfigRuntime,
+   type ProviderRuntime,
+@@ -1601,6 +1602,18 @@ export function createLocalServices(options: {
+       return directory;
+     },
+     subscriptions: subscriptionConnections,
++    // Native login/inspection are Host children, outside the Agent spawn path.
++    // Reuse the same network owner instead of losing app/system proxy settings.
++    nativeCli: createNativeCliConnectionAdapter(async () => {
++      const network = hostApiNetworkTransport.resolveSystemNetwork
++        ? await hostApiNetworkTransport.resolveSystemNetwork("https://claude.ai/oauth/authorize")
++        : await settingService.get().then(settings => ({
++            httpProxy: settings.httpProxy,
++            noProxy: settings.httpProxyNoProxy,
++            caCertPath: settings.httpProxyCaCertPath,
++          }));
++      return buildAgentRuntimeEnv({ ...network, httpProxy: network.httpProxy });
++    }),
+     fetch: hostApiNetworkTransport.fetch,
+     configRuntime: providerConfigRuntime,
+     modelSelectionConfiguredDefaultSource,
+diff --git a/packages/services/test/chatgpt-authorization.test.ts b/packages/services/test/chatgpt-authorization.test.ts
+index fdaab48729d7558d898fec884ff8d6a2603ea93d..9bcb2deb9a487b5eeb4a42ac87898b191380c6e8 100644
+--- a/packages/services/test/chatgpt-authorization.test.ts
++++ b/packages/services/test/chatgpt-authorization.test.ts
+@@ -1,5 +1,6 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import { createServer } from "node:http";
+ import { generateKeyPairSync, sign } from "node:crypto";
+ import type { OAuthCredential } from "@earendil-works/pi-ai";
+ import { createSubscriptionConnections } from "../src/model-provider/subscriptionConnections.js";
+@@ -10,10 +11,19 @@ import { redactTelemetryUrl, redactTelemetryText } from "@zcode/shared";
+ const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+ const jwk = { ...publicKey.export({ format: "jwk" }), kid: "local-test", alg: "RS256", use: "sig" };
+ const jwt = (claims: Record<string, unknown>) => {
+-  const payload = [ { alg: "RS256", kid: jwk.kid }, {
+-    iss: "https://auth.openai.com", aud: "oaiapp-local", sub: "local-person",
+-    exp: Math.floor(Date.now() / 1000) + 3600, email: "local@example.test", ...claims,
+-  } ].map((item) => Buffer.from(JSON.stringify(item)).toString("base64url")).join(".");
++  const payload = [
++    { alg: "RS256", kid: jwk.kid },
++    {
++      iss: "https://auth.openai.com",
++      aud: "oaiapp-local",
++      sub: "local-person",
++      exp: Math.floor(Date.now() / 1000) + 3600,
++      email: "local@example.test",
++      ...claims,
++    },
++  ]
++    .map((item) => Buffer.from(JSON.stringify(item)).toString("base64url"))
++    .join(".");
+   return `${payload}.${sign("RSA-SHA256", Buffer.from(payload), privateKey).toString("base64url")}`;
+ };
+ 
+@@ -23,6 +33,7 @@ function fixture() {
+   let authorization: URL;
+   let subject = "local-person";
+   let directScope = true;
++  let omitRefresh = false;
+   let refreshFailure: string | undefined;
+   const fetcher: typeof fetch = async (input, init) => {
+     const url = String(input);
+@@ -34,13 +45,19 @@ function fixture() {
+       assert.equal(form.get("resource"), "https://api.openai.com/v1");
+       assert.equal(form.get("scope"), null);
+       if (form.get("grant_type") === "refresh_token" && refreshFailure)
+-        return Response.json({ error: refreshFailure }, { status: refreshFailure === "temporary" ? 503 : 400 });
++        return Response.json(
++          { error: refreshFailure },
++          { status: refreshFailure === "temporary" ? 503 : 400 },
++        );
+       if (form.get("grant_type") === "authorization_code") {
+         assert.equal(form.get("redirect_uri"), authorization.searchParams.get("redirect_uri"));
+         assert.ok(form.get("code_verifier"));
+       }
+-      return Response.json({ access_token: "opaque-oauth-access", refresh_token: "rotated-refresh",
+-        expires_in: 3600, scope: `openid email offline_access ${directScope ? "chatgpt.tokens.use.direct" : ""}`,
++      return Response.json({
++        access_token: "opaque-oauth-access",
++        ...(omitRefresh ? {} : { refresh_token: "rotated-refresh" }),
++        expires_in: 3600,
++        scope: `openid email offline_access ${directScope ? "chatgpt.tokens.use.direct" : ""}`,
+         id_token: jwt({ nonce: authorization.searchParams.get("nonce"), sub: subject }),
+       });
+     }
+@@ -48,39 +65,83 @@ function fixture() {
+       const headers = new Headers(init?.headers);
+       assert.equal(headers.get("authorization"), "Bearer opaque-oauth-access");
+       assert.equal(headers.get("chatgpt-account-id"), null);
+-      return Response.json({ models: [
+-        { slug: "local-model", display_name: "Local model", visibility: "list", input_modalities: ["text", "image"],
+-          supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }], default_reasoning_level: "low" },
+-        { slug: "unlisted-model", visibility: "hide" },
+-        { slug: "server-only-model", visibility: "internal" },
+-      ] });
++      return Response.json({
++        models: [
++          {
++            slug: "local-model",
++            display_name: "Local model",
++            visibility: "list",
++            input_modalities: ["text", "image"],
++            supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
++            default_reasoning_level: "low",
++          },
++          { slug: "unlisted-model", visibility: "hide" },
++          { slug: "server-only-model", visibility: "internal" },
++        ],
++      });
+     }
+     throw new Error(`Unexpected network request: ${url}`);
+   };
+   const queues = new Map<string, Promise<unknown>>();
+   const owner = createSubscriptionConnections({
+-    credentials: { load: async (key) => records.get(key) ?? null,
+-      save: async (key, value) => { records.set(key, value); }, delete: async (key) => { records.delete(key); } },
++    credentials: {
++      load: async (key) => records.get(key) ?? null,
++      save: async (key, value) => {
++        records.set(key, value);
++      },
++      delete: async (key) => {
++        records.delete(key);
++      },
++    },
+     fetch: fetcher,
+-    getView: async () => ({ providers: [{ providerId: "chatgpt", effectiveConfig: {
+-      access: { type: "subscription", provider: "openai-codex" },
+-    } }] }) as never,
++    getView: async () =>
++      ({
++        providers: [
++          {
++            providerId: "chatgpt",
++            effectiveConfig: {
++              access: { type: "subscription", provider: "openai-codex" },
++            },
++          },
++        ],
++      }) as never,
+     setConnected: async () => {},
+     withConnectionLock(key, run) {
+       const task = (queues.get(key) ?? Promise.resolve()).catch(() => {}).then(run);
+-      queues.set(key, task); return task;
++      queues.set(key, task);
++      return task;
+     },
+   });
+-  return { owner, records, calls, fetcher, setSubject(value: string) { subject = value; },
+-    noScope() { directScope = false; },
+-    enableScope() { directScope = true; },
+-    setRefreshFailure(value?: string) { refreshFailure = value; },
++  return {
++    owner,
++    records,
++    calls,
++    fetcher,
++    setSubject(value: string) {
++      subject = value;
++    },
++    noScope() {
++      directScope = false;
++    },
++    identityOnlyWithoutRefresh() {
++      directScope = false;
++      omitRefresh = true;
++    },
++    enableScope() {
++      directScope = true;
++    },
++    setRefreshFailure(value?: string) {
++      refreshFailure = value;
++    },
+     async begin(accountId?: string) {
+       const login = await owner.begin("chatgpt", "browser", accountId);
+       authorization = new URL(login.verificationUrl);
+       assert.equal(authorization.origin, "https://auth.openai.com");
+       assert.equal(authorization.pathname, "/api/accounts/authorize");
+-      assert.equal(authorization.searchParams.get("ext_agent_host_id"), `urn:uuid:${records.get("chatgpt-agent-host-id")}`);
++      assert.equal(
++        authorization.searchParams.get("ext_agent_host_id"),
++        `urn:uuid:${records.get("chatgpt-agent-host-id")}`,
++      );
+       assert.equal(new URL(authorization.searchParams.get("redirect_uri")!).hostname, "127.0.0.1");
+       return { login, authorization };
+     },
+@@ -105,7 +166,10 @@ test("real Pi ChatGPT login uses Fleet registration, verified identity, public c
+   assert.equal(saved.accounts[0].credential.subject, "local-person");
+   assert.equal(saved.accounts[0].credential.clientId, "oaiapp-local");
+   assert.ok(saved.accounts[0].credential.idToken);
+-  assert.deepEqual((await f.owner.models("chatgpt")).models.map((model) => model.id), ["local-model"]);
++  assert.deepEqual(
++    (await f.owner.models("chatgpt")).models.map((model) => model.id),
++    ["local-model"],
++  );
+   const auth = await f.owner.resolve("chatgpt", "openai-codex", "local-model");
+   assert.equal(auth.protocol, "chatgpt-plan");
+   assert.equal(auth.baseUrl, "https://api.openai.com/v1");
+@@ -125,6 +189,51 @@ test("real Pi ChatGPT login uses Fleet registration, verified identity, public c
+   assert.equal(refreshed.clientId, "oaiapp-local");
+ });
+ 
++test("a real loopback callback commits sign-in without sharing another application's fixed port", async () => {
++  const occupied = createServer((_request, response) => response.end("foreign application"));
++  await new Promise<void>((resolve, reject) => {
++    occupied.once("error", reject);
++    occupied.listen(1455, "127.0.0.1", resolve);
++  });
++  const f = fixture();
++  let flow: { flowId: string } | undefined;
++  try {
++    const begun = await f.begin();
++    flow = begun.login;
++    const callback = new URL(begun.authorization.searchParams.get("redirect_uri")!);
++    assert.notEqual(callback.port, "1455");
++    callback.searchParams.set("state", begun.authorization.searchParams.get("state")!);
++    callback.searchParams.set("code", "local-code");
++    callback.searchParams.set("client_id", "oaiapp-local");
++    const received = await fetch(callback);
++    assert.equal(received.status, 200);
++    const receipt = await f.owner.finish("chatgpt", flow.flowId);
++    flow = undefined;
++    assert.equal((await f.owner.accounts("chatgpt")).accounts[0]?.id, receipt.accountId);
++    assert.equal((await f.owner.accounts("chatgpt")).accounts[0]?.authorizationState, "granted");
++  } finally {
++    if (flow) await f.owner.cancel("chatgpt", flow.flowId);
++    occupied.closeAllConnections();
++    await new Promise<void>((resolve) => occupied.close(() => resolve()));
++  }
++});
++
++test("identity-only sign-in without offline access remains visible and cannot discover or infer", async () => {
++  const f = fixture();
++  f.identityOnlyWithoutRefresh();
++  const { login } = await f.begin();
++  const receipt = await f.complete(login);
++  const accounts = await f.owner.accounts("chatgpt");
++  assert.equal(accounts.accounts[0]?.id, receipt.accountId);
++  assert.equal(accounts.accounts[0]?.authorizationState, "plan-disabled");
++  await assert.rejects(f.owner.models("chatgpt"), /plan permission/);
++  await assert.rejects(f.owner.resolve("chatgpt"), /chatgpt.tokens.use.direct/);
++  assert.equal(
++    f.calls.some((url) => url === "https://api.openai.com/v1/models"),
++    false,
++  );
++});
++
+ test("reauthorization reuses the registration and accepts a callback without client_id", async () => {
+   const f = fixture();
+   const first = await f.begin();
+@@ -148,10 +257,14 @@ test("wrong identity preserves the binding; declined plan permission retains ver
+   let next = await f.begin(receipt.accountId);
+   await assert.rejects(f.complete(next.login), /identity/);
+   assert.deepEqual(JSON.parse(f.records.get("model-subscription:chatgpt")!).accounts, before);
+-  f.noScope(); f.setSubject("local-person");
++  f.noScope();
++  f.setSubject("local-person");
+   next = await f.begin(receipt.accountId);
+   await f.complete(next.login);
+-  assert.equal((await f.owner.accounts("chatgpt")).accounts[0]?.authorizationState, "plan-disabled");
++  assert.equal(
++    (await f.owner.accounts("chatgpt")).accounts[0]?.authorizationState,
++    "plan-disabled",
++  );
+   const count = f.calls.length;
+   await assert.rejects(f.owner.resolve("chatgpt"), /chatgpt.tokens.use.direct/);
+   assert.equal(f.calls.length, count);
+@@ -165,19 +278,29 @@ test("wrong identity preserves the binding; declined plan permission retains ver
+ 
+ test("confirmed refresh revocation retires tokens but retains registration; temporary errors preserve credentials", async () => {
+   const f = fixture();
+-  const first = await f.begin(); const receipt = await f.complete(first.login);
++  const first = await f.begin();
++  const receipt = await f.complete(first.login);
+   const raw = JSON.parse(f.records.get("model-subscription:chatgpt")!);
+   raw.accounts[0].credential.expires = 1;
+   f.records.set("model-subscription:chatgpt", JSON.stringify(raw));
+   f.setRefreshFailure("temporary");
+   await assert.rejects(f.owner.resolve("chatgpt"));
+-  assert.equal(JSON.parse(f.records.get("model-subscription:chatgpt")!).accounts[0].credential.refresh, "rotated-refresh");
++  assert.equal(
++    JSON.parse(f.records.get("model-subscription:chatgpt")!).accounts[0].credential.refresh,
++    "rotated-refresh",
++  );
+   f.setRefreshFailure("invalid_grant");
+   await assert.rejects(f.owner.resolve("chatgpt"));
+   const retired = JSON.parse(f.records.get("model-subscription:chatgpt")!).accounts[0].credential;
+-  assert.equal(retired.access, ""); assert.equal(retired.refresh, ""); assert.equal(retired.idToken, undefined);
+-  assert.equal(retired.clientId, "oaiapp-local"); assert.equal(retired.subject, "local-person");
+-  assert.equal((await f.owner.accounts("chatgpt")).accounts[0]?.authorizationState, "reauth-required");
++  assert.equal(retired.access, "");
++  assert.equal(retired.refresh, "");
++  assert.equal(retired.idToken, undefined);
++  assert.equal(retired.clientId, "oaiapp-local");
++  assert.equal(retired.subject, "local-person");
++  assert.equal(
++    (await f.owner.accounts("chatgpt")).accounts[0]?.authorizationState,
++    "reauth-required",
++  );
+   f.setRefreshFailure();
+   const next = await f.begin(receipt.accountId);
+   assert.equal(next.authorization.searchParams.get("id_token_hint"), null);
+@@ -189,23 +312,49 @@ test("confirmed refresh revocation retires tokens but retains registration; temp
+ test("ID token signature, issuer, audience, expiry and nonce are independently enforced", async () => {
+   const fetcher: typeof fetch = async () => Response.json({ keys: [jwk] });
+   const expected = { clientId: "oaiapp-local", nonce: "nonce" };
+-  assert.equal((await verifyChatGPTIdentity(jwt({ nonce: "nonce" }), expected, fetcher)).subject, "local-person");
+-  for (const claims of [{ iss: "https://wrong.test" }, { aud: "wrong-client" }, { exp: 1 }, { nonce: "wrong" }, { nbf: 9999999999 }])
+-    await assert.rejects(verifyChatGPTIdentity(jwt({ nonce: "nonce", ...claims }), expected, fetcher));
++  assert.equal(
++    (await verifyChatGPTIdentity(jwt({ nonce: "nonce" }), expected, fetcher)).subject,
++    "local-person",
++  );
++  for (const claims of [
++    { iss: "https://wrong.test" },
++    { aud: "wrong-client" },
++    { exp: 1 },
++    { nonce: "wrong" },
++    { nbf: 9999999999 },
++  ])
++    await assert.rejects(
++      verifyChatGPTIdentity(jwt({ nonce: "nonce", ...claims }), expected, fetcher),
++    );
+   const token = jwt({ nonce: "nonce" });
+-  await assert.rejects(verifyChatGPTIdentity(token.slice(0, -10) + "invalidsig", expected, fetcher), /signature/);
++  await assert.rejects(
++    verifyChatGPTIdentity(token.slice(0, -10) + "invalidsig", expected, fetcher),
++    /signature/,
++  );
+ });
+ 
+ test("same email across issued registrations never merges account bindings", () => {
+-  const a = { type: "oauth", access: "opaque", refresh: "r", expires: 1,
+-    protocol: "chatgpt-plan", clientId: "client-a", subject: "person", email: "same@example.test" } as OAuthCredential;
++  const a = {
++    type: "oauth",
++    access: "opaque",
++    refresh: "r",
++    expires: 1,
++    protocol: "chatgpt-plan",
++    clientId: "client-a",
++    subject: "person",
++    email: "same@example.test",
++  } as OAuthCredential;
+   assert.equal(isSameSubscriptionAccount("openai-codex", a, { ...a, clientId: "client-b" }), false);
+   assert.equal(isSameSubscriptionAccount("openai-codex", a, { ...a, subject: "other" }), false);
+   assert.equal(isSameSubscriptionAccount("openai-codex", a, { ...a, access: "rotated" }), true);
+ });
+ 
+ test("external-browser failure diagnostics omit reauthorization ID-token hints", () => {
+-  const url = "https://auth.openai.com/api/accounts/authorize?id_token_hint=synthetic-private-identity&state=local";
++  const url =
++    "https://auth.openai.com/api/accounts/authorize?id_token_hint=synthetic-private-identity&state=local";
+   assert.equal(redactTelemetryUrl(url), "https://auth.openai.com/api/accounts/authorize");
+-  assert.equal(redactTelemetryText(`Failed to open ${url}`).includes("synthetic-private-identity"), false);
++  assert.equal(
++    redactTelemetryText(`Failed to open ${url}`).includes("synthetic-private-identity"),
++    false,
++  );
+ });
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index b13f99afd009e28ab07bf9eaa3b6f005e78df66f..89d4d0d13204bda70174bf86df3115f81c3bbbc4 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -3,16 +3,95 @@ import test from "node:test";
+ import { mkdtemp, writeFile, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
++import { fileURLToPath } from "node:url";
+ import type { ProviderSettingsFacade } from "@zcode/provider";
+ import { startClaudeNativeLogin } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/claude-login.js";
+ import { requireClaudeSubscriptionAccount } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.js";
+ import { createNativeCliConnectionOperations } from "../src/model-provider/nativeCliConnection.js";
++import { mapClaudeNativeModels } from "../src/model-provider/nativeCliConnectionAdapter.js";
++import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
++import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
++
++test("native account connection publishes selectable models through the real registry and reopen", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-registry-"));
++  const personalFilePath = join(directory, "providers.json");
++  const open = () =>
++    new ProviderRuntime({
++      configRuntime: createProviderConfigRuntime({
++        personalFilePath,
++        zcodeBuiltinFilePath: fileURLToPath(
++          new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++        ),
++        watch: false,
++        personalPollingIntervalMs: false,
++      }),
++      nativeCli: {
++        inspect: async () => ({
++          accountId: "fixture@example.invalid",
++          accountName: "Fixture",
++          planType: "pro",
++          catalog: {
++            source: "provider",
++            models: mapClaudeNativeModels([
++              {
++                value: "opus",
++                resolvedModel: "claude-opus-5-5",
++                displayName: "Opus",
++                description: "Fixture",
++                supportsFastMode: false,
++                supportedEffortLevels: ["low", "medium", "high"],
++              },
++            ]),
++          },
++        }),
++        login: () => {
++          throw new Error("Already signed in");
++        },
++      },
++    });
++  let runtime = open();
++  try {
++    await runtime.start();
++    const { providerId } = await runtime.providerSettings.createPersonalProvider({
++      templateId: "fleet-claude-native",
++    });
++    await runtime.providerSettings.connectNativeCli(providerId);
++    const verify = async () => {
++      const provider = (await runtime.providerSettings.getView()).providers.find(
++        (p) => p.providerId === providerId,
++      )!;
++      assert.equal(provider.effectiveConfig.api, undefined);
++      assert.equal(provider.effectiveConfig.access?.type, "native-cli");
++      assert.equal(provider.executable, true);
++      assert.equal(provider.models[0]?.selectable, true);
++      assert.deepEqual(provider.models[0]?.issues, []);
++      assert.equal(provider.models[0]?.effectiveConfig.optionSpecs?.speedMode, null);
++    };
++    await verify();
++    runtime.dispose();
++    runtime = open();
++    await runtime.start();
++    await verify();
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
+ 
+ test("Claude subscription binding refuses Console/API and third-party cloud authentication", () => {
+-  const plan = { email: "fixture@example.invalid", subscriptionType: "pro", apiProvider: "firstParty" as const, apiKeySource: "none" };
++  const plan = {
++    email: "fixture@example.invalid",
++    subscriptionType: "pro",
++    apiProvider: "firstParty" as const,
++    apiKeySource: "none",
++  };
+   requireClaudeSubscriptionAccount(plan);
+-  for (const account of [{ ...plan, subscriptionType: undefined }, { ...plan, apiProvider: "bedrock" as const },
+-    { ...plan, apiKeySource: "ANTHROPIC_API_KEY" }, { ...plan, apiKeySource: "/login managed key" }])
++  for (const account of [
++    { ...plan, subscriptionType: undefined },
++    { ...plan, apiProvider: "bedrock" as const },
++    { ...plan, apiKeySource: "ANTHROPIC_API_KEY" },
++    { ...plan, apiKeySource: "/login managed key" },
++  ])
+     assert.throws(() => requireClaudeSubscriptionAccount(account), /subscription account/);
+ });
+ 
+@@ -158,6 +237,31 @@ test(
+         { mode: 0o700 },
+       );
+       await startClaudeNativeLogin({ executable, timeoutMs: 10000 }).completion;
++      await writeFile(
++        executable,
++        `#!${process.execPath}\nif(process.env.HTTPS_PROXY !== 'http://127.0.0.1:23456') process.exit(8);\nprocess.stderr.write('fetch failed ECONNREFUSED https://example.invalid?code=synthetic-secret');\nprocess.exit(1);\n`,
++        { mode: 0o700 },
++      );
++      await assert.rejects(
++        startClaudeNativeLogin({
++          executable,
++          env: { HTTPS_PROXY: "http://127.0.0.1:23456" },
++          timeoutMs: 10000,
++        }).completion,
++        (error) =>
++          error instanceof Error && error.message === "Native CLI login failed: network (exit 1)",
++      );
++      await writeFile(
++        executable,
++        `#!${process.execPath}\nprocess.stderr.write('invalid_grant synthetic-token');\nprocess.exit(1);\n`,
++        { mode: 0o700 },
++      );
++      await assert.rejects(
++        startClaudeNativeLogin({ executable, timeoutMs: 10000 }).completion,
++        (error) =>
++          error instanceof Error &&
++          error.message === "Native CLI login failed: authorization (exit 1)",
++      );
+       await writeFile(executable, `#!${process.execPath}\nsetInterval(() => {},1000);\n`, {
+         mode: 0o700,
+       });
+diff --git a/packages/services/test/subscription-bundle.test.ts b/packages/services/test/subscription-bundle.test.ts
+index e6bc799f80f9f1745f1a51003d1ac2394f091cc8..97b2a3857b9a81ba142c71d17d919afa1083abdb 100644
+--- a/packages/services/test/subscription-bundle.test.ts
++++ b/packages/services/test/subscription-bundle.test.ts
+@@ -95,7 +95,9 @@ const state = new URL(browser.verificationUrl).searchParams.get("state");
+ nonce = new URL(browser.verificationUrl).searchParams.get("nonce");
+ assert.equal(new URL(browser.verificationUrl).searchParams.get("agent_name_hint"), "Fleet");
+ await assert.rejects(owner.submit("openai-codex", browser.flowId, "http://127.0.0.1:1455/auth/callback?code=fixture&state=wrong"), /current login/);
+-await owner.submit("openai-codex", browser.flowId, "http://127.0.0.1:1455/auth/callback?code=fixture&client_id=oaiapp-fixture&state=" + state);
++const callback = new URL(new URL(browser.verificationUrl).searchParams.get("redirect_uri"));
++callback.searchParams.set("code", "fixture"); callback.searchParams.set("client_id", "oaiapp-fixture"); callback.searchParams.set("state", state);
++await owner.submit("openai-codex", browser.flowId, callback.href);
+ await owner.finish("openai-codex", browser.flowId);
+ assert.equal((await owner.accounts("openai-codex")).accounts.length, 2);
+ assert.equal(JSON.parse(records.get("model-subscription:openai-codex")).pendingFlowId, undefined);
+diff --git a/packages/services/test/subscription-catalog-replacement.test.ts b/packages/services/test/subscription-catalog-replacement.test.ts
+index 5a78ba913af5ae68ae7026d079ddce9d11db9e9e..163e496cd490e833b0f4385e17b2fa32f992bf3f 100644
+--- a/packages/services/test/subscription-catalog-replacement.test.ts
++++ b/packages/services/test/subscription-catalog-replacement.test.ts
+@@ -76,6 +76,7 @@ async function fixture(inheritedIds?: string[]) {
+     initialConfig: { access: { type: "subscription", provider: "openai-codex", connected: true } },
+   });
+   const service = runtime.providerSettings;
++  let remoteRefreshes = 0;
+   return {
+     providerId,
+     service,
+@@ -90,6 +91,13 @@ async function fixture(inheritedIds?: string[]) {
+     authorize(id: string) {
+       authorized = id;
+     },
++    failRemoteRefresh() {
++      configRuntime.refreshZCodeBuiltin = async () => {
++        remoteRefreshes++;
++        throw new Error("Unrelated built-in catalogue is offline");
++      };
++    },
++    remoteRefreshes: () => remoteRefreshes,
+     async dispose() {
+       runtime.dispose();
+       await rm(directory, { recursive: true, force: true });
+@@ -125,6 +133,24 @@ test("subscription replacement removes absent observations while API merge and e
+   assert.deepEqual(replaced.getExact("fixture", "a-only")?.toJSON(), exact.toJSON());
+ });
+ 
++test("saved subscription authorization and account selection do not depend on remote built-in refresh", async () => {
++  const f = await fixture();
++  try {
++    await f.service.discoverModels(f.providerId);
++    f.failRemoteRefresh();
++    const receipt = await f.service.finishSubscriptionLogin(f.providerId, "saved-login");
++    assert.equal(receipt.authorizedAccountId, "account-a");
++    assert.equal((await f.service.getSubscriptionAccounts(f.providerId)).accounts.length, 2);
++    const changed = await f.service.updateSubscriptionAccounts(f.providerId, {
++      select: "account-b",
++    });
++    assert.equal(changed.accounts.find((account) => account.active)?.id, "account-b");
++    assert.equal(f.remoteRefreshes(), 0);
++  } finally {
++    await f.dispose();
++  }
++});
++
+ test("a legacy synthetic Off snapshot yields to the verified account's effort catalog", async () => {
+   const f = await fixture();
+   try {
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 25181d4070dc3fd89209bf74438396d99c079f4c..7b48bc4c67ddc10e48f7a1904d12a2799e3a3110 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3160,6 +3160,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.connectionMode.switchToStartPlanPrefix": "Switch to",
+   "settings.modelProvider.connectionMode.teamPlan": "Team Plan",
+   "settings.modelProvider.connectionMode.apiKeyBadge": "API",
++  "settings.modelProvider.catalog.usageBased": "Usage-based",
+   "settings.modelProvider.connectionMode.usageBasedApi": "Usage-based API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "Individual",
+   "settings.modelProvider.connectionMode.startPlanBadge": "Free",
+@@ -7284,8 +7285,13 @@ const enUS: Record<string, string> = {
+     "The CLI account has changed. Reconnect to bind the current account.",
+   "settings.modelProvider.nativeCli.failed":
+     "Could not read the native CLI connection. Check the official CLI installation and sign-in.",
++  "settings.modelProvider.nativeCli.network":
++    "Claude sign-in could not reach the official service. Check the app's network or proxy settings, then retry.",
++  "settings.modelProvider.nativeCli.timeout":
++    "Claude sign-in timed out. Retry and complete sign-in in the browser.",
+   "settings.modelProvider.subscription.reconnect": "Reauthorize this account",
+-  "settings.modelProvider.subscription.plan-disabled": "Plan usage disabled",
++  "settings.modelProvider.subscription.plan-disabled": "Signed in · Plan usage disabled",
++  "settings.modelProvider.subscription.identitySignedIn": "Sign-in saved. Enable plan usage to use models.",
+   "settings.modelProvider.subscription.reauth-required": "Reauthorization needed",
+   "settings.modelProvider.subscription.enablePlan": "Enable plan usage",
+   "settings.modelProvider.subscription.officialUsage": "View allowance in ChatGPT",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 5582d5dfc8d5f821daf41b8f72c27a231ad5b06e..ef53bc79d954e33b93e57fe7c779056ca0b1b3c1 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2930,6 +2930,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.connectionMode.switchToStartPlanPrefix": "切换至",
+   "settings.modelProvider.connectionMode.teamPlan": "团队套餐",
+   "settings.modelProvider.connectionMode.apiKeyBadge": "API",
++  "settings.modelProvider.catalog.usageBased": "用量计费",
+   "settings.modelProvider.connectionMode.usageBasedApi": "按量 API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "个人",
+   "settings.modelProvider.connectionMode.startPlanBadge": "免费",
+@@ -6898,8 +6899,13 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.changed": "CLI 账号已切换，请重新连接当前账号。",
+   "settings.modelProvider.nativeCli.failed":
+     "无法读取原生 CLI 连接，请检查官方 CLI 的安装和登录状态。",
++  "settings.modelProvider.nativeCli.network":
++    "Claude 登录无法连接官方服务，请检查软件的网络或代理设置后重试。",
++  "settings.modelProvider.nativeCli.timeout":
++    "Claude 登录已超时，请重试并在浏览器中完成登录。",
+   "settings.modelProvider.subscription.reconnect": "重新授权此账号",
+-  "settings.modelProvider.subscription.plan-disabled": "未授权额度",
++  "settings.modelProvider.subscription.plan-disabled": "已登录，未授权订阅额度",
++  "settings.modelProvider.subscription.identitySignedIn": "账号登录已保存。启用订阅额度后可使用模型。",
+   "settings.modelProvider.subscription.reauth-required": "需重新授权",
+   "settings.modelProvider.subscription.enablePlan": "启用订阅额度",
+   "settings.modelProvider.subscription.officialUsage": "在 ChatGPT 查看额度",
+diff --git a/packages/ui/src/lib/modelSelectionGroups.ts b/packages/ui/src/lib/modelSelectionGroups.ts
+index c7c34a530fa2c899794e028f1034a1bc385465d4..8e2200db424e92f5b2e146e68a6f7fb20950d8c8 100644
+--- a/packages/ui/src/lib/modelSelectionGroups.ts
++++ b/packages/ui/src/lib/modelSelectionGroups.ts
+@@ -21,22 +21,18 @@ export interface ModelProviderGroupLabelOptions {
+   teamPlanFallbackLabel?: string;
+ }
+ 
+-function supportsRegistryApiFormat(
+-  selectedProvider: ZCodeProvider,
+-  apiFormat: string | null | undefined,
+-): boolean {
+-  if (!apiFormat) return false;
+-  // 仅剩 glm（ZCode Agent）provider；三方 CLI 的 api format 差异已随 provider 下线。
+-  return isZCodeAgentProvider(selectedProvider);
+-}
+-
+ export function buildRegistryModelSelectGroups(
+   selectedProvider: ZCodeProvider,
+   view: ModelSelectionView,
+   labels: ModelProviderGroupLabelOptions = {},
+ ): ModelSelectGroup[] {
+   const groups = view.providers.flatMap((provider) => {
+-    if (!supportsRegistryApiFormat(selectedProvider, provider.config.api?.type)) {
++    // The Registry already admitted executable routes. Native subscriptions have
++    // no HTTP API address; they still run beneath this same ZCode Host.
++    if (
++      !isZCodeAgentProvider(selectedProvider) ||
++      (!provider.config.api?.type && provider.config.access?.type !== "native-cli")
++    ) {
+       return [];
+     }
+ 
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index be35464d6e08302be2da39efe23123a085984809..bda8e40e969f7a1adcc7d8e9e5774483ab2d9ca4 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -56,9 +56,13 @@ export function NativeCliConnectionSection({
+       ? "missing"
+       : /account changed/i.test(raw)
+         ? "changed"
+-        : /sign in/i.test(raw)
+-          ? "login"
+-          : "failed";
++        : /timed out|failed: timeout/i.test(raw)
++          ? "timeout"
++          : /failed: network|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|certificate|TLS|proxy/i.test(raw)
++            ? "network"
++            : /sign in|failed: authorization/i.test(raw)
++              ? "login"
++              : "failed";
+     showFeedback({
+       key: `native:${providerId}`,
+       state: "failure",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+index b29793d8f1bdfaa28ced9a9875e800ff79108607..94baabd95abe2337983e6a4d5774c551d4f1435d 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+@@ -28,6 +28,8 @@ export function providerStatusLabel(
+   const key =
+     status === "configured" && provider?.config.access?.type === "subscription"
+       ? "settings.modelProvider.subscriptionConfiguredStatus"
++      : status === "configured" && provider?.config.access?.type === "native-cli"
++        ? "settings.modelProvider.nativeCli.connected"
+       : presentation[status].label;
+   const time = provider?.connectionTest
+     ? new Date(provider.connectionTest.checkedAt).toLocaleTimeString(locale, {
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+index 06c66c84054b8814688234546f42ddf5f5d8e78d..6264f9ce5137b616d6b47f210e091964e8d0c31a 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+@@ -158,7 +158,7 @@ export function ProviderTemplatePicker({
+             value: "subscription",
+             label: intl.formatMessage({ id: "settings.modelProvider.catalog.subscriptions" }),
+           },
+-          { value: "api", label: "API" },
++          { value: "api", label: intl.formatMessage({ id: "settings.modelProvider.catalog.usageBased" }) },
+         ]}
+         onValueChange={setCategory}
+       />
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index a1086a1b13c4ba7b2ad98fba5e148af281947f64..0228b9d4a2a08db4be584264443927e64e4777e5 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -152,7 +152,10 @@ export function SubscriptionConnectionSection({
+           isCurrent: () => attempt.current === version,
+         });
+         if (completed.value.accounts.find((account) => account.id === completed.expand)?.authorizationState === "plan-disabled")
+-          report(new Error("ChatGPT plan permission is not enabled (chatgpt.tokens.use.direct)"));
++          showFeedback({
++            key: `subscription:${providerId}`, state: "success", dismissible: true,
++            message: intl.formatMessage({ id: "settings.modelProvider.subscription.identitySignedIn" }),
++          });
+         else if (completed.accountAdded === false)
+           showFeedback({
+             key: `subscription:${providerId}`,
+diff --git a/packages/ui/test/chatgptConnection.browser.test.tsx b/packages/ui/test/chatgptConnection.browser.test.tsx
+index 51955438e6193ca7a76ab6cb75fe2d2596868ddc..3fc736c3dde27124a50fe37c0a645e61f53da396 100644
+--- a/packages/ui/test/chatgptConnection.browser.test.tsx
++++ b/packages/ui/test/chatgptConnection.browser.test.tsx
+@@ -8,68 +8,271 @@ import { ProviderDetailFeedbackBoundary } from "../src/settings/model-provider-s
+ 
+ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+ const results: Array<{ name: string; error?: string }> = [];
+-const check = (value: unknown, message: string) => { if (!value) throw new Error(message); };
++const check = (value: unknown, message: string) => {
++  if (!value) throw new Error(message);
++};
+ 
+ (window as unknown as Record<string, unknown>).__chatgptConnectionTests = (async () => {
+-for (const [locale, dark, size, width] of [["zh-CN", false, 14, 560], ["zh-CN", true, 20, 320], ["en-US", false, 14, 560], ["en-US", true, 20, 320]] as const) {
+-for (const authorizationState of ["granted", "plan-disabled", "reauth-required"] as const) {
+-  const name = `public ChatGPT ${authorizationState}: ${locale}, ${dark ? "dark" : "light"}, ${size}px, ${width}px`;
+-  document.documentElement.classList.toggle("dark", dark);
+-  document.documentElement.style.setProperty("--ui-font-size", `${size}px`);
+-  const node = document.createElement("div"); document.body.append(node);
+-  node.style.width = `${width}px`;
+-  const root = createRoot(node);
+-  const calls: unknown[][] = [], urls: string[] = [];
+-  let quotaCalls = 0;
+-  const accounts = { accounts: [{ id: "A", label: "Synthetic account", active: true, publicPlan: true, authorizationState }], revision: "r", autoSwitch: false };
+-  const service = {
+-    onDidChange: () => ({ dispose() {} }),
+-    getSubscriptionAccounts: async () => accounts,
+-    getSubscriptionUsage: async () => { quotaCalls++; throw new Error("Unexpected private quota read"); },
+-    beginSubscriptionLogin: async (...args: unknown[]) => {
+-      calls.push(args); return { method: "browser", flowId: "local", verificationUrl: "https://auth.openai.com/api/accounts/authorize?synthetic" };
+-    },
+-    finishSubscriptionLogin: async () => ({ authorizedAccountId: "A", accountAdded: false }),
+-    cancelSubscriptionLogin: async () => {},
+-  };
+-  try {
+-    await act(async () => root.render(
++  for (const [locale, dark, size, width] of [
++    ["zh-CN", false, 14, 560],
++    ["zh-CN", true, 20, 320],
++    ["en-US", false, 14, 560],
++    ["en-US", true, 20, 320],
++  ] as const) {
++    for (const authorizationState of ["granted", "plan-disabled", "reauth-required"] as const) {
++      const name = `public ChatGPT ${authorizationState}: ${locale}, ${dark ? "dark" : "light"}, ${size}px, ${width}px`;
++      document.documentElement.classList.toggle("dark", dark);
++      document.documentElement.style.setProperty("--ui-font-size", `${size}px`);
++      const node = document.createElement("div");
++      document.body.append(node);
++      node.style.width = `${width}px`;
++      const root = createRoot(node);
++      const calls: unknown[][] = [],
++        urls: string[] = [];
++      let quotaCalls = 0;
++      const accounts = {
++        accounts: [
++          {
++            id: "A",
++            label: "Synthetic account",
++            active: true,
++            publicPlan: true,
++            authorizationState,
++          },
++        ],
++        revision: "r",
++        autoSwitch: false,
++      };
++      const service = {
++        onDidChange: () => ({ dispose() {} }),
++        getSubscriptionAccounts: async () => accounts,
++        getSubscriptionUsage: async () => {
++          quotaCalls++;
++          throw new Error("Unexpected private quota read");
++        },
++        beginSubscriptionLogin: async (...args: unknown[]) => {
++          calls.push(args);
++          return {
++            method: "browser",
++            flowId: "local",
++            verificationUrl: "https://auth.openai.com/api/accounts/authorize?synthetic",
++          };
++        },
++        finishSubscriptionLogin: async () => ({ authorizedAccountId: "A", accountAdded: false }),
++        cancelSubscriptionLogin: async () => {},
++      };
++      try {
++        await act(async () =>
++          root.render(
++            <ServiceProvider services={{ providerSettingsService: service } as never}>
++              <PlatformProvider
++                platform={
++                  {
++                    openExternal: async (url: string) => {
++                      urls.push(url);
++                    },
++                  } as never
++                }
++              >
++                <ZCodeIntlProvider initialLocale={locale}>
++                  <ProviderDetailFeedbackBoundary>
++                    <SubscriptionConnectionSection
++                      providerId="chatgpt"
++                      kind="openai-codex"
++                      connected
++                      onRevision={() => {}}
++                    />
++                  </ProviderDetailFeedbackBoundary>
++                </ZCodeIntlProvider>
++              </PlatformProvider>
++            </ServiceProvider>,
++          ),
++        );
++        const button = (text: string) =>
++          [...node.querySelectorAll("button")].find((item) => item.textContent?.trim() === text)!;
++        check(quotaCalls === 0, "Public plan row read a private quota endpoint");
++        const reconnect = button(
++          authorizationState === "plan-disabled"
++            ? locale === "zh-CN"
++              ? "启用订阅额度"
++              : "Enable plan usage"
++            : locale === "zh-CN"
++              ? "重新授权此账号"
++              : "Reauthorize this account",
++        );
++        check(reconnect, "Missing selected-account reauthorization");
++        await act(async () => reconnect.click());
++        check(
++          JSON.stringify(calls[0]) === JSON.stringify(["chatgpt", "browser", "A"]),
++          "Reauthorization registered an unselected account",
++        );
++        check(
++          node.textContent?.includes("Synthetic account"),
++          "Reauthorization lost the saved row",
++        );
++        const usage = button(
++          locale === "zh-CN" ? "在 ChatGPT 查看额度" : "View allowance in ChatGPT",
++        );
++        check(usage, "Missing official allowance action");
++        await act(async () => usage.click());
++        check(
++          urls.at(-1) === "https://chatgpt.com/settings/usage",
++          "Allowance used an unsupported private endpoint",
++        );
++        check(
++          !node.textContent?.includes("100%"),
++          "Unknown quota was presented as a full allowance",
++        );
++        if (authorizationState !== "granted") {
++          const badge =
++            authorizationState === "plan-disabled"
++              ? locale === "zh-CN"
++                ? "已登录，未授权订阅额度"
++                : "Signed in · Plan usage disabled"
++              : locale === "zh-CN"
++                ? "需重新授权"
++                : "Reauthorization needed";
++          check(
++            node.textContent?.includes(badge),
++            "Inactive authorization was hidden from the account row",
++          );
++        }
++        const group = node.querySelector('[role="group"]')!;
++        check(
++          [...group.querySelectorAll("button")].every(
++            (item) => item.getBoundingClientRect().right <= group.getBoundingClientRect().right + 1,
++          ),
++          "Account actions overflow their original card",
++        );
++        results.push({ name });
++      } catch (error) {
++        results.push({ name, error: String(error) });
++      } finally {
++        await act(async () => root.unmount());
++        node.remove();
++      }
++    }
++  }
++  // Start from an empty card: the saved receipt must appear without a registry event,
++  // and remain visible when the user leaves and returns to this connection.
++  for (const state of ["granted", "plan-disabled", "exchange-failed"] as const) {
++    const name = `ChatGPT empty login lifecycle: ${state}`;
++    document.documentElement.classList.remove("dark");
++    document.documentElement.style.setProperty("--ui-font-size", "14px");
++    const node = document.createElement("div");
++    document.body.append(node);
++    const root = createRoot(node);
++    let saved: any[] = [];
++    const done = Promise.withResolvers<void>();
++    let quotaCalls = 0;
++    let cancelled = 0;
++    const service = {
++      onDidChange: () => ({ dispose() {} }),
++      getSubscriptionAccounts: async () => ({
++        accounts: saved,
++        revision: String(saved.length),
++        autoSwitch: false,
++      }),
++      getSubscriptionUsage: async () => {
++        quotaCalls++;
++        throw new Error("Unsupported quota route");
++      },
++      beginSubscriptionLogin: async () => ({
++        method: "browser",
++        flowId: "login",
++        verificationUrl: "https://auth.openai.com/api/accounts/authorize?synthetic",
++      }),
++      finishSubscriptionLogin: async () => {
++        await done.promise;
++        if (state === "exchange-failed") throw new Error("Token exchange failed: HTTP 503");
++        saved = [
++          {
++            id: "saved",
++            label: "Saved identity",
++            active: true,
++            publicPlan: true,
++            authorizationState: state,
++          },
++        ];
++        return { authorizedAccountId: "saved", accountAdded: true };
++      },
++      cancelSubscriptionLogin: async () => {
++        cancelled++;
++      },
++    };
++    const render = () => (
+       <ServiceProvider services={{ providerSettingsService: service } as never}>
+-        <PlatformProvider platform={{ openExternal: async (url: string) => { urls.push(url); } } as never}>
+-          <ZCodeIntlProvider initialLocale={locale}>
++        <PlatformProvider platform={{ openExternal: async () => {} } as never}>
++          <ZCodeIntlProvider initialLocale="zh-CN">
+             <ProviderDetailFeedbackBoundary>
+-              <SubscriptionConnectionSection providerId="chatgpt" kind="openai-codex" connected onRevision={() => {}} />
++              <SubscriptionConnectionSection
++                providerId="chatgpt"
++                kind="openai-codex"
++                connected={saved.length > 0}
++                onRevision={() => {}}
++              />
+             </ProviderDetailFeedbackBoundary>
+           </ZCodeIntlProvider>
+         </PlatformProvider>
+-      </ServiceProvider>,
+-    ));
+-    const button = (text: string) => [...node.querySelectorAll("button")].find((item) => item.textContent?.trim() === text)!;
+-    check(quotaCalls === 0, "Public plan row read a private quota endpoint");
+-    const reconnect = button(authorizationState === "plan-disabled"
+-      ? locale === "zh-CN" ? "启用订阅额度" : "Enable plan usage"
+-      : locale === "zh-CN" ? "重新授权此账号" : "Reauthorize this account");
+-    check(reconnect, "Missing selected-account reauthorization");
+-    await act(async () => reconnect.click());
+-    check(JSON.stringify(calls[0]) === JSON.stringify(["chatgpt", "browser", "A"]), "Reauthorization registered an unselected account");
+-    check(node.textContent?.includes("Synthetic account"), "Reauthorization lost the saved row");
+-    const usage = button(locale === "zh-CN" ? "在 ChatGPT 查看额度" : "View allowance in ChatGPT");
+-    check(usage, "Missing official allowance action");
+-    await act(async () => usage.click());
+-    check(urls.at(-1) === "https://chatgpt.com/settings/usage", "Allowance used an unsupported private endpoint");
+-    check(!node.textContent?.includes("100%"), "Unknown quota was presented as a full allowance");
+-    if (authorizationState !== "granted") {
+-      const badge = authorizationState === "plan-disabled"
+-        ? locale === "zh-CN" ? "未授权额度" : "Plan usage disabled"
+-        : locale === "zh-CN" ? "需重新授权" : "Reauthorization needed";
+-      check(node.textContent?.includes(badge), "Inactive authorization was hidden from the account row");
++      </ServiceProvider>
++    );
++    try {
++      await act(async () => root.render(render()));
++      const connect = [...node.querySelectorAll("button")].find(
++        (button) => button.textContent?.trim() === "连接订阅账号",
++      );
++      check(connect, "Empty account card has no login entry");
++      await act(async () => connect!.click());
++      check(saved.length === 0, "Pending authorization published an account");
++      await act(async () => {
++        done.resolve();
++      });
++      check(quotaCalls === 0, "Public sign-in called private quota routes");
++      if (state === "exchange-failed") {
++        check(
++          node.querySelector('[role="alert"]'),
++          "Failed exchange was presented as a successful login",
++        );
++        check(
++          saved.length === 0 && cancelled === 1,
++          "Failed exchange retained a pending flow or fabricated an account",
++        );
++        check(
++          [...node.querySelectorAll("button")].some(
++            (button) => button.textContent?.trim() === "连接订阅账号",
++          ),
++          "Failed login removed retry",
++        );
++      } else {
++        check(
++          node.textContent?.includes("Saved identity"),
++          "Saved login receipt did not refresh the empty account list",
++        );
++        if (state === "plan-disabled") {
++          check(
++            node.textContent?.includes("已登录，未授权订阅额度"),
++            "Identity-only login was labelled disconnected",
++          );
++          check(
++            !node.querySelector('[role="alert"]'),
++            "Identity-only sign-in was presented as an error",
++          );
++        }
++        await act(async () => root.render(null));
++        await act(async () => root.render(render()));
++        check(
++          node.textContent?.includes("Saved identity"),
++          "Reopening lost the saved authorization",
++        );
++      }
++      results.push({ name });
++    } catch (error) {
++      results.push({ name, error: String(error) });
++    } finally {
++      done.resolve();
++      await act(async () => root.unmount());
++      node.remove();
+     }
+-    const group = node.querySelector('[role="group"]')!;
+-    check([...group.querySelectorAll("button")].every((item) => item.getBoundingClientRect().right <= group.getBoundingClientRect().right + 1), "Account actions overflow their original card");
+-    results.push({ name });
+-  } catch (error) { results.push({ name, error: String(error) }); }
+-  finally { await act(async () => root.unmount()); node.remove(); }
+-}
+-}
+-return results;
++  }
++  return results;
+ })();
+diff --git a/packages/ui/test/combinedModelControl.browser.test.tsx b/packages/ui/test/combinedModelControl.browser.test.tsx
+index 8488670a3df9cea3d127c5fbbab65e5caba1d627..0be77a758abfa2bcc22b95ef43c3e6ed0e49fc40 100644
+--- a/packages/ui/test/combinedModelControl.browser.test.tsx
++++ b/packages/ui/test/combinedModelControl.browser.test.tsx
+@@ -1,4 +1,5 @@
+ import { act, useState } from "react";
++import { ZCODE_AGENT_PROVIDER } from "@zcode/shared";
+ import { createRoot } from "react-dom/client";
+ import { ComposerModelControl } from "../src/chat-input-toolbar/ComposerModelControl.js";
+ import { TooltipProvider } from "../src/components/ui/tooltip.js";
+@@ -37,7 +38,7 @@ function Fixture({
+         >
+           <button style={{ width: 28 }}>+</button>
+           <ComposerModelControl
+-            provider="zcode"
++            provider={ZCODE_AGENT_PROVIDER}
+             thought={
+               {
+                 type: "select",
+diff --git a/packages/ui/test/modelEvidenceSelection.test.ts b/packages/ui/test/modelEvidenceSelection.test.ts
+index 4d7a5330c543268f801006ec21bc96ff758ced36..91065c35cb4b29325effe80e3aaa15f584860c98 100644
+--- a/packages/ui/test/modelEvidenceSelection.test.ts
++++ b/packages/ui/test/modelEvidenceSelection.test.ts
+@@ -1,6 +1,8 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import { buildRegistryModelSelectGroups } from "../src/lib/modelSelectionGroups.js";
+ import type { ModelSelectionView } from "@zcode/services";
++import { ZCODE_AGENT_PROVIDER } from "@zcode/shared";
+ import { resolveDraftInitialModelSelection } from "../src/lib/composerRecent.js";
+ import { modelSupportsFast, resolveModelThoughtOption } from "../src/lib/modelThoughtOption.js";
+ 
+@@ -9,6 +11,35 @@ const runtimeConfig = {
+   optionSpecs: { reasoningLevel: { values: ["low", "high"] } },
+ };
+ 
++test("the composer retains a registry-admitted native subscription without an API address", () => {
++  const catalog = {
++    providers: [
++      {
++        providerId: "claude",
++        providerName: "Claude",
++        config: {
++          access: { type: "native-cli", provider: "claude", connected: true, accountId: "fixture" },
++        },
++        models: [{ modelId: "claude-opus-5-5", config: runtimeConfig, evidenceConfig: {} }],
++      },
++      {
++        providerId: "api",
++        providerName: "API",
++        config: { access: { type: "api-key" }, api: { type: "openai-responses" } },
++        models: [{ modelId: "api-model", config: runtimeConfig, evidenceConfig: {} }],
++      },
++      { providerId: "incomplete", config: { access: { type: "api-key" } }, models: [] },
++    ],
++  } as unknown as ModelSelectionView;
++  const groups = buildRegistryModelSelectGroups(ZCODE_AGENT_PROVIDER, catalog);
++  assert.deepEqual(
++    groups.map((group) => group.label),
++    ["Claude", "API"],
++  );
++  assert.equal(groups[0]!.items[0]!.name, "claude-opus-5-5");
++  assert.equal(groups[1]!.items[0]!.name, "api-model");
++});
++
+ function view(evidenceConfig: object, config: object = runtimeConfig): ModelSelectionView {
+   return {
+     providers: [
+diff --git a/packages/ui/test/nativeCliConnection.browser.test.tsx b/packages/ui/test/nativeCliConnection.browser.test.tsx
+index c939d8746eff5fe389ada5b78efef80c185bc8c4..2d786b25d7db823c334f9418d2f83b0786df7159 100644
+--- a/packages/ui/test/nativeCliConnection.browser.test.tsx
++++ b/packages/ui/test/nativeCliConnection.browser.test.tsx
+@@ -148,7 +148,8 @@ async function run() {
+       await f.render();
+       await f.click("连接当前账号");
+       check(
+-        f.node.textContent?.includes("内置 Claude 执行器不可用") && !f.node.textContent?.includes("ENOENT"),
++        f.node.textContent?.includes("内置 Claude 执行器不可用") &&
++          !f.node.textContent?.includes("ENOENT"),
+         "Raw or unlocalized process error",
+       );
+       check(!f.node.querySelector('[role="dialog"]'), "Connection failure opened a model editor");
+@@ -156,5 +157,28 @@ async function run() {
+       await f.close();
+     }
+   });
++  for (const [reason, expected] of [
++    ["network", "网络或代理设置"],
++    ["timeout", "登录已超时"],
++  ] as const) {
++    await test(`native ${reason} failure has scoped recovery without opening the model editor`, async () => {
++      const f = await fixture();
++      f.setConnect(async () => {
++        throw new Error(`Native CLI login failed: ${reason} (exit 1)`);
++      });
++      try {
++        await f.render();
++        await f.click("连接当前账号");
++        check(f.node.textContent?.includes(expected), "Native failure lost its reason");
++        check(
++          !f.node.textContent?.includes("exit 1") && !f.node.querySelector('[role="dialog"]'),
++          "Raw failure or model editor leaked into recovery",
++        );
++        check(f.changed() === 0, "Failed sign-in published a connected account");
++      } finally {
++        await f.close();
++      }
++    });
++  }
+ }
+ (window as any).__nativeCliTests = run().then(() => results);
+diff --git a/patches/@earendil-works__pi-ai@0.99.2.patch b/patches/@earendil-works__pi-ai@0.99.2.patch
+index 31f30b5972cd4a622a851ef4b3f932be1c80a01b..f199850e98038ae074f4b5d39cadef177157e517 100644
+--- a/patches/@earendil-works__pi-ai@0.99.2.patch
++++ b/patches/@earendil-works__pi-ai@0.99.2.patch
+@@ -25,75 +25,8 @@ index 09e54941f456ab1b5cedd23710711c2c2a40db39..88e6ebf8dd42e43d42c3677bed414242
+      if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`${response.status} ${response.statusText}: ${text}`);
+-diff --git a/dist/auth/oauth/openai-codex.js b/dist/auth/oauth/openai-codex.js
+-index 04813e44dde0d5cd2a828aa0a2fbc0ed1dfc2df9..ee6cbf5ede2f73b76e482d4894cf80b5a386c6d7 100644
+---- a/dist/auth/oauth/openai-codex.js
+-+++ b/dist/auth/oauth/openai-codex.js
+-@@ -1,3 +1,4 @@
+-+import { oauthFetch } from "../../utils/oauth-fetch.js";
+- /**
+-  * OpenAI Codex (ChatGPT OAuth) flow
+-  *
+-@@ -84,7 +85,7 @@ function decodeJwt(token) {
+- }
+- async function fetchWithLoginCancellation(input, init) {
+-     try {
+--        return await fetch(input, init);
+-+        return await oauthFetch(input, init);
+-     }
+-     catch (error) {
+-         if (init.signal?.aborted) {
+-@@ -127,7 +128,7 @@ async function exchangeAuthorizationCode(code, verifier, redirectUri, signal) {
+- async function refreshAccessToken(refreshToken, signal) {
+-     let response;
+-     try {
+--        response = await fetch(TOKEN_URL, {
+-+        response = await oauthFetch(TOKEN_URL, {
+-             method: "POST",
+-             headers: { "Content-Type": "application/x-www-form-urlencoded" },
+-             body: new URLSearchParams({
+-diff --git a/dist/auth/oauth/xai.js b/dist/auth/oauth/xai.js
+-index f70a3beaf50222a12006d8f4ffc951397d1a9b62..5dd8051aed33b0552d9c1dc93590d75263c03400 100644
+---- a/dist/auth/oauth/xai.js
+-+++ b/dist/auth/oauth/xai.js
+-@@ -1,3 +1,4 @@
+-+import { oauthFetch } from "../../utils/oauth-fetch.js";
+- /**
+-  * xAI OAuth device-code flow.
+-  */
+-@@ -41,7 +42,7 @@ function validateVerificationUri(raw) {
+- async function postForm(url, fields, signal) {
+-     let response;
+-     try {
+--        response = await fetch(url, {
+-+        response = await oauthFetch(url, {
+-             method: "POST",
+-             headers: {
+-                 Accept: "application/json",
+-diff --git a/dist/utils/oauth-fetch.d.ts b/dist/utils/oauth-fetch.d.ts
+-new file mode 100644
+-index 0000000000000000000000000000000000000000..0d3bd3b737d59e8521a92dfb4bf38ae871c5c1d1
+---- /dev/null
+-+++ b/dist/utils/oauth-fetch.d.ts
+-@@ -0,0 +1,2 @@
+-+export declare function withOAuthFetch<T>(fetcher: typeof globalThis.fetch, operation: () => T): T;
+-+export declare const oauthFetch: typeof globalThis.fetch;
+-diff --git a/dist/utils/oauth-fetch.js b/dist/utils/oauth-fetch.js
+-new file mode 100644
+-index 0000000000000000000000000000000000000000..c69983a66798218ce465072083aaf51ae5d87d7f
+---- /dev/null
+-+++ b/dist/utils/oauth-fetch.js
+-@@ -0,0 +1,9 @@
+-+// Fleet transport seam: OAuth remains owned by Pi; each async request uses its Host network.
+-+import { AsyncLocalStorage } from "node:async_hooks";
+-+const transports = new AsyncLocalStorage();
+-+export function withOAuthFetch(fetcher, operation) {
+-+  return transports.run(fetcher, operation);
+-+}
+-+export function oauthFetch(input, init) {
+-+  return (transports.getStore() ?? globalThis.fetch)(input, init);
+-+}
+ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.js
++index b1c7a6164704ef19799f2e5f403a9fb90591403b..3ec73745345fe2e58bfda0c107f39615b7331d8c 100644
+ --- a/dist/auth/oauth/openai-chatgpt.js
+ +++ b/dist/auth/oauth/openai-chatgpt.js
+ @@ -1,3 +1,4 @@
+@@ -101,7 +34,7 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+  /**
+   * OpenAI Responses API token sharing through Sign in with ChatGPT.
+   *
+-@@ -27,7 +28,7 @@
++@@ -27,7 +28,7 @@ const EXPIRY_MARGIN_MS = 3 * 60 * 1000;
+  function randomValue() {
+      return randomBytes(32).toString("base64url");
+  }
+@@ -110,7 +43,7 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+      const code = url.searchParams.get("code");
+      if (!code)
+          throw new Error("Missing authorization code");
+-@@ -36,12 +37,15 @@
++@@ -36,12 +37,15 @@ function authorizationResultFromCallback(url, expectedState) {
+          throw new Error("Missing OAuth state");
+      if (state !== expectedState)
+          throw new Error("OAuth state mismatch");
+@@ -124,13 +57,19 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+      return { code, clientId };
+  }
+ -function authorizationResultFromManualInput(input, expectedState) {
+-+function authorizationResultFromManualInput(input, expectedState, expectedClientId) {
+++function authorizationResultFromManualInput(input, expectedState, expectedClientId, redirectUri = REDIRECT_URI) {
+      let url;
+      try {
+          url = new URL(input.trim());
+-@@ -53,16 +57,17 @@
++@@ -49,20 +53,21 @@ function authorizationResultFromManualInput(input, expectedState) {
++     catch {
++         throw new Error("Paste the full callback URL from the browser");
++     }
++-    const expected = new URL(REDIRECT_URI);
+++    const expected = new URL(redirectUri);
+      if (url.origin !== expected.origin || url.pathname !== expected.pathname) {
+-         throw new Error(`The pasted callback URL must start with ${REDIRECT_URI}`);
++-        throw new Error(`The pasted callback URL must start with ${REDIRECT_URI}`);
+++        throw new Error(`The pasted callback URL must start with ${redirectUri}`);
+      }
+ +    if (url.searchParams.get("state") !== expectedState) throw new Error("OAuth state mismatch");
+      const error = url.searchParams.get("error");
+@@ -148,7 +87,7 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+      return new Promise((resolve, reject) => {
+          let resolveResult;
+          let rejectResult;
+-@@ -77,7 +82,8 @@
++@@ -77,7 +82,8 @@ function startCallbackServer(expectedState) {
+                      sendHtml(response, 404, oauthErrorHtml("Callback route not found."));
+                      return;
+                  }
+@@ -158,7 +97,7 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+                  if (error) {
+                      sendHtml(response, 400, oauthErrorHtml("ChatGPT was not connected.", `Error: ${error}`));
+                      rejectResult(new Error(`ChatGPT authorization failed: ${error}`));
+-@@ -85,7 +91,7 @@
++@@ -85,14 +91,14 @@ function startCallbackServer(expectedState) {
+                  }
+                  let authorizationResult;
+                  try {
+@@ -167,7 +106,29 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+                  }
+                  catch (error) {
+                      const message = error instanceof Error ? error.message : "Invalid callback";
+-@@ -108,7 +114,7 @@
++                     sendHtml(response, 400, oauthErrorHtml(message));
++                     return;
++                 }
++-                sendHtml(response, 200, oauthSuccessHtml("ChatGPT authentication completed. You can close this window."));
+++                sendHtml(response, 200, oauthSuccessHtml("Authorization received. Return to the app to finish connecting ChatGPT."));
++                 resolveResult(authorizationResult);
++             }
++             catch {
++@@ -100,15 +106,19 @@ function startCallbackServer(expectedState) {
++             }
++         });
++         server.once("error", reject);
++-        server.listen(CALLBACK_PORT, CALLBACK_HOST, () => {
+++        // Each pending login owns a fresh loopback socket. Another desktop/CLI
+++        // listener on 1455 must never receive this application's callback.
+++        server.listen(0, CALLBACK_HOST, () => {
++             server.removeListener("error", reject);
++             server.on("error", rejectResult);
++-            resolve({ server, result });
+++            const address = server.address();
+++            const redirectUri = `http://127.0.0.1:${address.port}${CALLBACK_PATH}`;
+++            resolve({ server, result, redirectUri });
++         });
+      });
+  }
+  async function requestToken(body, signal) {
+@@ -176,34 +137,46 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+          method: "POST",
+          headers: {
+              accept: "application/json",
+-@@ -133,7 +139,7 @@
++@@ -133,15 +143,19 @@ function requireTokenString(value, field) {
+      }
+      return value;
+  }
+ -function credentialFromTokenResponse(token, clientId) {
+ +function credentialFromTokenResponse(token, clientId, allowIdentityOnly = false) {
+      const access = requireTokenString(token.access_token, "access_token");
+-     const refresh = requireTokenString(token.refresh_token, "refresh_token");
++-    const refresh = requireTokenString(token.refresh_token, "refresh_token");
+      const scope = requireTokenString(token.scope, "scope");
+-@@ -141,7 +147,7 @@
++     if (typeof token.expires_in !== "number" || !Number.isFinite(token.expires_in) || token.expires_in <= 0) {
+          throw new Error("OpenAI OAuth token response has invalid expires_in");
+      }
+      const scopes = scope.trim().split(/\s+/).filter(Boolean);
+ -    if (!scopes.includes(DIRECT_TOKEN_SCOPE)) {
+++    // Declining plan access can grant identity without offline access. Retain
+++    // that verified registration; never treat it as an inference credential.
+++    const identityOnly = allowIdentityOnly && !scopes.includes(DIRECT_TOKEN_SCOPE);
+++    const refresh = identityOnly && token.refresh_token == null
+++        ? "" : requireTokenString(token.refresh_token, "refresh_token");
+ +    if (!scopes.includes(DIRECT_TOKEN_SCOPE) && !allowIdentityOnly) {
+          throw new Error(`OpenAI OAuth grant did not include ${DIRECT_TOKEN_SCOPE}`);
+      }
+      return {
+-@@ -153,7 +159,7 @@
++@@ -153,13 +167,13 @@ function credentialFromTokenResponse(token, clientId) {
+          scopes,
+      };
+  }
+ -async function exchangeAuthorizationCode(code, verifier, clientId, signal) {
+-+async function exchangeAuthorizationCode(code, verifier, clientId, signal, allowIdentityOnly) {
+++async function exchangeAuthorizationCode(code, verifier, clientId, signal, allowIdentityOnly, redirectUri = REDIRECT_URI) {
+      const token = await requestToken(new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: clientId,
+-@@ -167,7 +173,7 @@
++         code,
++         code_verifier: verifier,
++-        redirect_uri: REDIRECT_URI,
+++        redirect_uri: redirectUri,
++         resource: RESOURCE,
++     }), signal);
++     // Pi does not use the ID token to identify the user or read profile data.
++@@ -167,7 +181,7 @@ async function exchangeAuthorizationCode(code, verifier, clientId, signal) {
+      if (typeof token.id_token !== "string" || token.id_token.trim().length === 0) {
+          throw new Error("OpenAI OAuth token response did not contain an ID token");
+      }
+@@ -212,7 +185,7 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+  }
+  async function refreshAccessToken(credential, signal) {
+      const clientId = credential.clientId;
+-@@ -180,7 +186,7 @@
++@@ -180,7 +194,7 @@ async function refreshAccessToken(credential, signal) {
+          refresh_token: credential.refresh,
+          resource: RESOURCE,
+      }), signal);
+@@ -221,7 +194,7 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+  }
+  /** OpenAI identifies each installation ("agent host") by a stable URI such as `urn:uuid:<uuid>`. */
+  function agentHostId(deviceId) {
+-@@ -196,7 +202,7 @@
++@@ -196,7 +210,7 @@ async function loginOpenAIChatGPT(interaction, options) {
+      const nonce = randomValue();
+      let callback;
+      try {
+@@ -230,17 +203,104 @@ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.
+      }
+      catch (error) {
+          interaction.notify({
+-@@ -231,11 +237,11 @@
+-         placeholder: REDIRECT_URI,
++@@ -205,12 +219,13 @@ async function loginOpenAIChatGPT(interaction, options) {
++         });
++     }
++     const authorizationUrl = new URL(AUTHORIZE_URL);
+++    const redirectUri = callback?.redirectUri ?? REDIRECT_URI;
++     authorizationUrl.search = new URLSearchParams({
++         client_id: DYNAMIC_CLIENT_ID,
++         agent_name_hint: AGENT_NAME_HINT,
++         ext_agent_host_id: hostId,
++         response_type: "code",
++-        redirect_uri: REDIRECT_URI,
+++        redirect_uri: redirectUri,
++         resource: RESOURCE,
++         scope: SCOPE,
++         state,
++@@ -228,14 +243,14 @@ async function loginOpenAIChatGPT(interaction, options) {
++         .prompt({
++         type: "manual_code",
++         message: "Complete login in your browser, or paste the final redirect URL here:",
++-        placeholder: REDIRECT_URI,
+++        placeholder: redirectUri,
+          signal: AbortSignal.any([manualAbort.signal, interaction.signal]),
+      })
+ -        .then((input) => authorizationResultFromManualInput(input, state));
+-+        .then((input) => authorizationResultFromManualInput(input, state, options?.chatgptClientId));
+++        .then((input) => authorizationResultFromManualInput(input, state, options?.chatgptClientId, redirectUri));
+      try {
+          const result = await (callback ? Promise.race([callback.result, manualCode]) : manualCode);
+          interaction.notify({ type: "progress", message: "Exchanging authorization code for tokens..." });
+ -        return await exchangeAuthorizationCode(result.code, verifier, result.clientId, interaction.signal);
+-+        return await exchangeAuthorizationCode(result.code, verifier, result.clientId, interaction.signal, options?.allowChatGPTIdentityOnly);
+++        return await exchangeAuthorizationCode(result.code, verifier, result.clientId, interaction.signal, options?.allowChatGPTIdentityOnly, redirectUri);
+      }
+      catch (error) {
+          if (interaction.signal.aborted)
++diff --git a/dist/auth/oauth/openai-codex.js b/dist/auth/oauth/openai-codex.js
++index 2ea03fc282a4ce547122e7f1031bb2aff5293422..722d9739498e48e38aa1de9f7d3174b9f853a992 100644
++--- a/dist/auth/oauth/openai-codex.js
+++++ b/dist/auth/oauth/openai-codex.js
++@@ -1,3 +1,4 @@
+++import { oauthFetch } from "../../utils/oauth-fetch.js";
++ /**
++  * OpenAI Codex (ChatGPT OAuth) flow
++  *
++@@ -80,7 +81,7 @@ function decodeJwt(token) {
++ }
++ async function fetchWithLoginCancellation(input, init) {
++     try {
++-        return await fetch(input, init);
+++        return await oauthFetch(input, init);
++     }
++     catch (error) {
++         if (init.signal?.aborted) {
++@@ -123,7 +124,7 @@ async function exchangeAuthorizationCode(code, verifier, redirectUri, signal) {
++ async function refreshAccessToken(refreshToken, signal) {
++     let response;
++     try {
++-        response = await fetch(TOKEN_URL, {
+++        response = await oauthFetch(TOKEN_URL, {
++             method: "POST",
++             headers: { "Content-Type": "application/x-www-form-urlencoded" },
++             body: new URLSearchParams({
++diff --git a/dist/auth/oauth/xai.js b/dist/auth/oauth/xai.js
++index f70a3beaf50222a12006d8f4ffc951397d1a9b62..5dd8051aed33b0552d9c1dc93590d75263c03400 100644
++--- a/dist/auth/oauth/xai.js
+++++ b/dist/auth/oauth/xai.js
++@@ -1,3 +1,4 @@
+++import { oauthFetch } from "../../utils/oauth-fetch.js";
++ /**
++  * xAI OAuth device-code flow.
++  */
++@@ -41,7 +42,7 @@ function validateVerificationUri(raw) {
++ async function postForm(url, fields, signal) {
++     let response;
++     try {
++-        response = await fetch(url, {
+++        response = await oauthFetch(url, {
++             method: "POST",
++             headers: {
++                 Accept: "application/json",
++diff --git a/dist/utils/oauth-fetch.d.ts b/dist/utils/oauth-fetch.d.ts
++new file mode 100644
++index 0000000000000000000000000000000000000000..0d3bd3b737d59e8521a92dfb4bf38ae871c5c1d1
++--- /dev/null
+++++ b/dist/utils/oauth-fetch.d.ts
++@@ -0,0 +1,2 @@
+++export declare function withOAuthFetch<T>(fetcher: typeof globalThis.fetch, operation: () => T): T;
+++export declare const oauthFetch: typeof globalThis.fetch;
++diff --git a/dist/utils/oauth-fetch.js b/dist/utils/oauth-fetch.js
++new file mode 100644
++index 0000000000000000000000000000000000000000..c69983a66798218ce465072083aaf51ae5d87d7f
++--- /dev/null
+++++ b/dist/utils/oauth-fetch.js
++@@ -0,0 +1,9 @@
+++// Fleet transport seam: OAuth remains owned by Pi; each async request uses its Host network.
+++import { AsyncLocalStorage } from "node:async_hooks";
+++const transports = new AsyncLocalStorage();
+++export function withOAuthFetch(fetcher, operation) {
+++  return transports.run(fetcher, operation);
+++}
+++export function oauthFetch(input, init) {
+++  return (transports.getStore() ?? globalThis.fetch)(input, init);
+++}
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 5fea94a379441fe08046ee91d47632719736d185..8d4ed2d84eab46bbe1639a3f287c2752afc47de4 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -19,7 +19,7 @@ patchedDependencies:
+     hash: 36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97
+     path: patches/@arms__rum-electron@0.0.3.patch
+   '@earendil-works/pi-ai@0.99.2':
+-    hash: 7a65392bbd048b21813916536edeb5cea8956e8e65be1775d7648c00d6f7c041
++    hash: c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde
+     path: patches/@earendil-works__pi-ai@0.99.2.patch
+ 
+ importers:
+@@ -150,7 +150,7 @@ importers:
+         version: 0.3.286(@anthropic-ai/sdk@0.124.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(zod@4.6.5)
+       '@earendil-works/pi-ai':
+         specifier: 0.99.2
+-        version: 0.99.2(patch_hash=7a65392bbd048b21813916536edeb5cea8956e8e65be1775d7648c00d6f7c041)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++        version: 0.99.2(patch_hash=c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@modelcontextprotocol/client':
+         specifier: 2.0.0
+         version: 2.0.0
+@@ -370,7 +370,7 @@ importers:
+     dependencies:
+       '@earendil-works/pi-ai':
+         specifier: 0.99.2
+-        version: 0.99.2(patch_hash=7a65392bbd048b21813916536edeb5cea8956e8e65be1775d7648c00d6f7c041)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++        version: 0.99.2(patch_hash=c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@earendil-works/pi-coding-agent':
+         specifier: 0.99.2
+         version: 0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(zod@4.6.5)
+@@ -970,7 +970,7 @@ importers:
+     dependencies:
+       '@earendil-works/pi-ai':
+         specifier: 0.99.2
+-        version: 0.99.2(patch_hash=7a65392bbd048b21813916536edeb5cea8956e8e65be1775d7648c00d6f7c041)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)
++        version: 0.99.2(patch_hash=c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)
+       '@larksuiteoapi/node-sdk':
+         specifier: 1.64.0
+         version: 1.64.0
+@@ -11174,7 +11174,7 @@ snapshots:
+   '@earendil-works/pi-agent-core@0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
+     dependencies:
+       '@earendil-works/chord': 0.99.2
+-      '@earendil-works/pi-ai': 0.99.2(patch_hash=7a65392bbd048b21813916536edeb5cea8956e8e65be1775d7648c00d6f7c041)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-ai': 0.99.2(patch_hash=c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@earendil-works/pi-telemetry': 0.99.2
+       diff: 8.0.4
+       ignore: 7.0.8
+@@ -11193,7 +11193,7 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-ai@0.99.2(patch_hash=7a65392bbd048b21813916536edeb5cea8956e8e65be1775d7648c00d6f7c041)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)':
++  '@earendil-works/pi-ai@0.99.2(patch_hash=c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.124.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+@@ -11218,7 +11218,7 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-ai@0.99.2(patch_hash=7a65392bbd048b21813916536edeb5cea8956e8e65be1775d7648c00d6f7c041)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
++  '@earendil-works/pi-ai@0.99.2(patch_hash=c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.124.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+@@ -11251,7 +11251,7 @@ snapshots:
+     dependencies:
+       '@earendil-works/chord': 0.99.2
+       '@earendil-works/pi-agent-core': 0.99.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+-      '@earendil-works/pi-ai': 0.99.2(patch_hash=7a65392bbd048b21813916536edeb5cea8956e8e65be1775d7648c00d6f7c041)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-ai': 0.99.2(patch_hash=c92e5298432ca86fcdabf81146186391b453ea5758615b0f80746c6b93593bde)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@earendil-works/pi-codemode': 0.99.2
+       '@earendil-works/pi-mcp': 0.99.2
+       '@earendil-works/pi-tui': 0.99.2
+diff --git a/scripts/test-native-bundle.mjs b/scripts/test-native-bundle.mjs
+index e3474da50aad4f777c871188e2d3b981b998013b..9adf3e007893a28c9bd0b702d38244b9254f136d 100644
+--- a/scripts/test-native-bundle.mjs
++++ b/scripts/test-native-bundle.mjs
+@@ -334,7 +334,10 @@ child.on('exit',code=>process.exit(code??1));process.on('SIGTERM',()=>child.kill
+   await waitFor("fixture-restored");
+   assert.equal(nativeCheckpoint().continuation.sessionId, firstNativeSessionId,
+     "The staged CLI did not resume the same native session");
+-  assert.equal(JSON.stringify(requests.at(-1).messages.at(-1).content).includes("Read evidence.txt and finish."), false,
++  const resumedInput = JSON.stringify(requests.at(-1).messages.filter(message => message.role === "user").at(-1).content);
++  assert.ok(resumedInput.includes("Continue after process restart."),
++    "The staged native resume did not receive the new user input");
++  assert.equal(resumedInput.includes("Read evidence.txt and finish."), false,
+     "The staged native resume duplicated visible history");
+   assert.equal(requests.length, 3);
+   const stats = await rpc("usage/stats", { range: "all" });

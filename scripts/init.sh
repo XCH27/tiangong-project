@@ -42,7 +42,23 @@ fi
 command -v python3 >/dev/null 2>&1 && ok "python3 (doc-contract validator)" || bad "python3 missing"
 
 echo
-echo "3. Reference mirror (AGENTS.md preflight)"
+echo "3. Active ZCode candidate"
+if [ -d .fleet/zcode/.git ]; then
+  git -C .fleet/zcode config core.hooksPath "$ROOT/.githooks/zcode"
+  ok "candidate commit gates include desktop/service types and all Agent CLI packages"
+  command -v node >/dev/null 2>&1 && ok "node $(node --version)" || bad "node missing"
+  command -v pnpm >/dev/null 2>&1 && ok "pnpm $(cd .fleet/zcode && pnpm --version) (candidate package manager)" || bad "pnpm missing"
+  if git -C .fleet/zcode merge-base --is-ancestor "29628c9acdb81b703bbd4080c207a0e7ce5e276e" HEAD; then
+    ok "candidate history retains the declared reconstruction base; feature commits are supported"
+  else
+    bad "candidate history no longer contains the declared reconstruction base"
+  fi
+else
+  warn "active candidate absent — reconstruct patches/zcode before running candidate checks"
+fi
+
+echo
+echo "4. Retained Craft reference pins (preservation checks)"
 if [ -d 源码参考/software/craft-agents-oss ]; then
   ok "源码参考/ mounted"
   for pin in "craft-agents-oss-v0.10.5:v0.10.5" "craft-agents-oss:"; do

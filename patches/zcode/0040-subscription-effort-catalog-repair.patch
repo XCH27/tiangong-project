@@ -1,0 +1,208 @@
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index 7b78ca3..2f09d6b 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -426,7 +426,10 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+         : [...(provider.personalModelIds ?? [])];
+       const existing = new Set([...inherited, ...personal]);
+       // 订阅目录属于当前账号；只替换观察和成员，精确/手动修正保持休眠以供切回恢复。
+-      const rules = current.models.withDiscovered(id, incoming, replace);
++      const prior = replace
++        ? current.models.withoutLegacySubscriptionOffSnapshots(id, incoming)
++        : current.models;
++      const rules = prior.withDiscovered(id, incoming, replace);
+       for (const model of incoming) {
+         if (!existing.has(model.modelId)) {
+           existing.add(model.modelId);
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index eaeea52..26aa83e 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -499,6 +499,32 @@ export class ModelConfigRules {
+     ]);
+   }
+ 
++  /** Retire an early Codex catalog snapshot only when a newer account read proves its lone
++   * synthetic off level was stale. Explicit manual rules and changed smart overrides survive. */
++  withoutLegacySubscriptionOffSnapshots(
++    providerId: string,
++    models: readonly { modelId: string; config: ModelConfig }[],
++  ): ModelConfigRules {
++    const observed = new Map(models.map((model) => [model.modelId, model.config.toJSON()]));
++    return new ModelConfigRules(this.#rules.filter((rule) => {
++      if (rule.type !== "provider-model" || rule.providerId !== providerId) return true;
++      const current = rule.config.toJSON();
++      const latest = observed.get(rule.modelId);
++      if (!latest || current.enabled !== true || !current.properties?.contextWindow) return true;
++      const oldReasoning = current.optionSpecs?.reasoningLevel;
++      const newReasoning = latest.optionSpecs?.reasoningLevel;
++      if (
++        oldReasoning?.map !== "{}" ||
++        oldReasoning.values?.length !== 1 || oldReasoning.values[0] !== "off" ||
++        oldReasoning.defaultValue !== undefined ||
++        !newReasoning?.values?.some((level) => level !== "off") ||
++        Object.keys(current.optionSpecs ?? {}).length !== 1 ||
++        JSON.stringify(current.properties) !== JSON.stringify(latest.properties)
++      ) return true;
++      return false;
++    }));
++  }
++
+   observedRecommendations(builtin: ModelConfigRules): ModelConfigRules {
+     return new ModelConfigRules([
+       ...builtin.rules(),
+diff --git a/packages/services/src/model-provider/subscriptionCatalog.ts b/packages/services/src/model-provider/subscriptionCatalog.ts
+index 2427cfc..3d1cee3 100644
+--- a/packages/services/src/model-provider/subscriptionCatalog.ts
++++ b/packages/services/src/model-provider/subscriptionCatalog.ts
+@@ -227,7 +227,7 @@ export function parseNativeSubscriptionCatalog(
+             }
+           : {}),
+         ...(output ? { maxOutputTokens: { max: output, map: "{}" } } : {}),
+-        ...(Array.isArray(rawEfforts)
++        ...(Array.isArray(rawEfforts) && (efforts.length > 0 || defaultEffort === "off")
+           ? {
+               reasoningLevel: {
+                 values: efforts.length ? efforts : ["off"],
+diff --git a/packages/services/test/subscription-catalog-replacement.test.ts b/packages/services/test/subscription-catalog-replacement.test.ts
+index d689b88..6b55b4b 100644
+--- a/packages/services/test/subscription-catalog-replacement.test.ts
++++ b/packages/services/test/subscription-catalog-replacement.test.ts
+@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { NodeModelSelectionConfigRepository } from "@zcode/provider-node";
+-import { ModelConfigRules, parseModelConfig } from "@zcode/provider";
++import { ModelConfigRules, completeNewModelSelection, parseModelConfig } from "@zcode/provider";
+ import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
+ import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
+ import type { SubscriptionConnectionOwner } from "../src/model-provider/subscriptionConnections.js";
+@@ -125,6 +125,59 @@ test("subscription replacement removes absent observations while API merge and e
+   assert.deepEqual(replaced.getExact("fixture", "a-only")?.toJSON(), exact.toJSON());
+ });
+ 
++test("a legacy synthetic Off snapshot yields to the verified account's effort catalog", async () => {
++  const f = await fixture();
++  try {
++    const properties = { contextWindow: 272000, inputFormat: {
++      supportsText: true, supportsImage: true, supportsVideo: false,
++      supportsAudio: false, supportsPdf: false,
++    } };
++    await f.service.addPersonalModel(f.providerId, "gpt-6-sol", {
++      enabled: true, properties,
++      optionSpecs: { reasoningLevel: { values: ["off"], map: "{}" } },
++    });
++    f.setCatalog(async () => ({
++      source: "provider", models: [{ id: "gpt-6-sol", name: "gpt-6-sol", config: {
++        properties,
++        optionSpecs: { reasoningLevel: {
++          values: ["low", "medium", "high", "xhigh", "max"],
++          defaultValue: "medium", map: "{}",
++        }, speedMode: "openai-priority" },
++      } }],
++    }));
++    await f.service.discoverModels(f.providerId);
++    assert.equal((await f.stored()).providerModelRules.some(
++      (row: { modelId: string }) => row.modelId === "gpt-6-sol",
++    ), false);
++    const model = (await f.models()).find((row) => row.modelId === "gpt-6-sol")!;
++    assert.deepEqual(model.effectiveConfig.optionSpecs?.reasoningLevel?.values,
++      ["low", "medium", "high", "xhigh", "max"]);
++    assert.equal(completeNewModelSelection(await f.selection(), {
++      providerId: f.providerId, modelId: "gpt-6-sol",
++    })?.options?.reasoningLevel, "medium");
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("subscription refresh preserves disabled or materially edited exact settings", () => {
++  const observed = [{ modelId: "m", config: parseModelConfig({
++    properties: { contextWindow: 272000 },
++    optionSpecs: { reasoningLevel: { values: ["low", "high"], map: "{}" } },
++  }) }];
++  for (const legacy of [
++    { enabled: false, properties: { contextWindow: 272000 } },
++    { enabled: true, properties: { contextWindow: 128000 } },
++  ]) {
++    const exact = parseModelConfig({ ...legacy,
++      optionSpecs: { reasoningLevel: { values: ["off"], map: "{}" } },
++    });
++    const rules = ModelConfigRules.empty().setExact("provider", "m", exact);
++    assert.deepEqual(rules.withoutLegacySubscriptionOffSnapshots("provider", observed)
++      .getExact("provider", "m")?.toJSON(), exact.toJSON());
++  }
++});
++
+ test("default switch clears A before acknowledgement, B replaces membership, switchback recovers manual disabled data", async () => {
+   const f = await fixture();
+   try {
+diff --git a/packages/services/test/subscription-catalog.test.ts b/packages/services/test/subscription-catalog.test.ts
+index 1ff99b6..0ec070d 100644
+--- a/packages/services/test/subscription-catalog.test.ts
++++ b/packages/services/test/subscription-catalog.test.ts
+@@ -91,6 +91,17 @@ test("native default effort is preserved and unknown-only levels cannot become o
+   );
+ });
+ 
++test("an empty native effort list is unknown rather than invented Off", () => {
++  const models = parseNativeSubscriptionCatalog("openai-codex", {
++    models: [
++      { slug: "unreported", supported_reasoning_levels: [] },
++      { slug: "explicit-off", supported_reasoning_levels: [], default_reasoning_level: "off" },
++    ],
++  }).models;
++  assert.equal(models[0]?.config.optionSpecs?.reasoningLevel, undefined);
++  assert.deepEqual(models[1]?.config.optionSpecs?.reasoningLevel?.values, ["off"]);
++});
++
+ test("fast support comes from the account catalog, not the model name", () => {
+   const models = parseNativeSubscriptionCatalog("openai-codex", {
+     models: [
+diff --git a/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx b/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
+index 904b26f..5828e04 100644
+--- a/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
++++ b/packages/ui/src/chat-input-toolbar/ThoughtAndSpeedMenu.tsx
+@@ -24,6 +24,7 @@ export function ThoughtAndSpeedMenu({
+   shortcut,
+   triggerRef,
+   triggerClassName,
++  composerCollapsePriority,
+   label,
+   restoreFocusSelector,
+   value,
+@@ -40,6 +41,7 @@ export function ThoughtAndSpeedMenu({
+   shortcut?: string;
+   triggerRef: RefObject<HTMLSpanElement | null>;
+   triggerClassName: string;
++  composerCollapsePriority?: number;
+   label: string;
+   restoreFocusSelector?: string | null;
+   value: string;
+@@ -58,10 +60,14 @@ export function ThoughtAndSpeedMenu({
+       <ControlHintTooltip title={title} shortcut={shortcut} triggerRef={triggerRef}>
+         <DropdownMenuTrigger asChild>
+           <Button
++            type="button"
+             variant="ghost"
+             disabled={disabled}
+             className={triggerClassName}
+             aria-label={label}
++            data-chat-toolbar-popover-trigger="true"
++            data-composer-thought-control={composerCollapsePriority !== undefined || undefined}
++            data-composer-collapse-priority={composerCollapsePriority}
+             data-testid={TID_CHAT_THOUGHT_LEVEL_SELECT_TRIGGER}
+           >
+             {children}
+diff --git a/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx b/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
+index 8f68d4f..ed3a7ed 100644
+--- a/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
++++ b/packages/ui/src/chat-input-toolbar/ThoughtLevelCycleControl.tsx
+@@ -255,6 +255,7 @@ export function ThoughtLevelCycleControl({
+           composerTriggerClassName,
+           triggerClassName,
+         )}
++        composerCollapsePriority={composerCollapsePriority}
+         label={currentLabel}
+         restoreFocusSelector={restoreFocusSelector}
+         value={String(option.currentValue)}

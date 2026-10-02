@@ -1,5 +1,8 @@
 # SYS-05 — Design, web and spatial workspace
 
+**Code scope:** `app/` paths and unqualified Craft observations describe the retained branch;
+`.fleet/zcode` sections describe the active candidate. [Current order](../../TODO.md) overrides old branch sequencing.
+
 **Rows:** CREATE-01, CREATE-06, CREATE-07, CREATE-09, CREATE-11, CREATE-16, CORE-11, INFO-02, INFO-05.
 **Owner:** native design/web/document schemas and canvas projection. **Depends on:** SYS-01 actions
 and ArtifactRef. **Authority:** native content models; canvas owns viewport/layout only.
@@ -128,12 +131,12 @@ P-39 editor. Until a real document round-trip exists, this remains `not implemen
 
 ## Native document editing (INFO-05 / CREATE-16, R10)
 
-R3 exercises existing Markdown preview and file tools only. R10 owns direct document editing;
-R13 adds advanced deck/motion behavior. Each format gets a real open → human edit → Agent edit →
-save → reopen proof against a native owner. Do not force DOCX, XLSX, PPTX or PDF through TipTap.
-Reuse TipTap for its supported Markdown/text domain; compare GenOffice and format-specific engines
-for the other domains. A parser, converter, generic PDF viewer or common framework is not selection
-proof. Source evidence is in the reference registry; no editor dependency is admitted yet.
+OV-066 selects GenOffice's open-source native document components as the Office suite source
+base: DOCX first, then XLSX and PPTX through the same Fleet package/operation path. Keep existing
+Markdown/text tools for their domain. PDF extraction, annotation and forms remain separate tested
+capabilities; no generic viewer or conversion is labelled full native editing. Exclude GenOffice
+enterprise-only code and complete per-dependency admission before landing a component. Each format
+must pass open → human edit → Agent edit → undo/save → reopen with source/package preservation.
 
 Separate preview, extraction, annotations/forms, structural edits, formula/chart preservation and
 native save-back in the format capability declaration. An import preserves the original and records
@@ -196,8 +199,8 @@ process memory must plateau within 10% of the first stabilized cycle; separately
 memory where available. No hidden video continues decoding after its documented release boundary.
 One focused original-quality video is the test, not twenty simultaneous 4K decoders.
 
-Compare React Flow with the custom DOM/SVG projection using the same real card bodies and media
-policy. Do not change fixtures/budgets for one candidate. A failed threshold gets a bounded fix or
+Verify React Flow with the actual card bodies and media policy. Reopen renderer selection only
+when a reproduced required behavior cannot be satisfied; retain the same fixtures and budgets. A failed threshold gets a bounded fix or
 an explicit contract revision with evidence; it cannot be silently downgraded to pass. The lower-end
 Windows/GPU path is required before broad release; a local Apple Silicon result proves only that
 platform. Persist no renderer-owned domain state to meet a performance target.
@@ -489,7 +492,7 @@ document schema. Workflows run through the existing execution owners; permission
 the same components and decisions as chat. Neither an agent organization chart nor a preview-only
 graph satisfies the production-board requirement.
 
-#### 4.5 Canvas technology **[DOM family committed; in-family choice at the E5a spike]**
+#### 4.5 Canvas technology **[React Flow selected under OV-066]**
 
 Per Decision E5a: the **DOM-family rendering approach is committed** — Fleet cards are live React
 components (native editing affordances, media previews, controls). The retained comparison samples
@@ -497,13 +500,11 @@ include TapNow, MiniMax Hub/Hilo and TRAEWork on **React Flow v12**
 (owner-provided analyses), and Mayi Canvas on **fully custom DOM + `translate3d` + SVG bezier**
 ([`references/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md`](../research/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md):
 rich media/agent/3D nodes, >50-node perf mode, thumbnail/visibility workers, object pools — evidence
-for a bounded comparison, not proof of Fleet's editing workload). **React Flow is the default first
-implementation; custom DOM+SVG is the named in-family fallback** if the spike shows the library
-fighting Fleet's card/edge model; GPU (Pixi/CanvasKit) may only ever be a *media layer* under the
-DOM viewport. The E5a spike (runnable any time from R5; required before deep R7 investment) decides
-within the family by named criteria: representative rich cards, concurrent agent updates, media
+for a bounded comparison, not proof of Fleet's editing workload). **React Flow is the selected implementation**, reusing the current candidate dependency. Custom
+DOM/SVG is retained source evidence, not a second planned renderer; GPU (Pixi/CanvasKit) may only ever be a *media layer* under the
+DOM viewport. The E5a exercise verifies the selected renderer before deep investment using the same criteria: representative rich cards, concurrent agent updates, media
 proxies, ≥500-node viewport culling, memory recovery in the real Electron app. Implementation
-constraints either way: custom edge overlay for the §4.2 classes; visible-node virtualization +
+constraints: custom edge overlay for the §4.2 classes; visible-node virtualization +
 thumbnail workers + object pools; iframe/webview previews stay out of the graph layer; resource
 budgets per E8. tldraw remains behavior comparison only (license = owner checkpoint). The domain
 model stays renderer-independent regardless (§4.1–4.2 are defined over authorities, not renderer

@@ -1,0 +1,135 @@
+diff --git a/package.json b/package.json
+index 43befc489cb0896305acb4ff8e14079ee92e567e..2abb4f503060d59f7c5165b8a325e16083805ce5 100644
+--- a/package.json
++++ b/package.json
+@@ -50,7 +50,7 @@
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+-    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
++    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts"
+   },
+   "dependencies": {
+diff --git a/packages/ui/src/lib/contextUsageModelScope.ts b/packages/ui/src/lib/contextUsageModelScope.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4d897637e82b9f5b362c40546178ccbfbc4d5347
+--- /dev/null
++++ b/packages/ui/src/lib/contextUsageModelScope.ts
+@@ -0,0 +1,18 @@
++import type { SessionUsageState } from "@zcode/shared/zcode-protocol-v4";
++
++/** 下一次提交改选模型时，Session 的上次用量仍属于原模型；只有身份相同才能显示占用。 */
++export function contextWindowForSelectedModel(
++  contextWindow: SessionUsageState["contextWindow"] | undefined,
++  providerId: string | undefined,
++  modelId: string | undefined,
++  lastRequest?: SessionUsageState["lastRequest"],
++): SessionUsageState["contextWindow"] {
++  if (!providerId || !modelId) return null;
++  const measurement = contextWindow?.measurement;
++  const hasMeasuredIdentity = Boolean(measurement?.providerId || measurement?.modelId);
++  const observedProvider = hasMeasuredIdentity ? measurement?.providerId : lastRequest?.providerId;
++  const observedModel = hasMeasuredIdentity ? measurement?.modelId : lastRequest?.modelId;
++  return observedProvider === providerId && observedModel === modelId
++    ? (contextWindow ?? null)
++    : null;
++}
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 56f575fa7a56aacd4cdca3b4d12d7fdce7b2b77c..9bde4e4a5c1bdc431bebf79a067d3810bba1b14d 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -42,6 +42,7 @@ import type {
+ import { ModelConfigSelect, type ModelSelectGroup } from "@/ModelConfigSelect.js";
+ import { Button } from "@/components/ui/button.js";
+ import { ChatContextUsage } from "@/chat-input-toolbar/display.js";
++import { contextWindowForSelectedModel } from "@/lib/contextUsageModelScope.js";
+ import {
+   hasChatCodingPlanUsageRemaining,
+   type ChatCodingPlanUsageRemainingConfig,
+@@ -910,8 +911,14 @@ function V4ComposerModelControlsImpl({
+     });
+   }, [effectiveConfig, onSelectThought, thoughtOption]);
+ 
++  const selectedContextWindow = contextWindowForSelectedModel(
++    usage?.contextWindow,
++    effectiveConfig?.provider,
++    effectiveConfig?.model,
++    usage?.lastRequest,
++  );
+   const taskUsage = useMemo(() => {
+-    const contextWindow = usage?.contextWindow;
++    const contextWindow = selectedContextWindow;
+     if (!contextWindow) return null;
+     return {
+       used: contextWindow.usedTokens,
+@@ -920,7 +927,7 @@ function V4ComposerModelControlsImpl({
+       ...(contextWindow.cache ? { cache: contextWindow.cache } : {}),
+       ...(contextWindow.breakdown ? { breakdown: contextWindow.breakdown } : {}),
+     };
+-  }, [usage?.contextWindow]);
++  }, [selectedContextWindow]);
+   const selectedSubscriptionProvider = modelSelectionView?.providers.find(
+     (provider) => provider.providerId === effectiveConfig?.provider,
+   );
+@@ -1040,8 +1047,8 @@ function V4ComposerModelControlsImpl({
+         }
+         data-mode={draftConfig?.mode ?? ""}
+         data-plan-enabled={draftConfig?.planEnabled ?? false}
+-        data-usage-used={usage?.contextWindow?.usedTokens ?? ""}
+-        data-usage-max={usage?.contextWindow?.maxTokens ?? ""}
++        data-usage-used={selectedContextWindow?.usedTokens ?? ""}
++        data-usage-max={selectedContextWindow?.maxTokens ?? ""}
+         className="hidden"
+       />
+       <ChatContextUsage
+diff --git a/packages/ui/test/contextUsageModelScope.test.ts b/packages/ui/test/contextUsageModelScope.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e3ac052133a3c46ce552a42d48395027ff47bbbb
+--- /dev/null
++++ b/packages/ui/test/contextUsageModelScope.test.ts
+@@ -0,0 +1,44 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { SessionUsageState } from "@zcode/shared/zcode-protocol-v4";
++import { contextWindowForSelectedModel } from "../src/lib/contextUsageModelScope.js";
++
++const sample: NonNullable<SessionUsageState["contextWindow"]> = {
++  usedTokens: 15_629,
++  maxTokens: 272_000,
++  autoCompactThresholdTokens: null,
++  measurement: {
++    source: "provider-usage",
++    state: "current",
++    providerId: "chatgpt",
++    modelId: "gpt-6-sol",
++    observedAt: 1000,
++  },
++};
++
++test("composer context occupancy belongs to the measured provider and model", () => {
++  assert.equal(contextWindowForSelectedModel(sample, "chatgpt", "gpt-6-sol"), sample);
++  assert.equal(contextWindowForSelectedModel(sample, "chatgpt", "gpt-6-luna"), null);
++  assert.equal(contextWindowForSelectedModel(sample, "other-provider", "gpt-6-sol"), null);
++  assert.equal(contextWindowForSelectedModel(sample, undefined, "gpt-6-sol"), null);
++});
++
++test("legacy unowned occupancy cannot be presented as the newly selected model", () => {
++  const legacy = {
++    ...sample,
++    measurement: { source: "unknown" as const, state: "stale" as const },
++  };
++  assert.equal(contextWindowForSelectedModel(legacy, "chatgpt", "gpt-6-sol"), null);
++  const lastRequest = { providerId: "chatgpt", modelId: "gpt-6-sol" };
++  assert.equal(contextWindowForSelectedModel(legacy, "chatgpt", "gpt-6-sol", lastRequest), legacy);
++  assert.equal(contextWindowForSelectedModel(legacy, "chatgpt", "gpt-6-luna", lastRequest), null);
++  const partial = {
++    ...legacy,
++    measurement: { ...legacy.measurement, providerId: "other-provider" },
++  };
++  assert.equal(
++    contextWindowForSelectedModel(partial, "other-provider", "gpt-6-sol", lastRequest),
++    null,
++  );
++  assert.equal(contextWindowForSelectedModel(null, "chatgpt", "gpt-6-sol"), null);
++});

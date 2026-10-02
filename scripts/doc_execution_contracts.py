@@ -60,7 +60,13 @@ def validate_execution_contracts(root: Path, registry_ids: list[str], packet_tex
                 errors.append(f'{identity}: duplicate execution owner')
             owners[identity] = path
             bodies[identity] = body
-            fields = dict(re.findall(r'^- \*\*(\w+):\*\* (.*)$', body, re.M))
+            fields = {
+                name: ' '.join(line.strip() for line in value.splitlines()).strip()
+                for name, value in re.findall(
+                    r'^- \*\*(\w+):\*\* (.*?)(?=^- \*\*\w+:\*\* |^#{1,6} |\Z)',
+                    body, re.M | re.S,
+                )
+            }
             missing = FIELDS - fields.keys()
             if missing:
                 errors.append(f'{identity}: missing execution fields {sorted(missing)}')
@@ -71,16 +77,18 @@ def validate_execution_contracts(root: Path, registry_ids: list[str], packet_tex
                 errors.append(f'{identity}: no linked current source entry')
             for dest in links:
                 candidate = (path.parent / unquote(dest.split('#')[0])).resolve()
-                if not candidate.is_relative_to((root / 'app').resolve()) or not candidate.is_file():
+                source_roots = [(root / 'app').resolve(), (root / '.fleet/zcode').resolve()]
+                if not any(candidate.is_relative_to(source) for source in source_roots) or not candidate.is_file():
                     errors.append(f'{identity}: current app source missing or outside app: {dest}')
             if f'{identity}-A' not in fields.get('Proof', ''):
                 errors.append(f'{identity}: proof lacks canonical acceptance ID')
-            regression = re.search(r'(Planned|Existing) regression(?:/probe)? target(?: relative to `app/`)?\s*:\s*`([^`]+)`', fields.get('Proof', ''))
+            regression = re.search(r'(Planned|Existing) regression(?:/probe)? target(?: relative to `(app/|\.fleet/zcode/)`)?\s*:\s*`([^`]+)`', fields.get('Proof', ''))
             if not regression:
                 errors.append(f'{identity}: no named regression/probe target')
             else:
-                regression_path = (root / 'app' / regression.group(2)).resolve()
-                if not regression_path.is_relative_to((root / 'app').resolve()):
+                source_root = (root / (regression.group(2) or 'app')).resolve()
+                regression_path = (source_root / regression.group(3)).resolve()
+                if not regression_path.is_relative_to(source_root):
                     errors.append(f'{identity}: regression target outside app')
                 elif regression.group(1) == 'Existing' and not regression_path.is_file():
                     errors.append(f'{identity}: existing regression target missing')

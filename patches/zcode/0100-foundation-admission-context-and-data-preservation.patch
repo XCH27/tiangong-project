@@ -1,0 +1,2111 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.ts
+index 14d1ab4558dc37473a629d62a2ba8e35ed379d2f..94a6a87bb9e3e87334db8d044365978f53ec41f8 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.ts
+@@ -1,4 +1,4 @@
+-import { query, type AccountInfo, type ModelInfo } from "@anthropic-ai/claude-agent-sdk";
++import { query, type AccountInfo, type ModelInfo, type Query, type SDKControlGetUsageResponse } from "@anthropic-ai/claude-agent-sdk";
+ import { claudeNativeEnvironment } from "./claude-environment.js";
+ import { resolveClaudeNativeExecutable } from "./claude-executable.js";
+ 
+@@ -10,14 +10,14 @@ export function requireClaudeSubscriptionAccount(account: AccountInfo) {
+     throw new Error("Sign in to the official Claude CLI with your Claude subscription account first");
+ }
+ 
+-/** Public native control requests only. No prompt, token/cache import, or inference request. */
+-export async function inspectClaudeNativeConnection(
+-  options: {
++interface ClaudeInspectionOptions {
+     executable?: string;
+     configDir?: string;
+     env?: Record<string, string | undefined>;
+-  } = {},
+-): Promise<{ account: AccountInfo; models: ModelInfo[] }> {
++}
++
++/** Public native control requests only. No prompt, token/cache import, or inference request. */
++async function readClaudeControls<T>(options: ClaudeInspectionOptions, read: (native: Query) => Promise<T>): Promise<T> {
+   const controller = new AbortController();
+   const gate = Promise.withResolvers<void>();
+   const native = query({
+@@ -37,6 +37,7 @@ export async function inspectClaudeNativeConnection(
+       persistSession: false,
+       strictMcpConfig: true,
+       settings: { disableAllHooks: true },
++      permissionMode: "default",
+     },
+   });
+   const timer = setTimeout(() => {
+@@ -44,8 +45,7 @@ export async function inspectClaudeNativeConnection(
+     native.close();
+   }, 10000);
+   try {
+-    const [account, models] = await Promise.all([native.accountInfo(), native.supportedModels()]);
+-    return { account, models };
++    return await read(native);
+   } finally {
+     clearTimeout(timer);
+     native.close();
+@@ -53,3 +53,22 @@ export async function inspectClaudeNativeConnection(
+     gate.resolve();
+   }
+ }
++
++export function inspectClaudeNativeConnection(options: ClaudeInspectionOptions = {}): Promise<{ account: AccountInfo; models: ModelInfo[] }> {
++  return readClaudeControls(options, async (native) => {
++    const [account, models] = await Promise.all([native.accountInfo(), native.supportedModels()]);
++    return { account, models };
++  });
++}
++
++/** The official CLI owns credentials and refresh. Never scan transcripts to read plan limits. */
++export function readClaudeNativeUsage(options: ClaudeInspectionOptions & { accountId: string }): Promise<SDKControlGetUsageResponse | undefined> {
++  return readClaudeControls(options, async (native) => {
++    const account = await native.accountInfo();
++    requireClaudeSubscriptionAccount(account);
++    if (account.email !== options.accountId) throw new Error("Native CLI account changed; reconnect this connection");
++    const readUsage = native.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
++    if (typeof readUsage !== "function") return undefined;
++    return readUsage.call(native, { skipBehaviors: true });
++  });
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+index bceb208b241f42bd040c2500296ba0b4824de4e6..94a7a894442ff505f74da87d80e0070e91a0d8fa 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+@@ -1,4 +1,4 @@
+ export { createClaudeNativeAgentPort, type ClaudeNativePortOptions } from "./claude.js";
+ export { createNativeAgentModel } from "./model.js";
+-export { inspectClaudeNativeConnection, requireClaudeSubscriptionAccount } from "./claude-inspect.js";
++export { inspectClaudeNativeConnection, requireClaudeSubscriptionAccount, readClaudeNativeUsage } from "./claude-inspect.js";
+ export { startClaudeNativeLogin } from "./claude-login.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/index.ts b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+index 8d86c288b4fe44090f75b71f438542e0489d734c..a7d9975357560d7c8d81437c9d8dbd6de95b2171 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+@@ -1,5 +1,14 @@
+-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+-import { join, resolve } from "node:path";
++import {
++  lstatSync,
++  mkdirSync,
++  mkdtempSync,
++  readdirSync,
++  readFileSync,
++  renameSync,
++  rmSync,
++  writeFileSync,
++} from "node:fs";
++import { dirname, join, resolve } from "node:path";
+ import type {
+   CustomCommandRoot,
+   HookConfig,
+@@ -716,8 +725,7 @@ function materializeCommandMetadataRoot(
+   if (!isRecord(spec)) return null;
+ 
+   const generatedRoot = join(input.dataPath, "generated-commands");
+-  let wroteCommand = false;
+-  mkdirSync(generatedRoot, { recursive: true });
++  const commands = new Map<string, string>();
+ 
+   for (const [rawName, rawMetadata] of Object.entries(spec)) {
+     if (!isRecord(rawMetadata)) {
+@@ -783,18 +791,29 @@ function materializeCommandMetadataRoot(
+     }
+     if (markdown === undefined) continue;
+ 
+-    // 市场清单支持 commands object mapping 和 inline content。
+-    // ZCode 的 custom command loader 只扫描 markdown 根目录，因此把低风险命令内容
+-    // materialize 到插件 data 目录；生成路径不在 plugin root 外暴露，也不执行命令本身。
+-    writeFileSync(
+-      join(generatedRoot, `${name}.md`),
+-      applyCommandMetadataFrontmatter(markdown, rawMetadata),
+-      "utf8",
+-    );
+-    wroteCommand = true;
++    commands.set(`${name}.md`, applyCommandMetadataFrontmatter(markdown, rawMetadata));
++  }
++
++  // This reserved directory is a derived manifest projection, not plugin user data.
++  // Rebuild it so an update/reinstall cannot rediscover removed or renamed commands.
++  // Reject redirected parents; deleting an entry below is never allowed to follow a link.
++  for (const path of [dirname(input.dataPath), input.dataPath, generatedRoot]) {
++    const entry = lstatSync(path, { throwIfNoEntry: false });
++    if (entry && !entry.isDirectory()) {
++      input.diagnostics.push({
++        code: "plugin_component_path_invalid",
++        message:
++          "Generated plugin commands require an ordinary directory, not a file or symbolic link",
++        path,
++        pluginId: input.loaded.id,
++        severity: "error",
++      });
++      return null;
++    }
+   }
++  replaceGeneratedCommands(generatedRoot, commands);
+ 
+-  return wroteCommand
++  return commands.size > 0
+     ? {
+         path: generatedRoot,
+         plugin: createHookPluginContext(input.loaded, input.dataPath),
+@@ -805,6 +824,42 @@ function materializeCommandMetadataRoot(
+     : null;
+ }
+ 
++function replaceGeneratedCommands(root: string, commands: ReadonlyMap<string, string>): void {
++  mkdirSync(dirname(root), { recursive: true });
++  const stage = mkdtempSync(join(dirname(root), ".generated-commands-"));
++  const next = join(stage, "next");
++  const previous = join(stage, "previous");
++  let preservePrevious = false;
++  try {
++    mkdirSync(next);
++    for (const [fileName, markdown] of commands) {
++      writeFileSync(join(next, fileName), markdown, { encoding: "utf8", flag: "wx" });
++    }
++    const hadPrevious = lstatSync(root, { throwIfNoEntry: false }) !== undefined;
++    if (hadPrevious) renameSync(root, previous);
++    try {
++      renameSync(next, root);
++    } catch (error) {
++      if (hadPrevious) {
++        try {
++          renameSync(previous, root);
++        } catch (rollbackError) {
++          // Keep the last complete derived copy available for recovery on a failed rollback.
++          preservePrevious = true;
++          throw new AggregateError(
++            [error, rollbackError],
++            `Generated commands retained at ${previous}`,
++          );
++        }
++      }
++      throw error;
++    }
++  } finally {
++    // Only this invocation's staging directory is removed; user data is never swept.
++    if (!preservePrevious) rmSync(stage, { recursive: true, force: true });
++  }
++}
++
+ function normalizeGeneratedCommandName(name: string): string | null {
+   const normalized = name.trim().replace(/^\/+/, "").toLowerCase();
+   if (!/^[a-z0-9][a-z0-9_:-]{0,63}$/.test(normalized)) return null;
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+index 24648a74b7cf10144ed5f0849ba10ff22da76473..586282ad3eb252997a9b232640c0177a3325413d 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+@@ -367,6 +367,9 @@ export async function uninstallPlugin(
+     pluginId: params.pluginId,
+     pluginName: params.pluginName,
+     removeCache: params.removeCache,
++    // Desktop uninstall removes availability and configuration, not user artifacts.
++    // Keep the CLI's explicit data-removal policy separate from this shared UI path.
++    keepData: true,
+     workingDirectory: params.workspace.workspacePath,
+   });
+   return {
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..feb81e02274db0613a7b1f4dee7892018cab00cf
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts
+@@ -0,0 +1,347 @@
++import assert from "node:assert/strict";
++import fs, { existsSync } from "node:fs";
++import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
++import { syncBuiltinESMExports } from "node:module";
++import os from "node:os";
++import { dirname, join } from "node:path";
++import test, { type TestContext } from "node:test";
++import { getPluginDataDir, listInstalledPluginRecords } from "@zcode/adapters/plugins";
++import { NodeCustomCommandAdapter } from "@zcode/adapters/commands";
++import {
++  addZCodePluginMarketplace,
++  installZCodeMarketplacePlugin,
++  resolveZCodePlugins,
++  uninstallZCodeMarketplacePlugin,
++  updateZCodePluginMarketplace,
++} from "../src/plugins.js";
++import { restoreBuiltinPlugin, uninstallPlugin } from "../src/zcode-protocol/plugins.js";
++import type { ZCodeProtocolAgentServerContext } from "../src/zcode-protocol/server-types.js";
++
++const context = {
++  logger: { info() {}, warn() {}, error() {}, debug() {} },
++} as ZCodeProtocolAgentServerContext;
++const name = "retention-fixture";
++const marketplace = "retention-test";
++const pluginId = `${name}@${marketplace}`;
++
++async function fixture(t: TestContext) {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-retention-"));
++  const configPath = join(root, ".zcode/cli/config.json");
++  const storage = join(root, "storage");
++  const pluginStorage = join(storage, "cli/plugins");
++  const workingDirectory = join(root, "workspace");
++  const source = join(root, "marketplace");
++  const dataFile = join(getPluginDataDir(pluginStorage, pluginId), "user-document.txt");
++  // Protocol handlers use the normal config resolver. Isolate its native home
++  // lookup without changing HOME or touching a real installed plugin/profile.
++  const home = t.mock.method(os, "homedir", () => root);
++  syncBuiltinESMExports();
++  const previousStorage = process.env.ZCODE_STORAGE_DIR;
++  process.env.ZCODE_STORAGE_DIR = storage;
++  t.after(async () => {
++    home.mock.restore();
++    syncBuiltinESMExports();
++    if (previousStorage === undefined) delete process.env.ZCODE_STORAGE_DIR;
++    else process.env.ZCODE_STORAGE_DIR = previousStorage;
++    await rm(root, { recursive: true, force: true });
++  });
++  for (const dir of [
++    dirname(configPath),
++    workingDirectory,
++    join(source, ".claude-plugin"),
++    join(source, name, ".zcode-plugin"),
++    join(source, name, "skills/fixture"),
++  ]) {
++    await mkdir(dir, { recursive: true });
++  }
++  await writeFile(configPath, JSON.stringify({ storage: { dir: storage } }));
++  await writeFile(
++    join(source, ".claude-plugin/marketplace.json"),
++    JSON.stringify({
++      name: marketplace,
++      plugins: [{ name, source: `./${name}`, version: "1.0.0" }],
++    }),
++  );
++  await writeFile(
++    join(source, name, ".zcode-plugin/plugin.json"),
++    JSON.stringify({
++      name,
++      version: "1.0.0",
++      skills: "./skills",
++    }),
++  );
++  await writeFile(
++    join(source, name, "skills/fixture/SKILL.md"),
++    "---\nname: retention-fixture\ndescription: Local retention fixture\n---\nRead local documents.",
++  );
++  await addZCodePluginMarketplace({ source, workingDirectory });
++  const install = async () => {
++    const result = await installZCodeMarketplacePlugin({
++      pluginName: name,
++      marketplace,
++      workingDirectory,
++    });
++    assert.equal(
++      result.diagnostics.filter((item) => item.severity === "error").length,
++      0,
++      JSON.stringify(result.diagnostics),
++    );
++    const record = result.installedPlugins.find((item) => item.id === pluginId);
++    assert.ok(record?.installPath);
++    return record.installPath;
++  };
++  const readConfig = async () => JSON.parse(await readFile(configPath, "utf8"));
++  const writeData = async (id = pluginId) => {
++    const file = join(getPluginDataDir(pluginStorage, id), "user-document.txt");
++    await mkdir(dirname(file), { recursive: true });
++    await writeFile(file, "User artifact, not installation cache.");
++    return file;
++  };
++  return {
++    configPath,
++    dataFile,
++    install,
++    pluginStorage,
++    readConfig,
++    root,
++    source,
++    workingDirectory,
++    writeData,
++    workspace: { workspacePath: workingDirectory, workspaceKey: workingDirectory },
++  };
++}
++
++async function changeCommands(
++  f: Awaited<ReturnType<typeof fixture>>,
++  version: string,
++  commands: Record<string, { content: string }>,
++) {
++  await writeFile(
++    join(f.source, ".claude-plugin/marketplace.json"),
++    JSON.stringify({
++      name: marketplace,
++      plugins: [{ name, source: `./${name}`, version }],
++    }),
++  );
++  await writeFile(
++    join(f.source, name, ".zcode-plugin/plugin.json"),
++    JSON.stringify({
++      name,
++      version,
++      commands,
++    }),
++  );
++  await updateZCodePluginMarketplace({ marketplace, workingDirectory: f.workingDirectory });
++}
++
++async function commandNames(f: Awaited<ReturnType<typeof fixture>>) {
++  const outcome = resolveZCodePlugins({ workingDirectory: f.workingDirectory });
++  const roots = outcome.commandRoots.filter((root) => root.plugin?.id === pluginId);
++  const commands = await new NodeCustomCommandAdapter().discoverCommands({
++    roots,
++    workingDirectory: f.workingDirectory,
++  });
++  return commands.commands.map((command) => command.name);
++}
++
++test("desktop uninstall removes activation and cache but keeps data through reinstallation", async (t) => {
++  const f = await fixture(t);
++  const installPath = await f.install();
++  await f.writeData();
++  const config = await f.readConfig();
++  config.plugins.options = { [pluginId]: { preference: "old" }, unrelated: { preference: "keep" } };
++  await writeFile(f.configPath, JSON.stringify(config));
++  assert.equal(
++    resolveZCodePlugins({ workingDirectory: f.workingDirectory }).plugins.find(
++      (item) => item.id === pluginId,
++    )?.enabled,
++    true,
++  );
++
++  const result = await uninstallPlugin(context, {
++    workspace: f.workspace,
++    pluginId,
++    removeCache: true,
++  });
++  assert.equal(result.removedPlugin?.id, pluginId);
++  assert.equal(existsSync(installPath), false);
++  assert.equal(
++    listInstalledPluginRecords(f.pluginStorage).some((item) => item.id === pluginId),
++    false,
++  );
++  assert.equal(
++    resolveZCodePlugins({ workingDirectory: f.workingDirectory }).plugins.some(
++      (item) => item.id === pluginId,
++    ),
++    false,
++  );
++  const after = await f.readConfig();
++  assert.equal(after.plugins.enabledPlugins?.[pluginId], undefined);
++  assert.equal(after.plugins.options?.[pluginId], undefined);
++  assert.deepEqual(after.plugins.options.unrelated, { preference: "keep" });
++  assert.equal(await readFile(f.dataFile, "utf8"), "User artifact, not installation cache.");
++
++  assert.ok(existsSync(await f.install()));
++  assert.equal(await readFile(f.dataFile, "utf8"), "User artifact, not installation cache.");
++  assert.equal(
++    resolveZCodePlugins({ workingDirectory: f.workingDirectory }).plugins.find(
++      (item) => item.id === pluginId,
++    )?.enabled,
++    true,
++  );
++});
++
++test("desktop cache-retention option does not retain plugin activation", async (t) => {
++  const f = await fixture(t);
++  const installPath = await f.install();
++  await f.writeData();
++  await uninstallPlugin(context, { workspace: f.workspace, pluginId, removeCache: false });
++  assert.equal(existsSync(installPath), true);
++  assert.equal(existsSync(f.dataFile), true);
++  assert.equal(
++    listInstalledPluginRecords(f.pluginStorage).some((item) => item.id === pluginId),
++    false,
++  );
++  assert.equal(
++    resolveZCodePlugins({ workingDirectory: f.workingDirectory }).plugins.some(
++      (item) => item.id === pluginId,
++    ),
++    false,
++  );
++});
++
++test("desktop built-in suppression preserves its immutable package and user data for restore", async (t) => {
++  const f = await fixture(t);
++  const builtin = resolveZCodePlugins({ workingDirectory: f.workingDirectory }).plugins.find(
++    (item) => item.name === "zcode-guide" && item.source === "official",
++  );
++  assert.ok(builtin, "the actual bundled guide must be available for the lifecycle proof");
++  const dataFile = await f.writeData(builtin.id);
++  await uninstallPlugin(context, { workspace: f.workspace, pluginId: builtin.id });
++  assert.ok((await f.readConfig()).plugins.suppressedBuiltins.includes(builtin.id));
++  assert.equal(existsSync(builtin.rootPath), true);
++  assert.equal(existsSync(dataFile), true);
++  assert.equal(
++    resolveZCodePlugins({ workingDirectory: f.workingDirectory }).plugins.some(
++      (item) => item.id === builtin.id,
++    ),
++    false,
++  );
++
++  await restoreBuiltinPlugin(context, { workspace: f.workspace, pluginId: builtin.id });
++  assert.equal((await f.readConfig()).plugins.suppressedBuiltins.includes(builtin.id), false);
++  assert.equal(
++    resolveZCodePlugins({ workingDirectory: f.workingDirectory }).plugins.some(
++      (item) => item.id === builtin.id,
++    ),
++    true,
++  );
++  assert.equal(await readFile(dataFile, "utf8"), "User artifact, not installation cache.");
++});
++
++test("CLI removal keeps its declared purge default and explicit keep-data option", async (t) => {
++  const f = await fixture(t);
++  await f.install();
++  await f.writeData();
++  await uninstallZCodeMarketplacePlugin({ pluginId, workingDirectory: f.workingDirectory });
++  assert.equal(existsSync(f.dataFile), false);
++  await f.install();
++  await f.writeData();
++  await uninstallZCodeMarketplacePlugin({
++    pluginId,
++    keepData: true,
++    workingDirectory: f.workingDirectory,
++  });
++  assert.equal(await readFile(f.dataFile, "utf8"), "User artifact, not installation cache.");
++});
++
++test("reinstallation rebuilds derived commands from the new manifest without deleting user data", async (t) => {
++  const f = await fixture(t);
++  await changeCommands(f, "1.0.0", { old: { content: "Old command" } });
++  await f.install();
++  await f.writeData();
++  assert.deepEqual(await commandNames(f), ["old"]);
++  await uninstallPlugin(context, { workspace: f.workspace, pluginId, removeCache: true });
++  await changeCommands(f, "2.0.0", { replacement: { content: "Current command" } });
++  await f.install();
++  assert.deepEqual(await commandNames(f), ["replacement"]);
++  const generated = join(dirname(f.dataFile), "generated-commands");
++  assert.deepEqual(await readdir(generated), ["replacement.md"]);
++  assert.equal(await readFile(f.dataFile, "utf8"), "User artifact, not installation cache.");
++
++  await uninstallPlugin(context, { workspace: f.workspace, pluginId });
++  await changeCommands(f, "3.0.0", {});
++  await f.install();
++  assert.deepEqual(await commandNames(f), []);
++  assert.deepEqual(await readdir(generated), []);
++  assert.equal(await readFile(f.dataFile, "utf8"), "User artifact, not installation cache.");
++});
++
++test("derived command regeneration never follows directory or command-file symlinks", async (t) => {
++  const f = await fixture(t);
++  await changeCommands(f, "1.0.0", { current: { content: "Current command" } });
++  await f.install();
++  await f.writeData();
++  const generated = join(dirname(f.dataFile), "generated-commands");
++  const foreign = join(f.root, "foreign");
++  await mkdir(foreign);
++  const protectedFile = join(foreign, "current.md");
++  await writeFile(protectedFile, "Unrelated original");
++  await rm(generated, { recursive: true, force: true });
++  await symlink(foreign, generated, "dir");
++  const blocked = resolveZCodePlugins({ workingDirectory: f.workingDirectory });
++  assert.equal(
++    blocked.commandRoots.some((root) => root.plugin?.id === pluginId),
++    false,
++  );
++  assert.ok(
++    blocked.diagnostics.some(
++      (entry) => entry.pluginId === pluginId && entry.code === "plugin_component_path_invalid",
++    ),
++  );
++  assert.equal(await readFile(protectedFile, "utf8"), "Unrelated original");
++
++  await rm(generated);
++  await mkdir(generated);
++  await symlink(protectedFile, join(generated, "current.md"), "file");
++  assert.deepEqual(await commandNames(f), ["current"]);
++  assert.equal(await readFile(protectedFile, "utf8"), "Unrelated original");
++  assert.equal(await readFile(f.dataFile, "utf8"), "User artifact, not installation cache.");
++});
++
++test("failed derived command writes or activation retain the previous complete command set", async (t) => {
++  const f = await fixture(t);
++  await changeCommands(f, "1.0.0", { current: { content: "Current command" } });
++  await f.install();
++  await f.writeData();
++  assert.deepEqual(await commandNames(f), ["current"]);
++  const generated = join(dirname(f.dataFile), "generated-commands");
++  const original = await readFile(join(generated, "current.md"), "utf8");
++  for (const operation of ["writeFileSync", "renameSync"] as const) {
++    const originalMethod = fs[operation];
++    const mocked = t.mock.method(fs, operation, ((...args: unknown[]) => {
++      const path = String(args[0]);
++      if (
++        path.startsWith(join(dirname(generated), ".generated-commands-")) &&
++        path.includes("/next") &&
++        (operation === "writeFileSync" || args[1] === generated)
++      ) {
++        throw new Error(`synthetic ${operation} failure`);
++      }
++      return Reflect.apply(originalMethod, fs, args);
++    }) as never);
++    syncBuiltinESMExports();
++    try {
++      assert.throws(
++        () => resolveZCodePlugins({ workingDirectory: f.workingDirectory }),
++        /synthetic/,
++      );
++      assert.equal(await readFile(join(generated, "current.md"), "utf8"), original);
++    } finally {
++      mocked.mock.restore();
++      syncBuiltinESMExports();
++    }
++  }
++  assert.deepEqual(await commandNames(f), ["current"]);
++  assert.equal(await readFile(f.dataFile, "utf8"), "User artifact, not installation cache.");
++});
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/context.ts b/apps/zcode-cli/packages/core/src/runtime/methods/context.ts
+index ccd987ce6cf047bcf522e75e28c76331e5dd4f1c..c95ec95aa4fc555232a1ab3d1f6a9130e9fe2196 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/context.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/context.ts
+@@ -114,7 +114,10 @@ export function createContextBuilderFromSnapshot(
+       envInfo,
+       model: options.model,
+       skillMetadataBudget: this.config.skillMetadataBudget,
+-      skills: this.skillLoadOutcome,
++      // A child can retain the installed catalog while its profile excludes the Skill tool.
++      skills: this.getTools(options.model).some((tool) => tool.name === "Skill")
++        ? this.skillLoadOutcome
++        : undefined,
+       userInstructions: this.config.subagentContext.userInstructions,
+     });
+   }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/events.ts b/apps/zcode-cli/packages/core/src/runtime/methods/events.ts
+index 808033ed4f21fca901633520c2b0ba094ef43c2f..3af2a6aa94ca3d965c8838bfa4ff1653179b5aa7 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/events.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/events.ts
+@@ -98,11 +98,18 @@ export async function appendEvent(
+     });
+   }
+ 
+-  let phase = "event_store.append";
++  // Queue admission must be durable before either a projection or the active loop can see it.
++  // Other event types retain their sequence-first persistence contract.
++  const admitsQueuedInput = event.type === SessionEventType.TurnSteerQueued;
++  let phase = admitsQueuedInput ? "session_input.admit" : "event_store.append";
+   try {
++    if (admitsQueuedInput) await persistDurableSessionEvent.call(this, event, traceContext);
++    phase = "event_store.append";
+     const storedEvent = await this.eventStore.append(event);
+     phase = "session_event.persist_durable";
+-    await persistDurableSessionEvent.call(this, storedEvent, traceContext);
++    if (!admitsQueuedInput) {
++      await persistDurableSessionEvent.call(this, storedEvent, traceContext);
++    }
+     phase = "session_event.record_usage";
+     await recordToolUsageFromEvent(this, storedEvent, traceContext);
+     phase = "session_event.notify_sinks";
+@@ -351,6 +358,7 @@ async function persistDurableSessionEvent(
+         pendingInputId: payload.pendingInputId,
+         status: "failed",
+       });
++      throw error;
+     }
+     return;
+   }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/plugin-reference.ts b/apps/zcode-cli/packages/core/src/runtime/methods/plugin-reference.ts
+index 1cf732fe743ad3f51d2a285b2e042471f4516bfd..5afe6b1162b6be83d4db8c93ffafe7f4d49d15b2 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/plugin-reference.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/plugin-reference.ts
+@@ -3,6 +3,7 @@
+ // 与 live Skill/MCP/Subagent inventory 取交集 → 生成本轮 model-only reminder。
+ // 失败语义：对话 fail open（任何异常都不阻塞本轮），能力注入 fail closed（异常时不注入）。
+ import { toMcpToolName } from "../../mcp/index.js";
++import { isSubagentDispatchToolName } from "../../tool/compat.js";
+ import {
+   buildPluginReferenceReminderBody,
+   extractPluginReferences,
+@@ -53,6 +54,8 @@ function collectLivePluginSkills(runtime: AgentRuntimeInternal): LivePluginSkill
+   const skills: LivePluginSkill[] = [];
+   for (const skill of runtime.skillLoadOutcome?.skills ?? []) {
+     if (skill.source !== "plugin") continue;
++    // Referencing a plugin is not an explicit invocation of its manual-only Skills.
++    if (skill.policy?.allowImplicitInvocation === false) continue;
+     if (!skill.pluginName || !skill.qualifiedName) continue;
+     skills.push({
+       qualifiedName: skill.qualifiedName,
+@@ -100,8 +103,15 @@ export async function injectPluginReferenceReminderFromTurn(
+   const startedAt = Date.now();
+   try {
+     const liveMcpServers = await collectLiveMcpServers(this, traceContext, toolDisallowlist);
+-    const liveSkills = collectLivePluginSkills(this);
+-    const liveSubagents = collectLivePluginSubagents(this);
++    // Apply the same exact-name projection as MCP. Installed metadata alone does not
++    // make a capability available when its dispatch tool is absent or hidden this turn.
++    const visibleToolNames = this.getTools()
++      .map((tool) => tool.name)
++      .filter((name) => !toolDisallowlist?.includes(name));
++    const liveSkills = visibleToolNames.includes("Skill") ? collectLivePluginSkills(this) : [];
++    const liveSubagents = visibleToolNames.some(isSubagentDispatchToolName)
++      ? collectLivePluginSubagents(this)
++      : [];
+     const result = buildPluginReferenceReminderBody({
+       references: extraction.references,
+       catalog: this.config.pluginReferenceCatalog,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts b/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
+index cdeb64082e1165833021a969b7a87771cf0e40d7..81fe75fbdd08c4868fec35cfe9582c4334edd843 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/steering.ts
+@@ -149,8 +149,7 @@ export async function steerTurn(
+     ...(toolDisallowlist ? { toolDisallowlist } : {}),
+     turnId: activeTurn.turnId,
+   };
+-  activeTurn.pendingInputs.push(pendingInput);
+-  const queueLength = activeTurn.pendingInputs.length;
++  const queueLength = activeTurn.pendingInputs.length + 1;
+   const event = createSessionEvent(
+     SessionEventType.TurnSteerQueued,
+     this.sessionId,
+@@ -176,6 +175,21 @@ export async function steerTurn(
+     },
+   );
+   await this.appendEvent(event, activeTurn.traceContext);
++  // A slow/failed admission must never expose an executable Guide before its durable receipt.
++  // If the target settled meanwhile, retain the accepted input in the ordinary queue; attaching
++  // it to a replacement activeTurn would cross the accepted execution boundary.
++  if (
++    this.activeTurn === activeTurn &&
++    activeTurn.steerable &&
++    !this.activeForegroundExecution?.controller.signal.aborted
++  ) {
++    activeTurn.pendingInputs.push(pendingInput);
++  } else if (pendingInputDelivery(pendingInput) === "guide") {
++    await persistGuideFallback(this, pendingInput, {
++      reasonCode: "guide.noToolBoundary",
++      traceContext: activeTurn.traceContext,
++    });
++  }
+   this.logger?.debug("Turn steer queued", {
+     ...traceContextToLogContext(activeTurn.traceContext),
+     activeTurnKind: activeTurn.kind,
+@@ -497,29 +511,7 @@ export async function fallbackPendingGuidesToQueue(
+   let changed = 0;
+   for (const pendingInput of options.activeTurn.pendingInputs) {
+     if (pendingInputDelivery(pendingInput) !== "guide") continue;
+-    const intent = pendingInput.intent
+-      ? {
+-          ...pendingInput.intent,
+-          admittedDelivery: "queue" as const,
+-          fallbackReasonCode: options.reasonCode,
+-        }
+-      : undefined;
+-    const event = this.createEvent(
+-      SessionEventType.TurnSteerDeliveryChanged,
+-      {
+-        admittedDelivery: "queue",
+-        fallbackReasonCode: options.reasonCode,
+-        ...(intent ? { intent } : {}),
+-        pendingInputId: pendingInput.id,
+-        requestedDelivery: "guide",
+-        targetTurnId: options.activeTurn.turnId,
+-      },
+-      options.traceContext,
+-    );
+-    await this.appendEvent(event, options.traceContext);
+-    options.events?.push(event);
+-    pendingInput.delivery = "queue";
+-    if (intent) pendingInput.intent = intent;
++    await persistGuideFallback(this, pendingInput, options);
+     changed += 1;
+     this.logger?.debug("Guide input fell back to ordinary queue", {
+       ...traceContextToLogContext(options.traceContext),
+@@ -534,6 +526,40 @@ export async function fallbackPendingGuidesToQueue(
+   return changed;
+ }
+ 
++async function persistGuideFallback(
++  runtime: AgentRuntimeInternal,
++  pendingInput: PendingTurnInput,
++  options: {
++    events?: SessionEvent[];
++    reasonCode: "guide.noToolBoundary" | "guide.turnInterrupted";
++    traceContext: TraceContext;
++  },
++): Promise<void> {
++  const intent = pendingInput.intent
++    ? {
++        ...pendingInput.intent,
++        admittedDelivery: "queue" as const,
++        fallbackReasonCode: options.reasonCode,
++      }
++    : undefined;
++  const event = runtime.createEvent(
++    SessionEventType.TurnSteerDeliveryChanged,
++    {
++      admittedDelivery: "queue",
++      fallbackReasonCode: options.reasonCode,
++      ...(intent ? { intent } : {}),
++      pendingInputId: pendingInput.id,
++      requestedDelivery: "guide",
++      targetTurnId: pendingInput.turnId,
++    },
++    options.traceContext,
++  );
++  await runtime.appendEvent(event, options.traceContext);
++  options.events?.push(event);
++  pendingInput.delivery = "queue";
++  if (intent) pendingInput.intent = intent;
++}
++
+ async function pendingInputTargetTurnId(
+   runtime: AgentRuntimeInternal,
+   pendingInputId: string,
+diff --git a/apps/zcode-cli/packages/core/test/context-footprint.test.ts b/apps/zcode-cli/packages/core/test/context-footprint.test.ts
+index 370b490b13bbeeec7fc4a87b1e4dc8cfd4941af7..b0f98f6a8c3ca9f374a9bbab7cc95aa71a25176d 100644
+--- a/apps/zcode-cli/packages/core/test/context-footprint.test.ts
++++ b/apps/zcode-cli/packages/core/test/context-footprint.test.ts
+@@ -11,7 +11,7 @@ import {
+ } from "../src/runtime/methods/context-usage.js";
+ import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
+ 
+-async function skills() {
++async function skills(plugin = false) {
+   const dir = await mkdtemp(join(tmpdir(), "fleet-context-skills-"));
+   const paths: string[] = [];
+   for (const [name, flag] of [
+@@ -30,10 +30,20 @@ async function skills() {
+       `---\nname: ${name}\ndescription: Instructions for ${name}\ndisable-model-invocation: ${flag}\n---\nBODY_${name}\n`,
+     );
+   }
++  if (plugin) {
++    await mkdir(join(dir, ".zcode-plugin"));
++    await writeFile(join(dir, ".zcode-plugin", "plugin.json"), JSON.stringify({ name: "fixture" }));
++  }
+   const port = new NodeSkillAdapter({
+     homeDirectory: dir,
+     includeZcodeSkills: false,
+-    extraRoots: [dir],
++    ...(plugin
++      ? {
++          extraResolvedRoots: [
++            { path: dir, scope: "user" as const, source: "plugin" as const, priority: 10 },
++          ],
++        }
++      : { extraRoots: [dir] }),
+   });
+   return { dir, paths, port, close: () => rm(dir, { recursive: true, force: true }) };
+ }
+@@ -66,6 +76,116 @@ test("manual-only skills stay installed and explicitly loadable without entering
+   }
+ });
+ 
++test("plugin references cannot rediscover manual-only Skills, including after cold reopen", async () => {
++  const s = await skills(true);
++  const f = await fixture(undefined, false, {
++    config: {
++      toolAllowlist: ["Skill"],
++      pluginReferenceCatalog: pluginCatalog(s.dir),
++    },
++    deps: { skillPort: s.port },
++  });
++  const inspect = (request: any) => {
++    const prompt = JSON.stringify(request.messages);
++    assert.ok(prompt.includes("<plugin_reference>"));
++    assert.ok(prompt.includes("fixture:automatic"));
++    assert.ok(!prompt.includes("fixture:manual"));
++    return reply("complete");
++  };
++  try {
++    f.steps.push(inspect);
++    await f.runtime.executeTurn("Use [Fixture](plugin://fixture@test)");
++    await f.reopen();
++    f.steps.push(inspect);
++    await f.runtime.executeTurn("Continue");
++    // A plugin reference never authorizes manual-only Skills; an explicit human Skill selection still does.
++    f.steps.push(
++      () =>
++        reply("loading", [{ id: "explicit", name: "Skill", input: { skill: "fixture:manual" } }]),
++      (request) => {
++        assert.ok(JSON.stringify(request.messages).includes("BODY_manual"));
++        return reply("explicit-complete");
++      },
++    );
++    assert.equal(
++      (await f.runtime.executeTurn("$fixture:manual requested")).response,
++      "explicit-complete",
++    );
++  } finally {
++    await f.close();
++    await s.close();
++  }
++});
++
++test("plugin reminders expose only Skill and Agent capabilities whose tools are visible this turn", async () => {
++  const s = await skills(true);
++  try {
++    for (const mode of ["visible", "session-hidden", "turn-hidden", "unavailable"] as const) {
++      const f = await fixture(undefined, false, {
++        config: {
++          toolAllowlist: mode === "session-hidden" ? ["Probe"] : ["Skill", "Agent"],
++          subagents: {
++            enabled: mode !== "unavailable",
++            profiles: [
++              {
++                name: "fixture:reviewer",
++                description: "Review fixture",
++                systemPrompt: "Review fixture",
++                source: "user",
++                path: join(s.dir, "agents", "reviewer.md"),
++              },
++            ],
++          },
++          pluginReferenceCatalog: pluginCatalog(s.dir),
++        },
++        deps: mode === "unavailable" ? {} : { skillPort: s.port },
++      });
++      try {
++        f.steps.push((request) => {
++          const names = request.tools.map((tool: any) => tool.name);
++          const prompt = JSON.stringify(request.messages);
++          if (mode === "visible") {
++            assert.ok(names.includes("Skill") && names.includes("Agent"));
++            assert.ok(prompt.includes("<plugin_reference>"));
++            assert.ok(prompt.includes("fixture:reviewer"));
++          } else {
++            assert.ok(!names.includes("Skill") && !names.includes("Agent"));
++            assert.ok(!prompt.includes("<plugin_reference>"), mode);
++          }
++          return reply("complete");
++        });
++        await f.runtime.executeTurn(
++          "Use [Fixture](plugin://fixture@test)",
++          undefined,
++          mode === "turn-hidden" ? { toolDisallowlist: ["Skill", "Agent"] } : undefined,
++        );
++      } finally {
++        await f.close();
++      }
++    }
++  } finally {
++    await s.close();
++  }
++});
++
++function pluginCatalog(rootPath: string) {
++  return {
++    plugins: [
++      {
++        pluginId: "fixture@test",
++        name: "fixture",
++        marketplace: "test",
++        enabled: true,
++        conflictingPluginIds: [],
++        skillQualifiedNames: ["fixture:automatic", "fixture:manual"],
++        mcpServerNames: [],
++        subagentNames: ["fixture:reviewer"],
++        rootPath,
++      },
++    ],
++  };
++}
++
+ test(
+   "full Pi cannot auto-load a manual-only skill even if the model invents its name",
+   { timeout: 10000 },
+@@ -124,6 +244,39 @@ test("context tool estimates exclude execution-only metadata that adapters never
+   }
+ });
+ 
++test("child contexts advertise Skills only when the child's actual tool set includes Skill", async () => {
++  const s = await skills();
++  try {
++    for (const available of [false, true]) {
++      const f = await fixture(undefined, false, {
++        config: {
++          toolAllowlist: available ? ["Skill"] : ["Probe"],
++          subagentContext: { agentPrompt: "Complete the assigned task." },
++        },
++        deps: { skillPort: s.port },
++      });
++      try {
++        f.steps.push((request) => {
++          assert.equal(
++            request.tools.some((tool: any) => tool.name === "Skill"),
++            available,
++          );
++          assert.equal(
++            JSON.stringify(request.messages).includes("Instructions for automatic"),
++            available,
++          );
++          return reply("complete");
++        });
++        await f.runtime.executeTurn("A child task");
++      } finally {
++        await f.close();
++      }
++    }
++  } finally {
++    await s.close();
++  }
++});
++
+ test("skill contributors reflect the actual truncated or names-only catalogue entries", async () => {
+   const s = await skills();
+   const f = await fixture(undefined, false, {
+diff --git a/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts b/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
+index c31bc85bad7d01243faa1ab779e8aee2e28ac255..b45e6023005e9632f745d731c4277ef9e83af025 100644
+--- a/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
+@@ -2,6 +2,164 @@ import assert from "node:assert/strict";
+ import test from "node:test";
+ import { fixture, selection, reply, call } from "./helpers/pi-runtime-fixture.js";
+ 
++test("a rejected durable Guide admission cannot reach the model or survive as a queue event", { timeout: 10000 }, async () => {
++  const f = await fixture("pi", true);
++  const entered = Promise.withResolvers<void>();
++  const release = Promise.withResolvers<void>();
++  let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++  try {
++    f.steps.push(async () => {
++      entered.resolve();
++      await release.promise;
++      return reply("first response");
++    }, () => reply("unaccepted Guide was executed"));
++    running = f.runtime.executeTurn("Initial request");
++    await entered.promise;
++    f.store.saveSessionInput = async () => { throw new Error("Guide admission write failed"); };
++    const [admission] = await Promise.allSettled([
++      f.runtime.admitPrompt("This Guide must not run", undefined, { queueDelivery: "guide" }),
++    ]);
++    release.resolve();
++    await running;
++    assert.equal(admission!.status, "rejected", "A failed durable write was acknowledged");
++    assert.equal(f.requests.length, 1, "Failed admission reached physical inference");
++    assert.equal((await f.runtime.rebuildProjection()).pendingSteerInputs.length, 0);
++    await f.reopen();
++    assert.equal((await f.runtime.rebuildProjection()).pendingSteerInputs.length, 0);
++  } finally {
++    release.resolve();
++    await running?.catch(() => {});
++    await f.close();
++  }
++});
++
++test("Guide waiting for durable admission stays queued when its target turn completes", { timeout: 10000 }, async () => {
++  const f = await fixture("pi", true);
++  const entered = Promise.withResolvers<void>();
++  const release = Promise.withResolvers<void>();
++  const saving = Promise.withResolvers<void>();
++  const commit = Promise.withResolvers<void>();
++  let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++  let guide: ReturnType<typeof f.runtime.admitPrompt> | undefined;
++  try {
++    f.steps.push(async () => {
++      entered.resolve();
++      await release.promise;
++      return reply("first response");
++    }, () => reply("Guide was executed before admission"));
++    running = f.runtime.executeTurn("Initial request");
++    await entered.promise;
++    const save = f.store.saveSessionInput.bind(f.store);
++    f.store.saveSessionInput = async (input) => {
++      saving.resolve();
++      await commit.promise;
++      return await save(input);
++    };
++    guide = f.runtime.admitPrompt("Run after acceptance", undefined, { queueDelivery: "guide" });
++    await saving.promise;
++    release.resolve();
++    await running;
++    assert.equal(f.requests.length, 1, "Guide ran while its durable save was pending");
++    assert.equal((await f.runtime.rebuildProjection()).pendingSteerInputs.length, 0);
++    commit.resolve();
++    assert.equal((await guide).kind, "queued");
++    const pending = (await f.runtime.rebuildProjection()).pendingSteerInputs;
++    assert.equal(pending.length, 1, "Accepted input was lost when its target turn ended");
++    const saved = await f.store.listSessionInputs({ sessionID: "session" as never });
++    assert.equal(saved[0]!.delivery, "queue");
++  } finally {
++    release.resolve();
++    commit.resolve();
++    await Promise.allSettled([running, guide]);
++    await f.close();
++  }
++});
++
++test("a slow Guide retains its accepted identity across Stop, a replacement turn and restart", { timeout: 10000 }, async () => {
++  const f = await fixture("pi", true);
++  const entered = Promise.withResolvers<void>();
++  const release = Promise.withResolvers<void>();
++  const saving = Promise.withResolvers<void>();
++  const commit = Promise.withResolvers<void>();
++  const replacementEntered = Promise.withResolvers<void>();
++  const replacementRelease = Promise.withResolvers<void>();
++  const controller = new AbortController();
++  const running: Array<ReturnType<typeof f.runtime.executeTurn>> = [];
++  let guide: ReturnType<typeof f.runtime.admitPrompt> | undefined;
++  try {
++    f.enableSubscription();
++    f.steps.push(async () => {
++      entered.resolve();
++      await release.promise;
++      return reply("stopped response");
++    }, async () => {
++      replacementEntered.resolve();
++      await replacementRelease.promise;
++      return reply("replacement response");
++    }, () => reply("old Guide leaked into replacement"));
++    const first = f.runtime.executeTurn("Initial request", undefined, { abortSignal: controller.signal });
++    running.push(first);
++    const stopped = assert.rejects(first);
++    await entered.promise;
++    const save = f.store.saveSessionInput.bind(f.store);
++    f.store.saveSessionInput = async (input) => {
++      saving.resolve();
++      await commit.promise;
++      return await save(input);
++    };
++    const intent = {
++      sourceCommandId: "slow-guide-command",
++      queueItemId: "slow-guide-input",
++      clientId: "fixture",
++      kind: "sendText" as const,
++      admissionSeq: 1,
++      admittedAt: Date.now(),
++      requestedDelivery: "guide" as const,
++      admittedDelivery: "guide" as const,
++      modelSelection: { ...selection("model-b"), options: { reasoningLevel: "off", speedMode: "fast" } },
++      subscriptionAccountId: "account-b",
++    };
++    guide = f.runtime.admitPrompt("Retain this input", undefined, { intent, queueDelivery: "guide" });
++    await saving.promise;
++    intent.modelSelection.modelId = "edited-model";
++    intent.modelSelection.options.speedMode = "standard";
++    intent.subscriptionAccountId = "edited-account";
++    controller.abort(new Error("Stop"));
++    release.resolve();
++    await stopped;
++    f.runtime.setSessionModelSelection(selection("model-c"));
++    f.selectAccount("account-c");
++    const replacement = f.runtime.executeTurn("Replacement request");
++    running.push(replacement);
++    await replacementEntered.promise;
++    commit.resolve();
++    assert.equal((await guide).kind, "queued");
++    replacementRelease.resolve();
++    await replacement;
++    assert.deepEqual(f.requests.map(request => request.selection.modelId), ["model-a", "model-c"]);
++    assert.deepEqual(f.accounts, ["account-a", "account-c"]);
++    const saved = await f.store.getSessionInputById("slow-guide-input");
++    assert.equal(saved?.status, "admitted");
++    assert.equal(saved?.delivery, "queue");
++    const savedIntent = saved?.payload.intent as typeof intent;
++    assert.equal(savedIntent.modelSelection.modelId, "model-b");
++    assert.equal(savedIntent.modelSelection.options.speedMode, "fast");
++    assert.equal(savedIntent.subscriptionAccountId, "account-b");
++    await f.reopen();
++    const restored = await f.store.getSessionInputById("slow-guide-input");
++    assert.equal(restored?.status, "discarded", "Existing restart policy must not silently execute queued work");
++    assert.equal(restored?.statusReason, "session_resumed");
++    assert.deepEqual(restored?.payload, saved?.payload, "Restart must retain recoverable input and execution identity");
++    assert.equal(f.requests.length, 2);
++  } finally {
++    release.resolve();
++    replacementRelease.resolve();
++    commit.resolve();
++    await Promise.allSettled([...running, guide]);
++    await f.close();
++  }
++});
++
+ test(
+   "reused upstream tool-call IDs retain separate request receipts",
+   { timeout: 10000 },
+diff --git a/package.json b/package.json
+index 709a11c057a63d388a928d9955437ee8b15e7e8a..d600c034345a0f29ef54b825057247678503f1fc 100644
+--- a/package.json
++++ b/package.json
+@@ -48,7 +48,7 @@
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+-    "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
++    "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+@@ -60,9 +60,9 @@
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+-    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts packages/services/test/native-cli-login.test.ts",
++    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+-    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests",
++    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles",
+     "test:chatgpt-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/chatgptConnection.browser.test.tsx __chatgptConnectionTests --desktop-styles",
+     "test:model-settings-tool-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/modelSettingsTool.browser.test.tsx __modelSettingsToolTests --desktop-styles",
+     "test:context-capacity-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/contextCapacity.browser.test.tsx __contextCapacityTests --desktop-styles",
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index 2575d6bbd2f81b01c594e5a6bc05635e43ce1de0..668f29d386b48d8e7b39a16b97a96cdb8e0cd3b8 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -2,6 +2,7 @@ import type { ProviderSettingsFacade, ProviderId } from "@zcode/provider";
+ import type { NativeCliAccessConfigObject } from "@zcode/provider";
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import type { ModelDiscoveryResult } from "./modelDiscovery.js";
++import type { SubscriptionUsageResult } from "./subscriptionUsage.js";
+ 
+ export interface NativeCliConnectionInspection {
+   accountId: string;
+@@ -15,6 +16,7 @@ export interface NativeCliLoginProcess {
+ }
+ export interface NativeCliConnectionAdapter {
+   inspect(access: NativeCliAccessConfigObject): Promise<NativeCliConnectionInspection>;
++  usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
+   login(options: {
+     executable?: string;
+     configDir?: string;
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index fd57e2a87491d005d6bb394f10caf48dfc89e453..c0160c9ff348f23aaa65b5c15fd6d35b84763c15 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -2,8 +2,10 @@ import {
+   inspectClaudeNativeConnection,
+   startClaudeNativeLogin,
+   requireClaudeSubscriptionAccount,
++  readClaudeNativeUsage,
+ } from "@zcode/adapters/native-agent";
+ import type { NativeCliConnectionAdapter } from "./nativeCliConnection.js";
++import { parseClaudeNativeUsage } from "./nativeCliUsage.js";
+ 
+ export function mapClaudeNativeModels(
+   models: Awaited<ReturnType<typeof inspectClaudeNativeConnection>>["models"],
+@@ -44,6 +46,19 @@ export function createNativeCliConnectionAdapter(
+   resolveEnvironment: () => Promise<Record<string, string>> = async () => ({}),
+ ): NativeCliConnectionAdapter {
+   return {
++    async usage(access) {
++      if (access.provider !== "claude") return { status: "unsupported" };
++      if (!access.connected || !access.accountId) return { status: "auth-required" };
++      const payload = await readClaudeNativeUsage({
++        executable: access.executable,
++        configDir: access.configDir,
++        accountId: access.accountId,
++        env: await resolveEnvironment(),
++      });
++      return payload === undefined
++        ? { status: "unsupported" }
++        : parseClaudeNativeUsage(payload, Date.now());
++    },
+     async inspect(access) {
+       if (access.provider !== "claude")
+         throw new Error("This native CLI executor is not available yet");
+diff --git a/packages/services/src/model-provider/nativeCliUsage.ts b/packages/services/src/model-provider/nativeCliUsage.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..95caf98f462901ee932c27c1602f2cd4aca5c034
+--- /dev/null
++++ b/packages/services/src/model-provider/nativeCliUsage.ts
+@@ -0,0 +1,200 @@
++import type { NativeCliAccessConfigObject, ProviderSettingsFacade } from "@zcode/provider";
++import type { NativeCliConnectionAdapter } from "./nativeCliConnection.js";
++import type {
++  SubscriptionAccountsView,
++  SubscriptionConnectionOwner,
++} from "./subscriptionConnectionTypes.js";
++import type { SubscriptionUsageResult, SubscriptionUsageWindow } from "./subscriptionUsage.js";
++
++function object(value: unknown): Record<string, unknown> | undefined {
++  return value && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : undefined;
++}
++
++/** Both UI callers use the existing service contract, whichever runtime owns authentication. */
++export function createConnectionUsageOperations(
++  facade: ProviderSettingsFacade,
++  ensureReady: () => Promise<void>,
++  native?: NativeCliConnectionAdapter,
++  subscriptions?: SubscriptionConnectionOwner,
++) {
++  const nativeUsage = createNativeCliUsageReader(facade, native);
++  return {
++    async getSubscriptionUsage(
++      id: string,
++      refresh?: boolean,
++      accountId?: string,
++    ): Promise<SubscriptionUsageResult> {
++      await ensureReady();
++      if (nativeUsage.accounts(id)) return nativeUsage.read(id, refresh, accountId);
++      return subscriptions
++        ? subscriptions.usage(id, refresh, accountId)
++        : { status: "unsupported" };
++    },
++    async getSubscriptionAccounts(id: string): Promise<SubscriptionAccountsView> {
++      await ensureReady();
++      const accounts = nativeUsage.accounts(id);
++      if (accounts) return accounts;
++      if (!subscriptions) throw new Error("Subscription login unavailable on this host");
++      return subscriptions.accounts(id);
++    },
++  };
++}
++
++/** SDK 0.3.286 get_usage percentages are 0–100; event utilization is a different contract. */
++export function parseClaudeNativeUsage(
++  payload: unknown,
++  observedAt: number,
++): SubscriptionUsageResult {
++  const body = object(payload);
++  if (body?.rate_limits_available === false) return { status: "unsupported" };
++  const limits = object(body?.rate_limits);
++  if (body?.rate_limits_available !== true || !limits)
++    return {
++      status: "unavailable",
++      ...(body?.rate_limits_available === true
++        ? { unavailableReason: "no-provider-data" as const }
++        : {}),
++    };
++  const windows: SubscriptionUsageWindow[] = [];
++  const add = (id: string, value: unknown, windowMinutes: number) => {
++    const row = object(value);
++    if (!row) return;
++    const used = row.utilization;
++    const reset = typeof row.resets_at === "string" ? Date.parse(row.resets_at) : NaN;
++    // Invalid counters never masquerade as zero; a known reset may still be useful.
++    const usedPercent =
++      typeof used === "number" && Number.isFinite(used) && used >= 0 && used <= 100
++        ? used
++        : undefined;
++    if (usedPercent === undefined && !Number.isFinite(reset)) return;
++    windows.push({
++      id,
++      windowMinutes,
++      ...(usedPercent !== undefined ? { usedPercent } : {}),
++      ...(Number.isFinite(reset) ? { resetAt: reset } : {}),
++    });
++  };
++  add("default:five_hour", limits.five_hour, 300);
++  add("default:seven_day", limits.seven_day, 10080);
++  add("claude-apps:seven_day", limits.seven_day_oauth_apps, 10080);
++  add("Opus:seven_day", limits.seven_day_opus, 10080);
++  add("Sonnet:seven_day", limits.seven_day_sonnet, 10080);
++  if (Array.isArray(limits.model_scoped))
++    for (const raw of limits.model_scoped.slice(0, 32)) {
++      const row = object(raw);
++      const label = typeof row?.display_name === "string" ? row.display_name.trim() : "";
++      if (
++        label &&
++        label.length <= 128 &&
++        !windows.some((window) => window.id === `${label}:seven_day`)
++      )
++        add(`${label}:seven_day`, row, 10080);
++    }
++  if (!windows.length) return { status: "unavailable", unavailableReason: "no-provider-data" };
++  return {
++    status: "available",
++    source: "claude-native:get_usage",
++    observedAt,
++    windows,
++    ...(typeof body.subscription_type === "string" && body.subscription_type.length <= 128
++      ? { plan: body.subscription_type }
++      : {}),
++  };
++}
++
++/** Derived cache on the existing native connection owner; no tokens, accounts or usage ledger. */
++export function createNativeCliUsageReader(
++  facade: ProviderSettingsFacade,
++  native?: NativeCliConnectionAdapter,
++  now = Date.now,
++) {
++  const cache = new Map<
++    string,
++    {
++      revision: string;
++      value?: SubscriptionUsageResult;
++      pending?: Promise<SubscriptionUsageResult>;
++    }
++  >();
++  const scope = (id: string) => {
++    const access = facade.getView().providers.find((provider) => provider.providerId === id)
++      ?.effectiveConfig.access;
++    if (access?.type !== "native-cli") return undefined;
++    return {
++      access,
++      revision: JSON.stringify([
++        access.provider,
++        access.executable,
++        access.configDir,
++        access.accountId,
++        access.connected,
++      ]),
++    };
++  };
++  return {
++    accounts(id: string): SubscriptionAccountsView | undefined {
++      const current = scope(id);
++      if (!current) return undefined;
++      const { access, revision } = current;
++      return {
++        accounts:
++          access.connected && access.accountId
++            ? [{ id: access.accountId, label: access.accountId, active: true }]
++            : [],
++        autoSwitch: false,
++        revision,
++      };
++    },
++    async read(id: string, refresh = false, accountId?: string): Promise<SubscriptionUsageResult> {
++      const current = scope(id);
++      const access = current?.access;
++      const scoped = { accountId: access?.accountId, connectionRevision: current?.revision };
++      if (!current || !access?.connected || !access.accountId) {
++        cache.delete(id);
++        return { status: "auth-required", ...scoped };
++      }
++      // A stale viewer cannot invalidate the current account's shared read.
++      if (accountId && accountId !== access.accountId)
++        return { status: "auth-required", ...scoped };
++      if (!native?.usage) return { status: "unsupported", ...scoped };
++      let entry = cache.get(id);
++      if (entry?.revision !== current.revision) {
++        entry = { revision: current.revision };
++        cache.set(id, entry);
++      }
++      if (entry.pending) return entry.pending;
++      if (!refresh && entry.value && (entry.value.refreshAfter ?? 0) > now()) return entry.value;
++      const active = entry;
++      const request = (async (): Promise<SubscriptionUsageResult> => {
++        let value: SubscriptionUsageResult;
++        try {
++          value = await native.usage!({ ...access } as NativeCliAccessConfigObject);
++        } catch (error) {
++          value = {
++            status:
++              error instanceof Error &&
++              /account changed|Sign in to the official Claude CLI/.test(error.message)
++                ? "auth-required"
++                : "unavailable",
++          };
++        }
++        if (scope(id)?.revision !== active.revision || cache.get(id) !== active)
++          return { status: "unavailable", ...scoped };
++        const result: SubscriptionUsageResult =
++          value.status === "unavailable" && active.value?.status === "available"
++            ? { ...active.value, refreshError: "unavailable", refreshAfter: now() + 60000 }
++            : { ...value, ...scoped, refreshAfter: now() + 60000 };
++        active.value = result;
++        return result;
++      })();
++      active.pending = request;
++      try {
++        return await request;
++      } finally {
++        if (active.pending === request) active.pending = undefined;
++      }
++    },
++  };
++}
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 5f035ce66e0bd8bf4f6420d16fbc87aeda905088..4e4371a0d0a632bc66c4cd3c28efb3882c83e942 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -4,6 +4,7 @@ import {
+   createNativeCliConnectionOperations,
+   type NativeCliConnectionAdapter,
+ } from "./nativeCliConnection.js";
++import { createConnectionUsageOperations } from "./nativeCliUsage.js";
+ import type {
+   CodexResetCredits,
+   CodexResetRequest,
+@@ -159,6 +160,7 @@ export function createProviderSettingsService(
+ ): IProviderSettingsService {
+   const discoveries = new Map<string, { identity: string; request: Promise<ModelDiscoveryResult> }>();
+   return {
++    ...createConnectionUsageOperations(facade, ensureReady, nativeCli, subscriptions),
+     ...createModelSettingsAssistantService(facade, ensureReady, assistantWorkspacePath),
+     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
+     async previewCcSwitchImport(path) {
+@@ -215,11 +217,6 @@ export function createProviderSettingsService(
+         if (discoveries.get(id)?.request === request) discoveries.delete(id);
+       }
+     },
+-    async getSubscriptionUsage(id, refresh, accountId) {
+-      await ensureReady();
+-      if (!subscriptions) return { status: "unsupported" };
+-      return subscriptions.usage(id, refresh, accountId);
+-    },
+     async getSubscriptionResetCredits(id, accountId) {
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+       return subscriptions.resetCredits(id, accountId);
+@@ -228,10 +225,6 @@ export function createProviderSettingsService(
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+       return subscriptions.consumeResetCredit(id, request);
+     },
+-    async getSubscriptionAccounts(id) {
+-      if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+-      return subscriptions.accounts(id);
+-    },
+     async updateSubscriptionAccounts(id, change) {
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+       const before = await subscriptions.accounts(id);
+diff --git a/packages/services/src/model-provider/subscriptionUsage.ts b/packages/services/src/model-provider/subscriptionUsage.ts
+index 43db2908589674672872716a6616003d7a0ad8fc..7beec6dc6096843e231104416b025eedf32bddf7 100644
+--- a/packages/services/src/model-provider/subscriptionUsage.ts
++++ b/packages/services/src/model-provider/subscriptionUsage.ts
+@@ -23,6 +23,8 @@ export type SubscriptionUsageResult = {
+   /** Internal saved-account identity, not the provider's upstream account identifier. */
+   accountId?: string;
+   connectionRevision?: string;
++  /** The native control succeeded but supplied no plan windows; not an authentication verdict. */
++  unavailableReason?: "no-provider-data";
+ } & (
+   | {
+       status: "available";
+diff --git a/packages/services/test/native-cli-usage.test.ts b/packages/services/test/native-cli-usage.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..367e9bc6b931b93f78ba7686c10dec15d2c8f713
+--- /dev/null
++++ b/packages/services/test/native-cli-usage.test.ts
+@@ -0,0 +1,274 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import type { NativeCliAccessConfigObject, ProviderSettingsFacade } from "@zcode/provider";
++import { readClaudeNativeUsage } from "../../../apps/zcode-cli/packages/adapters/src/native-agent/claude-inspect.js";
++import {
++  createNativeCliUsageReader,
++  parseClaudeNativeUsage,
++} from "../src/model-provider/nativeCliUsage.js";
++import type { SubscriptionUsageResult } from "../src/model-provider/subscriptionUsage.js";
++import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
++import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
++
++const payload = {
++  rate_limits_available: true,
++  subscription_type: "pro",
++  rate_limits: {
++    five_hour: { utilization: 0, resets_at: "2026-10-02T23:00:00Z" },
++    seven_day: { utilization: 85.5, resets_at: null },
++    seven_day_oauth_apps: { utilization: 100, resets_at: null },
++    seven_day_opus: { utilization: null, resets_at: "2026-10-09T00:00:00Z" },
++    model_scoped: [{ display_name: "Fable", utilization: 25, resets_at: null }],
++    // Extra usage is money, not another subscription allowance or free reset.
++    extra_usage: { is_enabled: true, monthly_limit: 10000, used_credits: 1000, utilization: 10 },
++  },
++};
++
++test("native SDK plan windows preserve zero, exhausted and unknown values without adding paid extra usage", () => {
++  const result = parseClaudeNativeUsage(payload, 123);
++  assert.equal(result.status, "available");
++  if (result.status !== "available") return;
++  assert.equal(result.observedAt, 123);
++  assert.equal(result.plan, "pro");
++  assert.deepEqual(
++    result.windows.map((w) => [w.id, w.usedPercent, w.windowMinutes]),
++    [
++      ["default:five_hour", 0, 300],
++      ["default:seven_day", 85.5, 10080],
++      ["claude-apps:seven_day", 100, 10080],
++      ["Opus:seven_day", undefined, 10080],
++      ["Fable:seven_day", 25, 10080],
++    ],
++  );
++  assert.equal(result.windows[0]!.resetAt, Date.parse("2026-10-02T23:00:00Z"));
++  assert.equal(result.billing, undefined);
++  assert.equal(result.membership, undefined);
++  assert.equal(result.resetsAvailable, undefined);
++});
++
++test("unsupported, empty, malformed and duplicate SDK windows never report fabricated available capacity", () => {
++  assert.deepEqual(parseClaudeNativeUsage({ rate_limits_available: true, rate_limits: null }, 0), {
++    status: "unavailable",
++    unavailableReason: "no-provider-data",
++  });
++  assert.equal(parseClaudeNativeUsage({ rate_limits_available: false }, 0).status, "unsupported");
++  for (const invalid of [
++    null,
++    {},
++    { rate_limits_available: true, rate_limits: {} },
++    {
++      rate_limits_available: true,
++      rate_limits: { five_hour: { utilization: 101, resets_at: "bad" } },
++    },
++  ])
++    assert.equal(parseClaudeNativeUsage(invalid, 0).status, "unavailable");
++  const value = parseClaudeNativeUsage(
++    {
++      ...payload,
++      rate_limits: {
++        seven_day_opus: { utilization: 2 },
++        model_scoped: [{ display_name: "Opus", utilization: 5 }],
++      },
++    },
++    0,
++  );
++  assert.equal(value.status, "available");
++  if (value.status === "available") assert.equal(value.windows.length, 1);
++});
++
++test(
++  "real SDK control transport reads usage without a prompt, transcript scan or model call",
++  { skip: process.platform === "win32" },
++  async () => {
++    const dir = await mkdtemp(join(tmpdir(), "fleet-native-usage-wire-"));
++    const executable = join(dir, "claude-fixture.mjs");
++    const trace = join(dir, "requests.jsonl");
++    await writeFile(
++      executable,
++      `#!${process.execPath}
++import readline from 'node:readline';
++import { appendFileSync } from 'node:fs';
++const lines=readline.createInterface({input:process.stdin});
++lines.on('line',line=>{
++ const msg=JSON.parse(line); appendFileSync(process.env.FLEET_NATIVE_USAGE_TRACE,JSON.stringify(msg)+'\\n');
++ if(msg.type!=='control_request') process.exit(12);
++ const subtype=msg.request.subtype;
++ const response=subtype==='initialize'?{account:{email:'fixture@example.invalid',subscriptionType:'pro',apiProvider:'firstParty'},models:[],commands:[]}:subtype==='get_usage'?${JSON.stringify(payload)}:null;
++ if(!response) process.exit(13);
++ process.stdout.write(JSON.stringify({type:'control_response',response:{subtype:'success',request_id:msg.request_id,response}})+'\\n');
++});
++`,
++      { mode: 0o700 },
++    );
++    try {
++      const response = await readClaudeNativeUsage({
++        executable,
++        configDir: dir,
++        accountId: "fixture@example.invalid",
++        env: { FLEET_NATIVE_USAGE_TRACE: trace },
++      });
++      assert.deepEqual(response, payload);
++      const requests = (await readFile(trace, "utf8"))
++        .trim()
++        .split("\n")
++        .map((line) => JSON.parse(line));
++      assert.deepEqual(
++        requests.map((row) => row.request.subtype),
++        ["initialize", "get_usage"],
++      );
++      assert.equal(requests[1].request.skip_behaviors, true);
++      await writeFile(trace, "");
++      await assert.rejects(
++        readClaudeNativeUsage({
++          executable,
++          configDir: dir,
++          accountId: "other@example.invalid",
++          env: { FLEET_NATIVE_USAGE_TRACE: trace },
++        }),
++        /account changed/,
++      );
++      const mismatch = (await readFile(trace, "utf8"))
++        .trim()
++        .split("\n")
++        .map((line) => JSON.parse(line));
++      assert.deepEqual(
++        mismatch.map((row) => row.request.subtype),
++        ["initialize"],
++      );
++    } finally {
++      await rm(dir, { recursive: true, force: true });
++    }
++  },
++);
++
++test("native usage coalesces reads, retains dated last-good on network failure, clears on account mismatch", async () => {
++  let access: NativeCliAccessConfigObject = {
++    type: "native-cli",
++    provider: "claude",
++    connected: true,
++    accountId: "A",
++  };
++  const facade = {
++    getView: () => ({ providers: [{ providerId: "P", effectiveConfig: { access } }] }),
++  } as unknown as ProviderSettingsFacade;
++  let now = 1;
++  let calls = 0;
++  let read = () => Promise.resolve(parseClaudeNativeUsage(payload, now));
++  const reader = createNativeCliUsageReader(
++    facade,
++    {
++      inspect: async () => {
++        throw new Error("No catalog fetch");
++      },
++      login: () => {
++        throw new Error("No login");
++      },
++      usage: async () => {
++        calls++;
++        return read();
++      },
++    },
++    () => now,
++  );
++  const [first, same] = await Promise.all([reader.read("P"), reader.read("P")]);
++  assert.deepEqual(first, same);
++  assert.equal(calls, 1);
++  assert.equal(first.accountId, "A");
++  assert.equal(first.connectionRevision, reader.accounts("P")?.revision);
++  now = 100;
++  await reader.read("P");
++  assert.equal(calls, 1);
++  read = () => Promise.reject(new Error("Network unavailable"));
++  const stale = await reader.read("P", true);
++  assert.equal(stale.status, "available");
++  if (stale.status === "available") {
++    assert.equal(stale.observedAt, 1);
++    assert.equal(stale.refreshError, "unavailable");
++  }
++  read = () => Promise.reject(new Error("Native CLI account changed; reconnect this connection"));
++  assert.equal((await reader.read("P", true)).status, "auth-required");
++  const pending = Promise.withResolvers<SubscriptionUsageResult>();
++  read = () => pending.promise;
++  const old = reader.read("P", true);
++  access = { ...access, accountId: "B" };
++  pending.resolve(parseClaudeNativeUsage(payload, now));
++  assert.equal((await old).status, "unavailable");
++  const before = calls;
++  assert.equal((await reader.read("P", false, "A")).status, "auth-required");
++  assert.equal(calls, before);
++  assert.equal(reader.accounts("P")?.accounts[0]?.id, "B");
++  const currentRead = Promise.withResolvers<SubscriptionUsageResult>();
++  read = () => currentRead.promise;
++  const b = reader.read("P", true, "B");
++  const bCalls = calls;
++  await reader.read("P", false, "A");
++  const alsoB = reader.read("P", true, "B");
++  assert.equal(calls, bCalls, "Stale A viewer evicted B's pending native query");
++  currentRead.resolve(parseClaudeNativeUsage(payload, now));
++  assert.equal((await b).status, "available");
++  assert.deepEqual(await b, await alsoB);
++});
++
++test("native allowance uses the existing Provider service and survives config reopen without another account store", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-usage-registry-"));
++  let usageCalls = 0;
++  const open = () =>
++    new ProviderRuntime({
++      configRuntime: createProviderConfigRuntime({
++        personalFilePath: join(directory, "providers.json"),
++        zcodeBuiltinFilePath: fileURLToPath(
++          new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++        ),
++        watch: false,
++        personalPollingIntervalMs: false,
++      }),
++      nativeCli: {
++        inspect: async () => ({
++          accountId: "fixture@example.invalid",
++          accountName: "Fixture",
++          catalog: { source: "provider", models: [] },
++        }),
++        login: () => {
++          throw new Error("No login");
++        },
++        usage: async (access) => {
++          assert.equal(access.accountId, "fixture@example.invalid");
++          usageCalls++;
++          return parseClaudeNativeUsage(payload, Date.now());
++        },
++      },
++    });
++  let runtime = open();
++  try {
++    await runtime.start();
++    const { providerId } = await runtime.providerSettings.createPersonalProvider({
++      templateId: "fleet-claude-native",
++    });
++    await runtime.providerSettings.connectNativeCli(providerId);
++    for (let i = 0; i < 2; i++) {
++      const accounts = await runtime.providerSettings.getSubscriptionAccounts(providerId);
++      assert.equal(accounts.accounts.length, 1);
++      assert.equal(accounts.autoSwitch, false);
++      const value = await runtime.providerSettings.getSubscriptionUsage(
++        providerId,
++        false,
++        accounts.accounts[0]!.id,
++      );
++      assert.equal(value.status, "available");
++      assert.equal(value.connectionRevision, accounts.revision);
++      if (i === 0) {
++        runtime.dispose();
++        runtime = open();
++        await runtime.start();
++      }
++    }
++    assert.equal(usageCalls, 2);
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 6a7e14c0263ada5323c8d47c098fded47fb1aa2b..0614ab89c067d91012db12e9e8be0218993ee21e 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -160,6 +160,8 @@ const enUS: Record<string, string> = {
+   "chat.contextUsage.estimated": "Estimate",
+   "chat.contextUsage.compositionEstimate": "Context composition (character estimate)",
+   "settings.modelProvider.allowance.title": "Plan allowance",
++  "settings.modelProvider.allowance.claudeApps": "Claude apps",
++  "settings.modelProvider.allowance.noProviderData": "The official client returned no allowance data. Your connection has not been changed.",
+   "settings.modelProvider.allowance.refresh": "Refresh plan allowance",
+   "settings.modelProvider.allowance.lastFetched": "Last fetched:",
+   "settings.modelProvider.allowance.neverFetched": "Plan allowance has not been fetched yet.",
+@@ -4497,7 +4499,7 @@ const enUS: Record<string, string> = {
+   "settings.plugins.restorableBuiltins.title": "Restore built-in plugins",
+   "settings.plugins.uninstall.confirmTitle": "Uninstall {name}?",
+   "settings.plugins.uninstall.confirmDescription":
+-    "This removes the plugin's cached files, its data directory, and any saved configuration. This cannot be undone.",
++    "The plugin will become unavailable and its saved configuration will be removed. Its data will be kept for reinstallation.",
+   "settings.plugins.uninstall.confirm": "Uninstall",
+   "settings.plugins.detail.empty": "Select a plugin to view details.",
+   "settings.plugins.detail.enabled": "Enabled",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 902155d2bf55c386769aed217c6706657ab39e5c..17f7d220368e340d561b057c5a61a80f5bdde42b 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -136,6 +136,8 @@ const zhCN: Record<string, string> = {
+   "chat.contextUsage.estimated": "估算",
+   "chat.contextUsage.compositionEstimate": "上下文构成（按字符估算）",
+   "settings.modelProvider.allowance.title": "订阅额度",
++  "settings.modelProvider.allowance.claudeApps": "Claude 应用",
++  "settings.modelProvider.allowance.noProviderData": "官方客户端未返回额度数据，账号连接保持不变。",
+   "settings.modelProvider.allowance.refresh": "刷新订阅额度",
+   "settings.modelProvider.allowance.lastFetched": "上次获取：",
+   "settings.modelProvider.allowance.neverFetched": "尚未获取过订阅额度。",
+@@ -4180,7 +4182,7 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.restorableBuiltins.title": "恢复内置插件",
+   "settings.plugins.uninstall.confirmTitle": "卸载 {name}？",
+   "settings.plugins.uninstall.confirmDescription":
+-    "将删除该插件的缓存文件、数据目录以及已保存的配置。此操作无法撤销。",
++    "卸载后将无法使用该插件，并清除其已保存的配置。插件数据会保留，可在重新安装后继续使用。",
+   "settings.plugins.uninstall.confirm": "卸载",
+   "settings.plugins.detail.empty": "选择一个插件查看详情。",
+   "settings.plugins.detail.enabled": "已启用",
+diff --git a/packages/ui/src/lib/subscriptionPlanPresentation.ts b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+index a12b45d22a6dd0c864fc53307b8b012f0794aaa0..d1367cce9fb56de5db27c7f35b598628c8c232f8 100644
+--- a/packages/ui/src/lib/subscriptionPlanPresentation.ts
++++ b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+@@ -1,4 +1,4 @@
+-type SubscriptionKind = "openai-codex" | "github-copilot" | "xai";
++type SubscriptionKind = "openai-codex" | "github-copilot" | "xai" | "claude";
+ const COLORS = {
+   neutral: "bg-muted text-foreground-subtle",
+   green: "bg-success/15 text-foreground border-success/30",
+@@ -9,6 +9,12 @@ const COLORS = {
+ } as const;
+ type Plan = readonly [name: string, color: keyof typeof COLORS];
+ const PLANS: Record<SubscriptionKind, Record<string, Plan>> = {
++  claude: {
++    pro: ["Pro", "green"],
++    max: ["Max", "gold"],
++    team: ["Team", "purple"],
++    enterprise: ["Enterprise", "teal"],
++  },
+   "openai-codex": {
+     free: ["Free", "neutral"],
+     plus: ["Plus", "green"],
+diff --git a/packages/ui/src/settings/PluginUninstallConfirmDialog.tsx b/packages/ui/src/settings/PluginUninstallConfirmDialog.tsx
+index e5c788418f5c158be048d5b54c5a1eac567361aa..b7516d37df3a81247f1aa386bcdd82bad424c073 100644
+--- a/packages/ui/src/settings/PluginUninstallConfirmDialog.tsx
++++ b/packages/ui/src/settings/PluginUninstallConfirmDialog.tsx
+@@ -10,8 +10,8 @@ import {
+ } from "@/components/ui/alert-dialog.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ 
+-// 卸载是破坏性的彻底清除（缓存 + data 目录 + config 残留），UI 各入口共用同一个确认弹窗，
+-// 文案与行为保持一致，避免「已安装」与「市场」两个面板各写一份。
++// Both installed-list and marketplace entries share this confirmation. Uninstall
++// removes availability and saved configuration while preserving plugin user data.
+ export function PluginUninstallConfirmDialog({
+   open,
+   pluginName,
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index bda8e40e969f7a1adcc7d8e9e5774483ab2d9ca4..642d4404836c9cee69feecf1949a9252154b02a5 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -8,6 +8,36 @@ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
+ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
++import { useSubscriptionAccountList } from "./useSubscriptionAccountList.js";
++import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
++
++function NativeCliAllowance({
++  providerId,
++  onError,
++}: {
++  providerId: string;
++  onError(error: unknown): void;
++}) {
++  const { providerSettingsService } = useServices();
++  const { accounts, reload } = useSubscriptionAccountList(
++    providerSettingsService,
++    providerId,
++    () => {},
++    onError,
++  );
++  const account = accounts?.accounts.find((entry) => entry.active);
++  return account && accounts ? (
++    <SubscriptionUsageSection
++      providerId={providerId}
++      kind="claude"
++      accountId={account.id}
++      revision={accounts.revision}
++      compact
++      showReset={false}
++      onScopeChanged={() => void reload()}
++    />
++  ) : null;
++}
+ 
+ /** Official CLI keeps login/refresh; this card binds its public identity through the existing writer. */
+ export function NativeCliConnectionSection({
+@@ -58,7 +88,9 @@ export function NativeCliConnectionSection({
+         ? "changed"
+         : /timed out|failed: timeout/i.test(raw)
+           ? "timeout"
+-          : /failed: network|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|certificate|TLS|proxy/i.test(raw)
++          : /failed: network|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|certificate|TLS|proxy/i.test(
++                raw,
++              )
+             ? "network"
+             : /sign in|failed: authorization/i.test(raw)
+               ? "login"
+@@ -171,15 +203,20 @@ export function NativeCliConnectionSection({
+         )
+       }
+       usageContent={
+-        <Button
+-          type="button"
+-          variant="link"
+-          className="h-auto p-0 text-ui-sm"
+-          onClick={() => void platform.openExternal("https://code.claude.com/docs/en/setup")}
+-        >
+-          {t("guide")}
+-          <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
+-        </Button>
++        <div className="space-y-3">
++          {access.connected && access.provider === "claude" ? (
++            <NativeCliAllowance key={providerId} providerId={providerId} onError={report} />
++          ) : null}
++          <Button
++            type="button"
++            variant="link"
++            className="h-auto p-0 text-ui-sm"
++            onClick={() => void platform.openExternal("https://code.claude.com/docs/en/setup")}
++          >
++            {t("guide")}
++            <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
++          </Button>
++        </div>
+       }
+     />
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+index ceb30aedaab241ce1dc28a03545ac4a0964ad83e..8d84be3bd6b06032441ee11684809f989d925b2d 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+@@ -57,7 +57,7 @@ export function SubscriptionAllowanceDetails({
+             : undefined;
+           const label = window.id.startsWith("default:")
+             ? (duration ?? t("window"))
+-            : `${window.id.split(":")[0]}${duration ? ` · ${duration}` : ""}`;
++            : `${window.id.startsWith("claude-apps:") ? t("claudeApps") : window.id.split(":")[0]}${duration ? ` · ${duration}` : ""}`;
+           const remaining = window.usedPercent === undefined ? undefined : 100 - window.usedPercent;
+           const value = window.unlimited
+             ? t("unlimited")
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index 58214fbe73c6630163307368f3f90f89e1aef702..53adba5d1510c65336fb6642db6eaa74305af68c 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -25,7 +25,7 @@ export function SubscriptionUsageSection({
+ }: {
+   providerId: string;
+   revision: string;
+-  kind: "openai-codex" | "github-copilot" | "xai";
++  kind: "openai-codex" | "github-copilot" | "xai" | "claude";
+   accountId?: string;
+   enabled?: boolean;
+   compact?: boolean;
+@@ -104,7 +104,7 @@ export function SubscriptionUsageSection({
+         />
+       ) : (
+         <p className="text-ui-base text-foreground-subtle" role="status">
+-          {t(paused ? "offline" : busy ? "loading" : (result?.status ?? "not-read"))}
++          {t(paused ? "offline" : busy ? "loading" : result?.status === "unavailable" && result.unavailableReason === "no-provider-data" ? "noProviderData" : (result?.status ?? "not-read"))}
+         </p>
+       )}
+     </div>
+diff --git a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+index 4239129944c520c4acaf1be1ef04eb3685384661..537668429f9805f6eaf0396218beda5610930a79 100644
+--- a/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
++++ b/packages/ui/src/v4/composer/V4ComposerToolbar.tsx
+@@ -993,12 +993,13 @@ function V4ComposerModelControlsImpl({
+       ? lastUsageRequest
+       : undefined;
+   const subscriptionConnection =
+-    selectedSubscription?.type === "subscription" && selectedSubscriptionProvider
++    (selectedSubscription?.type === "subscription" ||
++      (selectedSubscription?.type === "native-cli" && selectedSubscription.provider === "claude" && selectedSubscription.connected)) && selectedSubscriptionProvider
+       ? {
+           providerId: selectedSubscriptionProvider.providerId,
+           name:
+             selectedSubscriptionProvider.providerName || selectedSubscriptionProvider.providerId,
+-          kind: selectedSubscription.provider,
++          kind: selectedSubscription.type === "native-cli" ? "claude" as const : selectedSubscription.provider,
+           revision: modelSelectionView!.revision,
+           lastAccountId: matchingLastRequest?.accountId,
+         }
+diff --git a/packages/ui/test/nativeCliConnection.browser.test.tsx b/packages/ui/test/nativeCliConnection.browser.test.tsx
+index 2d786b25d7db823c334f9418d2f83b0786df7159..60f16ef2c5e78c7e39f36d661433075a4c7ab2df 100644
+--- a/packages/ui/test/nativeCliConnection.browser.test.tsx
++++ b/packages/ui/test/nativeCliConnection.browser.test.tsx
+@@ -5,6 +5,7 @@ import { PlatformProvider } from "../src/hooks/usePlatform.js";
+ import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
+ import { NativeCliConnectionSection } from "../src/settings/model-provider-section/NativeCliConnectionSection.js";
+ import { ProviderDetailFeedbackBoundary } from "../src/settings/model-provider-section/ProviderDetailFeedback.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
+ 
+ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+ const results: Array<{ name: string; error?: string }> = [];
+@@ -23,7 +24,27 @@ async function fixture() {
+     throw new Error("Sign in to the official Claude CLI with your Claude account first");
+   };
+   let begin = async (_id: string) => ({ flowId: "flow-A" });
++  let usage = async (id: string): Promise<any> => ({
++    status: "available",
++    accountId: id,
++    connectionRevision: id,
++    source: "claude-native:get_usage",
++    plan: "pro",
++    observedAt: 123000,
++    refreshAfter: Date.now() + 60000,
++    windows: [
++      { id: "default:five_hour", usedPercent: 0, windowMinutes: 300 },
++      { id: "default:seven_day", usedPercent: 85, windowMinutes: 10080 },
++    ],
++  });
+   const service = {
++    onDidChange: () => ({ dispose() {} }),
++    getSubscriptionAccounts: async (id: string) => ({
++      accounts: [{ id, label: id, active: true }],
++      autoSwitch: false,
++      revision: id,
++    }),
++    getSubscriptionUsage: (id: string) => usage(id),
+     connectNativeCli: (id: string) => {
+       connections.push(id);
+       return connect(id);
+@@ -45,21 +66,31 @@ async function fixture() {
+     setBegin(value: typeof begin) {
+       begin = value;
+     },
+-    async render(id = "A", locale: "en-US" | "zh-CN" = "zh-CN") {
++    setUsage(value: typeof usage) {
++      usage = value;
++    },
++    async render(id = "A", locale: "en-US" | "zh-CN" = "zh-CN", connected = false) {
+       await act(async () =>
+         root.render(
+           <ServiceProvider services={{ providerSettingsService: service } as never}>
+             <PlatformProvider platform={{ openExternal: async () => {} } as never}>
+               <ZCodeIntlProvider initialLocale={locale}>
+-                <ProviderDetailFeedbackBoundary>
+-                  <NativeCliConnectionSection
+-                    providerId={id}
+-                    access={{ type: "native-cli", provider: "claude", connected: false }}
+-                    onConnectionChanged={() => {
+-                      changed++;
+-                    }}
+-                  />
+-                </ProviderDetailFeedbackBoundary>
++                <TooltipProvider>
++                  <ProviderDetailFeedbackBoundary>
++                    <NativeCliConnectionSection
++                      providerId={id}
++                      access={{
++                        type: "native-cli",
++                        provider: "claude",
++                        connected,
++                        accountId: connected ? id : undefined,
++                      }}
++                      onConnectionChanged={() => {
++                        changed++;
++                      }}
++                    />
++                  </ProviderDetailFeedbackBoundary>
++                </TooltipProvider>
+               </ZCodeIntlProvider>
+             </PlatformProvider>
+           </ServiceProvider>,
+@@ -89,6 +120,68 @@ async function test(name: string, run: () => Promise<void>) {
+ }
+ 
+ async function run() {
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const theme of ["light", "dark"]) {
++      await test(`Claude uses existing allowance display at narrow width: ${locale}/${theme}`, async () => {
++        const f = await fixture();
++        document.documentElement.classList.toggle("dark", theme === "dark");
++        f.node.style.width = "320px";
++        try {
++          await f.render("A", locale, true);
++          await act(async () => {
++            await new Promise((resolve) => setTimeout(resolve, 30));
++          });
++          check(
++            f.node.textContent?.includes("100%") && f.node.textContent?.includes("15%"),
++            "Window percentages not mapped to remaining",
++          );
++          check(
++            f.node.querySelectorAll('[role="progressbar"]').length === 2,
++            "Missing shared quota meters",
++          );
++          check(!f.node.querySelector("input"), "Quota added credentials input");
++          const refresh = [...f.node.querySelectorAll("button")].find(
++            (button) =>
++              button.getAttribute("aria-label") ===
++              (locale === "zh-CN" ? "刷新订阅额度" : "Refresh plan allowance"),
++          );
++          check(refresh, "Missing existing refresh action");
++          check(f.node.scrollWidth <= 320, "Native account allowance overflows narrow card");
++        } finally {
++          await f.close();
++        }
++      });
++    }
++  await test("native allowance never renders the previous connection's late quota", async () => {
++    const f = await fixture();
++    const late = Promise.withResolvers<any>();
++    f.setUsage(async (id) =>
++      id === "A"
++        ? late.promise
++        : { status: "auth-required", accountId: id, connectionRevision: id },
++    );
++    try {
++      await f.render("A", "zh-CN", true);
++      await f.render("B", "zh-CN", true);
++      await act(async () =>
++        late.resolve({
++          status: "available",
++          accountId: "A",
++          connectionRevision: "A",
++          source: "fixture",
++          observedAt: 1,
++          windows: [{ id: "default:five_hour", usedPercent: 23, windowMinutes: 300 }],
++        }),
++      );
++      check(!f.node.textContent?.includes("77%"), "A's late value leaked into B");
++      check(
++        f.node.querySelectorAll('[role="progressbar"]').length === 0,
++        "Auth-required account inherited a meter",
++      );
++    } finally {
++      await f.close();
++    }
++  });
+   await test("sign-in has one browser-wait state and cancellation is scoped to its CLI flow", async () => {
+     const f = await fixture();
+     try {

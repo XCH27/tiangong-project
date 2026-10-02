@@ -1,0 +1,1582 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index f2068fd..966a9bc 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -34,16 +34,16 @@ Cindy's `UnifiedModelList` supplies the single searchable list and inline refres
+ `ModelListSyncContent` supplies the discovery comparison. The
+ existing ZCode model rows retain their edit, enable, test and reorder operations. Complete discovered
+ catalogs are registered automatically; manual model-ID addition is the footer action below the list.
+-It uses the same draft controls as Add API Key: appendable input rows, persistent Add, a
+-per-row trash action, and an adjacent Confirm/Cancel action group. The full action group is visible
+-as soon as editing starts, even for an empty model row; Confirm is disabled until its draft is valid.
+-Enter performs the same confirmation, Escape cancels that draft group, and IME candidate keys do neither.
+-Confirm persists nonempty, distinct model IDs through the existing addPersonalModel command;
+-connection confirmation retains the existing connection transaction. These groups never commit one
+-another. Default-key/account selection uses explicit text, not a checkmark that resembles confirmation.
+-Pending confirmation keeps its action group visible and locked; duplicate events coalesce. On partial
+-model failure, completed rows stay saved and only unsaved rows remain editable. Navigation stops
+-further draft writes. Saving configuration is not connectivity validation and never runs inference.
++API-key and manual-model rows share the same input, compact confirmation and persistent trash controls.
++A confirmation button appears beside the pending row; Enter performs the same single-item operation.
++Empty or duplicate values cannot be confirmed. Escape restores only that saved key or removes only
++that new row. Add remains below the list; there is no group Confirm/Cancel toolbar. Pending rows
++retain their input on failure and show a spinner during persistence. Confirmation never submits
++another row, address or name draft. Key deletion/default selection and automatic switching persist
++only their own change; only committed keys count toward automatic switching. Address confirmation
++saves only the address; selecting a format still saves its protocol/address pair immediately.
++Model IDs continue through the existing addPersonalModel command. Blur and navigation do not save.
++Saving configuration is not connectivity validation and never runs inference.
+ No connection, credential or Session storage owner changes. The address and API
+ format remain above credentials, as the owner requested.
+ 
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index 530ac37..4c4ca90 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -20,8 +20,9 @@ request protocols. Changing format does not commit unfinished credential edits.
+ The model list loads from the saved connection and automatically adds discovered models. Existing
+ order, disabled models and custom settings are preserved. Search filters this list locally. Use
+ **Add Model** below the list only for missing IDs. Like API-key editing, Add appends an input
+-row and stays available; the trash icon removes a draft row. Confirm and Cancel appear beside
+-Add immediately. Confirm (or Enter) saves this group; Cancel (or Escape) discards it. Empty or duplicate model IDs cannot be confirmed. Normal addition stays inline. A configuration problem or failed explicit
++row and stays available; the trash icon removes that row. Its compact check button (or Enter)
++saves only that item. Escape reverts only that saved key or removes only that new row. Other drafts
++remain untouched. Empty or duplicate values cannot be confirmed. Normal addition stays inline. A configuration problem or failed explicit
+ connection test opens model details. Discovery does not run inference; a listed model is not proof
+ of successful use. Catalog origin and available metadata depend on the connected provider.
+ 
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index c5d4df6..c06a332 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -16,8 +16,8 @@
+ 
+ 模型列表根据已保存的连接自动获取，并直接添加识别到的模型，保留已有顺序、停用状态和
+ 自定义配置。搜索仅筛选这份列表。未识别到的模型可点击列表下方的 **添加模型**，输入模型 ID
+-后点击模型区的“确认”。与 API 密钥一致，“添加”追加输入行，垃圾桶移除草稿；添加旁立即显示
+-确认与取消，回车确认、Esc 取消。空值或重复模型不能确认。正常添加不弹窗；配置出错或手动测试连接失败时打开模型详情。
++后点击行右侧的勾号或按回车，只保存这一项。与 API 密钥一致，“添加”追加输入行，垃圾桶移除该行；
++Esc 只还原当前密钥或移除当前新增行，其他草稿保留。空值或重复值不能确认。正常添加不弹窗；配置出错或手动测试连接失败时打开模型详情。
+ 获取列表不会发起推理请求，列表中出现模型也不代表它已通过连接测试。目录来源和可用元数据
+ 取决于实际连接的供应商。
+ 
+diff --git a/packages/services/test/provider-settings-lifecycle.test.ts b/packages/services/test/provider-settings-lifecycle.test.ts
+index eb6f483..d9462b9 100644
+--- a/packages/services/test/provider-settings-lifecycle.test.ts
++++ b/packages/services/test/provider-settings-lifecycle.test.ts
+@@ -22,6 +22,180 @@ import type { ProviderSettingsFormProvider } from "../../ui/src/lib/providerSett
+ import { guardHostConsole } from "../../desktop/src/host/hostConsoleSink.js";
+ import { modelDiscoveryBlockReason } from "../../ui/src/settings/model-provider-section/modelDiscoveryActions.js";
+ 
++import {
++  configuredProviderKeys,
++  resolveCredentialRowEdit,
++} from "../../ui/src/settings/model-provider-section/ProviderCredentialEdit.js";
++
++function rowFixture(): ProviderSettingsFormProvider {
++  const config = {
++    api: {
++      type: "openai-chat-completions" as const,
++      baseUrl: "https://example.test/v1",
++      headers: { "X-Route": "keep" },
++    },
++    access: {
++      type: "api-key" as const,
++      apiKey: "saved-a",
++      additionalApiKeys: ["saved-b"],
++      autoSwitchCredentials: true,
++    },
++  };
++  return {
++    providerId: "row-fixture",
++    providerName: "Saved name",
++    templateId: null,
++    enabled: true,
++    executable: true,
++    hasPersonalConfig: true,
++    personalConfig: config,
++    config,
++    models: [],
++  };
++}
++
++test("row confirmation persists only its key and rebases later additions without discarding drafts", () => {
++  const original = rowFixture();
++  const drafts = ["editing-a", "editing-b", "unfinished-new", "  confirmed-new  "];
++  const result = resolveCredentialRowEdit(original, drafts, { kind: "confirm", index: 3 })!;
++  assert.deepEqual(configuredProviderKeys(result.provider!), [
++    "saved-a",
++    "saved-b",
++    "confirmed-new",
++  ]);
++  assert.deepEqual(result.draftKeys, ["editing-a", "editing-b", "confirmed-new", "unfinished-new"]);
++  assert.deepEqual(result.provider!.config.api, original.config.api);
++  assert.equal(result.provider!.providerNameUpdate, undefined);
++  assert.deepEqual(drafts, ["editing-a", "editing-b", "unfinished-new", "  confirmed-new  "]);
++  const second = resolveCredentialRowEdit(result.provider!, result.draftKeys, {
++    kind: "confirm",
++    index: 0,
++  })!;
++  assert.deepEqual(configuredProviderKeys(second.provider!), [
++    "editing-a",
++    "saved-b",
++    "confirmed-new",
++  ]);
++  assert.deepEqual(second.draftKeys, ["editing-a", "editing-b", "confirmed-new", "unfinished-new"]);
++});
++
++test("default, deletion, revert and automatic switching keep sibling edits attached to their key", () => {
++  const original = rowFixture();
++  const drafts = ["editing-a", "editing-b", "pending-c"];
++  const reorder = resolveCredentialRowEdit(original, drafts, { kind: "default", index: 1 })!;
++  assert.deepEqual(configuredProviderKeys(reorder.provider!), ["saved-b", "saved-a"]);
++  assert.deepEqual(reorder.draftKeys, ["editing-b", "editing-a", "pending-c"]);
++  const removed = resolveCredentialRowEdit(original, drafts, { kind: "remove", index: 0 })!;
++  assert.deepEqual(configuredProviderKeys(removed.provider!), ["saved-b"]);
++  assert.deepEqual(removed.draftKeys, ["editing-b", "pending-c"]);
++  assert.equal(removed.automatic, false);
++  const lastRemoved = resolveCredentialRowEdit(removed.provider!, removed.draftKeys, {
++    kind: "remove",
++    index: 0,
++  })!;
++  assert.deepEqual(configuredProviderKeys(lastRemoved.provider!), []);
++  assert.deepEqual(lastRemoved.draftKeys, ["pending-c"]);
++  const unsavedRemove = resolveCredentialRowEdit(original, drafts, { kind: "remove", index: 2 })!;
++  assert.equal(unsavedRemove.provider, null);
++  const revert = resolveCredentialRowEdit(original, drafts, { kind: "revert", index: 1 })!;
++  assert.equal(revert.provider, null);
++  assert.deepEqual(revert.draftKeys, ["editing-a", "saved-b", "pending-c"]);
++  const automatic = resolveCredentialRowEdit(original, drafts, {
++    kind: "automatic",
++    value: false,
++  })!;
++  assert.deepEqual(configuredProviderKeys(automatic.provider!), ["saved-a", "saved-b"]);
++  assert.deepEqual(automatic.draftKeys, drafts);
++  assert.equal(resolveCredentialRowEdit(original, drafts, { kind: "default", index: 2 }), null);
++});
++
++test("blank and duplicate confirmation are rejected without modifying committed or draft data", () => {
++  const original = rowFixture();
++  for (const value of ["", "  ", " saved-a ", "saved-b"]) {
++    assert.equal(
++      resolveCredentialRowEdit(original, ["saved-a", "saved-b", value], {
++        kind: "confirm",
++        index: 2,
++      }),
++      null,
++    );
++  }
++  assert.equal(
++    resolveCredentialRowEdit(original, ["saved-a", "saved-b"], { kind: "confirm", index: 9 }),
++    null,
++  );
++  const empty = resolveCredentialRowEdit(original, ["saved-a", "saved-b"], {
++    kind: "remove",
++    index: 1,
++  })!;
++  const noKeys = resolveCredentialRowEdit(empty.provider!, empty.draftKeys, {
++    kind: "remove",
++    index: 0,
++  })!;
++  const initial = resolveCredentialRowEdit(noKeys.provider!, ["first-new", "second-draft"], {
++    kind: "confirm",
++    index: 0,
++  })!;
++  assert.deepEqual(configuredProviderKeys(initial.provider!), ["first-new"]);
++  assert.deepEqual(initial.draftKeys, ["first-new", "second-draft"]);
++  assert.equal(initial.automatic, false);
++});
++
++test("legacy blank or duplicate stored slots do not shift deletion to another key", () => {
++  const original = rowFixture();
++  const access = {
++    type: "api-key" as const,
++    apiKey: "",
++    additionalApiKeys: ["backup", "backup", "other"],
++    autoSwitchCredentials: true,
++  };
++  original.config.access = access;
++  original.personalConfig = { ...original.personalConfig, access };
++  assert.deepEqual(configuredProviderKeys(original), ["", "backup", "backup", "other"]);
++  const result = resolveCredentialRowEdit(original, ["", "editing-backup", "backup", "other"], {
++    kind: "remove",
++    index: 0,
++  })!;
++  assert.deepEqual(configuredProviderKeys(result.provider!), ["backup", "backup", "other"]);
++  assert.deepEqual(result.draftKeys, ["editing-backup", "backup", "other"]);
++  const next = resolveCredentialRowEdit(result.provider!, result.draftKeys, {
++    kind: "remove",
++    index: 1,
++  })!;
++  assert.deepEqual(configuredProviderKeys(next.provider!), ["backup", "other"]);
++  assert.deepEqual(next.draftKeys, ["editing-backup", "other"]);
++});
++
++test("key confirmation preserves sparse personal fields instead of materializing inherited values", () => {
++  const fixture = rowFixture();
++  fixture.config.access = {
++    ...fixture.config.access,
++    type: "api-key",
++    apiKeyManagementUrl: "https://example.test/inherited",
++  };
++  fixture.personalConfig = {
++    ...fixture.personalConfig,
++    access: {
++      type: "api-key",
++      apiKeyManagementUrl: null,
++      apiKey: "saved-a",
++      additionalApiKeys: ["saved-b"],
++    },
++  };
++  const result = resolveCredentialRowEdit(fixture, ["new-a", "unfinished-b"], {
++    kind: "confirm",
++    index: 0,
++  })!;
++  assert.equal(
++    (result.provider!.config.access as { apiKeyManagementUrl: string }).apiKeyManagementUrl,
++    "https://example.test/inherited",
++  );
++  assert.equal(
++    (result.provider!.personalConfig.access as { apiKeyManagementUrl: null }).apiKeyManagementUrl,
++    null,
++  );
++});
++
+ test("an empty key draft cannot be confirmed or block discovery; a real removal remains confirmable", () => {
+   const config = {
+     api: { type: "openai-chat-completions" as const, baseUrl: "https://example.test/v1" },
+@@ -228,6 +402,63 @@ test("editing saves endpoint and credentials together and preserves hidden setti
+   }
+ });
+ 
++test("single credential edits persist independently through the existing owner and survive restart", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-key-row-"));
++  const options = {
++    personalFilePath: join(root, "providers.json"),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  const runtime = createProviderConfigRuntime(options);
++  let restarted: ReturnType<typeof createProviderConfigRuntime> | undefined;
++  try {
++    await runtime.start();
++    const fixture = rowFixture();
++    const created = await runtime.configService.createPersonalProvider({
++      providerName: fixture.providerName!,
++      initialConfig: parseProviderConfig(fixture.config),
++    });
++    fixture.providerId = created.providerId;
++    const first = resolveCredentialRowEdit(fixture, ["new-a", "unfinished-b", "new-c"], {
++      kind: "confirm",
++      index: 2,
++    })!;
++    await runtime.configService.savePersonalProviderOverlay(
++      created.providerId,
++      parseProviderConfig(first.provider!.personalConfig),
++    );
++    const second = resolveCredentialRowEdit(first.provider!, first.draftKeys, {
++      kind: "confirm",
++      index: 0,
++    })!;
++    await runtime.configService.savePersonalProviderOverlay(
++      created.providerId,
++      parseProviderConfig(second.provider!.personalConfig),
++    );
++    runtime.dispose();
++    restarted = createProviderConfigRuntime(options);
++    await restarted.start();
++    const stored = (await restarted.configService.read()).personalProviders
++      .get(created.providerId)!
++      .toJSON();
++    assert.deepEqual(stored.access, {
++      type: "api-key",
++      apiKey: "new-a",
++      additionalApiKeys: ["saved-b", "new-c"],
++      autoSwitchCredentials: true,
++    });
++    assert.deepEqual(stored.api, fixture.config.api);
++    assert.deepEqual(second.draftKeys, ["new-a", "unfinished-b", "new-c"]);
++  } finally {
++    runtime.dispose();
++    restarted?.dispose();
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
+ test("a format-only save persists immediately without replacing credentials, headers or other settings", async () => {
+   const root = await mkdtemp(join(tmpdir(), "fleet-format-save-"));
+   const options = {
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index a6cd292..6965141 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -97,7 +97,10 @@ export function useModelProviders(target: {
+       // 保存边界允许缺少继承层，并直接从新建表单构造完整配置。
+       const savedView = await persistPersonalProvider({ provider, providerSettingsService });
+       commitProviderSettingsView(savedView);
+-      return projectProviderSettingsViewToFormProviders(savedView);
++      return {
++        providers: projectProviderSettingsViewToFormProviders(savedView),
++        revision: savedView.revision,
++      };
+     },
+     [commitProviderSettingsView, providerSettingsService],
+   );
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index c270741..a752142 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -61,6 +61,7 @@ const enUS: Record<string, string> = {
+     "Allowance is currently unavailable. Refresh again later.",
+   "settings.modelProvider.allowance.unsupported":
+     "Allowance queries are not supported for this account.",
++  "settings.modelProvider.credentials.duplicateKey": "This key has already been added",
+   "settings.modelProvider.credentials.keyNumber": "API key {number}",
+   "settings.modelProvider.credentials.default": "Default",
+   "settings.modelProvider.credentials.makeDefault": "Make default",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index bb4d321..adcafac 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -50,6 +50,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.allowance.rate-limited": "查询过于频繁，请稍后刷新。",
+   "settings.modelProvider.allowance.unavailable": "暂时无法读取额度，请稍后刷新。",
+   "settings.modelProvider.allowance.unsupported": "此账号暂不支持查询额度。",
++  "settings.modelProvider.credentials.duplicateKey": "此密钥已添加",
+   "settings.modelProvider.credentials.keyNumber": "API 密钥 {number}",
+   "settings.modelProvider.credentials.default": "默认",
+   "settings.modelProvider.credentials.makeDefault": "设为默认",
+diff --git a/packages/ui/src/lib/providerSettingsFormTypes.ts b/packages/ui/src/lib/providerSettingsFormTypes.ts
+index bcc6514..b145438 100644
+--- a/packages/ui/src/lib/providerSettingsFormTypes.ts
++++ b/packages/ui/src/lib/providerSettingsFormTypes.ts
+@@ -36,6 +36,12 @@ export interface ProviderSettingsFormProvider extends Pick<
+   models: ProviderSettingsFormModel[];
+ }
+ 
++/** Host acknowledgement used until the matching React view is published. */
++export interface ProviderSettingsSaveReceipt {
++  provider: ProviderSettingsFormProvider;
++  revision: number;
++}
++
+ /** 设置页面在一次编辑会话中使用的 Model 状态。 */
+ export interface ProviderSettingsFormModel {
+   kind: "candidate";
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index 604ecce..92488f7 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -123,7 +123,10 @@ export function ModelProviderSection({
+   };
+   const handleSave = useCallback(
+     async (provider: ProviderSettingsFormProvider) => {
+-      await saveProvider(provider);
++      const saved = await saveProvider(provider);
++      const acknowledged = saved.providers.find((item) => item.providerId === provider.providerId);
++      if (!acknowledged) throw new Error("Provider no longer exists");
++      return { provider: acknowledged, revision: saved.revision };
+     },
+     [saveProvider],
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/ApiKeyInput.tsx b/packages/ui/src/settings/model-provider-section/ApiKeyInput.tsx
+index 38d9680..ba0074f 100644
+--- a/packages/ui/src/settings/model-provider-section/ApiKeyInput.tsx
++++ b/packages/ui/src/settings/model-provider-section/ApiKeyInput.tsx
+@@ -7,6 +7,8 @@ import { TECHNICAL_INPUT_ATTRIBUTES } from "@/lib/technicalInputAttributes.js";
+ 
+ export function ApiKeyInput({
+   label,
++  inputRef,
++  invalid,
+   value,
+   visible,
+   readOnly,
+@@ -18,6 +20,8 @@ export function ApiKeyInput({
+   onToggleVisibility,
+ }: {
+   label?: string;
++  inputRef?: React.Ref<HTMLInputElement>;
++  invalid?: boolean;
+   value: string;
+   visible: boolean;
+   readOnly?: boolean;
+@@ -34,6 +38,8 @@ export function ApiKeyInput({
+     <div className="relative">
+       <ProviderDraftInput
+         {...TECHNICAL_INPUT_ATTRIBUTES}
++        ref={inputRef}
++        aria-invalid={invalid}
+         type={visible && !readOnly ? "text" : "password"}
+         aria-label={label ?? intl.formatMessage({ id: "settings.modelProvider.apiKey" })}
+         data-testid={TID_MODEL_PROVIDER_API_KEY_INPUT}
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index f7db17f..e0006c9 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -2,6 +2,7 @@ import type { ModelConnectivityResult } from "@zcode/shared";
+ import {
+   getProviderFormApiKeyManagementUrl,
+   type ProviderSettingsFormProvider,
++  type ProviderSettingsSaveReceipt,
+ } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelProviderNavItem } from "./constants.js";
+ import { InlineEditableProviderCard } from "./InlineEditableProviderCard.js";
+@@ -23,7 +24,7 @@ export function ModelProviderSectionDetail({
+   onConnectConsumed,
+ }: {
+   selectedNavItem: ModelProviderNavItem | null;
+-  onSave: (config: ProviderSettingsFormProvider) => void | Promise<void>;
++  onSave: (config: ProviderSettingsFormProvider) => Promise<ProviderSettingsSaveReceipt>;
+   onAddPersonalModel?: (
+     providerId: string,
+     modelId: string,
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index e62ee0a..9704016 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -6,6 +6,7 @@ import {
+   getProviderFormApiKey,
+   getProviderFormLabel,
+   type ProviderSettingsFormProvider,
++  type ProviderSettingsSaveReceipt,
+   type ProviderSettingsFormModel,
+ } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelConnectivityResult } from "@zcode/shared";
+@@ -32,7 +33,12 @@ import {
+ } from "./ProviderCardSections.js";
+ import { resolveModelProviderDisplayName } from "./constants.js";
+ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
+-import { providerSetupConfig } from "./providerSetupDraft.js";
++import { isValidProviderBaseUrl } from "./providerSetupDraft.js";
++import {
++  configuredProviderKeys,
++  resolveCredentialRowEdit,
++  type CredentialRowEdit,
++} from "./ProviderCredentialEdit.js";
+ import { useOptimisticReorder } from "./useOptimisticReorder.js";
+ 
+ type ProviderNameEditKeyAction = "commit" | "cancel";
+@@ -115,7 +121,7 @@ export function InlineEditableProviderCard({
+   onConnectConsumed,
+ }: {
+   provider: ProviderSettingsFormProvider;
+-  onSave: (config: ProviderSettingsFormProvider) => void | Promise<void>;
++  onSave: (config: ProviderSettingsFormProvider) => Promise<ProviderSettingsSaveReceipt>;
+   onAddPersonalModel?: (
+     providerId: string,
+     modelId: string,
+@@ -180,10 +186,29 @@ export function InlineEditableProviderCard({
+   const nameEditProviderIdRef = useRef<string | null>(null);
+   const technicalInputCompositionActiveRef = useRef(false);
+   const providerIdRef = useRef(provider.providerId);
++  const mountedRef = useRef(true);
++  useEffect(() => {
++    mountedRef.current = true;
++    return () => {
++      mountedRef.current = false;
++      draftRevisionRef.current++;
++    };
++  }, []);
+   const dirtyProviderFieldsRef = useRef(new Set<keyof ProviderDraftValues>());
+   const draftRevisionRef = useRef(0);
+-  const lastSubmittedDraftSignatureRef = useRef<string | null>(null);
+-  const pendingDraftSaveRef = useRef<Promise<void> | null>(null);
++  // 写入返回的是 Host 的已提交 View；在 React 发布新 props 前用它衔接下一次行操作。
++  const committedProviderRef = useRef(provider);
++  const committedRevisionRef = useRef(settingsRevision ?? 0);
++  const seenProviderRef = useRef(provider);
++  if (seenProviderRef.current !== provider) {
++    seenProviderRef.current = provider;
++    if ((settingsRevision ?? 0) >= committedRevisionRef.current) {
++      committedRevisionRef.current = settingsRevision ?? 0;
++      committedProviderRef.current = provider;
++    }
++  }
++  const [savingRow, setSavingRow] = useState<number | "address" | "automatic">();
++  const pendingDraftSaveRef = useRef<Promise<unknown> | null>(null);
+   // Opaque UI lease: only committed connection changes reload the catalog, never model edits.
+   // Never put API keys in React keys, DOM attributes or logs.
+   const [subscriptionRevision, setSubscriptionRevision] = useState("");
+@@ -196,14 +221,6 @@ export function InlineEditableProviderCard({
+       JSON.stringify(provider.config.access),
+     ],
+   );
+-  const connectionDirty =
+-    apiFormat !== (provider.config.api?.type ?? "anthropic-messages") ||
+-    baseUrlValue !== (provider.config.api?.baseUrl ?? "") ||
+-    apiKeyValue !== getProviderFormApiKey(provider) ||
+-    (isApiKeyAccess(provider.config.access) &&
+-      (JSON.stringify(additionalApiKeys) !==
+-        JSON.stringify(provider.config.access.additionalApiKeys ?? []) ||
+-        autoSwitchCredentials !== (provider.config.access.autoSwitchCredentials === true)));
+   const pendingConnection = resolvePendingProviderDraftSave({
+     provider,
+     draft: {
+@@ -257,7 +274,6 @@ export function InlineEditableProviderCard({
+       setSubscriptionRevision("");
+       draftRevisionRef.current += 1;
+       dirtyProviderFieldsRef.current.clear();
+-      lastSubmittedDraftSignatureRef.current = null;
+     }
+     const syncField = <TKey extends keyof ProviderDraftValues>(
+       key: TKey,
+@@ -408,9 +424,19 @@ export function InlineEditableProviderCard({
+   );
+ 
+   const saveProviderDraft = useCallback(
+-    async (nextProvider: ProviderSettingsFormProvider, onFailure?: () => void): Promise<void> => {
++    async (nextProvider: ProviderSettingsFormProvider, onFailure?: () => void): Promise<number> => {
++      let savedRevision = -1;
+       const operation = async () => {
+-        await onSave(nextProvider);
++        const saved = await onSave(nextProvider);
++        savedRevision = saved.revision;
++        if (
++          mountedRef.current &&
++          providerIdRef.current === nextProvider.providerId &&
++          saved.revision >= committedRevisionRef.current
++        ) {
++          committedRevisionRef.current = saved.revision;
++          committedProviderRef.current = saved.provider;
++        }
+       };
+       await runSaveOperation(operation, { draftOwnsRetry: true }).catch((error) => {
+         logger.warn("[ModelProviderSection] 保存 Provider 草稿失败", {
+@@ -420,116 +446,93 @@ export function InlineEditableProviderCard({
+         onFailure?.();
+         throw error;
+       });
++      return savedRevision;
+     },
+     [onSave, provider.providerId, runSaveOperation],
+   );
+ 
+-  const restoreConnectionDraft = useCallback((source: ProviderSettingsFormProvider) => {
+-    const access = isApiKeyAccess(source.config.access) ? source.config.access : undefined;
+-    const values = {
+-      ...draftRef.current,
+-      apiFormat: source.config.api?.type ?? ("anthropic-messages" as const),
+-      baseUrlValue: source.config.api?.baseUrl ?? "",
+-      apiKeyValue: getProviderFormApiKey(source),
+-      additionalApiKeys: [...(access?.additionalApiKeys ?? [])],
+-      autoSwitchCredentials: access?.autoSwitchCredentials === true,
+-    };
+-    draftRef.current = values;
+-    for (const key of Object.keys(values) as (keyof ProviderDraftValues)[]) {
+-      if (key !== "nameValue") dirtyProviderFieldsRef.current.delete(key);
+-    }
+-    lastSubmittedDraftSignatureRef.current = null;
+-    setApiFormat(values.apiFormat);
+-    setBaseUrlValue(values.baseUrlValue);
+-    setApiKeyValue(values.apiKeyValue);
+-    setAdditionalApiKeys(values.additionalApiKeys);
+-    setAutoSwitchCredentials(values.autoSwitchCredentials);
+-    setConnectionInvalid(false);
+-  }, []);
+-
+-  const commitPendingDraft = useCallback(
+-    async (reason: string, nameConfirmed = false): Promise<void> => {
+-      const nextProvider = resolvePendingProviderDraftSave({
+-        provider,
+-        draft: draftRef.current,
+-        readOnlyEndpoints,
+-        nameConfirmed,
+-        now: Date.now,
+-      });
+-      if (!nextProvider) {
+-        await pendingDraftSaveRef.current;
+-        restoreConnectionDraft(provider);
+-        return;
+-      }
+-      const signature = JSON.stringify({
+-        ...draftRef.current,
+-        nameValue: nameConfirmed ? draftRef.current.nameValue : getProviderFormLabel(provider),
+-      });
+-      if (lastSubmittedDraftSignatureRef.current === signature) {
+-        await pendingDraftSaveRef.current;
+-        return;
+-      }
+-      lastSubmittedDraftSignatureRef.current = signature;
+-
+-      logger.info("[ModelProviderSection] 保存供应商连接", {
+-        providerId: provider.providerId,
+-        reason,
+-      });
+-      const pendingSave = saveProviderDraft(nextProvider, () => {
+-        if (lastSubmittedDraftSignatureRef.current === signature) {
+-          lastSubmittedDraftSignatureRef.current = null;
+-        }
+-      });
+-      pendingDraftSaveRef.current = pendingSave;
+-      try {
+-        await pendingSave;
+-        restoreConnectionDraft(nextProvider);
+-      } finally {
+-        if (pendingDraftSaveRef.current === pendingSave) pendingDraftSaveRef.current = null;
+-      }
+-    },
+-    [provider, readOnlyEndpoints, saveProviderDraft, restoreConnectionDraft],
+-  );
++  const applyKeyDraft = (keys: readonly string[], automatic: boolean) => {
++    for (const field of ["apiKeyValue", "additionalApiKeys", "autoSwitchCredentials"] as const)
++      markDraftDirty(field);
++    draftRef.current.apiKeyValue = keys[0] ?? "";
++    draftRef.current.additionalApiKeys = keys.slice(1);
++    draftRef.current.autoSwitchCredentials = automatic;
++    setApiKeyValue(keys[0] ?? "");
++    setAdditionalApiKeys(keys.slice(1));
++    setAutoSwitchCredentials(automatic);
++  };
+ 
+-  const saveConnection = async () => {
++  const saveScopedConnection = async (
++    next: ProviderSettingsFormProvider | null,
++    row: number | "address" | "automatic",
++    apply: () => void,
++  ) => {
+     if (savingConnectionRef.current || pendingDraftSaveRef.current) return;
+-    const draft = draftRef.current;
+-    // 空白占位行不是可持久化配置；回车与置灰的确认按钮必须遵守同一规则。
+-    if (!resolvePendingProviderDraftSave({ provider, draft, readOnlyEndpoints, now: Date.now }))
+-      return;
+-    // Creation and editing use the same endpoint/protocol/credential validation.
+-    const config = providerSetupConfig(
+-      {
+-        config: provider.templateConfig ?? provider.config,
+-      },
+-      {
+-        baseUrl: draft.baseUrlValue,
+-        api: draft.apiFormat,
+-        primary: draft.apiKeyValue,
+-        additional: draft.additionalApiKeys ?? [],
+-        automatic: draft.autoSwitchCredentials === true,
+-      },
+-      [
+-        ...(provider.templateApiFormats ?? []),
+-        ...(provider.config.api?.type ? [provider.config.api.type] : []),
+-      ],
+-      { allowEmptyCredentials: true },
+-    );
+-    if (!config) {
+-      setConnectionInvalid(true);
++    if (!next) {
++      apply();
+       return;
+     }
+-    setConnectionInvalid(false);
++    const providerId = provider.providerId;
+     savingConnectionRef.current = true;
+     setSavingConnection(true);
++    setSavingRow(row);
+     try {
+-      await commitPendingDraft("save-connection");
++      const revision = await saveProviderDraft(next);
++      // 旧响应不能把旧行顺序投影到较新的 Host View 上，否则删除会对应错误的密钥。
++      if (
++        mountedRef.current &&
++        providerIdRef.current === providerId &&
++        revision >= committedRevisionRef.current
++      )
++        apply();
+     } catch {
+-      // Keep the complete draft for correction/retry; the shared feedback owns the error.
++      // 失败不回滚其它草稿、不假装保存成功；原行保留供用户重试。
+     } finally {
+       savingConnectionRef.current = false;
+       setSavingConnection(false);
++      setSavingRow(undefined);
++    }
++  };
++
++  const editCredentialRow = (edit: CredentialRowEdit) => {
++    if (savingConnectionRef.current) return;
++    const result = resolveCredentialRowEdit(
++      committedProviderRef.current,
++      [draftRef.current.apiKeyValue, ...(draftRef.current.additionalApiKeys ?? [])],
++      edit,
++    );
++    if (!result) return;
++    void saveScopedConnection(result.provider, "index" in edit ? edit.index : "automatic", () => {
++      applyKeyDraft(result.draftKeys, result.automatic);
++      setApiKeyVisible(false);
++    });
++  };
++
++  const saveAddress = () => {
++    if (readOnlyEndpoints || savingConnectionRef.current) return;
++    const current = committedProviderRef.current;
++    const url = draftRef.current.baseUrlValue.trim();
++    if (!isValidProviderBaseUrl(url)) {
++      setConnectionInvalid(true);
++      return;
+     }
++    setConnectionInvalid(false);
++    const next = resolvePendingProviderDraftSave({
++      provider: current,
++      draft: {
++        nameValue: getProviderFormLabel(current),
++        apiFormat: current.config.api?.type ?? "anthropic-messages",
++        baseUrlValue: url,
++        apiKeyValue: getProviderFormApiKey(current),
++      },
++      now: Date.now,
++    });
++    void saveScopedConnection(next, "address", () => {
++      const savedUrl = (next ?? current).config.api?.baseUrl ?? "";
++      draftRef.current.baseUrlValue = savedUrl;
++      setBaseUrlValue(savedUrl);
++      dirtyProviderFieldsRef.current.delete("baseUrlValue");
++    });
+   };
+ 
+   const handleProviderEnabledChange = async (enabled: boolean) => {
+@@ -537,7 +540,7 @@ export function InlineEditableProviderCard({
+     setSavingEnabled(true);
+     try {
+       // Toggling availability must never commit a half-edited endpoint or key.
+-      await saveProviderDraft({ ...provider, enabledUpdate: enabled });
++      await saveProviderDraft({ ...committedProviderRef.current, enabledUpdate: enabled });
+     } catch {
+       // The authoritative enabled state is unchanged on failure.
+     } finally {
+@@ -581,7 +584,7 @@ export function InlineEditableProviderCard({
+     const currentLabel = getProviderFormLabel(provider);
+     if (trimmed && trimmed !== currentLabel) {
+       void saveProviderDraft({
+-        ...provider,
++        ...committedProviderRef.current,
+         providerName: trimmed,
+         providerNameUpdate: trimmed,
+       }).catch(() => undefined);
+@@ -629,7 +632,7 @@ export function InlineEditableProviderCard({
+       let next: ProviderSettingsFormProvider | null;
+       try {
+         next = resolveProviderProtocolSave({
+-          provider,
++          provider: committedProviderRef.current,
+           apiFormat: value,
+           baseUrlValue: draftRef.current.baseUrlValue,
+         });
+@@ -657,7 +660,14 @@ export function InlineEditableProviderCard({
+       const pending = saveProviderDraft(next);
+       pendingDraftSaveRef.current = pending;
+       try {
+-        await pending;
++        const revision = await pending;
++        if (revision < committedRevisionRef.current) {
++          const current = committedProviderRef.current.config.api;
++          draftRef.current.apiFormat = current?.type ?? "anthropic-messages";
++          draftRef.current.baseUrlValue = current?.baseUrl ?? "";
++          setApiFormat(draftRef.current.apiFormat);
++          setBaseUrlValue(draftRef.current.baseUrlValue);
++        }
+         for (const field of ["apiFormat", "baseUrlValue"] as const)
+           dirtyProviderFieldsRef.current.delete(field);
+       } catch {
+@@ -672,7 +682,7 @@ export function InlineEditableProviderCard({
+         setBaseUrlValue(previous.baseUrlValue);
+       } finally {
+         if (pendingDraftSaveRef.current === pending) pendingDraftSaveRef.current = null;
+-        lastSubmittedDraftSignatureRef.current = null;
++
+         savingConnectionRef.current = false;
+         setSavingConnection(false);
+       }
+@@ -693,10 +703,14 @@ export function InlineEditableProviderCard({
+     }
+     if (event.key === "Enter") {
+       event.preventDefault();
+-      void saveConnection();
++      saveAddress();
+     } else if (event.key === "Escape" && !savingConnectionRef.current) {
+       event.preventDefault();
+-      restoreConnectionDraft(provider);
++      const savedUrl = committedProviderRef.current.config.api?.baseUrl ?? "";
++      draftRef.current.baseUrlValue = savedUrl;
++      setBaseUrlValue(savedUrl);
++      dirtyProviderFieldsRef.current.delete("baseUrlValue");
++      setConnectionInvalid(false);
+       event.currentTarget.blur();
+     }
+   };
+@@ -716,7 +730,7 @@ export function InlineEditableProviderCard({
+         });
+       }
+ 
+-      if (connectionDirty)
++      if (pendingConnection)
+         return {
+           success: false,
+           error: {
+@@ -725,7 +739,7 @@ export function InlineEditableProviderCard({
+         };
+       return onTestModel(provider.providerId, model);
+     },
+-    [connectionDirty, intl, onTestModel, provider.providerId],
++    [pendingConnection, intl, onTestModel, provider.providerId],
+   );
+ 
+   const handleModelCommit = useCallback(
+@@ -912,6 +926,15 @@ export function InlineEditableProviderCard({
+             apiFormat={apiFormat}
+             baseUrlValue={baseUrlValue}
+             onApiFormatChange={handleApiFormatChange}
++            addressConfirmation={
++              baseUrlValue !== (provider.config.api?.baseUrl ?? "")
++                ? {
++                    saving: savingRow === "address",
++                    disabled: !isValidProviderBaseUrl(baseUrlValue.trim()),
++                    onSave: saveAddress,
++                  }
++                : undefined
++            }
+             onBaseUrlChange={handleBaseUrlValueChange}
+             onBaseUrlBlur={() => undefined}
+             onBaseUrlKeyDown={handleTextCommitKeyDown}
+@@ -934,36 +957,22 @@ export function InlineEditableProviderCard({
+         {isApiKeyProvider ? (
+           <ProviderApiKeySection
+             key={`keys:${provider.providerId}`}
+-            confirmation={{
+-              active: connectionDirty || savingConnection,
+-              saving: savingConnection,
+-              disabled: !pendingConnection,
+-              onCancel: () => restoreConnectionDraft(provider),
+-              onSave: () => void saveConnection(),
++            rowEditing={{
++              savedKeys: configuredProviderKeys(provider),
++              savingRow: typeof savingRow === "number" ? savingRow : undefined,
++              onEdit: editCredentialRow,
+             }}
+             additionalApiKeys={additionalApiKeys}
+             autoSwitchCredentials={autoSwitchCredentials}
+-            onCredentialsChange={(primary, additional, automatic) => {
+-              for (const field of [
+-                "apiKeyValue",
+-                "additionalApiKeys",
+-                "autoSwitchCredentials",
+-              ] as const)
+-                markDraftDirty(field);
+-              draftRef.current.apiKeyValue = primary;
+-              draftRef.current.additionalApiKeys = additional;
+-              draftRef.current.autoSwitchCredentials = automatic;
+-              setApiKeyValue(primary);
+-              setAdditionalApiKeys(additional);
+-              setAutoSwitchCredentials(automatic);
+-            }}
++            onCredentialsChange={(primary, additional, automatic) =>
++              applyKeyDraft([primary, ...additional], automatic)
++            }
+             apiKeyValue={apiKeyValue}
+             apiKeyVisible={apiKeyVisible}
+             presetApiKeyUrl={presetApiKeyUrl}
+             onOpenPresetApiKey={onOpenPresetApiKey}
+             onApiKeyChange={handleApiKeyValueChange}
+             onApiKeyBlur={() => undefined}
+-            onApiKeyKeyDown={handleTextCommitKeyDown}
+             onApiKeyCompositionStart={handleTechnicalInputCompositionStart}
+             onApiKeyCompositionEnd={handleTechnicalInputCompositionEnd}
+             onToggleApiKeyVisibility={() => setApiKeyVisible((value) => !value)}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+index 1823141..241414b 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDraftRows.tsx
+@@ -4,7 +4,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { TECHNICAL_INPUT_ATTRIBUTES } from "@/lib/technicalInputAttributes.js";
+ import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
+ import {
+-  ProviderDraftActions,
++  ProviderDraftConfirm,
+   ProviderDraftAdd,
+   ProviderDraftInput,
+   ProviderDraftRow,
+@@ -23,7 +23,8 @@ export function ModelDraftRows({
+ }) {
+   const { intl } = useZCodeIntl();
+   const [rows, setRows] = useState<DraftRow[]>([]);
+-  const [saving, setSaving] = useState(false);
++  const [savingId, setSavingId] = useState<number>();
++  const saving = savingId !== undefined;
+   const [error, setError] = useState<string>();
+   const [focusTarget, setFocusTarget] = useState<number | "add">();
+   const inputs = useRef(new Map<number, HTMLInputElement>());
+@@ -48,36 +49,31 @@ export function ModelDraftRows({
+     else if (focusTarget !== undefined) inputs.current.get(focusTarget)?.focus();
+   }, [focusTarget, rows.length]);
+ 
+-  const cancel = () => {
++  const remove = (row: DraftRow, index: number) => {
+     if (savingRef.current) return;
+-    setRows([]);
++    setRows((current) => current.filter((item) => item.id !== row.id));
+     setError(undefined);
+-    setFocusTarget("add");
++    setFocusTarget(rows[index + 1]?.id ?? rows[index - 1]?.id ?? "add");
+   };
+-  const save = async () => {
+-    if (savingRef.current || invalid || !names.some(Boolean)) return;
++  const save = async (row: DraftRow) => {
++    if (savingRef.current || duplicate(row.value.trim()) || !row.value.trim()) return;
+     savingRef.current = true;
+-    setSaving(true);
++    setSavingId(row.id);
+     setError(undefined);
+     const version = generation.current;
+     try {
+-      // 沿用现有逐模型命令；已成功的行立即退出草稿，重试不能重复提交它们。
+-      for (const row of rows) {
+-        if (version !== generation.current) return;
+-        if (!row.value.trim()) continue;
+-        await onAddModel(row.value.trim());
+-        if (version !== generation.current) return;
+-        setRows((current) => current.filter((item) => item.id !== row.id));
+-      }
+-      setRows([]);
+-      setFocusTarget("add");
++      // 单行确认只发一个现有命令；其他行保持草稿，重复事件由同一锁拦截。
++      await onAddModel(row.value.trim());
++      if (version !== generation.current) return;
++      setRows((current) => current.filter((item) => item.id !== row.id));
++      setFocusTarget(rows.find((item) => item.id !== row.id)?.id ?? "add");
+     } catch (reason) {
+       if (version === generation.current)
+         setError(reason instanceof Error ? reason.message : String(reason));
+     } finally {
+       if (version === generation.current) {
+         savingRef.current = false;
+-        setSaving(false);
++        setSavingId(undefined);
+       }
+     }
+   };
+@@ -92,12 +88,14 @@ export function ModelDraftRows({
+             { id: "settings.modelProvider.discovery.removeDraft" },
+             { number: index + 1 },
+           )}
+-          onRemove={() => {
+-            if (savingRef.current) return;
+-            setRows((current) => current.filter((item) => item.id !== row.id));
+-            setError(undefined);
+-            setFocusTarget(rows[index + 1]?.id ?? rows[index - 1]?.id ?? "add");
+-          }}
++          onRemove={() => remove(row, index)}
++          actions={
++            <ProviderDraftConfirm
++              saving={savingId === row.id}
++              disabled={saving || !row.value.trim() || duplicate(row.value.trim())}
++              onSave={() => void save(row)}
++            />
++          }
+         >
+           <ProviderDraftInput
+             {...TECHNICAL_INPUT_ATTRIBUTES}
+@@ -131,40 +129,39 @@ export function ModelDraftRows({
+                 })
+               )
+                 return;
+-              // 与可见确认/取消按钮走同一条事务，候选输入不会触发保存。
++              // 回车只确认当前行；候选输入不会触发保存。
+               if (event.key === "Enter") {
+                 event.preventDefault();
+-                void save();
++                void save(row);
+               } else if (event.key === "Escape") {
+                 event.preventDefault();
+-                cancel();
++                remove(row, index);
+               }
+             }}
+           />
+         </ProviderDraftRow>
+       ))}
+-      <ProviderDraftActions
+-        active={rows.length > 0}
+-        saving={saving}
+-        disabled={invalid || !names.some(Boolean)}
+-        onCancel={cancel}
+-        onSave={() => void save()}
++      <ProviderDraftAdd
++        ref={addButton}
++        disabled={saving}
++        data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
++        onClick={() => {
++          if (savingRef.current) return;
++          const empty = rows.find((row) => !row.value.trim());
++          if (empty) {
++            setFocusTarget(empty.id);
++            inputs.current.get(empty.id)?.focus();
++            return;
++          }
++          const id = nextId.current++;
++          onBegin();
++          setRows((current) => [...current, { id, value: "" }]);
++          setFocusTarget(id);
++        }}
+       >
+-        <ProviderDraftAdd
+-          ref={addButton}
+-          disabled={saving}
+-          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+-          onClick={() => {
+-            if (savingRef.current) return;
+-            const id = nextId.current++;
+-            onBegin();
+-            setRows((current) => [...current, { id, value: "" }]);
+-            setFocusTarget(id);
+-          }}
+-        >
+-          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+-        </ProviderDraftAdd>
+-      </ProviderDraftActions>
++        {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
++      </ProviderDraftAdd>
++
+       {invalid || error ? (
+         <p role="alert" className="text-ui-sm text-destructive">
+           {error ?? intl.formatMessage({ id: "settings.modelProvider.discovery.alreadyAdded" })}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index 0128242..b63b03b 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -2,6 +2,7 @@ import { ModelDiscoverySection } from "./ModelDiscoverySection.js";
+ /* eslint-disable max-lines -- 模型供应商卡片仍在迁移期集中维护多个紧耦合区块，后续拆分时再移除。 */
+ import {
+   useRef,
++  useEffect,
+   useState,
+   type KeyboardEvent as ReactKeyboardEvent,
+   type RefObject,
+@@ -36,10 +37,12 @@ import { useServices } from "@/hooks/useServices.js";
+ import { TECHNICAL_INPUT_ATTRIBUTES } from "@/lib/technicalInputAttributes.js";
+ import {
+   CredentialDefaultControl,
+-  ProviderDraftActions,
++  ProviderDraftConfirm,
+   ProviderDraftRow,
+   ProviderDraftAdd,
+ } from "./ProviderDraftControls.js";
++import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
++import type { CredentialRowEdit } from "./ProviderCredentialEdit.js";
+ import { ApiKeyInput } from "./ApiKeyInput.js";
+ import { CredentialAutoSwitchSection } from "./CredentialAutoSwitchSection.js";
+ import { ModelRowInput } from "./ProviderFormControls.js";
+@@ -186,6 +189,7 @@ export function ProviderConnectionSection({
+   baseUrlValue,
+   onApiFormatChange,
+   onBaseUrlChange,
++  addressConfirmation,
+   onBaseUrlBlur,
+   onBaseUrlKeyDown,
+   onBaseUrlCompositionStart,
+@@ -197,6 +201,7 @@ export function ProviderConnectionSection({
+   baseUrlValue: string;
+   onApiFormatChange: (value: ProviderApiType) => void;
+   onBaseUrlChange: (value: string) => void;
++  addressConfirmation?: { saving?: boolean; disabled?: boolean; onSave: () => void };
+   onBaseUrlBlur: () => void;
+   onBaseUrlKeyDown?: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
+   onBaseUrlCompositionStart?: () => void;
+@@ -249,21 +254,24 @@ export function ProviderConnectionSection({
+         <label className="mb-1 block text-ui-base text-foreground-subtle">
+           {intl.formatMessage({ id: "settings.modelProvider.baseUrl" })}
+         </label>
+-        <Input
+-          {...TECHNICAL_INPUT_ATTRIBUTES}
+-          type="text"
+-          size="lg"
+-          data-testid={TID_MODEL_PROVIDER_BASE_URL_INPUT}
+-          value={baseUrlValue}
+-          placeholder={intl.formatMessage({
+-            id: "settings.modelProvider.baseUrlPlaceholder",
+-          })}
+-          onChange={(event) => onBaseUrlChange(event.target.value)}
+-          onBlur={onBaseUrlBlur}
+-          onKeyDown={onBaseUrlKeyDown}
+-          onCompositionStart={onBaseUrlCompositionStart}
+-          onCompositionEnd={onBaseUrlCompositionEnd}
+-        />
++        <div className="flex items-center gap-2">
++          <Input
++            {...TECHNICAL_INPUT_ATTRIBUTES}
++            type="text"
++            size="lg"
++            data-testid={TID_MODEL_PROVIDER_BASE_URL_INPUT}
++            value={baseUrlValue}
++            placeholder={intl.formatMessage({
++              id: "settings.modelProvider.baseUrlPlaceholder",
++            })}
++            onChange={(event) => onBaseUrlChange(event.target.value)}
++            onBlur={onBaseUrlBlur}
++            onKeyDown={onBaseUrlKeyDown}
++            onCompositionStart={onBaseUrlCompositionStart}
++            onCompositionEnd={onBaseUrlCompositionEnd}
++          />
++          {addressConfirmation ? <ProviderDraftConfirm {...addressConfirmation} /> : null}
++        </div>
+       </div>
+       {showApiFormat ? (
+         <ProviderProtocolControl
+@@ -285,7 +293,7 @@ export function ProviderConnectionSection({
+ }
+ 
+ export function ProviderApiKeySection({
+-  confirmation,
++  rowEditing,
+   additionalApiKeys,
+   autoSwitchCredentials,
+   onCredentialsChange: commitCredentials,
+@@ -301,12 +309,10 @@ export function ProviderApiKeySection({
+   onApiKeyCompositionEnd,
+   onToggleApiKeyVisibility,
+ }: {
+-  confirmation?: {
+-    active: boolean;
+-    saving: boolean;
+-    disabled?: boolean;
+-    onCancel: () => void;
+-    onSave: () => void;
++  rowEditing?: {
++    savedKeys: readonly string[];
++    savingRow?: number;
++    onEdit: (edit: CredentialRowEdit) => void;
+   };
+   additionalApiKeys: string[];
+   autoSwitchCredentials: boolean;
+@@ -325,10 +331,28 @@ export function ProviderApiKeySection({
+ }) {
+   const { intl } = useZCodeIntl();
+   const [visibleIndex, setVisibleIndex] = useState<number | null>(null);
++  const [focusIndex, setFocusIndex] = useState<number>();
++  const inputs = useRef(new Map<number, HTMLInputElement>());
++  const compositionActive = useRef(false);
++  useEffect(() => {
++    if (focusIndex !== undefined) inputs.current.get(focusIndex)?.focus();
++  }, [focusIndex, additionalApiKeys.length]);
+   const onCredentialsChange = (primary: string, additional: string[], automatic: boolean) => {
+     setVisibleIndex(null);
+     commitCredentials(primary, additional, automatic);
+   };
++  const keys = [apiKeyValue, ...additionalApiKeys];
++  const remove = (index: number) => {
++    if (rowEditing) rowEditing.onEdit({ kind: "remove", index });
++    else {
++      const remaining = keys.filter((_, i) => i !== index);
++      onCredentialsChange(
++        remaining[0] ?? "",
++        remaining.slice(1),
++        remaining.length > 1 && autoSwitchCredentials,
++      );
++    }
++  };
+ 
+   return (
+     <div>
+@@ -341,92 +365,140 @@ export function ProviderApiKeySection({
+         ) : null}
+       </div>
+       <div className="space-y-2">
+-        {[apiKeyValue, ...additionalApiKeys].map((key, index) => (
+-          <ProviderDraftRow
+-            key={index}
+-            disabled={readOnly}
+-            removeLabel={intl.formatMessage(
+-              { id: "settings.modelProvider.credentials.removeKey" },
+-              { number: index + 1 },
+-            )}
+-            onRemove={() => {
+-              const keys = [apiKeyValue, ...additionalApiKeys].filter((_, i) => i !== index);
+-              onCredentialsChange(
+-                keys[0] ?? "",
+-                keys.slice(1),
+-                keys.length > 1 && autoSwitchCredentials,
+-              );
+-            }}
+-            actions={
+-              additionalApiKeys.length > 0 ? (
+-                <>
+-                  <CredentialDefaultControl
+-                    selected={index === 0}
+-                    disabled={!key.trim() || readOnly}
+-                    onSelect={() => {
+-                      const keys = [apiKeyValue, ...additionalApiKeys];
+-                      keys.splice(index, 1);
+-                      onCredentialsChange(key, keys, autoSwitchCredentials);
+-                    }}
+-                  />
+-                </>
+-              ) : null
++        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
++          {keys.map((key, index) => {
++            const saved = rowEditing && index < rowEditing.savedKeys.length;
++            const pending = rowEditing && (!saved || key !== rowEditing.savedKeys[index]);
++            const duplicate = rowEditing?.savedKeys.some(
++              (value, i) => value === key.trim() && i !== index,
++            );
++            return (
++              <ProviderDraftRow
++                key={index}
++                alignWithSiblings
++                disabled={readOnly}
++                removeLabel={intl.formatMessage(
++                  { id: "settings.modelProvider.credentials.removeKey" },
++                  { number: index + 1 },
++                )}
++                onRemove={() => remove(index)}
++                actions={
++                  pending ? (
++                    <ProviderDraftConfirm
++                      saving={rowEditing.savingRow === index}
++                      disabled={!key.trim() || duplicate || readOnly}
++                      onSave={() => rowEditing.onEdit({ kind: "confirm", index })}
++                    />
++                  ) : (rowEditing ? rowEditing.savedKeys.length > 1 : keys.length > 1) ? (
++                    <CredentialDefaultControl
++                      selected={index === 0}
++                      disabled={!key.trim() || readOnly}
++                      onSelect={() => {
++                        if (rowEditing) rowEditing.onEdit({ kind: "default", index });
++                        else
++                          onCredentialsChange(
++                            key,
++                            keys.filter((_, i) => i !== index),
++                            autoSwitchCredentials,
++                          );
++                      }}
++                    />
++                  ) : null
++                }
++              >
++                <ApiKeyInput
++                  inputRef={(node) => {
++                    if (node) inputs.current.set(index, node);
++                    else inputs.current.delete(index);
++                  }}
++                  value={key}
++                  invalid={duplicate}
++                  label={intl.formatMessage(
++                    { id: "settings.modelProvider.credentials.keyNumber" },
++                    { number: index + 1 },
++                  )}
++                  visible={apiKeyVisible && visibleIndex === index}
++                  readOnly={readOnly}
++                  onChange={
++                    index === 0
++                      ? onApiKeyChange
++                      : (value) =>
++                          onCredentialsChange(
++                            apiKeyValue,
++                            additionalApiKeys.map((item, i) => (i === index - 1 ? value : item)),
++                            autoSwitchCredentials,
++                          )
++                  }
++                  onBlur={onApiKeyBlur}
++                  onKeyDown={(event) => {
++                    if (!rowEditing) {
++                      onApiKeyKeyDown?.(event);
++                      return;
++                    }
++                    if (
++                      isImeComposingKeyEvent({
++                        compositionActive: compositionActive.current,
++                        nativeEvent: event.nativeEvent,
++                      })
++                    )
++                      return;
++                    if (event.key === "Enter") {
++                      event.preventDefault();
++                      if (pending && key.trim() && !duplicate)
++                        rowEditing.onEdit({ kind: "confirm", index });
++                    } else if (event.key === "Escape") {
++                      event.preventDefault();
++                      rowEditing.onEdit({ kind: "revert", index });
++                    }
++                  }}
++                  onCompositionStart={() => {
++                    compositionActive.current = true;
++                    onApiKeyCompositionStart?.();
++                  }}
++                  onCompositionEnd={() => {
++                    compositionActive.current = false;
++                    onApiKeyCompositionEnd?.();
++                  }}
++                  onToggleVisibility={() => {
++                    if (!apiKeyVisible || visibleIndex === index) onToggleApiKeyVisibility();
++                    setVisibleIndex(index);
++                  }}
++                />
++                {duplicate ? (
++                  <p role="alert" className="mt-1 text-ui-sm text-destructive">
++                    {intl.formatMessage({ id: "settings.modelProvider.credentials.duplicateKey" })}
++                  </p>
++                ) : null}
++              </ProviderDraftRow>
++            );
++          })}
++        </div>
++        <ProviderDraftAdd
++          disabled={readOnly || additionalApiKeys.length >= 9}
++          onClick={() => {
++            const emptyIndex = keys.findIndex((key) => !key.trim());
++            if (emptyIndex >= 0) {
++              setFocusIndex(emptyIndex);
++              inputs.current.get(emptyIndex)?.focus();
++              return;
+             }
+-          >
+-            <ApiKeyInput
+-              value={key}
+-              label={intl.formatMessage(
+-                { id: "settings.modelProvider.credentials.keyNumber" },
+-                { number: index + 1 },
+-              )}
+-              visible={apiKeyVisible && visibleIndex === index}
+-              readOnly={readOnly}
+-              onChange={
+-                index === 0
+-                  ? onApiKeyChange
+-                  : (value) =>
+-                      onCredentialsChange(
+-                        apiKeyValue,
+-                        additionalApiKeys.map((item, i) => (i === index - 1 ? value : item)),
+-                        autoSwitchCredentials,
+-                      )
+-              }
+-              onBlur={onApiKeyBlur}
+-              onKeyDown={onApiKeyKeyDown}
+-              onCompositionStart={onApiKeyCompositionStart}
+-              onCompositionEnd={onApiKeyCompositionEnd}
+-              onToggleVisibility={() => {
+-                if (!apiKeyVisible || visibleIndex === index) onToggleApiKeyVisibility();
+-                setVisibleIndex(index);
+-              }}
+-            />
+-          </ProviderDraftRow>
+-        ))}
+-        <ProviderDraftActions
+-          active={confirmation?.active ?? false}
+-          saving={confirmation?.saving}
+-          disabled={confirmation?.disabled}
+-          onCancel={() => confirmation?.onCancel()}
+-          onSave={() => confirmation?.onSave()}
++            onCredentialsChange(apiKeyValue, [...additionalApiKeys, ""], autoSwitchCredentials);
++            setFocusIndex(keys.length);
++          }}
+         >
+-          <ProviderDraftAdd
+-            disabled={readOnly || additionalApiKeys.length >= 9}
+-            onClick={() =>
+-              onCredentialsChange(apiKeyValue, [...additionalApiKeys, ""], autoSwitchCredentials)
+-            }
+-          >
+-            {intl.formatMessage({ id: "settings.modelProvider.credentials.addKey" })}
+-          </ProviderDraftAdd>
+-        </ProviderDraftActions>
++          {intl.formatMessage({ id: "settings.modelProvider.credentials.addKey" })}
++        </ProviderDraftAdd>
+         <CredentialAutoSwitchSection
+           kind="keys"
+           count={
+-            new Set([apiKeyValue, ...additionalApiKeys].map((key) => key.trim()).filter(Boolean))
+-              .size
++            new Set((rowEditing?.savedKeys ?? keys).map((key) => key.trim()).filter(Boolean)).size
+           }
+           checked={autoSwitchCredentials}
+           disabled={readOnly}
+-          onCheckedChange={(value) => onCredentialsChange(apiKeyValue, additionalApiKeys, value)}
++          onCheckedChange={(value) => {
++            if (rowEditing) rowEditing.onEdit({ kind: "automatic", value });
++            else onCredentialsChange(apiKeyValue, additionalApiKeys, value);
++          }}
+         />
+       </div>
+     </div>
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCredentialEdit.ts b/packages/ui/src/settings/model-provider-section/ProviderCredentialEdit.ts
+new file mode 100644
+index 0000000..7cdd943
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/ProviderCredentialEdit.ts
+@@ -0,0 +1,87 @@
++import { isApiKeyAccess } from "@zcode/provider";
++import type { ProviderSettingsFormProvider } from "../../lib/providerSettingsFormTypes.js";
++
++export type CredentialRowEdit =
++  | { kind: "confirm" | "remove" | "default" | "revert"; index: number }
++  | { kind: "automatic"; value: boolean };
++
++export function configuredProviderKeys(provider: ProviderSettingsFormProvider): string[] {
++  if (!isApiKeyAccess(provider.config.access)) return [];
++  const keys = [
++    provider.config.access.apiKey ?? "",
++    ...(provider.config.access.additionalApiKeys ?? []),
++  ];
++  // 旧数据允许主密钥留空；保留槽位才能让删除/确认对应屏幕上的同一行。
++  return keys.some((key) => key.trim()) ? keys : [];
++}
++
++/** Project one row intent onto committed credentials; other input rows never enter the write. */
++export function resolveCredentialRowEdit(
++  provider: ProviderSettingsFormProvider,
++  draftKeys: readonly string[],
++  edit: CredentialRowEdit,
++): {
++  provider: ProviderSettingsFormProvider | null;
++  draftKeys: string[];
++  automatic: boolean;
++} | null {
++  if (!isApiKeyAccess(provider.config.access)) return null;
++  const committed = configuredProviderKeys(provider);
++  const keys = [...committed];
++  const draft = [...draftKeys];
++  let automatic = provider.config.access.autoSwitchCredentials === true;
++  if (edit.kind === "automatic") automatic = edit.value;
++  else {
++    const { index } = edit;
++    if (!Number.isInteger(index) || index < 0 || index >= draft.length) return null;
++    const saved = index < committed.length;
++    if (edit.kind === "confirm") {
++      const value = draft[index]!.trim();
++      if (!value || committed.some((key, i) => key === value && i !== index)) return null;
++      if (saved) {
++        keys[index] = value;
++        draft[index] = value;
++      } else {
++        keys.push(value);
++        draft.splice(index, 1);
++        // Keep saved rows first so confirming a later new row preserves every other draft.
++        draft.splice(committed.length, 0, value);
++      }
++    } else if (edit.kind === "remove") {
++      if (saved) keys.splice(index, 1);
++      draft.splice(index, 1);
++    } else if (edit.kind === "revert") {
++      if (saved) draft[index] = committed[index]!;
++      else draft.splice(index, 1);
++    } else {
++      if (!saved) return null;
++      keys.unshift(...keys.splice(index, 1));
++      draft.unshift(...draft.splice(index, 1));
++    }
++  }
++  automatic = automatic && new Set(keys.map((key) => key.trim()).filter(Boolean)).size >= 2;
++  const credentialChanges = {
++    type: provider.config.access.type,
++    apiKey: keys[0] ?? "",
++    additionalApiKeys: keys.slice(1),
++    autoSwitchCredentials: automatic,
++  };
++  const access = { ...provider.config.access, ...credentialChanges };
++  const localOnly =
++    edit.kind === "revert" || (edit.kind === "remove" && edit.index >= committed.length);
++  const changed = !localOnly && JSON.stringify(access) !== JSON.stringify(provider.config.access);
++  return {
++    provider: changed
++      ? {
++          ...provider,
++          config: { ...provider.config, access },
++          personalConfig: {
++            ...provider.personalConfig,
++            access: { ...provider.personalConfig.access, ...credentialChanges },
++          },
++        }
++      : null,
++    draftKeys: draft.length ? draft : [""],
++    automatic,
++  };
++}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+index 2180115..1d4a588 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderDraftControls.tsx
+@@ -1,5 +1,5 @@
+ import { forwardRef, type ReactNode } from "react";
+-import { Plus, Trash2 } from "lucide-react";
++import { Check, Loader2, Plus, Trash2 } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { Input, type InputProps } from "@/components/ui/input.js";
+ import { cn } from "@/components/lib/utils.js";
+@@ -15,20 +15,27 @@ export const ProviderDraftInput = forwardRef<HTMLInputElement, InputProps>(
+ export function ProviderDraftRow({
+   children,
+   actions,
++  alignWithSiblings,
+   removeLabel,
+   onRemove,
+   disabled,
+ }: {
+   children: ReactNode;
+   actions?: ReactNode;
++  alignWithSiblings?: boolean;
+   removeLabel: string;
+   onRemove: () => void;
+   disabled?: boolean;
+ }) {
+   return (
+-    <div className="flex items-center gap-2">
+-      <div className="min-w-0 flex-1">{children}</div>
+-      {actions}
++    <div
++      className={cn(
++        "grid items-center gap-2",
++        alignWithSiblings ? "col-span-3 grid-cols-subgrid" : "grid-cols-[minmax(0,1fr)_auto_auto]",
++      )}
++    >
++      <div className="min-w-0">{children}</div>
++      <span className="inline-flex min-w-6 items-center justify-center">{actions}</span>
+       <Button
+         type="button"
+         variant="ghost"
+@@ -60,36 +67,30 @@ export const ProviderDraftAdd = forwardRef<
+   );
+ });
+ 
+-export function ProviderDraftActions({
+-  children,
+-  active = true,
++export function ProviderDraftConfirm({
+   saving,
+   disabled,
+-  onCancel,
+   onSave,
+ }: {
+-  children?: ReactNode;
+-  active?: boolean;
+   saving?: boolean;
+   disabled?: boolean;
+-  onCancel: () => void;
+   onSave: () => void;
+ }) {
+   const { intl } = useZCodeIntl();
++  const label = intl.formatMessage({ id: saving ? "common.saving" : "common.confirm" });
+   return (
+-    <div className="flex flex-wrap items-center justify-between gap-2" aria-busy={saving}>
+-      {children}
+-      {active ? (
+-        <div className="ml-auto flex items-center gap-2">
+-          <Button type="button" variant="ghost" disabled={saving} onClick={onCancel}>
+-            {intl.formatMessage({ id: "common.cancel" })}
+-          </Button>
+-          <Button type="button" disabled={disabled || saving} onClick={onSave}>
+-            {intl.formatMessage({ id: saving ? "common.saving" : "common.confirm" })}
+-          </Button>
+-        </div>
+-      ) : null}
+-    </div>
++    <Button
++      type="button"
++      variant="ghost"
++      size="icon-sm"
++      aria-label={label}
++      title={label}
++      aria-busy={saving}
++      disabled={disabled || saving}
++      onClick={onSave}
++    >
++      {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
++    </Button>
+   );
+ }
+ 

@@ -1,0 +1,443 @@
+diff --git a/packages/ui/src/lib/composerRecent.ts b/packages/ui/src/lib/composerRecent.ts
+index 84cce7ae778a9911e8cbb66bb786d5699513980d..b39a72d5f408c61d90787353b5d1cd4a8538cf8e 100644
+--- a/packages/ui/src/lib/composerRecent.ts
++++ b/packages/ui/src/lib/composerRecent.ts
+@@ -14,6 +14,7 @@ interface StorageLike {
+ interface ComposerRecent {
+   readonly modelSelection?: ModelSelection;
+   readonly mode?: SubmissionMode;
++  readonly modelPreferences?: readonly ModelSelection[];
+ }
+ 
+ let submissionSequence = 0;
+@@ -40,10 +41,18 @@ export function readComposerRecent(
+       "modelSelection" in record ? record.modelSelection : record,
+     );
+     const mode = submissionModeSchema.safeParse("mode" in record ? record.mode : undefined);
+-    if (!selection.success && !mode.success) return null;
++    const modelPreferences =
++      "modelPreferences" in record && Array.isArray(record.modelPreferences)
++        ? record.modelPreferences.flatMap((value) => {
++            const parsed = modelSelectionSchema.safeParse(value);
++            return parsed.success ? [parsed.data] : [];
++          })
++        : [];
++    if (!selection.success && !mode.success && modelPreferences.length === 0) return null;
+     return {
+       ...(selection.success ? { modelSelection: selection.data } : {}),
+       ...(mode.success ? { mode: mode.data } : {}),
++      ...(modelPreferences.length ? { modelPreferences } : {}),
+     };
+   } catch {
+     return null;
+@@ -56,6 +65,52 @@ export function rememberComposerModelChoice(
+   selection: ModelSelection,
+   workspaceIdentity?: string,
+   storage: StorageLike | null = browserStorage(),
++): void {
++  writeComposerModelPreference(workspacePath, selection, workspaceIdentity, storage, true);
++}
++
++/** Parameter edits remember this exact connection/model, without selecting a different default. */
++export function rememberComposerModelOptions(
++  workspacePath: string,
++  selection: ModelSelection,
++  workspaceIdentity?: string,
++): void {
++  writeComposerModelPreference(
++    workspacePath,
++    selection,
++    workspaceIdentity,
++    browserStorage(),
++    false,
++  );
++}
++
++export function readComposerModelPreference(
++  workspacePath: string,
++  selection: Pick<ModelSelection, "providerId" | "modelId">,
++  workspaceIdentity?: string,
++): ModelSelection | undefined {
++  const recent = readComposerRecent(workspacePath, workspaceIdentity);
++  return (
++    recent?.modelPreferences?.find((item) => sameModel(item, selection)) ??
++    (recent?.modelSelection && sameModel(recent.modelSelection, selection)
++      ? recent.modelSelection
++      : undefined)
++  );
++}
++
++function sameModel(
++  a: Pick<ModelSelection, "providerId" | "modelId">,
++  b: Pick<ModelSelection, "providerId" | "modelId">,
++): boolean {
++  return a.providerId === b.providerId && a.modelId === b.modelId;
++}
++
++function writeComposerModelPreference(
++  workspacePath: string,
++  selection: ModelSelection,
++  workspaceIdentity: string | undefined,
++  storage: StorageLike | null,
++  rememberChoice: boolean,
+ ): void {
+   if (!storage) return;
+   const modelSelection = normalizeSparseModelSelection(selection);
+@@ -69,8 +124,23 @@ export function rememberComposerModelChoice(
+   // A pending older send must not roll back a later human choice on its eventual ACK.
+   accepted.set(key, ++submissionSequence);
+   const previous = readComposerRecent(workspacePath, workspaceIdentity, storage);
++  const modelPreferences = [
++    modelSelection,
++    ...(previous?.modelPreferences ?? []).filter((item) => !sameModel(item, modelSelection)),
++  ];
++  const updateChoice =
++    rememberChoice ||
++    !previous?.modelSelection ||
++    sameModel(previous.modelSelection, modelSelection);
+   try {
+-    storage.setItem(key, JSON.stringify({ ...previous, modelSelection }));
++    storage.setItem(
++      key,
++      JSON.stringify({
++        ...previous,
++        modelPreferences,
++        ...(updateChoice ? { modelSelection } : {}),
++      }),
++    );
+   } catch (error) {
+     logger.warn("[ComposerRecent] 保存模型偏好失败", { workspacePath, workspaceIdentity, error });
+   }
+@@ -112,7 +182,13 @@ export function captureComposerRecentSubmission(
+     if (sequence <= (accepted.get(key) ?? 0)) return;
+     accepted.set(key, sequence);
+     try {
+-      storage.setItem(key, JSON.stringify(recent));
++      storage.setItem(
++        key,
++        JSON.stringify({
++          ...readComposerRecent(workspacePath, workspaceIdentity, storage),
++          ...recent,
++        }),
++      );
+     } catch (error) {
+       // 权威发送已经接纳，本地偏好写入失败不能把它报告成发送失败。
+       logger.warn("[ComposerRecent] 保存最近提交配置失败", {
+diff --git a/packages/ui/src/v4/composer/newTaskDraft.ts b/packages/ui/src/v4/composer/newTaskDraft.ts
+index 7a637810ae3ccd72ba087fc298a000e93caa7b57..5263cb71278bd77200e927ae02f881de49c4e368 100644
+--- a/packages/ui/src/v4/composer/newTaskDraft.ts
++++ b/packages/ui/src/v4/composer/newTaskDraft.ts
+@@ -28,17 +28,19 @@ export function resolveNewTaskModelChoice(
+     let selection = normalizeModelSelection(view, source);
+     if (!selection) continue;
+     // Withdrawn Fast/context preferences are not a required second setup step in a new chat.
+-    for (const option of ["speedMode", "contextWindow"] as const) {
++    for (let remaining = 2; remaining > 0; remaining--) {
+       const checked = validateModelSelectionOptions(model, selection);
+-      if (
+-        !checked.ok &&
+-        checked.code ===
+-          (option === "speedMode" ? "speed-mode-not-supported" : "context-window-not-supported")
+-      ) {
+-        const options: NonNullable<ModelSelection["options"]> = { ...selection.options };
+-        delete options[option];
+-        selection = { ...selection, options };
+-      }
++      if (checked.ok) break;
++      const option =
++        checked.code === "speed-mode-not-supported"
++          ? "speedMode"
++          : checked.code === "context-window-not-supported"
++            ? "contextWindow"
++            : undefined;
++      if (!option) break;
++      const options: NonNullable<ModelSelection["options"]> = { ...selection.options };
++      delete options[option];
++      selection = { ...selection, options };
+     }
+     if (validateModelSelectionOptions(model, selection).ok) return selection;
+   }
+diff --git a/packages/ui/src/v4/composer/useDraftConfigControl.ts b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+index a309709dafdaa913648c06c42552d94bab3c02e6..af4bf15d29e944c3f9d13b9e037fa603c6beed34 100644
+--- a/packages/ui/src/v4/composer/useDraftConfigControl.ts
++++ b/packages/ui/src/v4/composer/useDraftConfigControl.ts
+@@ -27,7 +27,12 @@ import { useZCodeSessionService } from "@/hooks/useZCodeSessionService.js";
+ import { useSettings } from "@/hooks/useSettingService.js";
+ import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
+ import { initializeNewTaskDraft, resolveNewTaskModelChoice } from "@/v4/composer/newTaskDraft.js";
+-import { readComposerRecent, rememberComposerModelChoice } from "@/lib/composerRecent.js";
++import {
++  readComposerRecent,
++  readComposerModelPreference,
++  rememberComposerModelChoice,
++  rememberComposerModelOptions,
++} from "@/lib/composerRecent.js";
+ import {
+   clearV4ComposerDraft,
+   persistV4ComposerDraft,
+@@ -443,10 +448,25 @@ export function useDraftConfigControl(params: {
+       const sameModel =
+         current?.providerId === parsedSelection.providerId &&
+         current.modelId === parsedSelection.modelId;
++      const preference = readComposerModelPreference(
++        workspacePath,
++        parsedSelection,
++        workspaceIdentity,
++      );
++      const restored =
++        modelSelectionView && preference
++          ? resolveNewTaskModelChoice(modelSelectionView, preference)
++          : undefined;
++      const remembered =
++        restored?.providerId === parsedSelection.providerId &&
++        restored.modelId === parsedSelection.modelId
++          ? restored
++          : undefined;
+       const modelSelection = modelSelectionView
+         ? ((sameModel
+             ? normalizeModelSelection(modelSelectionView, current)
+-            : completeNewModelSelection(modelSelectionView, parsedSelection)) ?? parsedSelection)
++            : (remembered ?? completeNewModelSelection(modelSelectionView, parsedSelection))) ??
++          parsedSelection)
+         : parsedSelection;
+       logger.debug("[v4-draft-config] select model", {
+         modelProvider,
+@@ -464,9 +484,21 @@ export function useDraftConfigControl(params: {
+     [modelSelectionView, updateDraftConfig, workspaceIdentity, workspacePath, scopeKey],
+   );
+ 
++  const updateDraftModelOptions = useCallback(
++    (update: (current: Partial<SessionConfigState>) => Partial<SessionConfigState>) => {
++      if (stateRef.current.scopeKey !== scopeKey) return;
++      const previous = stateRef.current.draft.modelSelection;
++      updateDraftConfig(update);
++      const selection = stateRef.current.draft.modelSelection;
++      if (selection && selection !== previous)
++        rememberComposerModelOptions(workspacePath, selection, workspaceIdentity);
++    },
++    [scopeKey, updateDraftConfig, workspacePath, workspaceIdentity],
++  );
++
+   const handleDraftSelectThought = useCallback(
+     (thought: string) => {
+-      updateDraftConfig((current) => {
++      updateDraftModelOptions((current) => {
+         const providerId = current.modelSelection?.providerId ?? current.provider?.trim();
+         const modelId = current.modelSelection?.modelId ?? current.model?.trim();
+         if (!providerId || !modelId) return { ...current, thought };
+@@ -489,12 +521,12 @@ export function useDraftConfigControl(params: {
+         };
+       });
+     },
+-    [updateDraftConfig],
++    [updateDraftModelOptions],
+   );
+ 
+   const handleDraftSelectSpeed = useCallback(
+     (speedMode: "standard" | "fast") => {
+-      updateDraftConfig((current) => {
++      updateDraftModelOptions((current) => {
+         if (!current.modelSelection) return current;
+         return {
+           ...current,
+@@ -505,7 +537,7 @@ export function useDraftConfigControl(params: {
+         };
+       });
+     },
+-    [updateDraftConfig],
++    [updateDraftModelOptions],
+   );
+ 
+   const handleDraftSelectContext = useCallback(
+@@ -514,7 +546,7 @@ export function useDraftConfigControl(params: {
+         .find((provider) => provider.providerId === target.provider)
+         ?.models.find((model) => model.modelId === target.model)?.config.properties.contextWindows;
+       if (value !== undefined && !choices?.includes(value)) return;
+-      updateDraftConfig((current) => {
++      updateDraftModelOptions((current) => {
+         const selection = current.modelSelection;
+         if (selection?.providerId !== target.provider || selection.modelId !== target.model)
+           return current;
+@@ -524,7 +556,7 @@ export function useDraftConfigControl(params: {
+         return { ...current, modelSelection: { ...selection, options } };
+       });
+     },
+-    [modelSelectionView, updateDraftConfig],
++    [modelSelectionView, updateDraftModelOptions],
+   );
+ 
+   const handleDraftSwitchMode = useCallback(
+diff --git a/packages/ui/test/draftModelDefaults.browser.test.tsx b/packages/ui/test/draftModelDefaults.browser.test.tsx
+index 83df39b53734838f57058a1c71fe21b8986a405c..6014b153f62d3cfeccffd0d70a9f361dfecdb11f 100644
+--- a/packages/ui/test/draftModelDefaults.browser.test.tsx
++++ b/packages/ui/test/draftModelDefaults.browser.test.tsx
+@@ -158,6 +158,169 @@ async function test(name: string, run: () => Promise<void>) {
+ }
+ 
+ (window as any).__draftModelDefaultTests = (async () => {
++  await test("identical model IDs on different connections retain independent parameters", async () => {
++    const f = await fixture();
++    try {
++      await f.catalog({
++        ...f.view,
++        providers: [...f.view.providers, { ...f.view.providers[0], providerId: "another" }],
++      });
++      await f.render("/defaults/connection-options");
++      await f.choose("a");
++      await act(async () => f.latest.handleDraftSelectThought("high"));
++      await act(async () => f.latest.handleDraftSelectModel("another", "a"));
++      check(
++        f.latest.draftConfig.modelSelection?.options?.reasoningLevel !== "high",
++        "A connection borrowed another account's effort",
++      );
++      await act(async () => f.latest.handleDraftSelectThought("low"));
++      await f.choose("a");
++      check(
++        f.latest.draftConfig.modelSelection?.options?.reasoningLevel === "high",
++        "Exact connection/model preference was not restored",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("restored parameters respect withdrawn capabilities without erasing valid effort", async () => {
++    const f = await fixture();
++    try {
++      await f.render("/defaults/withdrawn-options");
++      await f.choose("a");
++      await act(async () => {
++        f.latest.handleDraftSelectThought("high");
++        f.latest.handleDraftSelectSpeed("fast");
++        f.latest.handleDraftSelectContext(400000, { provider: "connected", model: "a" });
++      });
++      await f.choose("b");
++      await f.catalog({
++        ...f.view,
++        revision: 2,
++        providers: f.view.providers.map((provider) => ({
++          ...provider,
++          models: provider.models.map((model) =>
++            model.modelId === "a"
++              ? {
++                  ...model,
++                  config: {
++                    ...model.config,
++                    properties: { contextWindow: 200000 },
++                    optionSpecs: { reasoningLevel: model.config.optionSpecs.reasoningLevel },
++                  },
++                }
++              : model,
++          ),
++        })),
++      });
++      await f.choose("a");
++      const selection = f.latest.draftConfig.modelSelection;
++      check(
++        selection?.options?.reasoningLevel === "high" &&
++          selection.options.speedMode !== "fast" &&
++          selection.options.contextWindow === undefined,
++        "Withdrawn options blocked or polluted the restored model",
++      );
++      check(
++        createComposerSubmissionConfig(f.latest.draftConfig, f.view as never),
++        "Restored selection cannot be admitted",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("switching models restores their own effort, speed and context before sending", async () => {
++    const path = "/defaults/model-options";
++    const f = await fixture();
++    try {
++      await f.render(path);
++      await f.choose("a");
++      await act(async () => {
++        f.latest.handleDraftSelectThought("high");
++        f.latest.handleDraftSelectSpeed("fast");
++        f.latest.handleDraftSelectContext(400000, { provider: "connected", model: "a" });
++      });
++      await f.choose("b");
++      check(
++        f.latest.draftConfig.modelSelection?.options?.speedMode !== "fast",
++        "Fast leaked into another model",
++      );
++      await act(async () => f.latest.handleDraftSelectThought("low"));
++      await f.choose("a");
++      const options = f.latest.draftConfig.modelSelection?.options;
++      check(
++        options?.reasoningLevel === "high" &&
++          options.speedMode === "fast" &&
++          options.contextWindow === 400000,
++        "Switching back discarded the user's model-specific parameters",
++      );
++      await f.choose("b");
++      check(
++        f.latest.draftConfig.modelSelection?.options?.reasoningLevel === "low",
++        "Another model's effort was borrowed",
++      );
++    } finally {
++      await f.close();
++    }
++  });
++  await test("parameter changes persist across reopen without replacing another model's active default", async () => {
++    const path = "/defaults/options-reopen";
++    const f = await fixture();
++    try {
++      await f.render(path);
++      await f.choose("b");
++      persistV4ComposerDraft(path, undefined, "older-a", {
++        text: "old draft",
++        mode: "build",
++        modelSelection: auto("a"),
++      });
++      await f.render(path, "older-a", { mode: "build", modelSelection: auto("a") });
++      await act(async () => f.latest.handleDraftSelectThought("high"));
++      check(
++        readComposerRecent(path)?.modelSelection?.modelId === "b",
++        "An effort edit changed the active default model",
++      );
++    } finally {
++      await f.close();
++    }
++    const reopened = await fixture();
++    try {
++      await reopened.render(path);
++      check(
++        reopened.latest.draftConfig.model === "b",
++        "Reopen changed the independent active default",
++      );
++      await reopened.choose("a");
++      check(
++        reopened.latest.draftConfig.modelSelection?.options?.reasoningLevel === "high",
++        "Saved model effort was lost on reopen",
++      );
++    } finally {
++      await reopened.close();
++    }
++  });
++  await test("parameter edits update a matching new-chat preference and reject an older acceptance", async () => {
++    const path = "/defaults/options-ack";
++    const f = await fixture();
++    try {
++      await f.render(path);
++      await f.choose("a");
++      const accepted = captureComposerRecentSubmission(path, {
++        modelSelection: auto("a") as never,
++        mode: "build",
++      });
++      await act(async () => f.latest.handleDraftSelectThought("high"));
++      accepted();
++      useZCodeSessionStore.getState().startDraft(path);
++      await f.render(path);
++      check(
++        f.latest.draftConfig.modelSelection?.options?.reasoningLevel === "high",
++        "New-task entry or late ACK erased selected effort",
++      );
++    } finally {
++      await f.close();
++    }
++  });
+   await test("configured models initialize a new conversation without a manual selection", async () => {
+     const f = await fixture();
+     try {

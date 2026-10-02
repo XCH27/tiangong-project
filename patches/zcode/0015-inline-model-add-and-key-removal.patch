@@ -1,0 +1,920 @@
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index af2d477..75ff59d 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
++import { createManualProviderModel } from "../../ui/src/settings/model-provider-section/ProviderModelMetadata.js";
+ import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
+ import type { SubscriptionConnectionOwner } from "../src/model-provider/subscriptionConnections.js";
+ 
+@@ -191,3 +192,37 @@ test("subscription account changes during discovery cannot populate the new acco
+     await f.dispose();
+   }
+ });
++
++test("name-only manual addition persists without catalog access or fabricated capabilities and rejects duplicates", async () => {
++  const f = await fixture();
++  try {
++    f.setFetch(async () => {
++      throw new Error("manual addition must not fetch or infer");
++    });
++    const model = createManualProviderModel("  private-model-2026  ");
++    assert.equal(model.modelId, "private-model-2026");
++    assert.deepEqual(model.personalConfig, {});
++    assert.deepEqual(model.config, {});
++    assert.equal(model.useRecommendedConfig, true);
++    assert.throws(() => createManualProviderModel("  "), /model/i);
++    await f.service.addPersonalModel(
++      f.providerId,
++      model.modelId,
++      model.personalConfig,
++      model.useRecommendedConfig,
++    );
++    const before = await f.disk();
++    await assert.rejects(
++      f.service.addPersonalModel(f.providerId, model.modelId, {
++        properties: { contextWindow: 999999 },
++      }),
++      /已存在/,
++    );
++    assert.equal(await f.disk(), before, "duplicate cannot overwrite an existing model");
++    await f.restart();
++    assert.ok((await f.models()).some((m) => m.modelId === model.modelId));
++    assert.equal(await f.disk(), before);
++  } finally {
++    await f.dispose();
++  }
++});
+diff --git a/packages/services/test/provider-settings-lifecycle.test.ts b/packages/services/test/provider-settings-lifecycle.test.ts
+index 4c37545..140f27a 100644
+--- a/packages/services/test/provider-settings-lifecycle.test.ts
++++ b/packages/services/test/provider-settings-lifecycle.test.ts
+@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { parseProviderConfig, type ProviderSettingsView } from "@zcode/provider";
++import { parseProviderConfig, parseModelConfig, type ProviderSettingsView } from "@zcode/provider";
+ import type { IProviderSettingsService } from "../src/model-provider/providerFacadeServices.js";
+ import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
+ import { readProviderSettings } from "../../ui/src/lib/providerSettingsRead.js";
+@@ -315,3 +315,60 @@ test("both new and edited connections reject incomplete addresses and unsafe emb
+     undefined,
+   );
+ });
++
++test("removing the final key can be saved on an existing provider without deleting models or connection settings", async () => {
++  const root = await mkdtemp(join(tmpdir(), "fleet-remove-key-"));
++  const options = {
++    personalFilePath: join(root, "providers.json"),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  const runtime = createProviderConfigRuntime(options);
++  const reopened = createProviderConfigRuntime(options);
++  try {
++    await runtime.start();
++    const config = {
++      api: { type: "openai-chat-completions" as const, baseUrl: "https://keys.example/v1" },
++      access: { type: "api-key" as const, apiKey: "synthetic-last-key" },
++    };
++    const draft = {
++      baseUrl: config.api.baseUrl,
++      api: config.api.type,
++      primary: "",
++      additional: [],
++      automatic: false,
++    };
++    assert.equal(
++      providerSetupConfig({ config }, draft),
++      undefined,
++      "new connection still requires a key",
++    );
++    const cleared = providerSetupConfig({ config }, draft, [], { allowEmptyCredentials: true });
++    assert.ok(cleared);
++    const created = await runtime.configService.createPersonalProvider({
++      initialConfig: parseProviderConfig(config),
++    });
++    await runtime.configService.addPersonalModel(
++      created.providerId,
++      "retained-model",
++      parseModelConfig({}),
++    );
++    await runtime.configService.savePersonalProviderOverlay(
++      created.providerId,
++      parseProviderConfig({ ...config, ...cleared }),
++    );
++    await reopened.start();
++    const stored = JSON.parse(await readFile(options.personalFilePath, "utf8"));
++    const serialized = JSON.stringify(stored);
++    assert.ok(!serialized.includes("synthetic-last-key"));
++    assert.ok(serialized.includes("retained-model"));
++    assert.ok(serialized.includes("https://keys.example/v1"));
++  } finally {
++    runtime.dispose();
++    reopened.dispose();
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 9293b80..7f55675 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -6,6 +6,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.connection.unsaved": "Unsaved connection changes",
+   "settings.modelProvider.loadFailed": "Could not connect to model settings. Please retry.",
+   "settings.modelProvider.discovery.search": "Search model name or ID",
++  "settings.modelProvider.discovery.alreadyAdded": "This model is already added",
+   "settings.modelProvider.discovery.selectVisible": "Select search results",
+   "settings.modelProvider.discovery.noMatches": "No matching models",
+   "settings.modelProvider.discovery.loading": "Fetching models…",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 1fe866f..40cfac5 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -5,6 +5,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.connection.unsaved": "连接更改尚未保存",
+   "settings.modelProvider.loadFailed": "无法连接模型设置服务，请重试。",
+   "settings.modelProvider.discovery.search": "搜索模型名称或 ID",
++  "settings.modelProvider.discovery.alreadyAdded": "该模型已添加",
+   "settings.modelProvider.discovery.selectVisible": "全选搜索结果",
+   "settings.modelProvider.discovery.noMatches": "没有匹配的模型",
+   "settings.modelProvider.discovery.loading": "正在获取模型…",
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 838ca13..26cb41b 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -496,6 +496,7 @@ export function InlineEditableProviderCard({
+         ...(provider.templateApiFormats ?? []),
+         ...(provider.config.api?.type ? [provider.config.api.type] : []),
+       ],
++      { allowEmptyCredentials: true },
+     );
+     if (!config) {
+       setConnectionInvalid(true);
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index bfcd752..cf9952c 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -1,32 +1,88 @@
+ import { useCallback, useRef, useEffect, useState, type ReactNode } from "react";
+-import { RefreshCwIcon } from "lucide-react";
++import { Check, Loader2Icon, Plus, RefreshCwIcon, X } from "lucide-react";
++import { TID_MODEL_PROVIDER_ADD_MODEL_BUTTON } from "@zcode/shared";
+ import { Button } from "@/components/ui/button.js";
+ import { Input } from "@/components/ui/input.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { fetchSavedModelCatalog } from "./modelDiscoveryActions.js";
++import { TECHNICAL_INPUT_ATTRIBUTES } from "@/lib/technicalInputAttributes.js";
++import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
+ 
+ export function ModelDiscoverySection({
+   providerId,
+   disabledReason,
+   connectionIdentity,
++  discoveryEnabled = true,
++  modelIds,
++  onAddModel,
+   renderConfiguredModels,
+ }: {
+   providerId: string;
+   disabledReason?: string;
+   connectionIdentity?: object;
+-  renderConfiguredModels: (query: string) => ReactNode;
++  discoveryEnabled?: boolean;
++  modelIds: readonly string[];
++  onAddModel: (modelId: string) => Promise<void>;
++  renderConfiguredModels: (query: string, addRow?: ReactNode) => ReactNode;
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl } = useZCodeIntl();
+   const t = (id: string) => intl.formatMessage({ id: `settings.modelProvider.discovery.${id}` });
+   const [query, setQuery] = useState("");
++  const [adding, setAdding] = useState(false);
++  const [addOpen, setAddOpen] = useState(false);
++  const [modelName, setModelName] = useState("");
++  const addInputRef = useRef<HTMLInputElement>(null);
++  const addButtonRef = useRef<HTMLButtonElement>(null);
++  const [addError, setAddError] = useState<string>();
++  const addingRef = useRef(false);
++  const addGeneration = useRef(0);
++  const compositionActive = useRef(false);
++  const alreadyAdded = modelIds.includes(modelName.trim());
++  const addModel = async () => {
++    const modelId = modelName.trim();
++    if (!modelId || alreadyAdded || addingRef.current) return;
++    addingRef.current = true;
++    const version = ++addGeneration.current;
++    setAdding(true);
++    setAddError(undefined);
++    try {
++      await onAddModel(modelId);
++      if (version === addGeneration.current) {
++        setModelName("");
++        setAddOpen(false);
++        addButtonRef.current?.focus();
++      }
++    } catch (reason) {
++      if (version === addGeneration.current)
++        setAddError(reason instanceof Error ? reason.message : String(reason));
++    } finally {
++      if (version === addGeneration.current) {
++        addingRef.current = false;
++        setAdding(false);
++      }
++    }
++  };
++  const cancelAdd = () => {
++    if (addingRef.current) return;
++    setAddOpen(false);
++    setModelName("");
++    setAddError(undefined);
++    addButtonRef.current?.focus();
++  };
++  useEffect(
++    () => () => {
++      addGeneration.current++;
++    },
++    [providerId],
++  );
+   const [busy, setBusy] = useState<"fetch" | null>(null);
+   const [error, setError] = useState<string>();
+   const generation = useRef(0);
+   const busyRef = useRef(false);
+   const loadCatalog = useCallback(async () => {
+-    if (busyRef.current || disabledReason) return;
++    if (!discoveryEnabled || busyRef.current || disabledReason) return;
+     busyRef.current = true;
+     const version = ++generation.current;
+     const isCurrent = () => version === generation.current;
+@@ -46,7 +102,7 @@ export function ModelDiscoverySection({
+         busyRef.current = false;
+       }
+     }
+-  }, [providerId, providerSettingsService, disabledReason]);
++  }, [providerId, providerSettingsService, disabledReason, discoveryEnabled]);
+ 
+   useEffect(() => {
+     // 连接变化清掉旧目录；模型行的添加、排序和编辑不改变此 lease。
+@@ -64,6 +120,8 @@ export function ModelDiscoverySection({
+     <div className="space-y-3" data-testid="model-discovery">
+       <div className="flex items-center gap-2">
+         <Input
++          {...TECHNICAL_INPUT_ATTRIBUTES}
++          className="flex-1"
+           value={query}
+           onChange={(event) => setQuery(event.target.value)}
+           placeholder={t("search")}
+@@ -71,19 +129,113 @@ export function ModelDiscoverySection({
+         />
+         <Button
+           type="button"
+-          variant="ghost"
+-          size="icon-sm"
+-          disabled={busy !== null || Boolean(disabledReason)}
+-          aria-label={
+-            busy === "fetch" ? t("loading") : intl.formatMessage({ id: "common.refresh" })
+-          }
+-          title={disabledReason ?? intl.formatMessage({ id: "common.refresh" })}
+-          onClick={() => void loadCatalog()}
++          variant="secondary"
++          className="shrink-0 rounded-lg"
++          ref={addButtonRef}
++          disabled={adding}
++          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
++          onClick={() => {
++            setQuery("");
++            setAddOpen(true);
++            addInputRef.current?.focus();
++          }}
+         >
+-          <RefreshCwIcon className={busy === "fetch" ? "size-4 animate-spin" : "size-4"} />
++          <Plus data-icon="inline-start" aria-hidden="true" />
++          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+         </Button>
++        {discoveryEnabled ? (
++          <Button
++            type="button"
++            variant="ghost"
++            size="icon-sm"
++            disabled={busy !== null || Boolean(disabledReason)}
++            aria-label={
++              busy === "fetch" ? t("loading") : intl.formatMessage({ id: "common.refresh" })
++            }
++            title={disabledReason ?? intl.formatMessage({ id: "common.refresh" })}
++            onClick={() => void loadCatalog()}
++          >
++            <RefreshCwIcon className={busy === "fetch" ? "size-4 animate-spin" : "size-4"} />
++          </Button>
++        ) : null}
+       </div>
+-      {renderConfiguredModels(query)}
++      {renderConfiguredModels(
++        query,
++        addOpen ? (
++          <div className="space-y-2 px-3 py-2" data-no-model-drag="true">
++            <div className="flex items-center gap-2">
++              <Input
++                {...TECHNICAL_INPUT_ATTRIBUTES}
++                ref={addInputRef}
++                autoFocus
++                className="min-w-0 flex-1 font-mono"
++                value={modelName}
++                disabled={adding}
++                placeholder={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
++                aria-label={intl.formatMessage({ id: "settings.modelProvider.modelId" })}
++                aria-invalid={alreadyAdded || Boolean(addError)}
++                onChange={(event) => {
++                  setModelName(event.target.value);
++                  setAddError(undefined);
++                }}
++                onCompositionStart={() => {
++                  compositionActive.current = true;
++                }}
++                onCompositionEnd={() => {
++                  compositionActive.current = false;
++                }}
++                onKeyDown={(event) => {
++                  if (
++                    isImeComposingKeyEvent({
++                      compositionActive: compositionActive.current,
++                      nativeEvent: event.nativeEvent,
++                    }) ||
++                    event.keyCode === 229
++                  )
++                    return;
++                  if (event.key === "Enter") {
++                    event.preventDefault();
++                    void addModel();
++                  }
++                  if (event.key === "Escape") {
++                    event.preventDefault();
++                    cancelAdd();
++                  }
++                }}
++              />
++              <Button
++                type="button"
++                variant="ghost"
++                size="icon-sm"
++                disabled={adding || !modelName.trim() || alreadyAdded}
++                onClick={() => void addModel()}
++                aria-label={intl.formatMessage({ id: adding ? "common.saving" : "common.save" })}
++              >
++                {adding ? (
++                  <Loader2Icon className="size-4 animate-spin" />
++                ) : (
++                  <Check className="size-4" />
++                )}
++              </Button>
++              <Button
++                type="button"
++                variant="ghost"
++                size="icon-sm"
++                disabled={adding}
++                onClick={cancelAdd}
++                aria-label={intl.formatMessage({ id: "common.cancel" })}
++              >
++                <X className="size-4" />
++              </Button>
++            </div>
++            {addError || alreadyAdded ? (
++              <p role="alert" className="text-ui-caption text-destructive">
++                {addError ?? t("alreadyAdded")}
++              </p>
++            ) : null}
++          </div>
++        ) : undefined,
++      )}
+       {disabledReason ? (
+         <p role="status" className="text-ui-caption text-foreground-subtle">
+           {disabledReason}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index ab19523..30ceb23 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -1,7 +1,6 @@
+ import { ModelDiscoverySection } from "./ModelDiscoverySection.js";
+ /* eslint-disable max-lines -- 模型供应商卡片仍在迁移期集中维护多个紧耦合区块，后续拆分时再移除。 */
+ import {
+-  useCallback,
+   useRef,
+   useState,
+   type KeyboardEvent as ReactKeyboardEvent,
+@@ -15,7 +14,6 @@ import type {
+ import type { ModelConnectivityResult } from "@zcode/shared";
+ import { resolveProviderProtocolPolicy, type ProviderApiType } from "@zcode/provider";
+ import {
+-  TID_MODEL_PROVIDER_ADD_MODEL_BUTTON,
+   TID_MODEL_PROVIDER_BASE_URL_INPUT,
+   TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON,
+   TID_MODEL_PROVIDER_MODEL_INPUT,
+@@ -41,12 +39,10 @@ import { CredentialAutoSwitchSection } from "./CredentialAutoSwitchSection.js";
+ import { Check, ArrowUp } from "lucide-react";
+ import { ModelRowInput } from "./ProviderFormControls.js";
+ import { PresetProviderApiKeyBanner } from "./PresetProviderApiKeyBanner.js";
+-import { type ProviderModelDraftValues } from "@/settings/model-provider-section/ProviderModelMetadata.js";
+-import { ProviderModelMetadataDialog } from "@/settings/model-provider-section/ProviderModelMetadataDialog.js";
++import { createManualProviderModel } from "./ProviderModelMetadata.js";
+ import { resolveProviderConnectionApiFormatDisplayLabel } from "@/settings/model-provider-section/ProviderApiFormatSelect.js";
+ import { ProviderProtocolControl } from "./ProviderProtocolControl.js";
+ import { SortableProviderModelList } from "@/settings/model-provider-section/SortableProviderModelList.js";
+-import { useProviderModelDraft } from "@/settings/model-provider-section/useProviderModelDraft.js";
+ import { ProviderLogo } from "@/settings/model-provider-section/ProviderLogo.js";
+ import type { ProviderConfigObject } from "@zcode/provider";
+ 
+@@ -383,27 +379,27 @@ export function ProviderApiKeySection({
+                 >
+                   {index === 0 ? <Check className="size-4" /> : <ArrowUp className="size-4" />}
+                 </Button>
+-                <Button
+-                  variant="ghost"
+-                  size="icon-sm"
+-                  disabled={readOnly}
+-                  aria-label={intl.formatMessage(
+-                    { id: "settings.modelProvider.credentials.removeKey" },
+-                    { number: index + 1 },
+-                  )}
+-                  onClick={() => {
+-                    const keys = [apiKeyValue, ...additionalApiKeys].filter((_, i) => i !== index);
+-                    onCredentialsChange(
+-                      keys[0] ?? "",
+-                      keys.slice(1),
+-                      keys.length > 1 && autoSwitchCredentials,
+-                    );
+-                  }}
+-                >
+-                  <Trash2 className="size-4" />
+-                </Button>
+               </>
+             ) : null}
++            <Button
++              variant="ghost"
++              size="icon-sm"
++              disabled={readOnly}
++              aria-label={intl.formatMessage(
++                { id: "settings.modelProvider.credentials.removeKey" },
++                { number: index + 1 },
++              )}
++              onClick={() => {
++                const keys = [apiKeyValue, ...additionalApiKeys].filter((_, i) => i !== index);
++                onCredentialsChange(
++                  keys[0] ?? "",
++                  keys.slice(1),
++                  keys.length > 1 && autoSwitchCredentials,
++                );
++              }}
++            >
++              <Trash2 className="size-4" />
++            </Button>
+           </div>
+         ))}
+         <Button
+@@ -431,22 +427,6 @@ export function ProviderApiKeySection({
+   );
+ }
+ 
+-function createEmptyModel(): ProviderSettingsFormModel {
+-  return {
+-    kind: "candidate",
+-    modelId: "",
+-    builtin: false,
+-    personalConfig: {},
+-    // 空 ID 尚未解析模型配置，硬编码档位会被误认为智能推荐。
+-    config: {
+-      properties: { supportsToolCall: true },
+-    },
+-    hasPersonalConfig: false,
+-    executable: false,
+-    selectable: false,
+-  };
+-}
+-
+ export function ProviderModelsSection({
+   providerId,
+   providerName,
+@@ -484,103 +464,27 @@ export function ProviderModelsSection({
+ }) {
+   const { intl } = useZCodeIntl();
+   const { providerSettingsService } = useServices();
+-  const [addDialogOpen, setAddDialogOpen] = useState(false);
+-  const [addSaving, setAddSaving] = useState(false);
+-  const addSavingRef = useRef(false);
+-  const [addCommitError, setAddCommitError] = useState<string | null>(null);
+-  const [addModel] = useState(createEmptyModel);
+-  const [addDraftErrorField, setAddDraftErrorField] = useState<
+-    | "id"
+-    | "contextWindow"
+-    | "maxOutputTokens"
+-    | "inputFormat"
+-    | "reasoningLevelValues"
+-    | "reasoningLevelMap"
+-    | null
+-  >(null);
+-  const resolveAddModelConfig = useCallback(
+-    (modelId: string) => providerSettingsService.resolveModelConfig({ providerId, modelId }),
+-    [providerId, providerSettingsService],
+-  );
+-  const editor = useProviderModelDraft({
+-    model: addModel,
+-    open: addDialogOpen,
+-    scopeKey: providerId,
+-    resolve: resolveAddModelConfig,
+-  });
+-  const { draft: addDraft } = editor;
+-
+-  const openAddDialog = useCallback(() => {
+-    editor.reset(createEmptyModel());
+-    setAddDraftErrorField(null);
+-    setAddCommitError(null);
+-    setAddDialogOpen(true);
+-  }, [editor.reset]);
+-
+-  const updateAddDraft = (patch: Partial<ProviderModelDraftValues>) => {
+-    editor.change(patch);
+-    setAddDraftErrorField(null);
+-  };
+-
+-  const cancelAddDialog = () => {
+-    setAddDialogOpen(false);
+-    editor.reset(createEmptyModel());
+-    setAddDraftErrorField(null);
+-    editor.cancel();
++  const [addedModelId, setAddedModelId] = useState<string>();
++  const handleAddModel = async (value: string) => {
++    const model = createManualProviderModel(value);
++    await onAddModel(model);
++    setAddedModelId(model.modelId);
+   };
+ 
+-  const handleAddDialogOpenChange = useCallback(
+-    (open: boolean) => {
+-      // 保存中的关闭/再打开会让旧请求结束掉新草稿，等待本次提交完成再结束编辑。
+-      if (addSavingRef.current) return;
+-      if (!open) {
+-        cancelAddDialog();
+-        return;
+-      }
+-      setAddDialogOpen(true);
+-    },
+-    [cancelAddDialog],
+-  );
+-
+-  const commitAddDraft = useCallback(async (): Promise<boolean> => {
+-    if (addSavingRef.current) return false;
+-    addSavingRef.current = true;
+-    setAddSaving(true);
+-    setAddCommitError(null);
+-    try {
+-      const result = await editor.commit();
+-      if (result.status === "invalid") {
+-        setAddDraftErrorField(result.field);
+-        return false;
+-      }
+-      // 过去只发起异步添加就关闭弹窗，失败后输入也丢了；以实际保存完成作为结束边界。
+-      await onAddModel(result.model);
+-      setAddDialogOpen(false);
+-      editor.reset(createEmptyModel());
+-      return true;
+-    } catch (error) {
+-      setAddCommitError(error instanceof Error ? error.message : String(error));
+-      return false;
+-    } finally {
+-      addSavingRef.current = false;
+-      setAddSaving(false);
+-    }
+-  }, [editor, onAddModel]);
+-  const addDraftErrorMessage = addDraftErrorField
+-    ? intl.formatMessage({
+-        id: `settings.modelProvider.modelMetadata.invalid.${addDraftErrorField}`,
+-      })
+-    : null;
+-
+-  const renderConfiguredModels = (query: string) => {
++  const renderConfiguredModels = (query: string, addRow?: ReactNode) => {
+     const search = query.trim().toLocaleLowerCase();
+     const visibleModels = models.filter((model) =>
+       model.modelId.toLocaleLowerCase().includes(search),
+     );
+     return (
+       <div>
+-        {visibleModels.length > 0 ? (
++        {visibleModels.length > 0 || addRow ? (
+           <div className="overflow-hidden rounded-lg border border-input-border bg-input">
++            {addRow ? (
++              <div className={visibleModels.length ? "border-b border-input-border" : undefined}>
++                {addRow}
++              </div>
++            ) : null}
+             <SortableProviderModelList
+               modelIds={visibleModels.map((model) => model.modelId)}
+               sortableModelIds={visibleModels.map((model) => model.modelId)}
+@@ -627,6 +531,8 @@ export function ProviderModelsSection({
+                         );
+                       }}
+                       onTest={onTestModel}
++                      inspectNewModel={addedModelId === model.modelId}
++                      onInspectedNewModel={() => setAddedModelId(undefined)}
+                     />
+                     {!completeProperties && (
+                       <div className="px-3 pb-2 text-ui-sm text-destructive">
+@@ -661,65 +567,22 @@ export function ProviderModelsSection({
+         <span className="text-ui-base text-foreground-subtle">
+           {intl.formatMessage({ id: "settings.modelProvider.models" })}
+         </span>
+-        <div className="flex flex-wrap items-center gap-2">
+-          <Button
+-            type="button"
+-            variant="secondary"
+-            size="default"
+-            className="rounded-lg"
+-            data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+-            onClick={openAddDialog}
+-          >
+-            <Plus data-icon="inline-start" aria-hidden="true" />
+-            {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+-          </Button>
+-        </div>
+       </div>
+-      {providerAccess?.type === "zhipu-account" ? (
+-        renderConfiguredModels("")
+-      ) : (
+-        <ModelDiscoverySection
+-          providerId={providerId}
+-          disabledReason={
+-            discoveryBlockedReason
+-              ? intl.formatMessage({
+-                  id: `settings.modelProvider.discovery.${discoveryBlockedReason}`,
+-                })
+-              : undefined
+-          }
+-          connectionIdentity={discoveryConnectionIdentity}
+-          renderConfiguredModels={renderConfiguredModels}
+-        />
+-      )}
+-      <>
+-        <ProviderModelMetadataDialog
+-          onRestore={() => {
+-            setAddDraftErrorField(null);
+-            setAddCommitError(null);
+-            void editor
+-              .restore()
+-              .catch((error) =>
+-                setAddCommitError(error instanceof Error ? error.message : String(error)),
+-              );
+-          }}
+-          mode="add"
+-          open={addDialogOpen}
+-          draft={addDraft}
+-          draftErrorMessage={addCommitError ?? addDraftErrorMessage}
+-          draftErrorField={addDraftErrorField}
+-          inheritedConfig={editor.inheritedConfig}
+-          overrideFields={editor.overrides}
+-          onOpenChange={handleAddDialogOpenChange}
+-          onDraftChange={updateAddDraft}
+-          onCommit={commitAddDraft}
+-          saving={addSaving}
+-          modelConfigResolutionPending={editor.pending}
+-          modelDefaultsLoaded={editor.defaultsLoaded}
+-          onModelIdBlur={() => {
+-            void editor.flush().catch(() => undefined);
+-          }}
+-        />
+-      </>
++      <ModelDiscoverySection
++        providerId={providerId}
++        discoveryEnabled={providerAccess?.type !== "zhipu-account"}
++        disabledReason={
++          discoveryBlockedReason
++            ? intl.formatMessage({
++                id: `settings.modelProvider.discovery.${discoveryBlockedReason}`,
++              })
++            : undefined
++        }
++        connectionIdentity={discoveryConnectionIdentity}
++        modelIds={models.map((model) => model.modelId)}
++        onAddModel={handleAddModel}
++        renderConfiguredModels={renderConfiguredModels}
++      />
+     </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index 498b1f0..41b069b 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -1,4 +1,4 @@
+-import { useCallback, useRef, useState } from "react";
++import { useCallback, useEffect, useRef, useState } from "react";
+ import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelConnectivityResult } from "@zcode/shared";
+ import { Loader2Icon, Trash2, Unplug } from "lucide-react";
+@@ -27,6 +27,8 @@ export function ModelRowInput({
+   onDelete,
+   onEnabledChange,
+   onTest,
++  inspectNewModel = false,
++  onInspectedNewModel,
+ }: {
+   model: ProviderSettingsFormModel;
+   providerId: string;
+@@ -44,10 +46,21 @@ export function ModelRowInput({
+   onDelete?: () => void;
+   onEnabledChange?: (enabled: boolean) => void;
+   onTest?: (model: string) => Promise<ModelConnectivityResult>;
++  inspectNewModel?: boolean;
++  onInspectedNewModel?: () => void;
+ }) {
+   const { intl, locale } = useZCodeIntl();
+-  const { showFeedback } = useProviderDetailFeedback();
++  const { showFeedback, dismissFeedback } = useProviderDetailFeedback();
+   const [isTesting, setIsTesting] = useState(false);
++  const testingRef = useRef(false);
++  const testGeneration = useRef(0);
++  const inspectedNewModel = useRef(false);
++  useEffect(
++    () => () => {
++      testGeneration.current++;
++    },
++    [providerId, model.modelId],
++  );
+   const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
+   const [metadataSaving, setMetadataSaving] = useState(false);
+   const metadataSavingRef = useRef(false);
+@@ -103,6 +116,17 @@ export function ModelRowInput({
+     setMetadataDialogOpen(true);
+   }, [model, settingsRevision]);
+ 
++  useEffect(() => {
++    if (!inspectNewModel || inspectedNewModel.current) return;
++    inspectedNewModel.current = true;
++    onInspectedNewModel?.();
++    // 正常补录不弹窗；仅新模型的真实配置诊断需要沿用现有编辑器修复。
++    const issue = model.issues?.[0];
++    if (!issue) return;
++    openMetadataDialog();
++    setCommitErrorMessage(issue.message);
++  }, [inspectNewModel, model.issues, openMetadataDialog, onInspectedNewModel]);
++
+   const handleMetadataDialogOpenChange = useCallback(
+     (open: boolean) => {
+       // 保存期间 Esc/遮罩不能结束并重开草稿，否则旧保存回包会关闭新一轮编辑。
+@@ -135,11 +159,14 @@ export function ModelRowInput({
+   }, [commitDraft]);
+ 
+   const handleTest = useCallback(async () => {
+-    if (!onTest || isTesting || !providerEnabled) {
++    if (!onTest || testingRef.current || !providerEnabled) {
+       return;
+     }
+ 
+-    const modelId = draft.idValue.trim();
++    // 测试只能使用已保存的 ID，不能夹带编辑弹窗里尚未提交的重命名。
++    const modelId = model.modelId;
++    testingRef.current = true;
++    const version = ++testGeneration.current;
+     const dedupeKey = `model-test:${providerId}:${modelId}`;
+     showFeedback({
+       key: dedupeKey,
+@@ -153,6 +180,7 @@ export function ModelRowInput({
+     setIsTesting(true);
+     try {
+       const result = await onTest(modelId);
++      if (version !== testGeneration.current) return;
+       if (result.success) {
+         showFeedback({
+           key: dedupeKey,
+@@ -174,49 +202,35 @@ export function ModelRowInput({
+               : result.error.message.trim();
+         const reason =
+           localizedReason || intl.formatMessage({ id: "settings.modelProvider.testModel.failed" });
+-        showFeedback({
+-          key: dedupeKey,
+-          message: intl.formatMessage(
+-            { id: "settings.modelProvider.testModel.failedWithIdentity" },
+-            { provider: providerName, model: modelId, reason },
+-          ),
+-          state: "failure",
+-          durationMs: 8_000,
+-          dismissible: true,
+-          dismissLabel: intl.formatMessage({ id: "common.close" }),
+-        });
++        dismissFeedback(dedupeKey);
++        openMetadataDialog();
++        setCommitErrorMessage(reason);
+       }
+     } catch (error) {
+-      showFeedback({
+-        key: dedupeKey,
+-        message: intl.formatMessage(
+-          { id: "settings.modelProvider.testModel.failedWithIdentity" },
+-          {
+-            provider: providerName,
+-            model: modelId,
+-            reason:
+-              error instanceof Error
+-                ? error.message
+-                : intl.formatMessage({ id: "settings.modelProvider.testModel.failed" }),
+-          },
+-        ),
+-        state: "failure",
+-        durationMs: 8_000,
+-        dismissible: true,
+-        dismissLabel: intl.formatMessage({ id: "common.close" }),
+-      });
++      if (version !== testGeneration.current) return;
++      dismissFeedback(dedupeKey);
++      openMetadataDialog();
++      setCommitErrorMessage(
++        error instanceof Error
++          ? error.message
++          : intl.formatMessage({ id: "settings.modelProvider.testModel.failed" }),
++      );
+     } finally {
+-      setIsTesting(false);
++      if (version === testGeneration.current) {
++        testingRef.current = false;
++        setIsTesting(false);
++      }
+     }
+   }, [
+     onTest,
+-    isTesting,
+-    draft.idValue,
++    model.modelId,
+     intl,
+     providerId,
+     providerName,
+     providerEnabled,
+     showFeedback,
++    dismissFeedback,
++    openMetadataDialog,
+   ]);
+ 
+   const testIcon = isTesting ? (
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts b/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
+index 9a06773..4b1fba8 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
++++ b/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
+@@ -8,6 +8,23 @@ import {
+   type ModelConfigObject,
+ } from "@zcode/provider";
+ 
++/** 手动补录只拥有模型 ID；能力与推荐配置继续由现有 Provider Registry 解析。 */
++export function createManualProviderModel(value: string): ProviderSettingsFormModel {
++  const modelId = value.trim();
++  if (!modelId) throw new Error("Model ID is required");
++  return {
++    kind: "candidate",
++    modelId,
++    builtin: false,
++    personalConfig: {},
++    config: {},
++    useRecommendedConfig: true,
++    hasPersonalConfig: false,
++    executable: false,
++    selectable: false,
++  };
++}
++
+ export type ProviderModelInputFormatDraft = ModelInputFormatData;
+ 
+ export interface ProviderModelDraftValues {
+diff --git a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+index 4a3616e..7a956b1 100644
+--- a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
++++ b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+@@ -35,6 +35,7 @@ export function providerSetupConfig(
+   template: Pick<ProviderSettingsTemplateView, "config">,
+   draft: ProviderSetupDraft,
+   acceptedFormats: readonly ProviderApiType[] = [],
++  options: { allowEmptyCredentials?: boolean } = {},
+ ): ProviderConfigObject | undefined {
+   if (template.config.access?.type === "subscription") return {};
+   if (!isApiKeyAccess(template.config.access)) return undefined;
+@@ -42,7 +43,7 @@ export function providerSetupConfig(
+   const keys = [
+     ...new Set([draft.primary, ...draft.additional].map((key) => key.trim()).filter(Boolean)),
+   ];
+-  if (!keys.length || keys.length > 10) return undefined;
++  if ((!keys.length && !options.allowEmptyCredentials) || keys.length > 10) return undefined;
+   const api = { type: draft.api, baseUrl: draft.baseUrl.trim() };
+   const policy = resolveProviderProtocolPolicy(template.config, { ...template.config, api });
+   if (policy.mode === "override" && !acceptedFormats.includes(draft.api)) return undefined;
+@@ -57,7 +58,8 @@ export function providerSetupConfig(
+     ...(Object.keys(apiOverride).length ? { api: apiOverride } : {}),
+     access: {
+       type: template.config.access.type,
+-      apiKey: keys[0],
++      // 编辑已有连接时允许明确清空最后一个密钥；空字符串遮盖旧值，不能省略后重新继承。
++      apiKey: keys[0] ?? "",
+       additionalApiKeys: keys.slice(1),
+       autoSwitchCredentials: draft.automatic && keys.length > 1,
+     },

@@ -1,0 +1,1288 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/model/failure-classifier.ts b/apps/zcode-cli/packages/adapters/src/model/failure-classifier.ts
+index 77c8e82..6d32b35 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/failure-classifier.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/failure-classifier.ts
+@@ -215,7 +215,7 @@ export function classifyModelFailure(
+     };
+   }
+ 
+-  if (statusCode === 401 || statusCode === 403) {
++  if (statusCode === 401) {
+     return {
+       code: ModelErrorCode.ProviderNotConfigured,
+       message: "Provider authentication failed.",
+@@ -226,6 +226,19 @@ export function classifyModelFailure(
+     };
+   }
+ 
++  if (statusCode === 403) {
++    // A bare Forbidden does not prove an invalid key. Provider business codes above may
++    // establish a specific entitlement, model or client cause; without one it stays unknown.
++    return {
++      code: ModelErrorCode.ModelRequestFailed,
++      message: "Provider denied access without a specific reason.",
++      reason: ModelFailureReasonValue.Unknown,
++      retryReason: ModelRetryReasonValue.NetworkError,
++      retryable: false,
++      statusCode,
++    };
++  }
++
+   if (statusCode === 400 || statusCode === 422) {
+     const contextExceeded = isContextExceededFailure(unwrapped);
+     return {
+diff --git a/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts b/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
+index 43a88e2..31681c6 100644
+--- a/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/credential-failover.test.ts
+@@ -162,3 +162,10 @@ test("Kimi subscription entitlement refusal retains the provider type instead of
+  const {modelConnectivityFailure}=await import('@zcode/shared');const result=modelConnectivityFailure({connectivityFailure:{...classified,...details}});
+  assert.equal(result.success,false);if(!result.success)assert.equal(result.error.kind,'subscription-access');
+ });
++
++test("a bare 403 is not labelled an invalid credential without provider evidence", () => {
++  const classified = classifyModelFailure({ statusCode: 403 });
++  assert.equal(classified.statusCode, 403);
++  assert.equal(classified.reason, "unknown");
++  assert.equal(classified.retryable, false);
++});
+diff --git a/package.json b/package.json
+index 454b368..a1e8aa0 100644
+--- a/package.json
++++ b/package.json
+@@ -50,7 +50,7 @@
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+-    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts",
++    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/subscriptionListPrice.test.ts"
+   },
+   "dependencies": {
+diff --git a/packages/services/src/model-provider/ccSwitchImport.ts b/packages/services/src/model-provider/ccSwitchImport.ts
+index 74fc9c8..e39aa37 100644
+--- a/packages/services/src/model-provider/ccSwitchImport.ts
++++ b/packages/services/src/model-provider/ccSwitchImport.ts
+@@ -25,9 +25,12 @@ export interface CcSwitchImportRow {
+   readonly baseUrl: string;
+   readonly modelIds: readonly string[];
+   readonly apiType?: NonNullable<ProviderConfigObject["api"]>["type"];
++  readonly logo?: ProviderConfigObject["logo"];
+   readonly existingProviderName?: string;
+   readonly eligible: boolean;
+   readonly reason?: string;
++  /** Same saved key, endpoint and wire format as an earlier preview row. No credential leaves the owner. */
++  readonly duplicateOf?: string;
+ }
+ 
+ export interface CcSwitchImportPreview {
+@@ -74,24 +77,42 @@ export function createCcSwitchImportAdapter(
+     async preview(path) {
+       const source = await readSource(path ?? defaultPath);
+       const view = await owner.getView();
++      const rows = source.candidates.map((candidate) => {
++        if (!candidate.row.eligible) return candidate.row;
++        const existing = findExisting(candidate, view);
++        const complete =
++          existing &&
++          (isComplete(candidate, existing, view) ||
++            existing.effectiveConfig.api?.type !== candidate.config?.api?.type);
++        const logo = resolveDecoration(candidate, view).config.logo;
++        return {
++          ...candidate.row,
++          ...(logo ? { logo } : {}),
++          ...(existing
++            ? { existingProviderName: existing.providerName ?? existing.providerId }
++            : {}),
++          ...(complete ? { eligible: false, reason: "already-imported" } : {}),
++        };
++      });
++      const firstByConnection = new Map<string, string>();
++      const grouped = rows.map((row, index) => {
++        const candidate = source.candidates[index];
++        const access = candidate?.config?.access;
++        const api = candidate?.config?.api;
++        if (!api || !isApiKeyAccess(access) || !access.apiKey) return row;
++        const signature = JSON.stringify([
++          access.apiKey, normalizedUrl(api.baseUrl), api.type, api.headers ?? null,
++          row.eligible, row.reason ?? null, row.existingProviderName ?? null,
++        ]);
++        const first = firstByConnection.get(signature);
++        if (first) return { ...row, duplicateOf: first };
++        firstByConnection.set(signature, row.id);
++        return row;
++      });
+       return {
+         path: source.path,
+         revision: source.revision,
+-        rows: source.candidates.map((candidate) => {
+-          if (!candidate.row.eligible) return candidate.row;
+-          const existing = findExisting(candidate, view);
+-          const complete =
+-            existing &&
+-            (isComplete(candidate, existing, view) ||
+-              existing.effectiveConfig.api?.type !== candidate.config?.api?.type);
+-          return {
+-            ...candidate.row,
+-            ...(existing
+-              ? { existingProviderName: existing.providerName ?? existing.providerId }
+-              : {}),
+-            ...(complete ? { eligible: false, reason: "already-imported" } : {}),
+-          };
+-        }),
++        rows: grouped,
+       };
+     },
+     import(input) {
+diff --git a/packages/services/test/cc-switch-import.test.ts b/packages/services/test/cc-switch-import.test.ts
+index 609e511..6d311a4 100644
+--- a/packages/services/test/cc-switch-import.test.ts
++++ b/packages/services/test/cc-switch-import.test.ts
+@@ -205,6 +205,37 @@ test("preview is secret-free; selected import preserves source, URLs, models, de
+   }
+ });
+ 
++test("same key, endpoint and wire format from two clients preview as one connection without losing models", async () => {
++  const shared = {
++    env: {
++      ANTHROPIC_BASE_URL: "https://api.example.test/anthropic",
++      ANTHROPIC_AUTH_TOKEN: "synthetic-shared-import-key",
++      ANTHROPIC_MODEL: "model-a",
++    },
++  };
++  const second = { env: { ...shared.env, ANTHROPIC_MODEL: "model-b" } };
++  const f = await fixture([
++    { id: "one", app: "claude", name: "Shared gateway", settings: shared },
++    { id: "two", app: "claude-desktop", name: "Shared gateway", settings: second },
++  ]);
++  try {
++    const preview = await f.service.previewCcSwitchImport(f.path);
++    assert.equal(preview.rows.length, 2);
++    assert.equal(preview.rows[1]?.duplicateOf, preview.rows[0]?.id);
++    assert.equal(JSON.stringify(preview).includes("synthetic-shared-import-key"), false);
++    const result = await f.service.importCcSwitchProviders({
++      path: preview.path, revision: preview.revision, ids: preview.rows.map((row) => row.id),
++    });
++    assert.equal(new Set(result.results.map((row) => row.providerId)).size, 1);
++    const imported = (await f.service.getView()).providers.find(
++      (provider) => provider.providerId === result.results[0]?.providerId,
++    );
++    assert.deepEqual(imported?.models.map((model) => model.modelId).sort(), ["model-a", "model-b"]);
++  } finally {
++    await f.dispose();
++  }
++});
++
+ test("commit rereads the source and rejects stale content before creating any provider", async () => {
+   const f = await fixture([rows[0]!]);
+   try {
+diff --git a/packages/services/test/model-connectivity-diagnostics.test.ts b/packages/services/test/model-connectivity-diagnostics.test.ts
+index ca6b115..be7e4f3 100644
+--- a/packages/services/test/model-connectivity-diagnostics.test.ts
++++ b/packages/services/test/model-connectivity-diagnostics.test.ts
+@@ -12,6 +12,7 @@ test("connectivity failures retain safe cause classes and never infer plan expir
+     return result;
+   };
+   check({ statusCode: 403, reason: "auth_failed" }, "authentication");
++  check({ statusCode: 403 }, "access-denied");
+   check(
+     {
+       statusCode: 403,
+diff --git a/packages/shared/src/model-connectivity.ts b/packages/shared/src/model-connectivity.ts
+index 4da2068..a3bbab6 100644
+--- a/packages/shared/src/model-connectivity.ts
++++ b/packages/shared/src/model-connectivity.ts
+@@ -2,6 +2,7 @@ import { z } from "zod";
+ 
+ export const modelConnectivityFailureKindSchema = z.enum([
+   "authentication",
++  "access-denied",
+   "subscription-expired",
+   "subscription-access",
+   "quota",
+@@ -78,12 +79,12 @@ export function modelConnectivityFailure(error: unknown): ModelConnectivityResul
+   else if (reason === "context_exceeded" || code === "model_context_exceeded") kind = "context";
+   else if (
+     status === 401 ||
+-    status === 403 ||
+     reason === "auth_failed" ||
+     code === "model_request_auth_missing" ||
+     /authentication failed/.test(message)
+   )
+     kind = "authentication";
++  else if (status === 403) kind = "access-denied";
+   else if (status === 404 || status === 405) kind = "endpoint";
+   else if (status === 429 || reason === "rate_limited") kind = "rate-limit";
+   else if (
+diff --git a/packages/ui/src/hooks/useModelProviders.ts b/packages/ui/src/hooks/useModelProviders.ts
+index 60b2ee3..066a5ba 100644
+--- a/packages/ui/src/hooks/useModelProviders.ts
++++ b/packages/ui/src/hooks/useModelProviders.ts
+@@ -15,6 +15,7 @@ import { persistProviderDisplayOrder } from "@/lib/providerDisplayOrderPersisten
+ import { persistPersonalProviderDeletion } from "@/lib/providerPersonalPersistence.js";
+ import { persistPersonalProvider } from "@/lib/providerPersonalSave.js";
+ import type { ProviderOrderView } from "@/lib/modelProviderOrdering.js";
++import { providerProbeScope } from "@/settings/model-provider-section/providerStatus.js";
+ 
+ export function useModelProviders(target: {
+   workspacePath: string;
+@@ -35,28 +36,39 @@ export function useModelProviders(target: {
+       string,
+       {
+         service: typeof providerSettingsService;
+-        revision: number;
++        scope: string;
+         modelId: string;
+         checkedAt: number;
+         result: ModelConnectivityResult;
+       }
+     >
+   >({});
+-  const currentProbeScope = useRef({
+-    service: providerSettingsService,
+-    revision: providerSettingsView?.revision,
+-  });
+-  currentProbeScope.current = {
+-    service: providerSettingsService,
+-    revision: providerSettingsView?.revision,
+-  };
++  const baseModelProviders = useMemo(
++    () => resolveProviderSettingsFormProviders({ view: providerSettingsView }),
++    [providerSettingsView],
++  );
++  const providerScopes = useMemo(
++    () => new Map(baseModelProviders.map((provider) => [provider.providerId, providerProbeScope(provider)])),
++    [baseModelProviders],
++  );
++  const currentProbeScope = useRef({ service: providerSettingsService, scopes: providerScopes });
++  currentProbeScope.current = { service: providerSettingsService, scopes: providerScopes };
+   const probeSequence = useRef(new Map<string, number>());
++  const invalidateConnectionTest = useCallback((providerId: string) => {
++    probeSequence.current.set(providerId, (probeSequence.current.get(providerId) ?? 0) + 1);
++    setProbeResults((previous) => {
++      if (!previous[providerId]) return previous;
++      const next = { ...previous };
++      delete next[providerId];
++      return next;
++    });
++  }, []);
+   const effectiveModelProviders = useMemo(
+     () =>
+-      resolveProviderSettingsFormProviders({ view: providerSettingsView }).map((provider) => {
++      baseModelProviders.map((provider) => {
+         const probe = probeResults[provider.providerId];
+         return probe?.service === providerSettingsService &&
+-          probe.revision === providerSettingsView?.revision
++          probe.scope === providerScopes.get(provider.providerId)
+           ? {
+               ...provider,
+               connectionTest: {
+@@ -67,7 +79,7 @@ export function useModelProviders(target: {
+             }
+           : provider;
+       }),
+-    [providerSettingsView, providerSettingsService, probeResults],
++    [baseModelProviders, providerScopes, providerSettingsService, probeResults],
+   );
+   const providerOrdering = useMemo(
+     () =>
+@@ -248,7 +260,7 @@ export function useModelProviders(target: {
+           },
+         };
+       }
+-      const revision = providerSettingsView?.revision ?? 0;
++      const scope = providerScopes.get(providerId);
+       const sequence = (probeSequence.current.get(providerId) ?? 0) + 1;
+       probeSequence.current.set(providerId, sequence);
+       let result: ModelConnectivityResult;
+@@ -263,7 +275,7 @@ export function useModelProviders(target: {
+       }
+       if (
+         currentProbeScope.current.service !== providerSettingsService ||
+-        currentProbeScope.current.revision !== revision ||
++        currentProbeScope.current.scopes.get(providerId) !== scope ||
+         probeSequence.current.get(providerId) !== sequence
+       )
+         return { success: false, error: { message: "Connection changed", kind: "changed" } };
+@@ -271,7 +283,7 @@ export function useModelProviders(target: {
+         ...previous,
+         [providerId]: {
+           service: providerSettingsService,
+-          revision,
++          scope: scope ?? "",
+           modelId,
+           checkedAt: Date.now(),
+           result,
+@@ -281,7 +293,7 @@ export function useModelProviders(target: {
+     },
+     [
+       providerSettingsService,
+-      providerSettingsView?.revision,
++      providerScopes,
+       target.connectivityUnavailableMessage,
+       target.connectivityWorkspacePath,
+       target.connectivityWorkspaceRequired,
+@@ -312,6 +324,7 @@ export function useModelProviders(target: {
+     reorderProviderModels,
+     saveDisplayOrder,
+     testModelConnectivity,
++    invalidateConnectionTest,
+     providerSettingsView,
+   };
+ }
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 8905ee0..600e58c 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -16,6 +16,8 @@ const enUS: Record<string, string> = {
+     "This subscription cannot access the service. Check plan entitlements or contact the provider.",
+   "settings.modelProvider.testFailure.authentication":
+     "Authentication was rejected. Check the key or account permissions.",
++  "settings.modelProvider.testFailure.access-denied":
++    "The provider denied access (403) without a specific cause. Check key permissions, model access and upstream format.",
+   "settings.modelProvider.testFailure.subscription-expired":
+     "The provider explicitly reported an expired subscription. Check the plan term.",
+   "settings.modelProvider.testFailure.quota":
+@@ -43,9 +45,10 @@ const enUS: Record<string, string> = {
+     "The connection changed. Test the current saved configuration again.",
+   "settings.modelProvider.testFailure.unknown":
+     "The test failed, but the cause is not established. Check the provider status and retry.",
+-  "settings.modelProvider.configuredStatus": "Configured; request not verified",
++  "settings.modelProvider.configuredStatus": "Configuration ready; model access not confirmed",
++  "settings.modelProvider.subscriptionConfiguredStatus": "Account connected; model access not confirmed. See each account's allowance on the right.",
+   "settings.modelProvider.testPassedStatus": "Test passed: {model} · {time}",
+-  "settings.modelProvider.testFailedStatus": "Test failed: {model} · {time}",
++  "settings.modelProvider.testFailedStatus": "Recent connection test failed: {model} · {time}",
+ 
+   "settings.usage.activity.title": "Activity insights",
+   "settings.usage.activity.conversations": "Conversations",
+@@ -3035,10 +3038,20 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.catalog.subscription": "Connect using your subscription account.",
+   "settings.modelProvider.catalog.invalid": "Enter a valid API address and at least one API key.",
+   "settings.modelProvider.catalog.connect": "Connect subscription account",
+-  "settings.modelProvider.catalog.save": "Add and configure models",
++  "settings.modelProvider.catalog.save": "Save connection",
+   "settings.modelProvider.import.title": "Import from CC Switch",
+   "settings.modelProvider.import.description":
+-    "Import API and plan-key connections. Existing connections are completed; account login tokens are not imported.",
++    "Choose API connections to add. Existing connections are not duplicated; subscription accounts must sign in again.",
++  "settings.modelProvider.import.available": "Ready to import ({count})",
++  "settings.modelProvider.import.unavailable": "Existing or manual setup ({count})",
++  "settings.modelProvider.import.ready": "Ready",
++  "settings.modelProvider.import.notImportable": "Manual setup",
++  "settings.modelProvider.import.failedShort": "Import failed",
++  "settings.modelProvider.import.modelCount": "{count} models",
++  "settings.modelProvider.import.details": "Configuration details",
++  "settings.modelProvider.import.endpoint": "Request URL",
++  "settings.modelProvider.import.format": "Upstream format",
++  "settings.modelProvider.import.models": "Models",
+   "settings.modelProvider.import.readFailed":
+     "No readable CC Switch database found. Choose a database file.",
+   "settings.modelProvider.import.sourceChanged":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index a5c98f8..68e8aba 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -14,6 +14,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.testFailure.subscription-access":
+     "当前订阅暂无此服务权限，请检查套餐权益或联系服务商。",
+   "settings.modelProvider.testFailure.authentication": "认证未通过，请检查密钥或账号权限。",
++  "settings.modelProvider.testFailure.access-denied":
++    "服务商拒绝访问（403），未说明具体原因。请核对密钥权限、模型权益和上游格式。",
+   "settings.modelProvider.testFailure.subscription-expired":
+     "服务商明确返回订阅已到期，请检查套餐有效期。",
+   "settings.modelProvider.testFailure.quota": "服务商返回额度或余额不足，请查看账号用量。",
+@@ -33,9 +35,10 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.testFailure.changed": "连接配置已改变，请按当前配置重新测试。",
+   "settings.modelProvider.testFailure.unknown":
+     "测试失败，尚不能确认原因。请检查服务商状态后重试。",
+-  "settings.modelProvider.configuredStatus": "已配置，尚未验证请求",
++  "settings.modelProvider.configuredStatus": "配置已就绪，模型调用是否可用尚未确认",
++  "settings.modelProvider.subscriptionConfiguredStatus": "账号已连接，模型调用是否可用尚未确认；各账号额度请在右侧查看",
+   "settings.modelProvider.testPassedStatus": "测试通过：{model} · {time}",
+-  "settings.modelProvider.testFailedStatus": "测试失败：{model} · {time}",
++  "settings.modelProvider.testFailedStatus": "最近连接测试失败：{model} · {time}",
+ 
+   "settings.usage.activity.title": "活动洞察",
+   "settings.usage.activity.conversations": "对话数",
+@@ -2824,10 +2827,20 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.catalog.subscription": "使用订阅账号授权连接。",
+   "settings.modelProvider.catalog.invalid": "请填写有效的 API 地址和至少一个 API 密钥。",
+   "settings.modelProvider.catalog.connect": "连接订阅账号",
+-  "settings.modelProvider.catalog.save": "添加并配置模型",
++  "settings.modelProvider.catalog.save": "保存连接",
+   "settings.modelProvider.import.title": "从 CC Switch 导入",
+   "settings.modelProvider.import.description":
+-    "导入 API 和套餐密钥配置；已有连接只补全，账号登录状态不导入。",
++    "选择要添加的 API 连接；已有连接不会重复添加，订阅账号需重新登录。",
++  "settings.modelProvider.import.available": "可导入（{count}）",
++  "settings.modelProvider.import.unavailable": "已存在或需手动处理（{count}）",
++  "settings.modelProvider.import.ready": "可导入",
++  "settings.modelProvider.import.notImportable": "需手动处理",
++  "settings.modelProvider.import.failedShort": "导入失败",
++  "settings.modelProvider.import.modelCount": "{count} 个模型",
++  "settings.modelProvider.import.details": "配置详情",
++  "settings.modelProvider.import.endpoint": "请求地址",
++  "settings.modelProvider.import.format": "上游格式",
++  "settings.modelProvider.import.models": "模型",
+   "settings.modelProvider.import.readFailed": "未找到可读取的 CC Switch 数据库，请选择数据库文件。",
+   "settings.modelProvider.import.sourceChanged":
+     "来源已变更或无法导入，请重新选择数据库文件后重试。",
+diff --git a/packages/ui/src/settings/ModelProviderSection.tsx b/packages/ui/src/settings/ModelProviderSection.tsx
+index 73c0154..d0f603d 100644
+--- a/packages/ui/src/settings/ModelProviderSection.tsx
++++ b/packages/ui/src/settings/ModelProviderSection.tsx
+@@ -61,6 +61,7 @@ export function ModelProviderSection({
+     saveDisplayOrder,
+     reorderableProviderIds,
+     testModelConnectivity,
++    invalidateConnectionTest,
+     providerSettingsView,
+   } = useModelProviders({
+     workspacePath,
+@@ -75,6 +76,7 @@ export function ModelProviderSection({
+   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+   const [creatingProvider, setCreatingProvider] = useState(false);
+   const [connectProviderId, setConnectProviderId] = useState<string>();
++  const [expandedAccountByProvider, setExpandedAccountByProvider] = useState<Record<string, string | null>>({});
+   const { navigationGroups, selectedNavItem } = useModelProviderNavigation({
+     modelProviders,
+     displayOrder,
+@@ -226,6 +228,13 @@ export function ModelProviderSection({
+           onDelete={handleDelete}
+           onReorderProviderModels={reorderProviderModels}
+           onTestModel={testModelConnectivity}
++          onConnectionChanged={invalidateConnectionTest}
++          expandedAccountId={selectedNavItem?.type === "custom" && selectedNavItem.provider
++            ? expandedAccountByProvider[selectedNavItem.provider.providerId]
++            : undefined}
++          onExpandedAccountChange={(providerId, accountId) => setExpandedAccountByProvider((previous) =>
++            previous[providerId] === accountId ? previous : { ...previous, [providerId]: accountId },
++          )}
+           onOpenApiKeyUrl={(url) => {
+             void platform.openExternal(url);
+           }}
+diff --git a/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx b/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
+index 9df2364..4bf9cbe 100644
+--- a/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/CcSwitchImportSection.tsx
+@@ -5,11 +5,24 @@ import { Checkbox } from "@/components/ui/checkbox.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { ProviderLogo } from "./ProviderLogo.js";
++import { groupCcSwitchImportRows } from "./ccSwitchImportViewModel.js";
+ 
+ type Preview = Awaited<
+   ReturnType<ReturnType<typeof useServices>["providerSettingsService"]["previewCcSwitchImport"]>
+ >;
+ 
++const CLIENT_NAMES: Record<string, string> = {
++  claude: "Claude Code",
++  "claude-desktop": "Claude Desktop",
++  codex: "OpenAI CLI",
++  opencode: "OpenCode",
++  openclaw: "OpenClaw",
++  gemini: "Gemini CLI",
++  grokbuild: "Grok Build",
++  hermes: "Hermes",
++};
++
+ export function CcSwitchImportSection({
+   onBack,
+   onComplete,
+@@ -20,7 +33,8 @@ export function CcSwitchImportSection({
+   const { providerSettingsService } = useServices();
+   const platform = usePlatform();
+   const { intl } = useZCodeIntl();
+-  const t = (key: string) => intl.formatMessage({ id: `settings.modelProvider.import.${key}` });
++  const t = (key: string, values?: Record<string, number>) =>
++    intl.formatMessage({ id: `settings.modelProvider.import.${key}` }, values);
+   const [preview, setPreview] = useState<Preview>();
+   const [selected, setSelected] = useState<string[]>([]);
+   const [busy, setBusy] = useState(false);
+@@ -37,7 +51,7 @@ export function CcSwitchImportSection({
+       const result = await providerSettingsService.previewCcSwitchImport(path);
+       if (!mounted.current) return;
+       setPreview(result);
+-      setSelected(result.rows.filter((row) => row.eligible).map((row) => row.id));
++      setSelected([]);
+       setFailedRows([]);
+     } catch {
+       if (mounted.current) {
+@@ -103,6 +117,66 @@ export function CcSwitchImportSection({
+                   ? "unsupportedEndpoint"
+                   : "incomplete",
+     );
++  const groups = groupCcSwitchImportRows(preview?.rows ?? []);
++  const importable = groups.filter((group) => group.row.eligible);
++  const unavailable = groups.filter((group) => !group.row.eligible);
++  const selectedGroups = importable.filter((group) =>
++    group.ids.some((id) => selected.includes(id)),
++  ).length;
++  const format = (apiType?: string) =>
++    apiType === "anthropic-messages"
++      ? "Anthropic Messages"
++      : apiType === "openai-responses"
++        ? "OpenAI Responses"
++        : apiType === "openai-chat-completions"
++          ? "OpenAI Chat Completions"
++          : "—";
++  const renderRow = (group: (typeof groups)[number]) => {
++    const { row } = group;
++    const checkedCount = group.ids.filter((id) => selected.includes(id)).length;
++    const status = failedRows.some((id) => group.ids.includes(id))
++      ? t("failedShort")
++      : row.existingProviderName
++        ? intl.formatMessage(
++            { id: `settings.modelProvider.import.${row.eligible ? "completeExisting" : "boundExisting"}` },
++            { name: row.existingProviderName },
++          )
++        : row.eligible ? t("ready") : t("notImportable");
++    return (
++      <div key={row.id} className="rounded-lg border border-border bg-surface px-3 py-2.5">
++        <div className="flex min-w-0 items-center gap-3">
++          <Checkbox
++            aria-label={row.name}
++            checked={checkedCount === group.ids.length ? true : checkedCount ? "indeterminate" : false}
++            disabled={busy || !row.eligible}
++            onCheckedChange={(checked) => setSelected((current) => checked
++              ? [...new Set([...current, ...group.ids])]
++              : current.filter((id) => !group.ids.includes(id)))}
++          />
++          <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-card">
++            <ProviderLogo logo={row.logo} className="size-5" />
++          </span>
++          <span className="min-w-0 flex-1 truncate text-ui-base font-medium">{row.name}</span>
++          <span title={status} className={`max-w-40 shrink-0 truncate text-ui-sm ${failedRows.some((id) => group.ids.includes(id)) ? "text-destructive" : "text-foreground-subtle"}`}>
++            {status}
++          </span>
++        </div>
++        <div className="ml-10 mt-1 text-ui-sm text-foreground-subtle">
++          {group.clients.map((client) => CLIENT_NAMES[client] ?? client).join(" · ")}
++          {group.modelIds.length ? ` · ${t("modelCount", { count: group.modelIds.length })}` : ""}
++        </div>
++        <details className="ml-10 mt-1 text-ui-sm text-foreground-subtle">
++          <summary className="w-fit cursor-pointer">{t("details")}</summary>
++          <div className="mt-2 space-y-1 border-t border-border pt-2">
++            {!row.eligible && !row.existingProviderName ? <p>{reason(row.reason)}</p> : null}
++            {row.baseUrl ? <p className="break-all">{t("endpoint")}: {row.baseUrl}</p> : null}
++            {row.apiType ? <p>{t("format")}: {format(row.apiType)}</p> : null}
++            {group.modelIds.length ? <p className="break-words">{t("models")}: {group.modelIds.join(" · ")}</p> : null}
++          </div>
++        </details>
++      </div>
++    );
++  };
+   return (
+     <section className="space-y-4">
+       <div className="flex items-center gap-3">
+@@ -118,69 +192,20 @@ export function CcSwitchImportSection({
+         <h2 className="text-ui-lg font-semibold">{t("title")}</h2>
+       </div>
+       <p className="text-ui-base text-foreground-subtle">{t("description")}</p>
+-      {preview ? (
+-        <p className="break-all text-ui-sm text-foreground-subtle">{preview.path}</p>
+-      ) : null}
+-      <div className="space-y-2">
+-        {preview?.rows.map((row) => (
+-          <label
+-            key={row.id}
+-            className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3"
+-          >
+-            <Checkbox
+-              className="mt-0.5"
+-              checked={selected.includes(row.id)}
+-              disabled={busy || !row.eligible}
+-              onCheckedChange={(checked) =>
+-                setSelected((current) =>
+-                  checked ? [...current, row.id] : current.filter((id) => id !== row.id),
+-                )
+-              }
+-            />
+-            <div className="min-w-0 space-y-1">
+-              <div className="text-ui-base font-medium">
+-                {row.name}{" "}
+-                <span className="text-ui-sm font-normal text-foreground-subtle">{row.appType}</span>
+-              </div>
+-              <p className="break-all text-ui-sm text-foreground-subtle">{row.baseUrl}</p>
+-              {row.apiType ? (
+-                <p className="text-ui-sm text-foreground-subtle">
+-                  {row.apiType === "anthropic-messages"
+-                    ? "Anthropic Messages"
+-                    : row.apiType === "openai-responses"
+-                      ? "OpenAI Responses"
+-                      : "OpenAI Chat Completions"}
+-                </p>
+-              ) : null}
+-              {row.modelIds.length ? (
+-                <p className="break-words text-ui-sm text-foreground-subtle">
+-                  {row.modelIds.join(" · ")}
+-                </p>
+-              ) : null}
+-              {!row.eligible ? (
+-                <p className="text-ui-sm text-foreground-subtle">
+-                  {row.existingProviderName
+-                    ? intl.formatMessage(
+-                        { id: "settings.modelProvider.import.boundExisting" },
+-                        { name: row.existingProviderName },
+-                      )
+-                    : reason(row.reason)}
+-                </p>
+-              ) : null}
+-              {row.eligible && row.existingProviderName ? (
+-                <p className="text-ui-sm text-foreground-subtle">
+-                  {intl.formatMessage(
+-                    { id: "settings.modelProvider.import.completeExisting" },
+-                    { name: row.existingProviderName },
+-                  )}
+-                </p>
+-              ) : null}
+-              {failedRows.includes(row.id) ? (
+-                <p className="text-ui-sm text-destructive">{t("rowFailed")}</p>
+-              ) : null}
+-            </div>
+-          </label>
+-        ))}
++      {preview ? <p className="text-ui-sm text-foreground-subtle">{preview.path.split(/[/\\]/).at(-1)}</p> : null}
++      <div className="space-y-4">
++        {importable.length ? (
++          <div className="space-y-2">
++            <h3 className="text-ui-base font-medium">{t("available", { count: importable.length })}</h3>
++            {importable.map(renderRow)}
++          </div>
++        ) : null}
++        {unavailable.length ? (
++          <div className="space-y-2">
++            <h3 className="text-ui-base font-medium">{t("unavailable", { count: unavailable.length })}</h3>
++            {unavailable.map(renderRow)}
++          </div>
++        ) : null}
+         {preview && !preview.rows.length ? (
+           <p className="text-ui-base text-foreground-subtle">{t("empty")}</p>
+         ) : null}
+@@ -205,7 +230,7 @@ export function CcSwitchImportSection({
+         <Button disabled={busy || !selected.length || !preview} onClick={() => void submit()}>
+           {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+           {t("confirm")}
+-          {selected.length ? ` (${selected.length})` : ""}
++          {selectedGroups ? ` (${selectedGroups})` : ""}
+         </Button>
+       </div>
+     </section>
+diff --git a/packages/ui/src/settings/model-provider-section/Detail.tsx b/packages/ui/src/settings/model-provider-section/Detail.tsx
+index 751b8c3..9ba6364 100644
+--- a/packages/ui/src/settings/model-provider-section/Detail.tsx
++++ b/packages/ui/src/settings/model-provider-section/Detail.tsx
+@@ -17,6 +17,9 @@ export function ModelProviderSectionDetail({
+   onDelete,
+   onReorderProviderModels,
+   onTestModel,
++  onConnectionChanged,
++  expandedAccountId,
++  onExpandedAccountChange,
+   onOpenApiKeyUrl,
+   providerSettingsView: providerSettingsViewOverride,
+   connectProviderId,
+@@ -39,6 +42,9 @@ export function ModelProviderSectionDetail({
+   onDelete: (provider: ProviderSettingsFormProvider) => Promise<void>;
+   onReorderProviderModels?: (providerId: string, modelIds: string[]) => Promise<void>;
+   onTestModel: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
++  onConnectionChanged?: (providerId: string) => void;
++  expandedAccountId?: string | null;
++  onExpandedAccountChange?: (providerId: string, accountId: string | null) => void;
+   onOpenApiKeyUrl: (url: string) => void;
+   providerSettingsView?: ProviderSettingsView | null;
+   connectProviderId?: string;
+@@ -72,6 +78,9 @@ export function ModelProviderSectionDetail({
+           : undefined
+       }
+       onTestModel={onTestModel}
++      onConnectionChanged={onConnectionChanged}
++      expandedAccountId={expandedAccountId}
++      onExpandedAccountChange={onExpandedAccountChange}
+       presetApiKeyUrl={customApiKeyUrl}
+       readOnlyEndpoints={false}
+       nameEditable
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index e72dd39..d72666b 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -107,6 +107,9 @@ export function InlineEditableProviderCard({
+   onSetPersonalModelEnabled,
+   onDelete,
+   onTestModel,
++  onConnectionChanged,
++  expandedAccountId,
++  onExpandedAccountChange,
+   onReorderModelIds,
+   readOnlyEndpoints,
+   presetApiKeyUrl,
+@@ -135,6 +138,9 @@ export function InlineEditableProviderCard({
+   ) => Promise<unknown>;
+   onDelete?: () => void | Promise<void>;
+   onTestModel?: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
++  onConnectionChanged?: (providerId: string) => void;
++  expandedAccountId?: string | null;
++  onExpandedAccountChange?: (providerId: string, accountId: string | null) => void;
+   onReorderModelIds?: (modelIds: string[]) => Promise<void>;
+   readOnlyEndpoints?: boolean;
+   presetApiKeyUrl?: string;
+@@ -210,6 +216,13 @@ export function InlineEditableProviderCard({
+   // Opaque UI lease: only committed connection changes reload the catalog, never model edits.
+   // Never put API keys in React keys, DOM attributes or logs.
+   const [subscriptionRevision, setSubscriptionRevision] = useState("");
++  const lastSubscriptionRevision = useRef<string | undefined>(undefined);
++  const handleSubscriptionRevision = (revision: string) => {
++    if (lastSubscriptionRevision.current === revision) return;
++    lastSubscriptionRevision.current = revision;
++    setSubscriptionRevision(revision);
++    onConnectionChanged?.(provider.providerId);
++  };
+   const discoveryConnectionIdentity = useMemo(
+     () => ({}),
+     [
+@@ -270,6 +283,7 @@ export function InlineEditableProviderCard({
+       setEditingName(false);
+       setApiKeyVisible(false);
+       setSubscriptionRevision("");
++      lastSubscriptionRevision.current = undefined;
+       draftRevisionRef.current += 1;
+       dirtyProviderFieldsRef.current.clear();
+     }
+@@ -920,7 +934,10 @@ export function InlineEditableProviderCard({
+             providerId={provider.providerId}
+             kind={provider.config.access.provider}
+             connected={provider.config.access.connected === true}
+-            onRevision={setSubscriptionRevision}
++            onRevision={handleSubscriptionRevision}
++            onChangeStart={() => onConnectionChanged?.(provider.providerId)}
++            rememberedExpandedId={expandedAccountId}
++            onExpandedChange={(accountId) => onExpandedAccountChange?.(provider.providerId, accountId)}
+             connectOnMount={connectOnMount}
+             onConnectConsumed={onConnectConsumed}
+           />
+diff --git a/packages/ui/src/settings/model-provider-section/Navigation.tsx b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+index 57dd4d7..4ec94cb 100644
+--- a/packages/ui/src/settings/model-provider-section/Navigation.tsx
++++ b/packages/ui/src/settings/model-provider-section/Navigation.tsx
+@@ -18,7 +18,7 @@ import {
+ } from "@dnd-kit/sortable";
+ import { CSS } from "@dnd-kit/utilities";
+ import { Loader2Icon } from "lucide-react";
+-import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
++import { ProviderStatusIndicator, providerStatusLabel } from "./ProviderStatusIndicator.js";
+ 
+ import {
+   resolveModelProviderFamilySpecByProviderId,
+@@ -28,6 +28,7 @@ import {
+ } from "@zcode/shared";
+ import { useCallback, useMemo, type KeyboardEvent } from "react";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import type { ModelProviderNavGroup, ModelProviderNavItem } from "./constants.js";
+ import { useOptimisticReorder } from "./useOptimisticReorder.js";
+ import { renderModelProviderNavIcon } from "./utils.js";
+@@ -94,12 +95,16 @@ function ModelProviderNavigationButton({
+   onSelectNavItem: (item: ModelProviderNavItem) => void;
+   showIcon?: boolean;
+ }) {
++  const { intl, locale } = useZCodeIntl();
+   const isSelected = item.key === selectedNodeKey;
+   const isLoadingItem = item.type === "codingPlanLoading";
+   const inactiveItemClassName = "border-transparent text-foreground hover:border-border-hover/60";
++  const statusProvider = "provider" in item
++    ? item.type === "preset" ? item.statusProvider : item.provider
++    : undefined;
+ 
+   return (
+-    <ControlHintTooltip title={label} side="right">
++    <ControlHintTooltip title={label} description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined} side="right">
+       <button
+         type="button"
+         disabled={isLoadingItem}
+@@ -127,11 +132,7 @@ function ModelProviderNavigationButton({
+         <span className="flex min-w-0 flex-1 items-center gap-1.5 max-md:sr-only">
+           <span className="min-w-0 truncate">{label}</span>
+         </span>
+-        {"provider" in item ? (
+-          <ProviderStatusIndicator
+-            provider={item.type === "preset" ? item.statusProvider : item.provider}
+-          />
+-        ) : null}
++        {statusProvider ? <ProviderStatusIndicator provider={statusProvider} /> : null}
+       </button>
+     </ControlHintTooltip>
+   );
+@@ -167,6 +168,7 @@ function SortableModelProviderNavigationButton({
+   selectedNodeKey: string | null;
+   onSelectNavItem: (item: ModelProviderNavItem) => void;
+ }) {
++  const { intl, locale } = useZCodeIntl();
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+     id: providerId,
+   });
+@@ -176,6 +178,9 @@ function SortableModelProviderNavigationButton({
+   };
+   const isSelected = item.key === selectedNodeKey;
+   const inactiveItemClassName = "border-transparent text-foreground hover:border-border-hover/60";
++  const statusProvider = "provider" in item
++    ? item.type === "preset" ? item.statusProvider : item.provider
++    : undefined;
+   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+     listeners?.onKeyDown?.(event);
+     if (event.defaultPrevented) return;
+@@ -183,7 +188,7 @@ function SortableModelProviderNavigationButton({
+   };
+ 
+   return (
+-    <ControlHintTooltip title={label} side="right">
++    <ControlHintTooltip title={label} description={statusProvider ? providerStatusLabel(statusProvider, intl, locale) : undefined} side="right">
+       <div
+         ref={setNodeRef}
+         style={style}
+@@ -207,11 +212,7 @@ function SortableModelProviderNavigationButton({
+         <span className="flex min-w-0 flex-1 items-center gap-1.5 max-md:sr-only">
+           <span className="min-w-0 truncate">{label}</span>
+         </span>
+-        {"provider" in item ? (
+-          <ProviderStatusIndicator
+-            provider={item.type === "preset" ? item.statusProvider : item.provider}
+-          />
+-        ) : null}
++        {statusProvider ? <ProviderStatusIndicator provider={statusProvider} /> : null}
+       </div>
+     </ControlHintTooltip>
+   );
+diff --git a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+index 326fbdf..96fc422 100644
+--- a/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
++++ b/packages/ui/src/settings/model-provider-section/PlanStatusCardSurface.tsx
+@@ -10,7 +10,7 @@ export function PlanStatusCardSurface({
+   usageContent,
+   compact = false,
+ }: {
+-  planTitle: string;
++  planTitle?: string;
+   titleAccessory?: ReactNode;
+   statusMeta: ReactNode;
+   trailingAction?: ReactNode;
+@@ -21,12 +21,16 @@ export function PlanStatusCardSurface({
+     <div className={cn("rounded-xl border border-border bg-surface", compact ? "px-3 py-2.5" : "p-4")}>
+       <div className="flex min-w-0 items-center justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
+         <div className={cn("min-w-0", compact ? "flex flex-1 flex-wrap items-center gap-x-3 gap-y-1" : "space-y-1")}>
+-          <div className="flex min-w-0 items-center gap-1">
+-            <h3 className={cn("min-w-0 truncate leading-5 text-foreground", compact ? "text-ui-base font-medium" : "text-ui-lg font-semibold")}>
+-              {planTitle}
+-            </h3>
+-            {titleAccessory}
+-          </div>
++          {planTitle || titleAccessory ? (
++            <div className="flex min-w-0 items-center gap-1">
++              {planTitle ? (
++                <h3 className={cn("min-w-0 truncate leading-5 text-foreground", compact ? "text-ui-base font-medium" : "text-ui-lg font-semibold")}>
++                  {planTitle}
++                </h3>
++              ) : null}
++              {titleAccessory}
++            </div>
++          ) : null}
+           <div className={cn("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1", !compact && "mt-1")}>
+             {statusMeta}
+           </div>
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+index a54625d..ad7e554 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderStatusIndicator.tsx
+@@ -1,54 +1,54 @@
+ import { CircleIcon } from "lucide-react";
+ import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { resolveProviderStatus } from "./providerStatus.js";
+ 
+ const presentation = {
+   disabled: { label: "settings.modelProvider.disabledStatus", color: "text-foreground-subtlest" },
+   unavailable: { label: "settings.modelProvider.unavailableStatus", color: "text-warning" },
+-  configured: { label: "settings.modelProvider.configuredStatus", color: "text-foreground-subtle" },
++  configured: { label: "settings.modelProvider.configuredStatus", color: "text-foreground fill-transparent" },
+   failed: { label: "settings.modelProvider.testFailedStatus", color: "text-warning" },
+   ready: { label: "settings.modelProvider.testPassedStatus", color: "text-success" },
+ } as const;
+ 
++type StatusProvider = Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "connectionTest" | "config">;
++
++export function providerStatusLabel(
++  provider: StatusProvider | null | undefined,
++  intl: ReturnType<typeof useZCodeIntl>["intl"],
++  locale: string,
++): string {
++  const status = resolveProviderStatus(provider);
++  const key = status === "configured" && provider?.config.access?.type === "subscription"
++    ? "settings.modelProvider.subscriptionConfiguredStatus"
++    : presentation[status].label;
++  const time = provider?.connectionTest
++    ? new Date(provider.connectionTest.checkedAt).toLocaleTimeString(locale, {
++        hour: "2-digit", minute: "2-digit",
++      })
++    : "";
++  return intl.formatMessage(
++    { id: key },
++    { model: provider?.connectionTest?.modelId ?? "", time },
++  );
++}
++
+ export function ProviderStatusIndicator({
+   provider,
+ }: {
+-  provider?: Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "connectionTest"> | null;
++  provider?: StatusProvider | null;
+ }) {
+   const { intl, locale } = useZCodeIntl();
+-  const time = provider?.connectionTest
+-    ? new Date(provider.connectionTest.checkedAt).toLocaleTimeString(locale, {
+-        hour: "2-digit",
+-        minute: "2-digit",
+-      })
+-    : "";
+-  // 只做展示映射，不能在 UI 再检查 Key、权益或模型成员。
+-  const status =
+-    provider?.enabled === false
+-      ? "disabled"
+-      : !provider?.executable
+-        ? "unavailable"
+-        : provider.connectionTest
+-          ? provider.connectionTest.result.success
+-            ? "ready"
+-            : "failed"
+-          : "configured";
+-  const { label, color } = presentation[status];
++  const status = resolveProviderStatus(provider);
++  const { color } = presentation[status];
++  const description = providerStatusLabel(provider, intl, locale);
+   return (
+     <CircleIcon
+       data-provider-status={status}
+-      aria-label={intl.formatMessage(
+-        { id: label },
+-        { model: provider?.connectionTest?.modelId ?? "", time },
+-      )}
+-      className={`size-2 shrink-0 fill-current max-md:absolute max-md:right-1 max-md:bottom-1 max-md:rounded-full max-md:ring-2 max-md:ring-card ${color}`}
++      aria-label={description}
++      className={`size-2 shrink-0 ${status === "configured" ? "" : "fill-current"} max-md:absolute max-md:right-1 max-md:bottom-1 max-md:rounded-full max-md:ring-2 max-md:ring-card ${color}`}
+     >
+-      <title>
+-        {intl.formatMessage(
+-          { id: label },
+-          { model: provider?.connectionTest?.modelId ?? "", time },
+-        )}
+-      </title>
++      <title>{description}</title>
+     </CircleIcon>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+index a4574e7..b3b50d9 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+@@ -142,7 +142,9 @@ export function ProviderTemplateSetup({
+         >
+           <ArrowLeftIcon className="size-4" />
+         </Button>
+-        <ProviderLogo logo={selected.config.logo} className="size-5" />
++        <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-card">
++          <ProviderLogo logo={selected.config.logo} className="size-5" />
++        </span>
+         <h2 className="text-ui-lg font-semibold text-foreground">{vendor.label}</h2>
+       </div>
+       <fieldset disabled={busy} className="min-w-0 space-y-4">
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
+index 5bed5f6..43fb4f6 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectCard.tsx
+@@ -25,18 +25,18 @@ export function SubscriptionConnectCard({
+     intl.formatMessage({ id: `settings.modelProvider.subscription.info.${kind}.${field}` });
+   return (
+     <PlanStatusCardSurface
+-      planTitle={t("title")}
++      compact
+       statusMeta={
+-        <p className="text-ui-base leading-relaxed text-foreground-subtle">{t("flow")}</p>
++        <p className="text-ui-base text-foreground-subtle">{t("flow")}</p>
+       }
+       trailingAction={action}
+       usageContent={
+-        <div className="space-y-2 text-ui-base leading-relaxed text-foreground-subtle">
+-          <p>{t("scope")}</p>
++        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ui-sm text-foreground-subtle">
++          <span>{t("scope")}</span>
+           <Button
+             type="button"
+             variant="link"
+-            className="h-auto p-0"
++            className="h-auto p-0 text-ui-sm"
+             onClick={() => void platform.openExternal(SUBSCRIPTION_GUIDES[kind])}
+           >
+             {intl.formatMessage({ id: "settings.modelProvider.subscription.info.guide" })}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+index 5eff20f..ecbf43e 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionConnectionSection.tsx
+@@ -21,6 +21,9 @@ export function SubscriptionConnectionSection({
+   kind,
+   connected,
+   onRevision,
++  onChangeStart,
++  rememberedExpandedId,
++  onExpandedChange,
+   connectOnMount = false,
+   onConnectConsumed,
+ }: {
+@@ -28,6 +31,9 @@ export function SubscriptionConnectionSection({
+   kind: "openai-codex" | "github-copilot" | "xai";
+   connected: boolean;
+   onRevision: (revision: string) => void;
++  onChangeStart?: () => void;
++  rememberedExpandedId?: string | null;
++  onExpandedChange?: (accountId: string | null) => void;
+   connectOnMount?: boolean;
+   onConnectConsumed?: () => void;
+ }) {
+@@ -47,6 +53,8 @@ export function SubscriptionConnectionSection({
+     providerId,
+     onRevision,
+     report,
++    rememberedExpandedId,
++    onExpandedChange,
+   );
+   const { accounts, expandedId } = accountList;
+   const [busy, setBusy] = useState(false);
+@@ -96,6 +104,7 @@ export function SubscriptionConnectionSection({
+   };
+   const update = async (change: { select?: string; remove?: string; autoSwitch?: boolean }) => {
+     if (pendingOperation.current) return;
++    onChangeStart?.();
+     pendingOperation.current = true;
+     const version = ++attempt.current;
+     setBusy(true);
+@@ -114,6 +123,7 @@ export function SubscriptionConnectionSection({
+   };
+   const run = async () => {
+     if (pendingOperation.current) return;
++    onChangeStart?.();
+     pendingOperation.current = true;
+     const version = ++attempt.current;
+     const previousAccounts = accounts?.accounts ?? [];
+diff --git a/packages/ui/src/settings/model-provider-section/ccSwitchImportViewModel.ts b/packages/ui/src/settings/model-provider-section/ccSwitchImportViewModel.ts
+new file mode 100644
+index 0000000..ebe4f83
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/ccSwitchImportViewModel.ts
+@@ -0,0 +1,39 @@
++interface ImportRow {
++  id: string;
++  appType: string;
++  modelIds: readonly string[];
++  eligible: boolean;
++  duplicateOf?: string;
++}
++
++export interface ImportRowGroup<T extends ImportRow> {
++  row: T;
++  ids: string[];
++  clients: string[];
++  modelIds: string[];
++}
++
++/** Collapse equivalent source-client entries without merging different saved keys. */
++export function groupCcSwitchImportRows<T extends ImportRow>(rows: readonly T[]): ImportRowGroup<T>[] {
++  const groups: ImportRowGroup<T>[] = [];
++  const byId = new Map<string, ImportRowGroup<T>>();
++  for (const row of rows) {
++    const group = row.duplicateOf ? byId.get(row.duplicateOf) : undefined;
++    if (group) {
++      group.ids.push(row.id);
++      if (!group.clients.includes(row.appType)) group.clients.push(row.appType);
++      for (const id of row.modelIds)
++        if (!group.modelIds.includes(id)) group.modelIds.push(id);
++      continue;
++    }
++    const created = {
++      row,
++      ids: [row.id],
++      clients: [row.appType],
++      modelIds: [...row.modelIds],
++    };
++    groups.push(created);
++    byId.set(row.id, created);
++  }
++  return groups.sort((a, b) => Number(b.row.eligible) - Number(a.row.eligible));
++}
+diff --git a/packages/ui/src/settings/model-provider-section/providerStatus.ts b/packages/ui/src/settings/model-provider-section/providerStatus.ts
+new file mode 100644
+index 0000000..f318230
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/providerStatus.ts
+@@ -0,0 +1,35 @@
++import type { ProviderSettingsFormProvider } from "@/lib/providerSettingsFormTypes.js";
++
++export type ProviderStatus = "disabled" | "unavailable" | "configured" | "failed" | "ready";
++type StatusFacts = Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "connectionTest">;
++
++/** A non-secret comparison token; the serialized key material is discarded immediately. */
++export function providerProbeScope(
++  provider: Pick<ProviderSettingsFormProvider, "enabled" | "executable" | "config" | "models">,
++): string {
++  const value = JSON.stringify([
++    provider.enabled, provider.executable, provider.config.api, provider.config.access,
++    provider.models.map((model) => [model.modelId, model.config, model.executable]),
++  ]);
++  const hashes = [0x811c9dc5, 0x9e3779b1];
++  for (const char of value) {
++    const code = char.codePointAt(0) ?? 0;
++    hashes[0] = Math.imul((hashes[0]! ^ code) >>> 0, 0x01000193) >>> 0;
++    hashes[1] = Math.imul((hashes[1]! ^ code) >>> 0, 0x01000193) >>> 0;
++  }
++  return hashes.map((hash) => hash.toString(16).padStart(8, "0")).join("");
++}
++
++/** The original dot shows configuration readiness; only a scoped request proves inference. */
++export function resolveProviderStatus(provider?: StatusFacts | null): ProviderStatus {
++  if (provider?.enabled === false) return "disabled";
++  if (!provider?.executable) return "unavailable";
++  const result = provider.connectionTest?.result;
++  if (!result) return "configured";
++  if (result.success) return "ready";
++  // A model/parameter/network error is not evidence that the account itself is invalid.
++  return [
++    "authentication", "subscription-expired", "subscription-access",
++    "quota", "rate-limit", "endpoint", "client", "access-denied",
++  ].includes(result.error.kind ?? "") ? "failed" : "configured";
++}
+diff --git a/packages/ui/src/settings/model-provider-section/useSubscriptionAccountList.ts b/packages/ui/src/settings/model-provider-section/useSubscriptionAccountList.ts
+index b134654..3ab2599 100644
+--- a/packages/ui/src/settings/model-provider-section/useSubscriptionAccountList.ts
++++ b/packages/ui/src/settings/model-provider-section/useSubscriptionAccountList.ts
+@@ -23,6 +23,8 @@ export function useSubscriptionAccountList(
+   providerId: string,
+   onRevision: (revision: string) => void,
+   onError: (error: unknown) => void,
++  rememberedExpandedId?: string | null,
++  onExpandedChange?: (accountId: string | null) => void,
+ ): SubscriptionAccountList {
+   const scope = useMemo(
+     () => ({ service, providerId, gate: createSubscriptionAccountRequestGate() }),
+@@ -32,20 +34,26 @@ export function useSubscriptionAccountList(
+   const currentScope = useRef(scope);
+   currentScope.current = scope;
+   const [expansion, setExpansion] = useState<{ scope: typeof scope; id: string | null }>();
+-  const callbacks = useRef({ onRevision, onError });
+-  callbacks.current = { onRevision, onError };
++  const expansionRef = useRef<typeof expansion>(undefined);
++  const callbacks = useRef({ onRevision, onError, onExpandedChange, rememberedExpandedId });
++  callbacks.current = { onRevision, onError, onExpandedChange, rememberedExpandedId };
+   const publish = useCallback(
+     (value: Accounts, preferred?: string) => {
+       if (currentScope.current !== scope) return;
+       setState({ scope, value });
+-      setExpansion((previous) => ({
++      const nextExpansion = {
+         scope,
+         id: expandedSubscriptionAccount(
+           value.accounts,
+-          previous?.scope === scope ? previous.id : undefined,
++          expansionRef.current?.scope === scope
++            ? expansionRef.current.id
++            : callbacks.current.rememberedExpandedId,
+           preferred,
+         ),
+-      }));
++      };
++      expansionRef.current = nextExpansion;
++      setExpansion(nextExpansion);
++      callbacks.current.onExpandedChange?.(nextExpansion.id);
+       callbacks.current.onRevision(value.revision);
+     },
+     [scope],
+@@ -97,7 +105,11 @@ export function useSubscriptionAccountList(
+   return {
+     accounts: state?.scope === scope ? state.value : undefined,
+     expandedId: expansion?.scope === scope ? expansion.id : undefined,
+-    expand: (id: string | null) => setExpansion({ scope, id }),
++    expand: (id: string | null) => {
++      expansionRef.current = { scope, id };
++      setExpansion({ scope, id });
++      callbacks.current.onExpandedChange?.(id);
++    },
+     invalidate: () => scope.gate.invalidate(),
+     reload,
+     mutate,
+diff --git a/packages/ui/test/ccSwitchImportViewModel.test.ts b/packages/ui/test/ccSwitchImportViewModel.test.ts
+new file mode 100644
+index 0000000..e26e0ed
+--- /dev/null
++++ b/packages/ui/test/ccSwitchImportViewModel.test.ts
+@@ -0,0 +1,17 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { groupCcSwitchImportRows } from "../src/settings/model-provider-section/ccSwitchImportViewModel.js";
++
++test("preview groups only source-proven equivalent rows and keeps their model union", () => {
++  const rows = [
++    { id: "a", appType: "claude", modelIds: ["one"], eligible: true },
++    { id: "b", appType: "claude-desktop", modelIds: ["two"], eligible: true, duplicateOf: "a" },
++    { id: "c", appType: "codex", modelIds: ["one"], eligible: true },
++    { id: "d", appType: "gemini", modelIds: [], eligible: false },
++  ];
++  const groups = groupCcSwitchImportRows(rows);
++  assert.deepEqual(groups.map((group) => group.ids), [["a", "b"], ["c"], ["d"]]);
++  assert.deepEqual(groups[0]?.clients, ["claude", "claude-desktop"]);
++  assert.deepEqual(groups[0]?.modelIds, ["one", "two"]);
++  assert.equal(groups[2]?.row.eligible, false);
++});
+diff --git a/packages/ui/test/providerStatus.test.ts b/packages/ui/test/providerStatus.test.ts
+new file mode 100644
+index 0000000..9e9458e
+--- /dev/null
++++ b/packages/ui/test/providerStatus.test.ts
+@@ -0,0 +1,41 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { providerProbeScope, resolveProviderStatus } from "../src/settings/model-provider-section/providerStatus.js";
++
++const configured = { enabled: true, executable: true };
++
++test("provider dot separates original configuration readiness from verified inference", () => {
++  assert.equal(resolveProviderStatus({ ...configured, enabled: false }), "disabled");
++  assert.equal(resolveProviderStatus({ ...configured, executable: false }), "unavailable");
++  assert.equal(resolveProviderStatus(configured), "configured");
++  assert.equal(resolveProviderStatus({ ...configured, connectionTest: {
++    modelId: "model-a", checkedAt: 1, result: { success: true },
++  } }), "ready");
++});
++
++test("account or endpoint rejection needs attention, while model and local test failures do not condemn an account", () => {
++  for (const kind of ["authentication", "access-denied", "subscription-expired", "subscription-access", "quota", "endpoint"] as const) {
++    assert.equal(resolveProviderStatus({ ...configured, connectionTest: {
++      modelId: "model-a", checkedAt: 1,
++      result: { success: false, error: { kind, message: "failed" } },
++    } }), "failed");
++  }
++  for (const kind of ["model", "request", "context", "network", "environment", "changed"] as const) {
++    assert.equal(resolveProviderStatus({ ...configured, connectionTest: {
++      modelId: "model-a", checkedAt: 1,
++      result: { success: false, error: { kind, message: "failed" } },
++    } }), "configured");
++  }
++});
++
++test("probe evidence survives unrelated refreshes but not credential or model changes", () => {
++  const provider = {
++    ...configured,
++    config: { api: { type: "anthropic-messages", baseUrl: "https://api.example.test" }, access: { type: "api-key", apiKey: "secret-a" } },
++    models: [{ modelId: "m", config: { contextWindow: 128000 }, executable: true }],
++  } as Parameters<typeof providerProbeScope>[0];
++  const first = providerProbeScope(provider);
++  assert.equal(providerProbeScope(structuredClone(provider)), first);
++  assert.notEqual(providerProbeScope({ ...provider, config: { ...provider.config, access: { type: "api-key", apiKey: "secret-b" } } } as typeof provider), first);
++  assert.notEqual(providerProbeScope({ ...provider, models: [{ ...provider.models[0]!, modelId: "different" }] }), first);
++});

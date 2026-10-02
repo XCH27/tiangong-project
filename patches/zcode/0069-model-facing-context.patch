@@ -1,0 +1,1001 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/skills/index.ts b/apps/zcode-cli/packages/adapters/src/skills/index.ts
+index 4f07877..e12b4a5 100644
+--- a/apps/zcode-cli/packages/adapters/src/skills/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/skills/index.ts
+@@ -22,6 +22,7 @@ const SAFE_FRONTMATTER_KEYS = new Set([
+   "name",
+   "description",
+   "when_to_use",
++  "disable-model-invocation",
+   "license",
+   "metadata",
+ ]);
+@@ -217,6 +218,11 @@ export class NodeSkillAdapter implements SkillPort {
+     // 第三方/旧版 skill 常带 version、homepage 等扩展字段。
+     // 这些字段不影响加载，不再作为 warning 暴露，只保留 safeToAutoLoad 的保守判断。
+     const pluginAlias = await this.resolvePluginSkillAlias(name, root);
++    const manualOnly = ["true", "yes", "on", "1"].includes(
++      parseScalar(
++        parsed.values["disable-model-invocation"]?.replace(/\s+#.*$/u, ""),
++      )?.toLowerCase() ?? "",
++    );
+ 
+     return {
+       name,
+@@ -228,10 +234,10 @@ export class NodeSkillAdapter implements SkillPort {
+       rootPath: root.path,
+       scope: root.scope,
+       source: root.source,
+-      safeToAutoLoad: parsed.keys.every((key) => SAFE_FRONTMATTER_KEYS.has(key)),
++      safeToAutoLoad: !manualOnly && parsed.keys.every((key) => SAFE_FRONTMATTER_KEYS.has(key)),
+       frontmatterKeys: parsed.keys,
+       policy: {
+-        allowImplicitInvocation: true,
++        allowImplicitInvocation: !manualOnly,
+       },
+     };
+   }
+@@ -370,10 +376,7 @@ function readBlockScalar(
+     line.trim().length === 0 ? "" : line.slice(indent ?? 0),
+   );
+   return {
+-    value:
+-      style === "folded"
+-        ? foldBlockScalarLines(contentLines)
+-        : contentLines.join("\n").trim(),
++    value: style === "folded" ? foldBlockScalarLines(contentLines) : contentLines.join("\n").trim(),
+     nextIndex: index,
+   };
+ }
+diff --git a/apps/zcode-cli/packages/contracts/src/commands/index.ts b/apps/zcode-cli/packages/contracts/src/commands/index.ts
+index 4adee05..e682cf5 100644
+--- a/apps/zcode-cli/packages/contracts/src/commands/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/commands/index.ts
+@@ -110,8 +110,7 @@ export interface CustomCommandTemplateExpansion {
+   usedArgumentsPlaceholder: boolean;
+ }
+ 
+-const POSITIONAL_ARGUMENT_PATTERN = /\$(\d+)/g;
+-const ALL_ARGUMENTS_TOKEN = "$ARGUMENTS";
++const ARGUMENT_PATTERN = /\$(ARGUMENTS|\d+)/g;
+ const INLINE_SHELL_PATTERN = /!`[^`]*`/;
+ const FENCED_SHELL_PATTERN = /```!\s*[\s\S]*?```/;
+ 
+@@ -137,16 +136,15 @@ export function expandCustomCommandPrompt(input: {
+ 
+ export function expandCustomCommandTemplate(input: {
+   args: string;
+-  command: CustomCommandContent;
++  command: Pick<CustomCommandContent, "content">;
+ }): CustomCommandTemplateExpansion {
+   const args = input.args.trim();
+   const positional = splitCustomCommandArguments(args);
+-  let usedArgumentsPlaceholder = input.command.content.includes(ALL_ARGUMENTS_TOKEN);
+-  let body = input.command.content.replaceAll(ALL_ARGUMENTS_TOKEN, args);
+-  body = body.replace(POSITIONAL_ARGUMENT_PATTERN, (_match, index: string) => {
++  let usedArgumentsPlaceholder = false;
++  // Replace template tokens once; dollar signs in caller arguments are literal input.
++  let body = input.command.content.replace(ARGUMENT_PATTERN, (_match, token: string) => {
+     usedArgumentsPlaceholder = true;
+-    const offset = Number(index) - 1;
+-    return positional[offset] ?? "";
++    return token === "ARGUMENTS" ? args : (positional[Number(token) - 1] ?? "");
+   });
+ 
+   if (args.length > 0 && !usedArgumentsPlaceholder) {
+diff --git a/apps/zcode-cli/packages/core/src/context/builder.ts b/apps/zcode-cli/packages/core/src/context/builder.ts
+index 576cecb..2bad420 100644
+--- a/apps/zcode-cli/packages/core/src/context/builder.ts
++++ b/apps/zcode-cli/packages/core/src/context/builder.ts
+@@ -101,7 +101,7 @@ export class ContextBuilder {
+     // 「You are ZCode, an interactive coding agent」对一个
+     // 只对脚本说话、可能连读文件工具都没有的子代理是错的身份，且走在正确身份段前面。
+     if (!isWorkflowActor) {
+-      sections.push(buildCliPrefixSection());
++      sections.push(buildCliPrefixSection(this.config.presentationSurface));
+     }
+ 
+     // 2. Stable agent behavior or custom prompt body
+@@ -118,7 +118,7 @@ export class ContextBuilder {
+     } else if (workflowActor !== undefined) {
+       sections.push(buildWorkflowActorIdentitySection(workflowActor));
+     } else {
+-      sections.push(buildIdentitySection(activeOutputStyle));
++      sections.push(buildIdentitySection(activeOutputStyle, this.config.presentationSurface));
+     }
+ 
+     // 3. Dynamic system context
+@@ -142,7 +142,9 @@ export class ContextBuilder {
+         ? null
+         : buildSessionGuidanceSection(
+             this.config.guidanceToolNames ?? [],
+-            (this.config.skills?.skills.length ?? 0) > 0,
++            this.config.skills?.skills.some(
++              (skill) => skill.policy?.allowImplicitInvocation !== false,
++            ) ?? false,
+           );
+       if (sessionGuidanceSection) {
+         sections.push(sessionGuidanceSection);
+diff --git a/apps/zcode-cli/packages/core/src/context/sections/cli-prefix.ts b/apps/zcode-cli/packages/core/src/context/sections/cli-prefix.ts
+index ae710d6..9d640dd 100644
+--- a/apps/zcode-cli/packages/core/src/context/sections/cli-prefix.ts
++++ b/apps/zcode-cli/packages/core/src/context/sections/cli-prefix.ts
+@@ -2,13 +2,16 @@
+ // CLI Prefix Section Builder
+ // ============================================================
+ 
+-import type { ContextSection } from "../types.js";
++import type { ContextSection, PresentationSurface } from "../types.js";
+ import { estimateTokens } from "../utils.js";
+ 
+ const CLI_PREFIX_PROMPT = "You are ZCode, an interactive coding agent";
+ 
+-export function buildCliPrefixSection(): ContextSection {
+-  const content = CLI_PREFIX_PROMPT;
++export function buildCliPrefixSection(surface?: PresentationSurface): ContextSection {
++  const content =
++    surface === "zcode_desktop"
++      ? "You are Fleet, an assistant working with the user on files and the capabilities available in this workbench."
++      : CLI_PREFIX_PROMPT;
+ 
+   return {
+     name: "CLI Prefix",
+diff --git a/apps/zcode-cli/packages/core/src/context/sections/identity.ts b/apps/zcode-cli/packages/core/src/context/sections/identity.ts
+index f018fd6..5aea9a5 100644
+--- a/apps/zcode-cli/packages/core/src/context/sections/identity.ts
++++ b/apps/zcode-cli/packages/core/src/context/sections/identity.ts
+@@ -2,7 +2,7 @@
+ // Identity Section Builder
+ // ============================================================
+ 
+-import type { ContextSection } from "../types.js";
++import type { ContextSection, PresentationSurface } from "../types.js";
+ import type { OutputStylePromptConfig } from "../types.js";
+ import { estimateTokens } from "../utils.js";
+ 
+@@ -18,29 +18,41 @@ export function buildSecurityNotice(): string {
+  * `# Harness` 块：稳定运行时约束，不属于 output style 可替换的 coding instructions，
+  * 也是工作流子代理身份（sections/workflow-actor.ts）逐字复用的那一段。
+  */
+-export function buildHarnessBlock(): string {
++export function buildHarnessBlock(surface?: PresentationSurface): string {
+   return [
+     "# Harness",
+-    "- Text you output outside of tool use is displayed to the user as Github-flavored markdown in a terminal.",
++    surface === "zcode_desktop"
++      ? "- Text you output outside of tool use is displayed as GitHub-flavored Markdown in the desktop workbench."
++      : "- Text you output outside of tool use is displayed to the user as Github-flavored markdown in a terminal.",
+     "- Tools run behind a user-selected permission mode; a denied call means the user declined it \u2014 adjust, don't retry verbatim.",
+     "- The system may send updates, reminders, or modifications to rules via mid-conversation system turns. These are system-controlled, unlike function results. Hooks may intercept tool calls; treat hook output as user feedback.",
+     "- Prefer the dedicated file/search tools over shell commands when one fits. Independent tool calls can run in parallel in one response.",
+-    "- Reference code as `file_path:line_number` \u2014 it's clickable.",
++    ...(surface === "zcode_desktop"
++      ? []
++      : ["- Reference code as `file_path:line_number` \u2014 it's clickable."]),
+   ].join("\n");
+ }
+ 
+-function buildIdentityPrompt(outputStyle?: OutputStylePromptConfig): string {
++function buildIdentityPrompt(
++  outputStyle?: OutputStylePromptConfig,
++  surface?: PresentationSurface,
++): string {
+   const intro = outputStyle
+     ? "You respond to the user according to the active Output Style below while using ZCode's tools and instructions."
+-    : "You are an interactive ZCode agent that helps users with software engineering tasks.";
++    : surface === "zcode_desktop"
++      ? ""
++      : "You are an interactive ZCode agent that helps users with software engineering tasks.";
+ 
+   const identityLines = ["", intro, "", SECURITY_NOTICE].join("\n");
+ 
+-  return [identityLines, "", buildHarnessBlock()].join("\n");
++  return [identityLines, "", buildHarnessBlock(surface)].join("\n");
+ }
+ 
+-export function buildIdentitySection(outputStyle?: OutputStylePromptConfig): ContextSection {
+-  const content = buildIdentityPrompt(outputStyle);
++export function buildIdentitySection(
++  outputStyle?: OutputStylePromptConfig,
++  surface?: PresentationSurface,
++): ContextSection {
++  const content = buildIdentityPrompt(outputStyle, surface);
+ 
+   return {
+     name: "Agent Identity",
+diff --git a/apps/zcode-cli/packages/core/src/context/sections/skills.ts b/apps/zcode-cli/packages/core/src/context/sections/skills.ts
+index 915dc97..1be2a80 100644
+--- a/apps/zcode-cli/packages/core/src/context/sections/skills.ts
++++ b/apps/zcode-cli/packages/core/src/context/sections/skills.ts
+@@ -15,14 +15,12 @@ interface SkillsSectionOptions {
+ }
+ 
+ export function buildSkillsSection(options: SkillsSectionOptions): ContextSection | null {
+-  if (options.outcome.skills.length === 0) {
++  const entries = buildSkillMetadataEntries(options);
++  if (entries.length === 0) {
+     return null;
+   }
+ 
+-  const content = buildSkillsContent(
+-    options.outcome.skills,
+-    options.metadataBudget ?? DEFAULT_SKILL_METADATA_BUDGET,
+-  );
++  const content = [...SKILL_LIST_HEADER, ...entries.map((entry) => entry.line)].join("\n");
+ 
+   return {
+     name: "Skills",
+@@ -36,25 +34,26 @@ export function buildSkillsSection(options: SkillsSectionOptions): ContextSectio
+   };
+ }
+ 
+-function buildSkillsContent(skills: SkillMetadata[], budget: number): string {
+-  const lines = [
+-    "The following skills are available for use with the Skill tool:",
+-    "",
+-  ];
++const SKILL_LIST_HEADER = ["The following skills are available for use with the Skill tool:", ""];
+ 
+-  const sortedSkills = [...skills].sort((a, b) =>
+-    skillDisplayName(a).localeCompare(skillDisplayName(b)),
+-  );
+-  const skillLines = sortedSkills.map((skill) => formatSkillLine(skill, MAX_DESCRIPTION_CHARS));
+-  const full = [...lines, ...skillLines].join("\n");
+-  if (full.length <= budget) {
+-    return full;
+-  }
+-
+-  const namesOnly = sortedSkills.map(
+-    (skill) => `- ${skillDisplayName(skill)}${bareAliasSuffix(skill)} (file: ${skill.path})`,
+-  );
+-  return [...lines, ...namesOnly].join("\n");
++/** Share the exact discovery lines with context diagnostics; skill bodies remain on-demand. */
++export function buildSkillMetadataEntries(
++  options: SkillsSectionOptions,
++): Array<{ skill: SkillMetadata; line: string }> {
++  const sortedSkills = options.outcome.skills
++    .filter((skill) => skill.policy?.allowImplicitInvocation !== false)
++    .toSorted((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)));
++  const entries = sortedSkills.map((skill) => ({
++    skill,
++    line: formatSkillLine(skill, MAX_DESCRIPTION_CHARS),
++  }));
++  const full = [...SKILL_LIST_HEADER, ...entries.map((entry) => entry.line)].join("\n");
++  if (full.length <= (options.metadataBudget ?? DEFAULT_SKILL_METADATA_BUDGET)) return entries;
++  // This existing budget reduces descriptions; it does not remove installed skill identities.
++  return sortedSkills.map((skill) => ({
++    skill,
++    line: `- ${skillDisplayName(skill)}${bareAliasSuffix(skill)} (file: ${skill.path})`,
++  }));
+ }
+ 
+ function formatSkillLine(skill: SkillMetadata, maxDescriptionChars: number): string {
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
+index bf63948..138e715 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
+@@ -187,6 +187,15 @@ function createRuntimeToolExecutor(
+     embeddedSearchBackend: runtime.config.embeddedSearchBackend,
+     nativeSearchEnhancementsEnabled: runtime.config.nativeSearchEnhancementsEnabled,
+     skillPort: deps.skillPort,
++    isSkillExplicitlyRequested: (name, turnId) => {
++      const active = runtime.activeTurn;
++      return Boolean(
++        active &&
++        active.turnId === turnId &&
++        active.skillInvocationInput &&
++        isExplicitSkillInvocation(active.skillInvocationInput, name),
++      );
++    },
+     subagentPort: runtime.subagentPort,
+     coordinatorResponsePort: deps.coordinatorResponsePort,
+     workflowSubmitPort: deps.workflowSubmitPort,
+@@ -293,3 +302,11 @@ function normalizeSubagentBackgroundBashMaxMs(value: number | undefined): number
+   }
+   return Math.trunc(value);
+ }
++
++/** Original composer emits `$name` or `[$name](path)`; raw `/name` is retained for CLI input. */
++function isExplicitSkillInvocation(input: string, name: string): boolean {
++  const command = /^\s*\/([^\s]+)(?=\s|$)/u.exec(input)?.[1];
++  if (command === name) return true;
++  const mentions = input.matchAll(/(?:^|\s)\$([\w.:-]+)(?=\s|$)|\[\$([\w.:-]+)\]\([^\n)]*\)/gu);
++  return Array.from(mentions).some((match) => (match[1] ?? match[2]) === name);
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/context-usage.ts b/apps/zcode-cli/packages/core/src/runtime/methods/context-usage.ts
+index f06ca63..69e3b59 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/context-usage.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/context-usage.ts
+@@ -16,6 +16,7 @@ import {
+   toolContributor,
+   type ContextUsageCategoryBreakdown,
+ } from "../helpers/context-usage-breakdown.js";
++import { buildSkillMetadataEntries } from "../../context/sections/skills.js";
+ import { compactContextUsageSnapshot } from "./context-usage-log-compact.js";
+ import type {
+   ActiveTurnSteeringState,
+@@ -311,17 +312,12 @@ export function buildToolUsageDetail(
+   this: AgentRuntimeInternal,
+   tool: ModelToolContract,
+ ): ContextUsageToolDetail {
++  // Adapters send the name, description and input schema. Execution policy and result schemas stay local.
++  // This is a Host estimate; provider-native definitions and wire normalization may change its size.
+   const content = stringifyForEstimation({
+     name: tool.name,
+     description: tool.description,
+-    capability: tool.capability,
+     inputSchema: tool.inputSchema,
+-    outputSchema: tool.outputSchema,
+-    readOnly: tool.readOnly,
+-    destructive: tool.destructive,
+-    sideEffectScope: tool.sideEffectScope,
+-    permission: tool.permission,
+-    resultBudget: tool.resultBudget,
+   });
+   const mcp = parseMcpToolName(tool.name);
+   return {
+@@ -335,25 +331,21 @@ export function buildToolUsageDetail(
+ }
+ 
+ export function buildSkillUsageDetails(this: AgentRuntimeInternal): ContextUsageSkillDetail[] {
+-  return (this.skillLoadOutcome?.skills ?? []).map((skill) => {
+-    const content = [
+-      skill.name,
+-      skill.description,
+-      skill.whenToUse,
+-      skill.source,
+-      skill.scope,
+-      skill.path,
+-    ]
+-      .filter((value): value is string => typeof value === "string" && value.length > 0)
+-      .join("\n");
+-    return {
+-      name: skill.name,
+-      source: skill.source,
+-      scope: skill.scope,
+-      path: skill.path,
+-      ...this.estimatedMetric(content, "medium"),
+-    };
+-  });
++  if (
++    !this.skillLoadOutcome ||
++    !this.latestContextBuildResult?.sections.some((section) => section.source === "skills")
++  )
++    return [];
++  return buildSkillMetadataEntries({
++    outcome: this.skillLoadOutcome,
++    metadataBudget: this.config.skillMetadataBudget,
++  }).map(({ skill, line }) => ({
++    name: skill.qualifiedName ?? skill.name,
++    source: skill.source,
++    scope: skill.scope,
++    path: skill.path,
++    ...this.estimatedMetric(line, "medium"),
++  }));
+ }
+ 
+ export function buildMessageRoleBreakdown(
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+index edadc8a..40002aa 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+@@ -284,6 +284,9 @@ export async function executeTurnCommand(
+         true,
+         options?.inputId === undefined ? {} : { inputId: options.inputId },
+       );
++      if (this.config.taskType !== "subagent_child" && this.config.taskType !== "workflow_child") {
++        activeTurn.skillInvocationInput = input;
++      }
+       if (options?.intent?.subscriptionAccountId && admittedModelSelection) {
+         activeTurn.subscriptionAccounts = subscriptionAccountsForSubmission(
+           admittedModelSelection,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index 084ef35..e6a5fb0 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -774,6 +774,8 @@ export interface PreparedImageData {
+ }
+ 
+ export interface ActiveTurnSteeringState {
++  /** Immutable human input used only to distinguish explicit Skill invocation in this run. */
++  skillInvocationInput?: string;
+   /** 本轮解析出的账号引用；凭据仍由 Host 的订阅 owner 管理。 */
+   subscriptionAccounts?: Map<string, string | Promise<string | undefined>>;
+   kind: ActiveTurnKind;
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+index 102ef22..16ca851 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/call-runner.ts
+@@ -408,6 +408,8 @@ async function executeToolCallImpl(
+         ...(deps.nativeSearchEnhancementsEnabled === false ? { findAndGrepEnabled: false } : {}),
+       },
+       skillPort: deps.skillPort,
++      isSkillExplicitlyRequested: (name) =>
++        deps.isSkillExplicitlyRequested?.(name, turnId) === true,
+       subagentPort: deps.subagentPort,
+       coordinatorResponsePort: deps.coordinatorResponsePort,
+       workflowSubmitPort: deps.workflowSubmitPort,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/impl.ts b/apps/zcode-cli/packages/core/src/tool/executor/impl.ts
+index 4b8d7a4..b0a304e 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/impl.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/impl.ts
+@@ -44,6 +44,7 @@ export class ToolExecutorImpl implements ToolExecutor {
+       embeddedSearchBackend: options.embeddedSearchBackend,
+       nativeSearchEnhancementsEnabled: options.nativeSearchEnhancementsEnabled,
+       skillPort: options.skillPort,
++      isSkillExplicitlyRequested: options.isSkillExplicitlyRequested,
+       subagentPort: options.subagentPort,
+       coordinatorResponsePort: options.coordinatorResponsePort,
+       workflowSubmitPort: options.workflowSubmitPort,
+diff --git a/apps/zcode-cli/packages/core/src/tool/executor/types.ts b/apps/zcode-cli/packages/core/src/tool/executor/types.ts
+index e1dede0..339c5e0 100644
+--- a/apps/zcode-cli/packages/core/src/tool/executor/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/executor/types.ts
+@@ -98,6 +98,7 @@ export interface ToolExecutorOptions {
+   embeddedSearchBackend?: EmbeddedSearchBackend;
+   nativeSearchEnhancementsEnabled?: boolean;
+   skillPort?: SkillPort;
++  isSkillExplicitlyRequested?: (name: string, turnId?: TurnId) => boolean;
+   subagentPort?: SubagentPort;
+   coordinatorResponsePort?: CoordinatorResponsePort;
+   workflowSubmitPort?: WorkflowSubmitPort;
+@@ -204,6 +205,7 @@ export interface ToolExecutorDeps {
+   embeddedSearchBackend?: EmbeddedSearchBackend;
+   nativeSearchEnhancementsEnabled?: boolean;
+   skillPort?: SkillPort;
++  isSkillExplicitlyRequested?: (name: string, turnId?: TurnId) => boolean;
+   subagentPort?: SubagentPort;
+   coordinatorResponsePort?: CoordinatorResponsePort;
+   workflowSubmitPort?: WorkflowSubmitPort;
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/skill.ts b/apps/zcode-cli/packages/core/src/tool/handlers/skill.ts
+index 1fadd11..bf6e3ed 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/skill.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/skill.ts
+@@ -9,6 +9,7 @@ import {
+   SkillOutputJsonSchema,
+   SkillOutputSchema,
+   createCoreError,
++  expandCustomCommandTemplate,
+   type SkillRuntimeInput,
+ } from "@zcode/contracts";
+ import type { ToolEntry, ToolHandler } from "../types.js";
+@@ -16,7 +17,7 @@ import type { ToolEntry, ToolHandler } from "../types.js";
+ const MAX_SKILL_BYTES = 100_000;
+ 
+ const skillHandler: ToolHandler = async (input, context) => {
+-  const { skill } = SkillInputSchema.parse(input) as SkillRuntimeInput;
++  const { skill, args } = SkillInputSchema.parse(input) as SkillRuntimeInput;
+   const skillPort = context.skillPort;
+ 
+   if (!skillPort) {
+@@ -49,6 +50,25 @@ const skillHandler: ToolHandler = async (input, context) => {
+     { signal: context.abortSignal },
+   );
+ 
++  // A manual-only skill can enter through an explicit human selection in this admitted run.
++  // This does not alter the ordinary Host tool permissions or grant tools named by the skill.
++  if (
++    loaded.metadata.policy?.allowImplicitInvocation === false &&
++    (context.automationTurn ||
++      context.offPeakTurn ||
++      !(
++        context.isSkillExplicitlyRequested?.(
++          loaded.metadata.qualifiedName ?? loaded.metadata.name,
++        ) || context.isSkillExplicitlyRequested?.(loaded.metadata.name)
++      ))
++  ) {
++    throw createCoreError(
++      CoreErrorType.PermissionDenied,
++      `Skill ${loaded.metadata.qualifiedName ?? loaded.metadata.name} is manual-only. Ask the user to invoke /${loaded.metadata.qualifiedName ?? loaded.metadata.name}; do not reproduce its steps automatically.`,
++      { recoverable: true },
++    );
++  }
++
+   context.recordSkillTelemetryMetadata?.({
+     qualifiedName: loaded.metadata.qualifiedName ?? loaded.metadata.name,
+     ...(loaded.metadata.pluginId ? { pluginId: loaded.metadata.pluginId } : {}),
+@@ -59,7 +79,10 @@ const skillHandler: ToolHandler = async (input, context) => {
+     `<skill_content name="${loaded.metadata.name}">`,
+     `# Skill: ${loaded.metadata.name}`,
+     "",
+-    expandSkillContextVariables(loaded.content, loaded.baseDirectory),
++    expandCustomCommandTemplate({
++      args: args ?? "",
++      command: { content: expandSkillContextVariables(loaded.content, loaded.baseDirectory) },
++    }).body,
+     "",
+     `Base directory for this skill: ${loaded.baseDirectory}`,
+     "Relative paths in this skill are relative to this base directory.",
+diff --git a/apps/zcode-cli/packages/core/src/tool/types.ts b/apps/zcode-cli/packages/core/src/tool/types.ts
+index 051a9c5..2ba6936 100644
+--- a/apps/zcode-cli/packages/core/src/tool/types.ts
++++ b/apps/zcode-cli/packages/core/src/tool/types.ts
+@@ -158,6 +158,8 @@ export interface ToolExecutionContext {
+   /** Core Server 对前台 child 的 Selection override。 */
+   subagentModelOverride?: SubagentRunOptions["modelOverride"];
+   skillPort?: SkillPort;
++  /** Derived from this admitted human input, never from model arguments or old history. */
++  isSkillExplicitlyRequested?: (name: string) => boolean;
+   subagentPort?: SubagentPort;
+   coordinatorResponsePort?: CoordinatorResponsePort;
+   /** 工作流 actor 提交终态结果并等待引擎裁决的端口；仅在 workflow actor 会话注入。 */
+diff --git a/apps/zcode-cli/packages/core/test/context-footprint.test.ts b/apps/zcode-cli/packages/core/test/context-footprint.test.ts
+new file mode 100644
+index 0000000..370b490
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/context-footprint.test.ts
+@@ -0,0 +1,283 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { NodeSkillAdapter } from "../../adapters/src/skills/index.js";
++import { buildSkillsSection } from "../src/context/sections/skills.js";
++import {
++  buildToolUsageDetail,
++  buildSkillUsageDetails,
++} from "../src/runtime/methods/context-usage.js";
++import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++
++async function skills() {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-context-skills-"));
++  const paths: string[] = [];
++  for (const [name, flag] of [
++    ["automatic", "false # model invocation allowed"],
++    ["manual", '"true" # explicit invocation only'],
++    ["manual-yes", "YES"],
++    ["manual-on", "on"],
++    ["manual-one", "1"],
++  ]) {
++    const folder = join(dir, name!);
++    await mkdir(folder);
++    const path = join(folder, "SKILL.md");
++    paths.push(path);
++    await writeFile(
++      path,
++      `---\nname: ${name}\ndescription: Instructions for ${name}\ndisable-model-invocation: ${flag}\n---\nBODY_${name}\n`,
++    );
++  }
++  const port = new NodeSkillAdapter({
++    homeDirectory: dir,
++    includeZcodeSkills: false,
++    extraRoots: [dir],
++  });
++  return { dir, paths, port, close: () => rm(dir, { recursive: true, force: true }) };
++}
++
++test("manual-only skills stay installed and explicitly loadable without entering model discovery", async () => {
++  const s = await skills();
++  try {
++    const outcome = await s.port.discoverSkills({ workingDirectory: s.dir });
++    assert.equal(outcome.skills.length, 5);
++    const section = buildSkillsSection({ outcome })!;
++    assert.ok(section.content.includes("automatic"));
++    assert.ok(!section.content.includes("manual"));
++    assert.ok(!section.content.includes("BODY_"));
++    for (const name of ["manual", "manual-yes", "manual-on", "manual-one"]) {
++      const loaded = await s.port.loadSkill({ name, workingDirectory: s.dir });
++      assert.equal(loaded.metadata.policy?.allowImplicitInvocation, false);
++      assert.equal(loaded.content, `BODY_${name}`);
++    }
++    assert.equal(
++      buildSkillsSection({
++        outcome: {
++          ...outcome,
++          skills: outcome.skills.filter((skill) => skill.name !== "automatic"),
++        },
++      }),
++      null,
++    );
++  } finally {
++    await s.close();
++  }
++});
++
++test(
++  "full Pi cannot auto-load a manual-only skill even if the model invents its name",
++  { timeout: 10000 },
++  async () => {
++    const s = await skills();
++    const f = await fixture(undefined, false, {
++      config: { toolAllowlist: ["Skill"] },
++      deps: { skillPort: s.port },
++    });
++    try {
++      f.steps.push(
++        (request) => {
++          const prompt = JSON.stringify(request.messages);
++          assert.ok(!prompt.includes("manual"));
++          assert.ok(!prompt.includes("BODY_"));
++          return reply("loading", [{ id: "manual", name: "Skill", input: { skill: "manual" } }]);
++        },
++        (request) => {
++          const result = JSON.stringify(
++            request.messages.filter((message: any) => message.role === "tool"),
++          );
++          assert.ok(result.includes("manual-only"));
++          assert.ok(!result.includes("BODY_manual"));
++          return reply("Use /manual to invoke it explicitly");
++        },
++      );
++      assert.match((await f.runtime.executeTurn("Complete the task")).response, /explicitly/);
++      assert.equal(f.requests.length, 2);
++    } finally {
++      await f.close();
++      await s.close();
++    }
++  },
++);
++
++test("context tool estimates exclude execution-only metadata that adapters never send to the model", async () => {
++  const f = await fixture();
++  try {
++    const base = f.runtime.getTools()[0]!;
++    const changed = {
++      ...base,
++      outputSchema: { description: "LOCAL_OUTPUT".repeat(500) },
++      permission: { description: "LOCAL_POLICY".repeat(500) } as any,
++      resultBudget: { description: "LOCAL_BUDGET".repeat(500) } as any,
++    };
++    const estimate = (tool: typeof base) => buildToolUsageDetail.call(f.runtime as never, tool);
++    assert.equal(estimate(base).chars, estimate(changed).chars);
++    assert.equal(estimate(base).tokens, estimate(changed).tokens);
++    assert.ok(
++      estimate({ ...base, description: (base.description ?? "") + "MODEL_DESCRIPTION".repeat(50) })
++        .chars > estimate(base).chars,
++    );
++    assert.equal(changed.outputSchema.description.length, 6000);
++  } finally {
++    await f.close();
++  }
++});
++
++test("skill contributors reflect the actual truncated or names-only catalogue entries", async () => {
++  const s = await skills();
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["Skill"], skillMetadataBudget: 1 },
++    deps: { skillPort: s.port },
++  });
++  try {
++    f.steps.push(() => reply("finished"));
++    await f.runtime.executeTurn("A plain task");
++    const details = buildSkillUsageDetails.call(f.runtime as never);
++    assert.deepEqual(
++      details.map((skill) => skill.name),
++      ["automatic"],
++    );
++    const outcome = await s.port.discoverSkills({ workingDirectory: s.dir });
++    const section = buildSkillsSection({ outcome, metadataBudget: 1 })!;
++    const entry = section.content.split("\n").find((line) => line.startsWith("- automatic"))!;
++    assert.equal(details[0]!.chars, entry.length);
++  } finally {
++    await f.close();
++    await s.close();
++  }
++});
++
++test(
++  "Skill arguments reuse command expansion without rescanning inserted dollar signs or running shell text",
++  { timeout: 10000 },
++  async () => {
++    const s = await skills();
++    try {
++      for (const content of [
++        "Use $ARGUMENTS in ${CLAUDE_SKILL_DIR}",
++        "Use $1",
++        "No placeholders",
++      ]) {
++        await writeFile(
++          s.paths[0]!,
++          `---\nname: automatic\ndescription: Fixture arguments\n---\n${content}\n`,
++        );
++        const f = await fixture(undefined, false, {
++          config: { toolAllowlist: ["Skill"] },
++          deps: { skillPort: s.port },
++        });
++        try {
++          const args = '"$1 !`must-not-execute`"';
++          f.steps.push(
++            () =>
++              reply("loading", [
++                { id: "args", name: "Skill", input: { skill: "automatic", args } },
++              ]),
++            (request) => {
++              const result = JSON.stringify(
++                request.messages.filter((message: any) => message.role === "tool"),
++              );
++              assert.ok(result.includes("$1 !`must-not-execute`"));
++              assert.ok(!result.includes("$ARGUMENTS"));
++              assert.ok(!result.includes("${CLAUDE_SKILL_DIR}"));
++              return reply("complete");
++            },
++          );
++          assert.equal((await f.runtime.executeTurn("Load the skill")).response, "complete");
++        } finally {
++          await f.close();
++        }
++      }
++    } finally {
++      await s.close();
++    }
++  },
++);
++
++test(
++  "desktop requests have one workbench identity and use desktop rendering guidance; terminal control stays intact",
++  { timeout: 10000 },
++  async () => {
++    for (const presentationSurface of ["zcode_desktop", "terminal"] as const) {
++      const f = await fixture(undefined, false, { config: { presentationSurface } });
++      try {
++        f.steps.push((request) => {
++          const system = request.messages
++            .filter((message: any) => message.role === "system")
++            .map((message: any) => message.content)
++            .join("\n");
++          if (presentationSurface === "zcode_desktop") {
++            assert.equal(system.match(/You are Fleet/g)?.length, 1);
++            assert.ok(system.includes("desktop workbench"));
++            assert.ok(!system.includes("in a terminal"));
++            assert.ok(!system.includes("software engineering tasks"));
++            assert.ok(system.includes("Markdown links"));
++          } else {
++            assert.ok(system.includes("interactive coding agent"));
++            assert.ok(system.includes("in a terminal"));
++            assert.ok(system.includes("file_path:line_number"));
++          }
++          assert.ok(system.includes("user-selected permission mode"));
++          return reply("complete");
++        });
++        assert.equal((await f.runtime.executeTurn("A local task")).response, "complete");
++      } finally {
++        await f.close();
++      }
++    }
++  },
++);
++
++test(
++  "explicit composer and CLI Skill selection is bound to this input and expires before the next input",
++  { timeout: 10000 },
++  async () => {
++    const s = await skills();
++    try {
++      for (const input of [
++        "/manual requested",
++        "$manual requested",
++        `Use [$manual](${s.paths[1]}) requested`,
++      ]) {
++        const f = await fixture(undefined, true, {
++          config: { toolAllowlist: ["Skill"] },
++          deps: { skillPort: s.port },
++        });
++        try {
++          f.steps.push(
++            () => reply("loading", [{ id: "explicit", name: "Skill", input: { skill: "manual" } }]),
++            (request) => {
++              const last = request.messages
++                .filter((message: any) => message.role === "tool")
++                .at(-1);
++              assert.ok(JSON.stringify(last).includes("BODY_manual"));
++              return reply("explicit-complete");
++            },
++          );
++          assert.equal((await f.runtime.executeTurn(input)).response, "explicit-complete");
++          f.steps.push(
++            () =>
++              reply("loading again", [{ id: "later", name: "Skill", input: { skill: "manual" } }]),
++            (request) => {
++              const last = request.messages
++                .filter((message: any) => message.role === "tool")
++                .at(-1);
++              assert.ok(JSON.stringify(last).includes("manual-only"));
++              assert.ok(!JSON.stringify(last).includes("BODY_manual"));
++              return reply("later-denied");
++            },
++          );
++          assert.equal(
++            (await f.runtime.executeTurn("Another unrelated task")).response,
++            "later-denied",
++          );
++        } finally {
++          await f.close();
++        }
++      }
++    } finally {
++      await s.close();
++    }
++  },
++);
+diff --git a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+index 8cbd08d..d979245 100644
+--- a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
++++ b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+@@ -8,6 +8,7 @@ import {
+   getCurrentModelInvocationContext,
+ } from "@zcode/contracts";
+ import { AgentRuntime } from "../../src/runtime/agent-runtime.js";
++import type { AgentRuntimeConfig, AgentRuntimeDeps } from "../../src/runtime/types.js";
+ import { SqliteSessionStore } from "../../../adapters/src/storage/session-store/sqlite-session-store.js";
+ import { NodeToolArtifactStore } from "../../../adapters/src/storage/index.js";
+ 
+@@ -32,7 +33,11 @@ export const reply = (text: string, toolCalls?: any[]) => ({
+ });
+ export const call = (id: string, value: string) => ({ id, name: "Probe", input: { value } });
+ 
+-export async function fixture(executor?: "pi" | "zcode", streaming = false) {
++export async function fixture(
++  executor?: "pi" | "zcode",
++  streaming = false,
++  overrides: { config?: Partial<AgentRuntimeConfig>; deps?: Partial<AgentRuntimeDeps> } = {},
++) {
+   const dir = await mkdtemp(join(tmpdir(), "fleet-pi-turn-"));
+   const path = join(dir, "session.sqlite");
+   let store = new SqliteSessionStore({ dbPath: path });
+@@ -119,6 +124,7 @@ export async function fixture(executor?: "pi" | "zcode", streaming = false) {
+         memory: { use: false },
+         dynamicWorkflowEnabled: false,
+         toolAllowlist: ["Probe"],
++        ...overrides.config,
+       },
+       {
+         eventStore: createInMemorySessionEventStore(),
+@@ -142,6 +148,7 @@ export async function fixture(executor?: "pi" | "zcode", streaming = false) {
+             };
+           },
+         },
++        ...overrides.deps,
+         permissionBroker: {
+           async requestPermission() {
+             permissionCalls++;
+diff --git a/package.json b/package.json
+index bce5721..9d5b358 100644
+--- a/package.json
++++ b/package.json
+@@ -53,7 +53,7 @@
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts",
+-    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
++    "test:pi-executor": "tsx --test apps/zcode-cli/packages/core/test/context-footprint.test.ts apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts",
+     "test:pi-bundle": "node scripts/test-pi-bundle.mjs",
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+diff --git a/scripts/test-pi-bundle.mjs b/scripts/test-pi-bundle.mjs
+index 8dc281c..e65c083 100644
+--- a/scripts/test-pi-bundle.mjs
++++ b/scripts/test-pi-bundle.mjs
+@@ -30,7 +30,13 @@ const server = createServer(async (req, res) => {
+     assert.equal(body.model, "fixture-model");
+     assert.equal(body.stream, true);
+     requests.push(body);
+-    assert.ok(requests.length <= 4, "Unexpected physical request");
++    const prompt = JSON.stringify(body.messages);
++    if (requests.length < 6) assert.ok(!prompt.includes("MANUAL_ONLY_CONTENT"));
++    else assert.ok(prompt.includes("MANUAL_ONLY_CONTENT"));
++    assert.ok(prompt.includes("fixture-discoverable"));
++    if (requests.length === 1) assert.ok(!prompt.includes("fixture-manual-only"));
++    if (requests.length === 2) assert.ok(prompt.includes("manual-only"));
++    assert.ok(requests.length <= 6, "Unexpected physical request");
+     const first = requests.length === 1 || requests.length === 3;
+     if (!first)
+       assert.ok(
+@@ -48,7 +54,22 @@ const server = createServer(async (req, res) => {
+         })}\n\n`,
+       );
+     frame({ role: "assistant" });
+-    if (first) {
++    if (requests.length === 5) {
++      frame({
++        tool_calls: [
++          {
++            index: 0,
++            id: "fixture-explicit-skill",
++            type: "function",
++            function: {
++              name: "Skill",
++              arguments: JSON.stringify({ skill: "fixture-manual-only" }),
++            },
++          },
++        ],
++      });
++      frame({}, "tool_calls");
++    } else if (first) {
+       assert.ok(body.tools.some((t) => t.function.name === "Read"));
+       frame({
+         tool_calls: [
+@@ -61,11 +82,31 @@ const server = createServer(async (req, res) => {
+               arguments: JSON.stringify({ file_path: join(workspace, "evidence.txt") }),
+             },
+           },
++          ...(requests.length === 1
++            ? [
++                {
++                  index: 1,
++                  id: "fixture-manual-skill",
++                  type: "function",
++                  function: {
++                    name: "Skill",
++                    arguments: JSON.stringify({ skill: "fixture-manual-only" }),
++                  },
++                },
++              ]
++            : []),
+         ],
+       });
+       frame({}, "tool_calls");
+     } else {
+-      frame({ content: requests.length === 2 ? "fixture-complete" : "fixture-restored" });
++      frame({
++        content:
++          requests.length === 2
++            ? "fixture-complete"
++            : requests.length === 4
++              ? "fixture-restored"
++              : "fixture-explicit",
++      });
+       frame({}, "stop");
+     }
+     res.write(
+@@ -164,6 +205,17 @@ async function waitFor(text) {
+ try {
+   await mkdir(workspace);
+   await writeFile(join(workspace, "evidence.txt"), marker);
++  for (const [name, disabled] of [
++    ["fixture-discoverable", false],
++    ["fixture-manual-only", true],
++  ]) {
++    const directory = join(workspace, ".zcode", "skills", name);
++    await mkdir(directory, { recursive: true });
++    await writeFile(
++      join(directory, "SKILL.md"),
++      `---\nname: ${name}\ndescription: Fixture skill ${name}\ndisable-model-invocation: ${disabled}\n---\n${disabled ? "MANUAL_ONLY_CONTENT" : "ON_DEMAND_CONTENT"}\n`,
++    );
++  }
+   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+   const properties = {
+     contextWindow: 1000000,
+@@ -262,7 +314,7 @@ try {
+     model,
+     mode: "build",
+     titleGenerationEnabled: false,
+-    toolAllowlist: ["Read"],
++    toolAllowlist: ["Read", "Skill"],
+     dynamicWorkflowEnabled: false,
+   });
+   sessionId = created.sessionId ?? created.session?.sessionId;
+@@ -284,7 +336,7 @@ try {
+   await rpc("session/resume", {
+     sessionId,
+     workspace: workspaceRef,
+-    toolAllowlist: ["Read"],
++    toolAllowlist: ["Read", "Skill"],
+     dynamicWorkflowEnabled: false,
+   });
+   await rpc("session/send", {
+@@ -294,14 +346,21 @@ try {
+   });
+   await waitFor("fixture-restored");
+   assert.equal(requests.length, 4);
++  await rpc("session/send", {
++    sessionId,
++    content: "$fixture-manual-only requested",
++    modelSelection: model,
++  });
++  await waitFor("fixture-explicit");
++  assert.equal(requests.length, 6);
+   const stats = await rpc("usage/stats", { range: "all" });
+   assert.equal(
+     stats.models.reduce((total, model) => total + model.requestCount, 0),
+-    4,
++    6,
+   );
+-  assert.equal(stats.summary.toolCallCount, 2);
++  assert.equal(stats.summary.toolCallCount, 4);
+   console.log(
+-    "PASS staged Pi CLI: streaming, real Read, renderer events, restart hydration, 4 model receipts and 2 separate receipts for a reused upstream tool ID",
++    "PASS staged Pi CLI: streaming, real Read, renderer events, restart hydration, 6 model receipts, 2 separate Read receipts for a reused upstream tool ID, manual-only Skill refusal and preserved explicit selection",
+   );
+ } catch (error) {
+   console.error(error);

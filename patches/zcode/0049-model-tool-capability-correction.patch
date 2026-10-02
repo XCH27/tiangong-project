@@ -1,0 +1,324 @@
+diff --git a/package.json b/package.json
+index 2abb4f5..9253632 100644
+--- a/package.json
++++ b/package.json
+@@ -50,7 +50,7 @@
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+-    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
++    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
+     "test:usage-accounting": "tsx --test apps/zcode-cli/packages/core/test/read-usage-stats.test.ts apps/zcode-cli/packages/adapters/test/usage-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/usage-calendar.test.ts packages/services/test/usage-cost-report.test.ts packages/services/test/usage-price.test.ts packages/services/test/usage-price-directory.test.ts packages/services/test/usage-price-catalog-sync.test.ts packages/services/test/subscription-payment-settings.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/usageAccountingViewModel.test.ts packages/ui/test/usageCostSourceViewModel.test.ts"
+   },
+   "dependencies": {
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 997e7b7..2311735 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3703,7 +3703,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.help.outputModalities":
+     "The content type of the model's replies. Only text is currently supported.",
+   "settings.modelProvider.help.capabilities":
+-    "- **Structured output**: Supports JSON Schema constraints on output fields, types, and structure.\n- **Native web search**: Supports the model API's built-in web search capability.\n- **Mid-conversation system messages**: Supports inserting system instructions during a conversation.\n\nDo not enable capabilities the model does not support.",
++    "- **Tool calls**: The model can request tools; this does not measure reliability.\n- **Structured output**: Supports JSON Schema.\n- **Native web search**: Search built into the model API.\n- **Mid-conversation system messages**: Allows later system instructions.\n\nMark only confirmed capabilities.",
+   "settings.modelProvider.help.reasoningLevelsOrdered":
+     "Set the reasoning levels available in chat. **They must be ordered from lowest to highest reasoning effort**.\nDo not configure reasoning levels the model does not support.",
+   "settings.modelProvider.help.reasoningLevelMapping":
+@@ -3725,6 +3725,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.contextWindow": "Context window",
+   "settings.modelProvider.capabilities": "Model capabilities",
+   "settings.modelProvider.supportsToolCall": "Tool calls",
++  "settings.modelProvider.capabilityUnknown": "Unverified",
+   "settings.modelProvider.supportsJsonSchemaOutput": "Structured output",
+   "settings.modelProvider.supportsNativeWebSearch": "Native web search",
+   "settings.modelProvider.supportsMidConversationSystem": "Mid-conversation system messages",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 51c59cc..67e8239 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -3437,7 +3437,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.help.outputModalities":
+     "模型生成回复的内容类型。目前不支持文本以外的其他选项。",
+   "settings.modelProvider.help.capabilities":
+-    "- **结构化输出**：支持通过 JSON Schema 约束模型输出的字段、类型和结构。\n- **原生联网搜索**：支持使用模型接口内置的联网搜索能力。\n- **对话中系统消息**：支持在对话中途插入系统指令。\n\n请勿勾选模型不支持的能力。",
++    "- **工具调用**：模型能请求工具；不代表调用质量。\n- **结构化输出**：支持 JSON Schema。\n- **原生联网搜索**：接口内置搜索。\n- **对话中系统消息**：允许中途加入系统指令。\n\n只标记已确认的能力。",
+   "settings.modelProvider.help.reasoningLevelsOrdered":
+     "设置聊天时可选择的推理等级，**必须按推理强度从低到高排列**。\n请勿配置模型不支持的推理等级。",
+   "settings.modelProvider.help.reasoningLevelMapping":
+@@ -3459,6 +3459,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.contextWindow": "上下文窗口",
+   "settings.modelProvider.capabilities": "模型能力",
+   "settings.modelProvider.supportsToolCall": "工具调用",
++  "settings.modelProvider.capabilityUnknown": "未确认",
+   "settings.modelProvider.supportsJsonSchemaOutput": "结构化输出",
+   "settings.modelProvider.supportsNativeWebSearch": "原生联网搜索",
+   "settings.modelProvider.supportsMidConversationSystem": "对话中系统消息",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderModelDraftState.ts b/packages/ui/src/settings/model-provider-section/ProviderModelDraftState.ts
+index 8023c1e..1e96365 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderModelDraftState.ts
++++ b/packages/ui/src/settings/model-provider-section/ProviderModelDraftState.ts
+@@ -6,6 +6,7 @@ import {
+ } from "@/settings/model-provider-section/ProviderModelMetadata.js";
+ 
+ const CONFIG_VALUE_FIELDS = [
++  "supportsToolCallValue",
+   "supportsJsonSchemaOutputValue",
+   "supportsNativeWebSearchValue",
+   "supportsMidConversationSystemValue",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts b/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
+index 145058e..bf555e1 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
++++ b/packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts
+@@ -38,6 +38,7 @@ export interface ProviderModelDraftValues {
+   clearPersonalConfigValue?: boolean;
+   /** 字段来源是用户意图，不依赖整份表单是否有效或数值是否恰好等于推荐。 */
+   overriddenFieldsValue?: readonly string[];
++  supportsToolCallValue?: boolean;
+   supportsJsonSchemaOutputValue?: boolean;
+   supportsNativeWebSearchValue?: boolean;
+   supportsMidConversationSystemValue?: boolean;
+@@ -64,6 +65,8 @@ export function createProviderModelDraftValues(
+   // 配置不完整时编辑器就是修复入口，不能在打开前抛错；数值保留空输入，能力控件用保守初值。
+   const properties = model.evidenceConfig?.properties ?? {};
+   const inputFormat = properties?.inputFormat;
++  const toolSupport =
++    model.personalConfig.properties?.supportsToolCall ?? properties.supportsToolCall;
+   return {
+     idValue: model.modelId,
+     // 编辑器只把 Personal Overlay 当作真实输入；继承值由 UI 作为 placeholder 展示。
+@@ -86,6 +89,7 @@ export function createProviderModelDraftValues(
+     useRecommendedConfigValue: model.useRecommendedConfig !== false,
+     clearPersonalConfigValue: false,
+     overriddenFieldsValue: personalDraftFieldKeys(model.personalConfig),
++    supportsToolCallValue: typeof toolSupport === "boolean" ? toolSupport : undefined,
+     supportsJsonSchemaOutputValue: properties.supportsJsonSchemaOutput ?? false,
+     supportsNativeWebSearchValue: properties.supportsNativeWebSearch ?? false,
+     supportsMidConversationSystemValue: properties.supportsMidConversationSystem ?? false,
+@@ -102,6 +106,7 @@ export function createProviderModelDraftValues(
+ function personalDraftFieldKeys(config: ModelConfigObject): string[] {
+   const result: string[] = [];
+   for (const key of [
++    "supportsToolCall",
+     "supportsJsonSchemaOutput",
+     "supportsNativeWebSearch",
+     "supportsMidConversationSystem",
+@@ -197,7 +202,8 @@ export function resolveProviderModelDraftCommit({
+       supportsPdf: draft.inputFormatValue.supportsPdf,
+     },
+     outputFormat: currentModel.config.properties?.outputFormat,
+-    supportsToolCall: currentModel.config.properties?.supportsToolCall,
++    supportsToolCall:
++      draft.supportsToolCallValue ?? currentModel.config.properties?.supportsToolCall,
+     supportsJsonSchemaOutput:
+       draft.supportsJsonSchemaOutputValue ??
+       currentModel.config.properties?.supportsJsonSchemaOutput ??
+@@ -222,6 +228,7 @@ export function resolveProviderModelDraftCommit({
+     assignMutable(personalProperties, "contextWindow", contextWindow);
+   else deleteMutable(personalProperties, "contextWindow");
+   for (const key of [
++    "supportsToolCall",
+     "supportsJsonSchemaOutput",
+     "supportsNativeWebSearch",
+     "supportsMidConversationSystem",
+@@ -393,6 +400,7 @@ function buildPersonalProperties({
+   const result: Record<string, unknown> = { ...current };
+   applySparseLeaf(result, "contextWindow", effective.contextWindow, inherited?.contextWindow);
+   for (const key of [
++    "supportsToolCall",
+     "supportsJsonSchemaOutput",
+     "supportsNativeWebSearch",
+     "supportsMidConversationSystem",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderModelMetadataDialog.tsx b/packages/ui/src/settings/model-provider-section/ProviderModelMetadataDialog.tsx
+index c7a5fd4..6bb1aa1 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderModelMetadataDialog.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderModelMetadataDialog.tsx
+@@ -335,6 +335,7 @@ export function ProviderModelMetadataDialog({
+                 <div className="flex flex-wrap gap-2" data-model-capabilities-options="true">
+                   {(
+                     [
++                      "supportsToolCall",
+                       "supportsJsonSchemaOutput",
+                       "supportsNativeWebSearch",
+                       "supportsMidConversationSystem",
+@@ -345,7 +346,14 @@ export function ProviderModelMetadataDialog({
+                       <BooleanModelOption
+                         key={property}
+                         label={intl.formatMessage({ id: `settings.modelProvider.${property}` })}
+-                        selected={draft[field] ?? false}
++                        selected={draft[field]}
++                        unknownLabel={
++                          property === "supportsToolCall"
++                            ? intl.formatMessage({
++                                id: "settings.modelProvider.capabilityUnknown",
++                              })
++                            : undefined
++                        }
+                         onToggle={() => onDraftChange({ [field]: !(draft[field] ?? false) })}
+                         overridden={overridden(
+                           field,
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderModelMetadataFields.tsx b/packages/ui/src/settings/model-provider-section/ProviderModelMetadataFields.tsx
+index df797f9..af8a271 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderModelMetadataFields.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderModelMetadataFields.tsx
+@@ -1,4 +1,4 @@
+-import { CheckIcon } from "lucide-react";
++import { CheckIcon, MinusIcon } from "lucide-react";
+ import type { ReactNode } from "react";
+ import { Button } from "@/components/ui/button.js";
+ import { cn } from "@/components/lib/utils.js";
+@@ -11,11 +11,13 @@ export function BooleanModelOption({
+   selected,
+   onToggle,
+   overridden = false,
++  unknownLabel,
+ }: {
+   label: string;
+-  selected: boolean;
++  selected?: boolean;
+   onToggle: () => void;
+   overridden?: boolean;
++  unknownLabel?: string;
+ }) {
+   return (
+     <Button
+@@ -23,8 +25,8 @@ export function BooleanModelOption({
+       role="checkbox"
+       variant="outline"
+       size="lg"
+-      aria-checked={selected}
+-      data-selected={selected}
++      aria-checked={selected ?? "mixed"}
++      data-selected={selected ?? "unknown"}
+       data-model-boolean-option="true"
+       data-model-capability-option="true"
+       data-personal-override={overridden}
+@@ -37,12 +39,15 @@ export function BooleanModelOption({
+     >
+       <ModelOptionCheckbox selected={selected} />
+       <span>{label}</span>
++      {selected === undefined && unknownLabel ? (
++        <span className="text-ui-sm text-foreground-subtle">{unknownLabel}</span>
++      ) : null}
+     </Button>
+   );
+ }
+ 
+ /** 外层按钮负责完整点击与键盘语义；指示框不可再嵌一个可聚焦控件。 */
+-export function ModelOptionCheckbox({ selected }: { selected: boolean }) {
++export function ModelOptionCheckbox({ selected }: { selected?: boolean }) {
+   return (
+     <span
+       aria-hidden="true"
+@@ -55,7 +60,11 @@ export function ModelOptionCheckbox({ selected }: { selected: boolean }) {
+           : "border-input-border bg-input",
+       )}
+     >
+-      {selected ? <CheckIcon className="size-3" /> : null}
++      {selected === true ? (
++        <CheckIcon className="size-3" />
++      ) : selected === undefined ? (
++        <MinusIcon className="size-3" />
++      ) : null}
+     </span>
+   );
+ }
+diff --git a/packages/ui/test/modelToolCapabilityDraft.test.ts b/packages/ui/test/modelToolCapabilityDraft.test.ts
+new file mode 100644
+index 0000000..7d7a4ec
+--- /dev/null
++++ b/packages/ui/test/modelToolCapabilityDraft.test.ts
+@@ -0,0 +1,94 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { ProviderSettingsFormModel } from "../src/lib/providerSettingsFormTypes.js";
++import {
++  createProviderModelDraftValues,
++  resolveProviderModelDraftCommit,
++} from "../src/settings/model-provider-section/ProviderModelMetadata.js";
++import {
++  restoreModelDraft,
++  updateModelDraft,
++} from "../src/settings/model-provider-section/ProviderModelDraftState.js";
++
++function model(toolEvidence?: boolean): ProviderSettingsFormModel {
++  const inheritedConfig = {
++    enabled: true,
++    properties: {
++      contextWindow: 128_000,
++      inputFormat: {
++        supportsText: true,
++        supportsImage: false,
++        supportsVideo: false,
++        supportsAudio: false,
++        supportsPdf: false,
++      },
++      outputFormat: { supportsText: true },
++      supportsToolCall: true,
++    },
++    optionSpecs: {
++      maxOutputTokens: { max: 8_192, map: "{}" },
++      reasoningLevel: { values: ["off"], map: "{}" },
++    },
++  };
++  return {
++    kind: "saved",
++    modelId: "text-model",
++    config: inheritedConfig,
++    inheritedConfig,
++    evidenceConfig: {
++      properties: toolEvidence === undefined ? {} : { supportsToolCall: toolEvidence },
++      optionSpecs: { reasoningLevel: inheritedConfig.optionSpecs.reasoningLevel },
++    },
++    personalConfig: {},
++    useRecommendedConfig: true,
++    hasPersonalConfig: false,
++  } as unknown as ProviderSettingsFormModel;
++}
++
++test("unknown tool support stays unknown until an explicit correction, then saves through the existing model overlay", () => {
++  const current = model();
++  const draft = createProviderModelDraftValues(current);
++  assert.equal((draft as { supportsToolCallValue?: boolean }).supportsToolCallValue, undefined);
++
++  const corrected = updateModelDraft(
++    draft,
++    { supportsToolCallValue: false } as Partial<typeof draft>,
++    current,
++  );
++  const result = resolveProviderModelDraftCommit({ currentModel: current, draft: corrected });
++  assert.equal(result.status, "commit");
++  if (result.status !== "commit") return;
++  assert.equal(result.model.config.properties?.supportsToolCall, false);
++  assert.equal(result.model.personalConfig.properties?.supportsToolCall, false);
++  assert.equal(result.model.config.properties?.inputFormat?.supportsImage, false);
++});
++
++test("recommended model tool evidence is restored without retaining the manual correction", () => {
++  const current = model(true);
++  const edited = updateModelDraft(
++    createProviderModelDraftValues(current),
++    { supportsToolCallValue: false } as Partial<ReturnType<typeof createProviderModelDraftValues>>,
++    current,
++  );
++  const restored = restoreModelDraft(edited, current);
++  const result = resolveProviderModelDraftCommit({ currentModel: current, draft: restored });
++  assert.equal(result.status, "commit");
++  if (result.status !== "commit") return;
++  assert.equal(result.model.config.properties?.supportsToolCall, true);
++  assert.equal(result.model.personalConfig.properties?.supportsToolCall, undefined);
++});
++
++test("reopening a saved correction does not replace it with unknown catalog evidence", () => {
++  const current = {
++    ...model(),
++    config: {
++      ...model().config,
++      properties: { ...model().config.properties, supportsToolCall: false },
++    },
++    personalConfig: { properties: { supportsToolCall: false } },
++    hasPersonalConfig: true,
++  } as ProviderSettingsFormModel;
++  const draft = createProviderModelDraftValues(current);
++  assert.equal((draft as { supportsToolCallValue?: boolean }).supportsToolCallValue, false);
++  assert.equal(draft.overriddenFieldsValue?.includes("supportsToolCallValue"), true);
++});

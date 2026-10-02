@@ -1,0 +1,455 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts b/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts
+index 64e42779d6078b26c4cacb75f4aa4136123de10c..b55b3d82dad3c27c13a722b33dd5a3664735c87d 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/api-media-generation-port.ts
+@@ -1,5 +1,10 @@
+ import { getEnabledApiKeys, isOfficialOpenaiImageModel } from "@zcode/provider";
+-import type { HttpClientPort, MediaGenerationModel, MediaGenerationPort } from "@zcode/contracts";
++import {
++  MediaSubmissionNotStartedError,
++  type HttpClientPort,
++  type MediaGenerationModel,
++  type MediaGenerationPort,
++} from "@zcode/contracts";
+ import { createHash } from "node:crypto";
+ 
+ interface MediaRegistrySource {
+@@ -12,7 +17,10 @@ interface MediaRegistrySource {
+         enabled: boolean;
+         providerIssues: readonly unknown[];
+         config: {
+-          api?: { baseUrl?: string | null } | null;
++          api?: {
++            baseUrl?: string | null;
++            headers?: Readonly<Record<string, string>> | null;
++          } | null;
+           access?: {
+             type: string;
+             apiKey?: string | null;
+@@ -61,6 +69,18 @@ export function createApiMediaGenerationPort(input: {
+     string,
+     { key: string; body: Record<string, unknown>; reference: string; referenceBytes: number }
+   >();
++  const connectionHeaders = (providerId: string) => {
++    const headers =
++      input.registry
++        .getSnapshot()
++        ?.resolution.resolvedProviders.find((provider) => provider.providerId === providerId)
++        ?.config.api?.headers ?? {};
++    return Object.fromEntries(
++      Object.entries(headers).filter(
++        ([name]) => !["authorization", "content-type", "accept"].includes(name.toLowerCase()),
++      ),
++    );
++  };
+   const credential = (providerId: string, reference?: string) => {
+     const provider = input.registry
+       .getSnapshot()
+@@ -78,7 +98,7 @@ export function createApiMediaGenerationPort(input: {
+       ? keys.find(
+           (key) =>
+             createHash("sha256")
+-              .update(JSON.stringify([providerId, key]))
++              .update(JSON.stringify([providerId, key, connectionHeaders(providerId)]))
+               .digest("hex") === reference,
+         )
+       : keys[0];
+@@ -87,11 +107,12 @@ export function createApiMediaGenerationPort(input: {
+     return {
+       key,
+       reference: createHash("sha256")
+-        .update(JSON.stringify([providerId, key]))
++        .update(JSON.stringify([providerId, key, connectionHeaders(providerId)]))
+         .digest("hex"),
+     };
+   };
+   const jsonRequest = async (
++    providerId: string,
+     path: string,
+     key: string,
+     body?: Record<string, unknown>,
+@@ -102,6 +123,7 @@ export function createApiMediaGenerationPort(input: {
+         url: `https://api.x.ai/v1/${path}`,
+         method: body ? "POST" : "GET",
+         headers: {
++          ...connectionHeaders(providerId),
+           Authorization: `Bearer ${key}`,
+           Accept: "application/json",
+           ...(body ? { "Content-Type": "application/json" } : {}),
+@@ -170,14 +192,29 @@ export function createApiMediaGenerationPort(input: {
+         ];
+       });
+     }) ?? [];
+-  const imageBinding = (providerId: string, modelId: string, prompt: string) => {
++  const targetScope = (providerId: string, modelId: string) => {
++    const provider = input.registry
++      .getSnapshot()
++      ?.resolution.resolvedProviders.find((candidate) => candidate.providerId === providerId);
++    return [
++      provider?.config.api,
++      provider?.models.find((model) => model.modelId === modelId)?.config,
++    ];
++  };
++  const imageBinding = (
++    providerId: string,
++    modelId: string,
++    prompt: string,
++    frozenKey?: string,
++  ) => {
+     const snapshot = input.registry.getSnapshot();
+     const provider = snapshot?.resolution.resolvedProviders.find(
+       (candidate) => candidate.providerId === providerId,
+     );
+     const model = provider?.models.find((candidate) => candidate.modelId === modelId);
+     const access = provider?.config.access;
+-    const key = access?.type === "api-key" ? getEnabledApiKeys(access)[0] : undefined;
++    const keys = access?.type === "api-key" ? getEnabledApiKeys(access) : [];
++    const key = frozenKey ? keys.find((key) => key === frozenKey) : keys[0];
+     if (
+       !snapshot ||
+       !provider?.enabled ||
+@@ -193,7 +230,9 @@ export function createApiMediaGenerationPort(input: {
+       key,
+       ...mediaApiOrigin(provider!.config.api?.baseUrl)!,
+       binding: createHash("sha256")
+-        .update(JSON.stringify([snapshot.sourceRevisions.config, providerId, modelId, prompt, key]))
++        .update(
++          JSON.stringify([targetScope(providerId, modelId), providerId, modelId, prompt, key]),
++        )
+         .digest("hex"),
+     };
+   };
+@@ -223,6 +262,7 @@ export function createApiMediaGenerationPort(input: {
+         throw new Error("Video model is unavailable");
+       const selected = credential(request.providerId);
+       const detail = await jsonRequest(
++        request.providerId,
+         `video-generation-models/${encodeURIComponent(request.modelId)}`,
+         selected.key,
+       );
+@@ -247,7 +287,7 @@ export function createApiMediaGenerationPort(input: {
+       const binding = createHash("sha256")
+         .update(
+           JSON.stringify([
+-            input.registry.getSnapshot()?.sourceRevisions.config,
++            targetScope(request.providerId, request.modelId),
+             request.providerId,
+             body,
+             selected.key,
+@@ -278,12 +318,21 @@ export function createApiMediaGenerationPort(input: {
+             model.modelId === request.modelId,
+         )
+       )
+-        throw new Error("Video binding is no longer available");
+-      const current = credential(request.providerId, prepared.reference);
++        throw new MediaSubmissionNotStartedError(
++          "Video model or confirmation is no longer available; no request was submitted",
++        );
++      let current: ReturnType<typeof credential>;
++      try {
++        current = credential(request.providerId, prepared.reference);
++      } catch {
++        throw new MediaSubmissionNotStartedError(
++          "The original video credential is unavailable; no request was submitted",
++        );
++      }
+       const expected = createHash("sha256")
+         .update(
+           JSON.stringify([
+-            input.registry.getSnapshot()?.sourceRevisions.config,
++            targetScope(request.providerId, request.modelId),
+             request.providerId,
+             prepared.body,
+             current.key,
+@@ -296,10 +345,14 @@ export function createApiMediaGenerationPort(input: {
+         prepared.body.prompt !== request.prompt ||
+         prepared.body.duration !== (request.duration ?? 6)
+       )
+-        throw new Error("Video request changed after confirmation");
+-      request.signal.throwIfAborted();
++        throw new MediaSubmissionNotStartedError(
++          "Video request changed after confirmation; no request was submitted",
++        );
++      if (request.signal.aborted)
++        throw new MediaSubmissionNotStartedError("Video submission was cancelled before dispatch");
+       videoBindings.delete(request.binding);
+       const payload = await jsonRequest(
++        request.providerId,
+         "videos/generations",
+         current.key,
+         prepared.body,
+@@ -316,6 +369,7 @@ export function createApiMediaGenerationPort(input: {
+     async readVideo(request) {
+       const selected = credential(request.providerId, request.credentialReference);
+       const payload = await jsonRequest(
++        request.providerId,
+         `videos/${encodeURIComponent(request.requestId)}`,
+         selected.key,
+         undefined,
+@@ -376,7 +430,11 @@ export function createApiMediaGenerationPort(input: {
+         {
+           url: `${selected.origin}/v1/${selected.vendor === "xai" ? "image-generation-models" : "models"}/${encodeURIComponent(modelId)}`,
+           method: "GET",
+-          headers: { Authorization: `Bearer ${selected.key}`, Accept: "application/json" },
++          headers: {
++            ...connectionHeaders(providerId),
++            Authorization: `Bearer ${selected.key}`,
++            Accept: "application/json",
++          },
+           maxResponseBytes: 1024 * 1024,
+           timeoutMs: 10_000,
+           redirect: "manual",
+@@ -455,9 +513,15 @@ export function createApiMediaGenerationPort(input: {
+       ) {
+         throw new Error("Image generation model or connection is unavailable");
+       }
+-      const selected = imageBinding(request.providerId, request.modelId, request.prompt);
+-      if (!selected) throw new Error("Image generation connection is unavailable");
+       const prepared = imageBindings.get(request.binding);
++      if (!prepared) throw new Error("Image generation confirmation is no longer available");
++      const selected = imageBinding(
++        request.providerId,
++        request.modelId,
++        request.prompt,
++        prepared.key,
++      );
++      if (!selected) throw new Error("Image generation connection changed after confirmation");
+       const expectedBinding =
+         prepared &&
+         createHash("sha256")
+@@ -475,6 +539,7 @@ export function createApiMediaGenerationPort(input: {
+       }
+       imageBindings.delete(request.binding);
+       let headers: Record<string, string> = {
++        ...connectionHeaders(request.providerId),
+         Authorization: `Bearer ${selected.key}`,
+         "Content-Type": "application/json",
+         Accept: "application/json",
+diff --git a/apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts b/apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts
+index 5085619fe6652ea878246debf33e34804e44246f..13609072ac063c490248aa713862ef21f19e4425 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts
+@@ -15,7 +15,7 @@ function fixture(vendor: "xai" | "openai" = "xai") {
+     enabled: true,
+     providerIssues: [],
+     config: {
+-      api: { baseUrl: vendor === "xai" ? "https://api.x.ai/v1" : "https://api.openai.com/v1" },
++      api: { baseUrl: vendor === "xai" ? "https://api.x.ai/v1" : "https://api.openai.com/v1", headers: {} as Record<string,string> },
+       access: {
+         type: "api-key",
+         apiKey: "original-synthetic-key",
+@@ -37,12 +37,13 @@ function fixture(vendor: "xai" | "openai" = "xai") {
+       },
+     ],
+   };
++  let revision = "revision";
+   let downloadUrl = "https://vidgen.x.ai/fixture/video.mp4";
+   let responseBytes = video;
+   const port = createApiMediaGenerationPort({
+     registry: {
+       getSnapshot: () => ({
+-        sourceRevisions: { config: "revision" },
++        sourceRevisions: { config: revision },
+         resolution: { resolvedProviders: [provider] },
+       }),
+     },
+@@ -86,6 +87,7 @@ function fixture(vendor: "xai" | "openai" = "xai") {
+     provider,
+     requests,
+     modelId,
++    changeUnrelatedConfiguration: () => { revision = "unrelated-edit"; },
+     setDownloadUrl: (url: string) => {
+       downloadUrl = url;
+     },
+@@ -227,6 +229,31 @@ test("unapproved image/video bindings have a byte budget and evicted requests ca
+   const input = { providerId: "connection", modelId: "grok-imagine-video-1.5", prompt: "old", image: { mediaType: "image/png", bytes: new Uint8Array(16 * 1024 * 1024) } };
+   const oldest = await f.port.prepareVideo!(input);
+   for (let i = 0; i < 4; i++) await f.port.prepareVideo!({ ...input, prompt: String(i) });
+-  await assert.rejects(f.port.submitVideo!({ ...input, ...oldest, signal: new AbortController().signal }), /binding.*available/);
++  await assert.rejects(f.port.submitVideo!({ ...input, ...oldest, signal: new AbortController().signal }), /no request was submitted/);
+   assert.equal(f.requests.some((request) => request.method === "POST"), false);
+ });
++
++
++test("unrelated configuration and a new default key retain the original admitted image/video credentials", async () => {
++  const f = fixture(); const imageInput = { providerId: "connection", modelId: f.modelId, prompt: "same image" };
++  const videoInput = { providerId: "connection", modelId: "grok-imagine-video-1.5", prompt: "same video" };
++  const imageBinding = await f.port.prepareImage(imageInput); const videoBinding = await f.port.prepareVideo!(videoInput);
++  f.changeUnrelatedConfiguration(); f.provider.config.access.additionalApiKeys = [f.provider.config.access.apiKey]; f.provider.config.access.apiKey = "new-default";
++  await f.port.generateImage({ ...imageInput, binding: imageBinding, signal: new AbortController().signal });
++  await f.port.submitVideo!({ ...videoInput, ...videoBinding, signal: new AbortController().signal });
++  const posted = f.requests.filter((request) => request.method === "POST"); assert.equal(posted.length, 2);
++  assert.ok(posted.every((request) => request.headers.Authorization === "Bearer original-synthetic-key"));
++});
++
++
++test("media honors connection project headers, rejects changed recovery scope and never forwards them to downloads", async () => {
++  const f = fixture(); f.provider.config.api.headers = { "OpenAI-Project": "project-a", "authorization": "never-use-this-header" };
++  const input = { providerId: "connection", modelId: "grok-imagine-video-1.5", prompt: "same video" };
++  const prepared = await f.port.prepareVideo!(input); await f.port.submitVideo!({ ...input, ...prepared, signal: new AbortController().signal });
++  await f.port.readVideo!({ ...input, ...prepared, requestId: "paid-once", signal: new AbortController().signal });
++  assert.ok(f.requests.slice(0,3).every((request) => request.headers["OpenAI-Project"] === "project-a" && request.headers.Authorization === "Bearer original-synthetic-key" && request.headers.authorization === undefined));
++  assert.deepEqual(f.requests[3]!.headers, {});
++  f.provider.config.api.headers["OpenAI-Project"] = "project-b";
++  await assert.rejects(f.port.readVideo!({ ...input, ...prepared, requestId: "paid-once", signal: new AbortController().signal }), /original video credential/);
++  assert.equal(f.requests.length,4);
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts
+index 20df7367889b37414e045478488759b3f8ab9d62..ff959f2eaf118bc987503f538db56f400ae2cff5 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/media-generation.port.ts
+@@ -8,6 +8,9 @@ export interface MediaGenerationModel {
+   billingProvider?: string;
+ }
+ 
++/** A local admission failure before the provider POST; distinct from an uncertain remote effect. */
++export class MediaSubmissionNotStartedError extends Error {}
++
+ export interface MediaGenerationPort {
+   listModels(): MediaGenerationModel[];
+   /** Opaque connection/model/key revision frozen before tool approval; never contains a credential. */
+diff --git a/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts b/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts
+index 701dac369840dc687a5b46af4b9ffade4d355ef2..c046f96266b0aaf98ef12ed5ac189360f31bdebf 100644
+--- a/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts
++++ b/apps/zcode-cli/packages/contracts/src/tools/media-generation.ts
+@@ -102,6 +102,7 @@ export const MediaJobOutputSchema = z
+     reportedModelId: z.string().optional(),
+     reportedCostUsd: z.number().nonnegative().optional(),
+     usageRecorded: z.boolean().optional(),
++    message: z.string().max(500).optional(),
+   })
+   .strict();
+ export const GenerateVideoInputJsonSchema = toToolJsonSchema(GenerateVideoInputSchema);
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts b/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
+index f0f414a4f659bf410992dfea92a807b73a21f537..237f6ca7d28ca92ec2fcd89e7fd3ffd574407924 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/generate-video.ts
+@@ -8,6 +8,7 @@ import {
+   ResumeMediaJobInputJsonSchema,
+   MediaJobOutputSchema,
+   MediaJobOutputJsonSchema,
++  MediaSubmissionNotStartedError,
+   type MediaGenerationPort,
+   type ModelMessageContent,
+   type UsageStorePort,
+@@ -25,7 +26,7 @@ import {
+ 
+ const formatOutput = (output: unknown): ModelMessageContent => {
+   const result = MediaJobOutputSchema.parse(output);
+-  const text = `Media request ${result.status}. Receipt: ${result.receiptUri}. ${result.status === "unknown" ? "Never resubmit this paid request automatically." : result.status === "pending" ? "ResumeMediaJob retrieves this existing request without another generation." : ""}${result.usageRecorded === false ? " Usage ledger is unavailable; saved media remains available but statistics may undercount." : ""}`;
++  const text = `Media request ${result.status}. ${result.message ?? ""} Receipt: ${result.receiptUri}. ${result.status === "unknown" ? "Never resubmit this paid request automatically." : result.status === "pending" ? "ResumeMediaJob retrieves this existing request without another generation." : ""}${result.usageRecorded === false ? " Usage ledger is unavailable; saved media remains available but statistics may undercount." : ""}`;
+   return result.artifactUri && result.mimeType
+     ? [
+         { type: "text", text },
+@@ -128,7 +129,24 @@ export function createVideoGenerationTools(port: MediaGenerationPort): ToolEntry
+         let submitted: { requestId: string };
+         try {
+           submitted = await port.submitVideo({ ...request, signal: context.abortSignal });
+-        } catch {
++        } catch (error) {
++          const notStarted = error instanceof MediaSubmissionNotStartedError;
++          const reason = notStarted
++            ? error.message
++            : error instanceof Error && /^Media request failed \(HTTP \d+\)$/.test(error.message)
++              ? error.message
++              : "The provider did not confirm video submission; do not submit again automatically";
++          receipt = {
++            ...receipt,
++            status: notStarted ? "failed" : "unknown",
++            updatedAt: Date.now(),
++            message: reason.slice(0, 500),
++          };
++          const failed = await writeMediaReceipt(
++            context,
++            receipt,
++            notStarted ? "failed" : "unknown",
++          );
+           await store.recordModelUsage({
+             id: jobId,
+             logicalRequestId: jobId,
+@@ -139,19 +157,18 @@ export function createVideoGenerationTools(port: MediaGenerationPort): ToolEntry
+             status: "error",
+             startedAt: now,
+             completedAt: Date.now(),
+-            errorMessage:
+-              "Video submission outcome is unknown; use its saved receipt, never resubmit automatically",
++            errorMessage: receipt.message,
+             providerMetadata: {
+               fleetAccounting: {
+                 billingProvider: "xai",
+                 authKind: "api-key",
+                 workspacePath: context.workspaceRoot,
+-                mediaReceiptUri: claim.uri,
+-                mediaSubmission: "unknown",
++                mediaReceiptUri: failed.uri,
++                mediaSubmission: notStarted ? "not-started" : "unknown",
+               },
+             },
+           });
+-          return mediaJobOutput(receipt, claim.uri);
++          return mediaJobOutput(receipt, failed.uri);
+         } // An uncertain POST is never repeated.
+         receipt = {
+           ...receipt,
+diff --git a/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts b/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
+index 60af1465b6d9087269110a3d5e5a44cd06e16d73..e482096201b63fec58b7a83a952a1514edd5c397 100644
+--- a/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
++++ b/apps/zcode-cli/packages/core/src/tool/handlers/media-jobs.ts
+@@ -43,6 +43,7 @@ const receiptSchema = z
+     authKind: z.enum(["api-key", "subscription"]).optional(),
+     accountId: z.string().optional(),
+     providerUsage: z.record(z.string(), z.unknown()).optional(),
++    message: z.string().max(500).optional(),
+   })
+   .strict();
+ export type MediaJobReceipt = z.infer<typeof receiptSchema>;
+@@ -111,7 +112,7 @@ export async function latestMediaReceipt(
+   original: MediaJobReceipt,
+   uri: string,
+ ) {
+-  for (const phase of ["completed", "failed", "expired", "accepted"] as const) {
++  for (const phase of ["completed", "failed", "expired", "accepted", "unknown"] as const) {
+     const file = await context.artifactStore?.findToolResultArtifactOnce?.({
+       sessionId: context.sessionId,
+       idempotencyKey: `${original.jobId}:${phase}`,
+@@ -131,6 +132,7 @@ export function mediaJobOutput(receipt: MediaJobReceipt, uri: string) {
+     status: receipt.status,
+     providerId: receipt.providerId,
+     requestedModelId: receipt.modelId,
++    ...(receipt.message ? { message: receipt.message } : {}),
+     ...(receipt.artifactUri ? { artifactUri: receipt.artifactUri } : {}),
+     ...(receipt.mimeType ? { mimeType: receipt.mimeType } : {}),
+     ...(receipt.reportedModelId ? { reportedModelId: receipt.reportedModelId } : {}),
+@@ -158,7 +160,9 @@ export async function recordMediaReceiptUsage(
+       completedAt: receipt.updatedAt,
+       rawUsage: receipt.providerUsage,
+       status: receipt.status === "completed" ? "completed" : "error",
+-      ...(receipt.status !== "completed" ? { errorMessage: `Media ${receipt.status}` } : {}),
++      ...(receipt.status !== "completed"
++        ? { errorMessage: receipt.message ?? `Media ${receipt.status}` }
++        : {}),
+       providerMetadata: {
+         fleetAccounting: {
+           billingProvider:
+diff --git a/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts b/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts
+index 2a973e163948cec6cf1610211821409efdc68b36..404d8fa7bef4e27d8fdeeeacef68cf07c082d61c 100644
+--- a/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts
++++ b/apps/zcode-cli/packages/core/test/media-video-recovery.test.ts
+@@ -331,3 +331,17 @@ test("the actual Host/Pi permission and durable tool path preserves video previe
+     } finally { await f.close(); }
+   }
+ });
++
++test("a known local refusal is diagnosed as not submitted and survives replay", async () => {
++  const { MediaSubmissionNotStartedError } = await import("@zcode/contracts");
++  const f = await setup(); let calls = 0;
++  const port: MediaGenerationPort = { listModels: () => [], prepareImage: async () => "unused", generateImage: async () => { throw new Error("unused"); },
++    submitVideo: async () => { calls++; throw new MediaSubmissionNotStartedError("The original credential was removed; no request was submitted"); } };
++  const generate = createMediaGenerationToolEntries(port).find((tool) => tool.metadata.name === "GenerateVideo")!;
++  try {
++    const result = await generate.handler(request, f.context()) as any;
++    assert.equal(result.status, "failed"); assert.match(result.message, /no request was submitted/);
++    await f.reopen(); const repeated = await generate.handler(request, f.context()) as any;
++    assert.equal(repeated.message, result.message); assert.equal(calls, 1);
++  } finally { await f.close(); }
++});

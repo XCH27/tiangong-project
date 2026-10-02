@@ -1,0 +1,183 @@
+diff --git a/packages/ui/src/ModelConfigSelect.tsx b/packages/ui/src/ModelConfigSelect.tsx
+index f20164d225c28e7fb8a339a2529480e9fcb05b9b..a00c955c5a7afc7aa237b9aed17753a1014e0f5a 100644
+--- a/packages/ui/src/ModelConfigSelect.tsx
++++ b/packages/ui/src/ModelConfigSelect.tsx
+@@ -18,6 +18,7 @@ import {
+   DropdownMenuContent,
+   DropdownMenuItem,
+   DropdownMenuLabel,
++  DropdownMenuPortal,
+   DropdownMenuRadioGroup,
+   DropdownMenuRadioItem,
+   DropdownMenuSeparator,
+@@ -537,16 +538,19 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
+                     {renderGroupLabel(group)}
+                     {groupSelected ? <CheckIcon className="size-4 text-foreground-subtle" /> : null}
+                   </DropdownMenuSubTrigger>
+-                  <DropdownMenuSubContent
+-                    className={cn(
+-                      "max-h-72 overflow-y-auto",
+-                      // 固定宽度会提前截断模型名；按内容扩展，并让可用空间优先于最小宽度。
+-                      providerSubmenuClassName ??
+-                        "w-max min-w-[min(12rem,var(--radix-dropdown-menu-content-available-width))] max-w-(--radix-dropdown-menu-content-available-width)",
+-                    )}
+-                  >
+-                    {renderModelItems(group.items)}
+-                  </DropdownMenuSubContent>
++                  {/* Provider leaves must escape the combined Model row's scroll clip. */}
++                  <DropdownMenuPortal>
++                    <DropdownMenuSubContent
++                      className={cn(
++                        "max-h-72 overflow-y-auto",
++                        // 固定宽度会提前截断模型名；按内容扩展，并让可用空间优先于最小宽度。
++                        providerSubmenuClassName ??
++                          "w-max min-w-[min(12rem,var(--radix-dropdown-menu-content-available-width))] max-w-(--radix-dropdown-menu-content-available-width)",
++                      )}
++                    >
++                      {renderModelItems(group.items)}
++                    </DropdownMenuSubContent>
++                  </DropdownMenuPortal>
+                 </DropdownMenuSub>
+               </Fragment>
+             );
+diff --git a/packages/ui/test/combinedModelControl.browser.test.tsx b/packages/ui/test/combinedModelControl.browser.test.tsx
+index 0be77a758abfa2bcc22b95ef43c3e6ed0e49fc40..c0c49df3c76c0852f4a8f60ded79f4f154d2d7fa 100644
+--- a/packages/ui/test/combinedModelControl.browser.test.tsx
++++ b/packages/ui/test/combinedModelControl.browser.test.tsx
+@@ -18,11 +18,13 @@ function Fixture({
+   unknown = false,
+   selectable = false,
+   recovery = false,
++  multiple = false,
+ }: {
+   width: number;
+   unknown?: boolean;
+   selectable?: boolean;
+   recovery?: boolean;
++  multiple?: boolean;
+ }) {
+   const ref = useComposerToolbarFit();
+   const [thought, setThought] = useState(unknown ? "unobserved" : "medium");
+@@ -86,16 +88,30 @@ function Fixture({
+               modelGroups: [
+                 {
+                   key: "provider",
+-                  label: "Connected provider",
+-                  directItems: true,
++                  label: multiple ? "Grok" : "Connected provider",
++                  directItems: !multiple,
+                   items: [
+                     { key: "a", value: "a", name: "A deliberately long model name" },
+                     { key: "b", value: "b", name: "Another model" },
+                   ],
+                 },
++                ...(multiple
++                  ? [
++                      {
++                        key: "native",
++                        label: "Claude",
++                        items: [{ key: "c", value: "c", name: "Native model" }],
++                      },
++                    ]
++                  : []),
+               ],
+               normalizedValue: model,
+-              triggerLabel: model === "a" ? "A deliberately long model name" : "Another model",
++              triggerLabel:
++                model === "a"
++                  ? "A deliberately long model name"
++                  : model === "c"
++                    ? "Native model"
++                    : "Another model",
+               showManageModelsAction: true,
+               manageModelsLabel: "Manage models",
+               lockReasonMessage: "Locked",
+@@ -251,6 +267,88 @@ function Fixture({
+           node.remove();
+         }
+       }
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const dark of [false, true]) {
++      const name = `${locale}, ${dark ? "dark" : "light"}: API/native provider leaf menus are visible and clickable`;
++      document.documentElement.classList.toggle("dark", dark);
++      const node = document.createElement("div");
++      document.body.append(node);
++      node.style.marginTop = "300px";
++      node.style.marginLeft = "220px";
++      const root = createRoot(node);
++      writes = [];
++      const open = async () => {
++        const trigger = node.querySelector<HTMLButtonElement>(".composer-model-trigger")!;
++        await act(async () => {
++          trigger.dispatchEvent(
++            new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }),
++          );
++        });
++        const model = document.querySelector<HTMLElement>("[data-composer-model-submenu]")!;
++        await act(async () => {
++          model.focus();
++          model.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
++        });
++        await act(async () => {
++          await new Promise((resolve) => setTimeout(resolve, 180));
++        });
++      };
++      try {
++        await act(async () =>
++          root.render(
++            <ZCodeIntlProvider initialLocale={locale}>
++              <TooltipProvider>
++                <Fixture width={320} multiple />
++              </TooltipProvider>
++            </ZCodeIntlProvider>,
++          ),
++        );
++        for (const [group, name, value] of [
++          ["provider", "Another model", "b"],
++          ["native", "Native model", "c"],
++        ]) {
++          await open();
++          const entry = document.querySelector<HTMLElement>(
++            `[data-model-provider-key="${group}"]`,
++          )!;
++          check(entry, "Missing connected provider group");
++          const groupRect = entry.getBoundingClientRect();
++          const groupHit = document.elementFromPoint(
++            groupRect.x + groupRect.width / 2,
++            groupRect.y + groupRect.height / 2,
++          );
++          check(
++            groupHit === entry || entry.contains(groupHit),
++            "Provider group is clipped by the root options menu",
++          );
++          await act(async () => {
++            entry.focus();
++            entry.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
++          });
++          await act(async () => {
++            await new Promise((resolve) => setTimeout(resolve, 180));
++          });
++          const item = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
++            (item) => item.textContent?.trim() === name,
++          )!;
++          check(item, "Provider leaf model is missing");
++          const rect = item.getBoundingClientRect();
++          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
++          check(
++            rect.width > 0 && rect.height > 0 && (hit === item || item.contains(hit)),
++            "Model leaf is clipped or covered by its scrollable parent",
++          );
++          await act(async () => item.click());
++          check(writes.at(-1) === `model:${value}`, "Leaf selection lost its exact callback");
++        }
++        results.push({ name });
++      } catch (error) {
++        results.push({ name, error: String(error) });
++      } finally {
++        await act(async () => root.unmount());
++        node.remove();
++      }
++    }
+   for (const locale of ["zh-CN", "en-US"] as const)
+     for (const dark of [false, true]) {
+       const name = `${locale}, ${dark ? "dark" : "light"}, 320px: exact executable context choices`;

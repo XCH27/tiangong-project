@@ -8,10 +8,26 @@ This file holds only what crosses modules: authorities, invariants, failure mode
 map. Each module's own boundary, orchestration detail and execution rows live in its document under
 [`modules/`](modules/); a module never opens a second architecture ledger.
 
+**OV-027 selects ZCode; OV-069 integrates a Pi AgentSession loop beneath its existing Host owners.
+OV-067 requires kernel implementation and acceptance before feature-page expansion. Pi durable/Chord remains mechanism
+reference, not a replacement on the active path.** The Craft-specific map below describes the
+retained branch. Preserve single ownership of Session, permissions and domain operations;
+see the [source comparison](references.md#zcode-baseline-and-pi-integration).
+
+OV-026 permits application-level plugins to own domain editors, workers and document/issue data.
+Single authority means one owner per logical entity, not a ban on domain storage. A Board issue,
+design document and Agent Session are different entities linked by stable references; plugins do
+not introduce another Session/permission system. See the [plugin contract](modules/components.md#agent-authored-native-plugins).
+Native editor undo and unsaved document state remain with that editor; host attribution does not
+replace them. Project documents may be referenced by several conversations without being copied
+into each Session. The selected-host proof must exercise live edits, stale writes and recovery,
+not just two callers writing the same disk path. Portable MCP/UI transport is a comparison option,
+not an additional required framework or a substitute for host permissions and plugin lifecycle.
+
 ## 1. The shape of the system
 
 ```text
-┌─ Craft shell (retained) ─────────────────────────────────────────────┐
+┌─ Fleet Host (target evolved from the existing ZCode owners) ────────┐
 │  Sessions · Timeline · Permissions · Tasks/Scheduling · Settings     │
 │  Sources/MCP · Skills · Automations · Scheduler · BrowserPane        │
 │                                                                      │
@@ -33,38 +49,76 @@ map. Each module's own boundary, orchestration detail and execution rows live in
 │  │ image/video/web/deck modules (later) · design surface (later)│    │
 │  └───────────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────┘
-   runtimes (replaceable adapters): Claude SDK · Pi SDK · other
-   CLI/API runtimes · user-hosted remote Fleet instance (P7/P9)
+   selected default: Host admission → Pi AgentSession → Host model/tool ports
+   optional complete executors: native CLI/ACP/app-server, capability-gated
+   user-hosted remote Fleet instance (P7/P9)
 ```
 
-Native authorities per surface, one shared spine underneath. Every runtime — built-in model
-backend, CLI, API, local process, user-hosted server — is a replaceable adapter behind Fleet's
-session, permission, usage, and evidence authorities. An adapter declares its real capabilities
+Native authorities per surface, one shared spine underneath. The Fleet Host owns the logical
+Session, admission and Fleet permission/Action path; domain editors retain their native state.
+Extend existing services and plugin lifecycle; Chord supplies reference mechanisms only. A model transport is below the
+default Agent loop; a complete native executor is a separately admitted Session lane and never
+runs beneath that loop. Each adapter declares its real capabilities
 (streaming, cancellation, tool calls, permission callbacks, resume, usage reporting); unsupported
 features are explicit, never invented from a name.
 
+### Executor choice and feature development
+
+Fleet owns the product contract; the selected connection/model route determines the executor.
+Keep this in the existing connection flow, not a separate global kernel picker.
+One native continuation store is legitimate private executor state, not a second user-visible
+conversation authority. No migration should force editor undo/history into an Agent transcript.
+Host fitness is judged against the existing [native workbench loops](product.md#2-what-fleet-changes-about-agent-work),
+including shared human/Agent editing, save/reopen and scoped plugin lifecycle. Coding scores and
+isolated conversation/SQLite tests establish only part of that evidence.
+
+| Future feature | Shared Fleet responsibility | Effect of a selectable native executor |
+|---|---|---|
+| Models, accounts and subscriptions | Discovery, connection identity and an immutable per-input route; actual served identity on usage | Use that executor's supported login/catalog and resume scope. API compatibility does not imply subscription or media entitlement. |
+| Composer, thinking, Fast, queue and steering | Original controls display observed capability and next-input selection; active input remains bound | Native effort/Fast/cancel/steer semantics differ. Hide unsupported actions; never claim pending configuration is active. |
+| Token ring and costs | One ledger keyed by request/attempt/engine/account/project; known usage and unknown coverage remain distinct | Native context/source breakdown may be unavailable. Preserve reported cost/tier and opaque cache state; do not infer omitted values. |
+| Right-click Agent assistance | Resource identity/version and the same approved domain operation used by human controls | Expose the operation through a scoped native tool/MCP bridge. An external engine must not mutate UI/store state through a separate settings owner. |
+| Images, video and document suites | Host-owned Job/receipt/artifact references; native editors keep their data and undo | Native-generated artifacts and API Jobs both report through the same operation contract. Unknown external outcomes block replay; changing chat engine need not cancel an independent admitted Job. |
+| Plugins, Skills and MCP | One package/loadout owner, UI contract, scoped grants and unload lifecycle | Skills/MCP can be projected where supported. Pi executable extensions, vendor hooks and native UI are not universally portable; adapters disclose unsupported contributions. |
+| Cross-engine continuation | A visible transition plus bounded context/attachments and a durable receipt; parked native binding per identity/scope | Native resume only within a compatible binding. Crossing a boundary changes fork/rewind/cache behavior and must preserve access to the original transcript. |
+| Workflow, schedules and multi-agent | Pin the executor and route per task/child, then aggregate receipts and usage | No automatic engine race or fallback after an accepted effect. Unattended capability must be proven for the selected adapter. |
+| Remote and restart | Host task ownership, accepted command sequence, runtime target, cancellation acknowledgement and recovery | Require the adapter on the target machine. EOF/cancel sent is not confirmed completion; old-generation events cannot settle a new run. |
+| Releases and migration | Same task fixtures, data-copy/replay comparison and rollback | Test each supported CLI/protocol version. Keep original ZCode workflows until equivalent behavior is proved; engine updates do not automatically migrate Fleet data. |
+
 The product kernel may be broad; a single model call must be narrow. Deterministic systems retain
 policy, lifecycle, capability negotiation, stale-state checks and evidence. The model receives only
-the minimum authorized projection needed for the current task. This is the harness "thin waist": it
+the useful authorized projection needed for the current task; omission must preserve required evidence. This is the harness "thin waist": it
 reduces attention and schema tax without weakening the kernel or duplicating its authorities.
 
 ## 2. Dependency order (why the roadmap is ordered the way it is)
 
-Development order is owned by [`TODO.md`](../TODO.md#release-ladder), not this diagram. The owner
-requires inherited Craft rectification and acceptance before adding capabilities:
+### Feasibility boundaries
+
+These qualify implementation promises; they do not remove the corresponding product goal.
+
+| Broad claim to avoid | Executable alternative |
+|---|---|
+| All plugin formats run unchanged | Import compatible Skill/MCP/data contributions; verify executable hooks, UI and native dependencies per adapter. Unsupported parts remain explicit. |
+| Every document format round-trips losslessly | Declare tested features/fidelity per native adapter; preserve the source and use a named conversion or supported native-app route where needed. |
+| A login or model name enables every media/subscription capability | Verify account entitlement, modality, protocol and executor separately on the actual route. |
+| A retry can always avoid a second charge | Use provider idempotency/receipt lookup when available; unknown accepted effects stop for reconciliation. Local transactions cannot force remote exactly-once behavior. |
+| Every prompt source has exact token/cost attribution | Keep provider counters exact at their supplied scope; label source breakdown estimates and missing coverage. Do not turn correlation into a per-tool bill. |
+| One Mac build proves three-platform support | Verify each native runtime/worker/format path and package on the declared target platform. |
+| An Agent can operate a page because it can describe its screenshot | Bind the target and shared domain operation, then verify committed state and page refresh; GUI fallback is not native operation parity. |
+
+Development order is owned by [`TODO.md`](../TODO.md#current-work--zcode-baseline-and-model-boundary-ov-027).
+OV-067 makes kernel engineering the first integration stage. Dependency order is:
 
 ```text
-corrected and accepted Craft baseline (R0 with required R1/R2 corrections)
-  → Component/panel foundation with real Files + Notes consumers
-  → first production chain using existing authorities (R3)
-  → action and artifact contracts extracted from that chain (R4/R5)
-  → delegation, workflows and native domain loops at their roadmap anchors
+kernel ownership/admission/permissions/recovery + native executor → page operations and media
+  → Project/cost views → local app-plugin host + native document suite
+  → canvas/media/workflow composition → broader adapters and distribution
 ```
 
-The foundation follows the baseline exit in `modules/baseline.md` and precedes domain
-Components. It adds a real Notes UI over the surviving RPC; it must not claim Notes is already
-mounted. It needs no blanket R4–R9, public catalog or memory prerequisite. Later Action,
-ArtifactRef and Job contracts are introduced only with their real producers and consumers.
+Audit, reference comparison and documentation happen within each delivery. The first shared
+operation extends existing Provider writers; the first document package extends the selected
+installer and native editor. Extract Action/Job interfaces from those real producers/consumers,
+not a universal framework built before them. The retained Craft map is preservation evidence.
 
 Consequences:
 
@@ -212,8 +266,9 @@ An interruption may add a settlement/recovery event, but it never fabricates a s
 - Generated output is complete only when native bytes, required metadata/provenance, and attributed
   evidence agree. Safe order: bounded temporary output → validate → version/lease recheck → native
   commit → metadata/evidence commit → success.
-- If bytes commit but metadata/evidence fails, the output is quarantined/reconciling; retry must
-  detect the prior commit and must not duplicate bytes, billing, or provenance.
+- If bytes commit but metadata/evidence fails, expose reconciliation and reuse the native receipt.
+  Remote effects without idempotency/queryable receipts remain unknown and are not blindly retried.
+  One database transaction cannot atomically commit a remote provider and every native file store.
 - A lease coordinates writers but never grants permission. Approval precedes the lease; execution
   rechecks the resource version after acquiring it; recovery refuses to overwrite newer state.
 
@@ -279,8 +334,9 @@ historical `usable` claim — current tree and current closed-loop evidence alon
 ## 4. Execution integrity (the anti-drift system)
 
 The system must prevent an agent from improving its own proxy task while losing the user's actual
-outcome. Enforcement extends the existing Task, Session, SessionEvent, PreToolUse, TaskRunner, and
-UsageTracker authorities — it is not a new task system. Decisions C7–C11 define the semantics; this
+outcome. Enforcement extends the selected Host's Session, admission, tool permission, workflow
+journal and usage owners — it is not a new task system. Craft TaskRunner remains a retained
+comparison, not another candidate authority. Decisions C7–C11 define the semantics; this
 section defines the failure models. **Until the mechanized gates ship (roadmap R6), every agent
 applies these rules procedurally — they bind today.**
 
@@ -371,7 +427,7 @@ A capability is complete only when all applicable parts form one real loop:
 3. attributable evidence, failure, cancellation, retry, and recovery truth;
 4. real producer and consumer for every shared contract;
 5. targeted non-visual verification plus owner acceptance for routine rendered/click behavior;
-6. no parallel authority where Craft already owns the state class;
+6. no competing logical authority where the selected host or native domain already owns the state;
 7. the contract version, acceptance criteria, and evaluator were not silently changed during the
    attempt; optional evidence failure did not expand implementation scope;
 8. status uses only `usable` · `wired but not visually checked` · `display-only` · `not implemented`.
@@ -408,31 +464,9 @@ Git reset/stash/checkout is never a file-undo implementation.
 
 ## Core authorities
 
-This folder is a navigation index. Each topic keeps one canonical document, linked below.
-
-### Core authorities
-
-- [Product boundary](product.md)
-- [Product explanation](product.md#vision)
-- [Decision ledger](decisions.md)
-- [Non-negotiables](decisions.md#hard-constraints)
-- [Architecture](architecture.md)
-- [Roadmap](../TODO.md#release-ladder)
-- [Code map](#code-map)
-- [Craft capability map](capabilities.md#craft-capability-map)
-- [Quality](engineering.md#quality-verification-and-acceptance)
-- [Glossary](product.md#glossary)
-- [Product matrix](capabilities.md#product-matrix)
-- [Page architecture](capabilities.md#page-structure)
-- [Orchestration](modules/agent-core.md#orchestration)
-- [Module architecture and compatibility](engineering.md#module-compatibility-gates)
-- [Independent system suites](capabilities.md#capability-register)
-- [Token economy and harness efficiency](modules/context.md)
-
-### Core authority rule
-
-This index is navigation only. A core document has one canonical location; a module must consume
-the core authority through an explicit seam and must not copy its state or decision logic.
+[Product](product.md) owns meaning, [Decisions](decisions.md) owns durable choices,
+[Capabilities](capabilities.md) owns delivery status and [TODO](../TODO.md) owns active order.
+Module contracts consume these authorities; research and code maps do not create another queue.
 
 ## Code map
 

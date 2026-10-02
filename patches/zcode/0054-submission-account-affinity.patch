@@ -1,0 +1,766 @@
+diff --git a/packages/shared/src/zcode-protocol-v4/command.ts b/packages/shared/src/zcode-protocol-v4/command.ts
+--- a/packages/shared/src/zcode-protocol-v4/command.ts
++++ b/packages/shared/src/zcode-protocol-v4/command.ts
+@@ -50,6 +50,7 @@
+         text: z.string(),
+         attachments: z.array(attachmentRefSchema).optional(),
+         modelSelection: modelSelectionSchema.optional(),
++        subscriptionAccountId: z.string().min(1).optional(),
+         mode: submissionModeSchema.optional(),
+         planEnabled: z.boolean().optional(),
+       })
+@@ -72,6 +73,7 @@
+         text: z.string().trim().min(1),
+         // 提交推荐只覆盖新 child 的完整选择，缺省保留父 runtime 继承。
+         modelSelection: modelSelectionSchema.optional(),
++        subscriptionAccountId: z.string().min(1).optional(),
+       })
+       .optional(),
+   }),
+@@ -98,6 +100,8 @@
+       modelSelection: modelSelectionSchema.optional(),
+       /** Optional image-description backend, frozen with this submission before queue admission. */
+       visionModelSelection: modelSelectionSchema.optional(),
++      /** Host-captured subscription identity for this submission; no credentials travel here. */
++      subscriptionAccountId: z.string().min(1).optional(),
+       mode: submissionModeSchema.optional(),
+       planEnabled: z.boolean().optional(),
+       // 本次执行仍使用上面的标准 Selection；这里只携带不持久化语义、动态鉴权和 child 策略。
+@@ -138,6 +142,7 @@
+     text: z.string(),
+     displayText: z.string().optional(),
+     modelSelection: modelSelectionSchema.optional(),
++    subscriptionAccountId: z.string().min(1).optional(),
+     mode: submissionModeSchema.optional(),
+     planEnabled: z.boolean().optional(),
+     heldQueueDisposition: z.enum(["clearQueueAndSend", "keepQueueAndSend"]).optional(),
+diff --git a/packages/shared/src/zcode-protocol-v4/input-intent.ts b/packages/shared/src/zcode-protocol-v4/input-intent.ts
+--- a/packages/shared/src/zcode-protocol-v4/input-intent.ts
++++ b/packages/shared/src/zcode-protocol-v4/input-intent.ts
+@@ -48,6 +48,7 @@
+     // optional 只服务旧 snapshot hydration；新 admission 必须填入完整 Submission。
+     modelSelection: modelSelectionSchema.optional(),
+     visionModelSelection: modelSelectionSchema.optional(),
++    subscriptionAccountId: z.string().min(1).optional(),
+     mode: submissionModeSchema.optional(),
+     planEnabled: z.boolean().optional(),
+     sharedContextRefs: z.array(sharedContextRefSchema).max(1).optional(),
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/session.port.ts
+@@ -290,6 +290,8 @@
+   modelSelection?: ModelSelection;
+   /** User-chosen image-description backend, frozen at the same admission boundary. */
+   visionModelSelection?: ModelSelection;
++  /** Account identity fixed at submission admission; the Host still owns live credentials. */
++  subscriptionAccountId?: string;
+   /** 与本次用户 Submission 一起固定的协作模式。 */
+   mode?: "build" | "edit" | "plan" | "yolo";
+   admissionSeq: number;
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/input-intent.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/input-intent.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/input-intent.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/input-intent.ts
+@@ -9,6 +9,7 @@
+   text: string;
+   modelSelection?: ModelSelection;
+   visionModelSelection?: ModelSelection;
++  subscriptionAccountId?: string;
+   mode?: SubmissionMode;
+   planEnabled?: boolean;
+   sourceCommandId?: string;
+@@ -32,6 +33,7 @@
+     attachmentRefs?: readonly AttachmentRef[];
+     modelSelection?: ModelSelection;
+     visionModelSelection?: ModelSelection;
++    subscriptionAccountId?: string;
+     mode?: SubmissionMode;
+     planEnabled?: boolean;
+     sharedContextRefs?: TurnInputIntentMetadata["sharedContextRefs"];
+@@ -54,6 +56,9 @@
+     ...(options.modelSelection ? { modelSelection: options.modelSelection } : {}),
+     ...(options.visionModelSelection
+       ? { visionModelSelection: options.visionModelSelection }
++      : {}),
++    ...(options.subscriptionAccountId
++      ? { subscriptionAccountId: options.subscriptionAccountId }
+       : {}),
+     ...(options.mode ? { mode: options.mode } : {}),
+     ...(options.planEnabled !== undefined ? { planEnabled: options.planEnabled } : {}),
+@@ -92,6 +97,9 @@
+     ...(canonical.visionModelSelection
+       ? { visionModelSelection: canonical.visionModelSelection }
+       : {}),
++    ...(canonical.subscriptionAccountId
++      ? { subscriptionAccountId: canonical.subscriptionAccountId }
++      : {}),
+     ...(canonical.mode ? { mode: canonical.mode } : {}),
+     ...(canonical.planEnabled !== undefined ? { planEnabled: canonical.planEnabled } : {}),
+     admissionSeq: admission.admissionSeq,
+@@ -128,6 +136,9 @@
+     ...(item.visionModelSelection
+       ? { visionModelSelection: item.visionModelSelection }
+       : {}),
++    ...(item.subscriptionAccountId
++      ? { subscriptionAccountId: item.subscriptionAccountId }
++      : {}),
+     ...(item.mode ? { mode: item.mode } : {}),
+     ...(item.planEnabled !== undefined ? { planEnabled: item.planEnabled } : {}),
+     admissionSeq: item.order.admissionSeq,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-flow.ts
+@@ -199,6 +199,9 @@
+       ...submittedExecutionState,
+       ...(payload.visionModelSelection
+         ? { visionModelSelection: payload.visionModelSelection }
++        : {}),
++      ...(payload.subscriptionAccountId
++        ? { subscriptionAccountId: payload.subscriptionAccountId }
+         : {}),
+     });
+   const routingMode = host.getInputRoutingMode?.(envelope.sessionId ?? "") ?? null;
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts
+@@ -256,7 +256,13 @@
+     );
+   }
+   const submissionIntent = (options: Parameters<typeof inputIntentMetadata>[1]) =>
+-    inputIntentMetadata(envelope, { ...options, ...submittedExecutionState });
++    inputIntentMetadata(envelope, {
++      ...options,
++      ...submittedExecutionState,
++      ...(payload.subscriptionAccountId
++        ? { subscriptionAccountId: payload.subscriptionAccountId }
++        : {}),
++    });
+   const routingMode = host.getInputRoutingMode?.(record.app.sessionId) ?? null;
+   if (record.activeAbortController || routingMode === "enqueue" || routingMode === "guide") {
+     // /goal 是目标控制命令，active turn 中不能直接写 target；
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-mgmt.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-mgmt.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-mgmt.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/session-mgmt.ts
+@@ -91,6 +91,9 @@
+         requestedDelivery: "startNow",
+         attachmentRefs: payload.firstInput.attachments,
+         ...resolveSubmittedExecutionState(record, payload.firstInput),
++        ...(payload.firstInput.subscriptionAccountId
++          ? { subscriptionAccountId: payload.firstInput.subscriptionAccountId }
++          : {}),
+       });
+       const started = await startPromptTurn(host, record, {
+         content: payload.firstInput.text,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/selection-side-session.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/selection-side-session.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/selection-side-session.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/selection-side-session.ts
+@@ -46,6 +46,10 @@
+       intent: inputIntentMetadata(envelope, {
+         text: firstInput.text,
+         requestedDelivery: "startNow",
++        ...(firstInput.modelSelection ? { modelSelection: firstInput.modelSelection } : {}),
++        ...(firstInput.subscriptionAccountId
++          ? { subscriptionAccountId: firstInput.subscriptionAccountId }
++          : {}),
+       }),
+     });
+     const input = {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/fork-edit-retry.ts
+@@ -356,6 +356,7 @@
+       fallbackReasonCode: editTarget.intent.fallbackReasonCode,
+       modelSelection: editTarget.intent.modelSelection,
+       visionModelSelection: editTarget.intent.visionModelSelection,
++      subscriptionAccountId: editTarget.intent.subscriptionAccountId,
+       mode: editTarget.intent.mode,
+       planEnabled: editTarget.intent.planEnabled,
+       attachmentRefs,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/event-normalizer.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/event-normalizer.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/event-normalizer.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/event-normalizer.ts
+@@ -87,6 +87,7 @@
+   fallbackReasonCode?: string;
+   modelSelection?: TurnInputIntentMetadata["modelSelection"];
+   visionModelSelection?: TurnInputIntentMetadata["visionModelSelection"];
++  subscriptionAccountId?: TurnInputIntentMetadata["subscriptionAccountId"];
+   mode?: TurnInputIntentMetadata["mode"];
+   planEnabled?: boolean;
+   provenance?: {
+@@ -284,6 +285,9 @@
+     ...(payload.intent?.modelSelection ? { modelSelection: payload.intent.modelSelection } : {}),
+     ...(payload.intent?.visionModelSelection
+       ? { visionModelSelection: payload.intent.visionModelSelection }
++      : {}),
++    ...(payload.intent?.subscriptionAccountId
++      ? { subscriptionAccountId: payload.intent.subscriptionAccountId }
+       : {}),
+     ...(payload.intent?.mode ? { mode: payload.intent.mode } : {}),
+     ...(payload.intent?.planEnabled !== undefined
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+@@ -321,6 +321,7 @@
+     fallbackReasonCode?: string;
+     modelSelection?: TurnInputIntentMetadata["modelSelection"];
+     visionModelSelection?: TurnInputIntentMetadata["visionModelSelection"];
++    subscriptionAccountId?: TurnInputIntentMetadata["subscriptionAccountId"];
+     mode?: TurnInputIntentMetadata["mode"];
+     planEnabled?: boolean;
+     provenance?: CanonicalUserIntentFact["provenance"];
+@@ -2110,6 +2111,9 @@
+                 ...(fact.visionModelSelection
+                   ? { visionModelSelection: fact.visionModelSelection }
+                   : {}),
++                ...(fact.subscriptionAccountId
++                  ? { subscriptionAccountId: fact.subscriptionAccountId }
++                  : {}),
+                 ...(fact.mode ? { mode: fact.mode } : {}),
+                 ...(fact.planEnabled !== undefined ? { planEnabled: fact.planEnabled } : {}),
+                 ...(fact.provenance ? { provenance: fact.provenance } : {}),
+@@ -3418,6 +3422,8 @@
+       modelSelection: payload.intent?.modelSelection ?? existing?.modelSelection,
+       visionModelSelection:
+         payload.intent?.visionModelSelection ?? existing?.visionModelSelection,
++      subscriptionAccountId:
++        payload.intent?.subscriptionAccountId ?? existing?.subscriptionAccountId,
+       mode: payload.intent?.mode ?? existing?.mode,
+       planEnabled: payload.intent?.planEnabled ?? existing?.planEnabled,
+       sharedContextRefs: payload.intent?.sharedContextRefs ?? existing?.sharedContextRefs,
+@@ -3553,6 +3559,9 @@
+           ...(queueItem.modelSelection ? { modelSelection: queueItem.modelSelection } : {}),
+           ...(queueItem.visionModelSelection
+             ? { visionModelSelection: queueItem.visionModelSelection }
++            : {}),
++          ...(queueItem.subscriptionAccountId
++            ? { subscriptionAccountId: queueItem.subscriptionAccountId }
+             : {}),
+           ...(queueItem.mode ? { mode: queueItem.mode } : {}),
+           ...(queueItem.planEnabled !== undefined ? { planEnabled: queueItem.planEnabled } : {}),
+@@ -3648,6 +3657,9 @@
+                   : {}),
+                 ...(item.intent?.visionModelSelection
+                   ? { visionModelSelection: item.intent.visionModelSelection }
++                  : {}),
++                ...(item.intent?.subscriptionAccountId
++                  ? { subscriptionAccountId: item.intent.subscriptionAccountId }
+                   : {}),
+                 ...(item.intent?.mode ? { mode: item.intent.mode } : {}),
+                 ...(item.intent?.planEnabled !== undefined
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/transcript-hydration.ts
+@@ -397,6 +397,9 @@
+       ...(value.modelSelection ? { modelSelection: value.modelSelection } : {}),
+       ...(value.visionModelSelection
+         ? { visionModelSelection: value.visionModelSelection }
++        : {}),
++      ...(value.subscriptionAccountId
++        ? { subscriptionAccountId: value.subscriptionAccountId }
+         : {}),
+       ...(value.mode ? { mode: value.mode } : {}),
+       ...(value.planEnabled !== undefined ? { planEnabled: value.planEnabled } : {}),
+diff --git a/apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts b/apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts
+@@ -0,0 +1,46 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import {
++  commandPayloadSchemas,
++  conversationInputIntentSchema,
++  queueItemSchema,
++} from "@zcode/shared/zcode-protocol-v4";
++import { inputIntentMetadataFromQueueItem } from "../src/zcode-protocol-v4/commands/input-intent.js";
++import { buildPersistedConversationInputIntent } from "../../core/src/runtime/methods/input-intent-persistence.js";
++
++test("queued subscription input retains the submitted account through promotion and persistence", () => {
++  const item = queueItemSchema.parse({
++    sourceCommandId: "command-1",
++    queueItemId: "queue-1",
++    clientId: "desktop",
++    kind: "sendText",
++    text: "Continue",
++    attachments: [],
++    modelSelection: { providerId: "chatgpt", modelId: "gpt-6-sol" },
++    subscriptionAccountId: "account-a",
++    delivery: { requested: "queue", admitted: "queue" },
++    order: { admissionSeq: 2, queuePosition: 0 },
++    steer: { state: "notRequested" },
++    dispatch: { state: "queued" },
++    admittedAt: Date.now(),
++  });
++  const promoted = inputIntentMetadataFromQueueItem(item, item.text);
++  assert.equal(promoted.subscriptionAccountId, "account-a");
++  const persisted = buildPersistedConversationInputIntent(item.text, promoted, "drained");
++  assert.equal(persisted?.subscriptionAccountId, "account-a");
++  assert.equal(
++    conversationInputIntentSchema.parse(persisted).subscriptionAccountId,
++    "account-a",
++  );
++  assert.equal(
++    commandPayloadSchemas.createSession.parse({
++      workspaceId: "workspace",
++      firstInput: {
++        text: "First",
++        modelSelection: item.modelSelection,
++        subscriptionAccountId: "account-a",
++      },
++    }).firstInput?.subscriptionAccountId,
++    "account-a",
++  );
++});
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/input-intent-persistence.ts b/apps/zcode-cli/packages/core/src/runtime/methods/input-intent-persistence.ts
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/input-intent-persistence.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/input-intent-persistence.ts
+@@ -31,6 +31,9 @@
+     attachments: intent.attachmentRefs ?? [],
+     ...(intent.modelSelection ? { modelSelection: intent.modelSelection } : {}),
+     ...(intent.visionModelSelection ? { visionModelSelection: intent.visionModelSelection } : {}),
++    ...(intent.subscriptionAccountId
++      ? { subscriptionAccountId: intent.subscriptionAccountId }
++      : {}),
+     ...(intent.mode ? { mode: intent.mode } : {}),
+     ...(intent.planEnabled !== undefined ? { planEnabled: intent.planEnabled } : {}),
+     ...(intent.sharedContextRefs ? { sharedContextRefs: intent.sharedContextRefs } : {}),
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts b/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/model-runtime-headers.ts
+@@ -1,8 +1,17 @@
+ import { traceContextToLogContext } from "../deps.js";
+ import type { ModelRequestAuth } from "@zcode/contracts";
+ import type { ZCodeProviderAccountAccess } from "@zcode/shared";
++import type { ModelSelection } from "@zcode/shared";
+ import type { Model, TraceContext } from "../deps.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
++
++/** A submission pins identity only; each physical attempt still asks the Host for fresh auth. */
++export function subscriptionAccountsForSubmission(
++  selection: ModelSelection | undefined,
++  accountId: string | undefined,
++): Map<string, string> {
++  return new Map(selection && accountId ? [[selection.providerId, accountId]] : []);
++}
+ 
+ async function waitForAccountBinding(
+   binding: Promise<string | undefined>,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn.ts
+@@ -65,6 +65,7 @@
+ import { applySubmissionExecutionState, createTurnModel } from "./turn-model.js";
+ import { rebuildContextPrefix } from "./context-refresh.js";
+ import { applyTurnVisionBridge } from "./vision-bridge.js";
++import { subscriptionAccountsForSubmission } from "./model-runtime-headers.js";
+ 
+ const TARGET_RUN_HEARTBEAT_MS = 15_000;
+ 
+@@ -269,6 +270,12 @@
+       activeTurn = this.beginActiveTurn(turnId, turnTraceContext, "regular", true, {
+         ...(options?.inputId === undefined ? {} : { inputId: options.inputId }),
+       });
++      if (options?.intent?.subscriptionAccountId && admittedModelSelection) {
++        activeTurn.subscriptionAccounts = subscriptionAccountsForSubmission(
++          admittedModelSelection,
++          options.intent.subscriptionAccountId,
++        );
++      }
+       this.logger?.info("Turn started", {
+         ...traceContextToLogContext(turnTraceContext),
+         event: "turn.started",
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-guide-drain.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-guide-drain.ts
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-guide-drain.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-guide-drain.ts
+@@ -4,6 +4,7 @@
+ import { rebuildContextPrefix } from "./context-refresh.js";
+ import { appendTurnRequestEntries } from "./turn-output-token-continuation.js";
+ import { applyRuntimeExecutionState } from "../execution-state.js";
++import { subscriptionAccountsForSubmission } from "./model-runtime-headers.js";
+ 
+ /**
+  * 在合法的 model-step 边界最多消费一条 guide，并准备下一次 provider request。
+@@ -26,7 +27,10 @@
+ 
+   // 用户新提交的 Guide 在安全边界接纳；固定执行的子任务仍沿用本轮账号。
+   if (state.modelSelectionScope !== "execution" && drained.intent?.modelSelection) {
+-    activeTurn.subscriptionAccounts = new Map();
++    activeTurn.subscriptionAccounts = subscriptionAccountsForSubmission(
++      drained.intent.modelSelection,
++      drained.intent.subscriptionAccountId,
++    );
+   }
+ 
+   state.drainedSteerForNextRequest = drained;
+diff --git a/apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts b/apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts
+--- a/apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts
++++ b/apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts
+@@ -1,6 +1,9 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { createRefreshRuntimeHeadersBeforeModelAttempt } from "../src/runtime/methods/model-runtime-headers.js";
++import {
++  createRefreshRuntimeHeadersBeforeModelAttempt,
++  subscriptionAccountsForSubmission,
++} from "../src/runtime/methods/model-runtime-headers.js";
+ 
+ const request = { subscriptionAccess: { provider: "openai-codex" as const }, attempt: 0 };
+ function fixture() {
+@@ -39,6 +42,16 @@
+   f.runtime.activeTurn = { turnId: "turn-b" };
+   await f.callback("turn-b")(request);
+   assert.deepEqual(f.calls, ["account-a", "account-a", "account-b"]);
++});
++test("an admitted submission uses its captured account even before the first model request", async () => {
++  const f = fixture();
++  f.runtime.activeTurn.subscriptionAccounts = subscriptionAccountsForSubmission(
++    { providerId: "provider", modelId: "model" },
++    "account-a",
++  );
++  f.select("account-b");
++  await f.callback()(request);
++  assert.deepEqual(f.calls, ["account-a"]);
+ });
+ test("a late credential reply cannot enter a replacement turn", async () => {
+   const f = fixture();
+diff --git a/packages/services/src/model-provider/subscriptionAccountCapture.ts b/packages/services/src/model-provider/subscriptionAccountCapture.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/services/src/model-provider/subscriptionAccountCapture.ts
+@@ -0,0 +1,21 @@
++import type { ProviderSettingsView } from "@zcode/provider";
++import type { SavedConnection, SubscriptionKind } from "./subscriptionConnectionTypes.js";
++
++/** Read identity under the existing account lock; no OAuth material enters the command. */
++export async function captureSubscriptionAccountId(
++  id: string,
++  getView: () => Promise<ProviderSettingsView>,
++  withConnectionLock: <T>(id: string, operation: () => Promise<T>) => Promise<T>,
++  driver: (id: string) => Promise<{ kind: SubscriptionKind }>,
++  load: (id: string, kind: SubscriptionKind) => Promise<SavedConnection | undefined>,
++): Promise<string | undefined> {
++  const provider = (await getView()).providers.find((entry) => entry.providerId === id);
++  if (provider?.effectiveConfig.access?.type !== "subscription") return undefined;
++  return withConnectionLock(id, async () => {
++    const { kind } = await driver(id);
++    const saved = await load(id, kind);
++    const active = saved?.accounts?.find((account) => account.id === saved.activeAccountId);
++    if (!active) throw new Error("Connect this subscription account before sending");
++    return active.id;
++  });
++}
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -8,6 +8,7 @@
+   readAdapterSubscriptionCatalog,
+ } from "./subscriptionCatalog.js";
+ import { subscriptionLoginInteraction } from "./subscriptionLoginInteraction.js";
++import { captureSubscriptionAccountId } from "./subscriptionAccountCapture.js";
+ import { accountsView, parseSavedConnection, requestAuth } from "./subscriptionRecords.js";
+ import { createSubscriptionUsageReader } from "./subscriptionUsageCache.js";
+ import { createSubscriptionCatalogReader } from "./subscriptionCatalogCache.js";
+@@ -157,15 +158,13 @@
+   }
+ 
+   return {
++    captureAccountId: (id) =>
++      captureSubscriptionAccountId(id, options.getView, options.withConnectionLock, driver, load),
+     async usage(id, refresh = false, accountId) {
+       return usageReader.read(id, (await driver(id)).kind, refresh, accountId);
+     },
+-    async resetCredits(id, accountId) {
+-      return resetActions.read(id, accountId);
+-    },
+-    async consumeResetCredit(id, request) {
+-      return resetActions.consume(id, request);
+-    },
++    resetCredits: (id, accountId) => resetActions.read(id, accountId),
++    consumeResetCredit: (id, request) => resetActions.consume(id, request),
+     async accounts(id) {
+       const { kind } = await driver(id);
+       return accountsView(await load(id, kind));
+@@ -292,7 +291,6 @@
+       });
+       const flow = { id: flowId, controller, done: settled, submit: bridge.submit };
+       flows.set(id, flow);
+-      // Attach immediately: login may fail before the renderer receives a flow ID.
+       void settled.catch((error: unknown) => ready.reject(error));
+       controller.signal.addEventListener(
+         "abort",
+@@ -343,7 +341,6 @@
+     },
+     async resolve(id, expectedKind, modelId, recovery, preference) {
+       const { kind } = await driver(id, expectedKind);
+-      // Coalesce only identical requests. A recovery cursor must never receive the default account.
+       const refreshKey = `${id}:${createHash("sha256")
+         .update(JSON.stringify([modelId, recovery, preference]))
+         .digest("hex")}`;
+diff --git a/packages/services/src/model-provider/subscriptionConnectionTypes.ts b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+--- a/packages/services/src/model-provider/subscriptionConnectionTypes.ts
++++ b/packages/services/src/model-provider/subscriptionConnectionTypes.ts
+@@ -30,6 +30,8 @@
+ export type SubscriptionRecovery = ZCodeSubscriptionRecovery;
+ 
+ export interface SubscriptionConnectionOwner {
++  /** Capture only the selected identity for a submission; credentials remain in this owner. */
++  captureAccountId(providerId: string): Promise<string | undefined>;
+   resetCredits(providerId: string, accountId: string): Promise<CodexResetCredits>;
+   consumeResetCredit(providerId: string, request: CodexResetRequest): Promise<CodexResetResult>;
+   usage(
+diff --git a/packages/services/src/zcode-agent/subscriptionCommandAdmission.ts b/packages/services/src/zcode-agent/subscriptionCommandAdmission.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/services/src/zcode-agent/subscriptionCommandAdmission.ts
+@@ -0,0 +1,38 @@
++import { commandPayloadSchemas, type CommandEnvelope } from "@zcode/shared/zcode-protocol-v4";
++
++/** Replace client-supplied account IDs with the Host owner's current identity before CLI admission. */
++export async function bindSubscriptionAccountAtAdmission(
++  envelope: CommandEnvelope,
++  capture?: (providerId: string) => Promise<string | undefined>,
++): Promise<CommandEnvelope> {
++  if (envelope.type === "createSession" || envelope.type === "createSelectionSideSession") {
++    const payload = commandPayloadSchemas[envelope.type].parse(envelope.payload);
++    if (!payload.firstInput) return envelope;
++    const { subscriptionAccountId: _untrusted, ...firstInput } = payload.firstInput;
++    const accountId = firstInput.modelSelection
++      ? await capture?.(firstInput.modelSelection.providerId)
++      : undefined;
++    return {
++      ...envelope,
++      payload: {
++        ...payload,
++        firstInput: {
++          ...firstInput,
++          ...(accountId ? { subscriptionAccountId: accountId } : {}),
++        },
++      },
++    };
++  }
++  if (envelope.type === "sendText" || envelope.type === "sendGoalCommand") {
++    const payload = commandPayloadSchemas[envelope.type].parse(envelope.payload);
++    const { subscriptionAccountId: _untrusted, ...submitted } = payload;
++    const accountId = submitted.modelSelection
++      ? await capture?.(submitted.modelSelection.providerId)
++      : undefined;
++    return {
++      ...envelope,
++      payload: { ...submitted, ...(accountId ? { subscriptionAccountId: accountId } : {}) },
++    };
++  }
++  return envelope;
++}
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -7,6 +7,7 @@
+ /* oxlint-disable eslint(max-lines) -- ZCode Protocol transport、通知 wiring 和 app-facing session 方法必须共享同一个 client/emitter 上下文。 */
+ import { randomUUID } from "node:crypto";
+ import { ensureIndependentPlanSupport } from "./independentPlanSupport.js";
++import { bindSubscriptionAccountAtAdmission } from "./subscriptionCommandAdmission.js";
+ import { mkdirSync } from "node:fs";
+ import { join } from "node:path";
+ import { Emitter } from "@zcode/rpc";
+@@ -873,6 +874,8 @@
+     recovery?: import("@zcode/shared").ZCodeSubscriptionRecovery,
+     preference?: { accountId?: string; speedMode?: "standard" | "fast" },
+   ) => Promise<AccountRequestAuthMaterial>;
++  /** Host-only read of the active subscription identity at user command admission. */
++  captureSubscriptionAccountId?: (providerId: string) => Promise<string | undefined>;
+   /** Desktop Host 请求 Main 登记 Agent 已授权的精确本地视频路径。 */
+   authorizeLocalMediaPreviewPath?: (path: string) => Promise<string>;
+   modelSelectionReadinessSource?: ModelSelectionReadinessSource;
+@@ -5096,7 +5099,10 @@
+           workspace: params,
+         });
+       }
+-      let envelope = await buildConversationCommandEnvelope(params);
++      let envelope = await bindSubscriptionAccountAtAdmission(
++        await buildConversationCommandEnvelope(params),
++        options?.captureSubscriptionAccountId,
++      );
+       // TTFT 首版只允许可信桌面本地 continuous，手机/远端透传不能开启本地观测。
+       if (
+         commandClientMode !== "desktop-continuous" ||
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -2054,6 +2054,8 @@
+           resolveOffPeakTaskService: () => offPeakTaskServiceForAgent,
+         };
+   const zcodeAgentService = createZCodeAgentService({
++    captureSubscriptionAccountId: (providerId) =>
++      subscriptionConnections.captureAccountId(providerId),
+     resolveSubscriptionAuth: async (id, kind, modelId, recovery, preference) => {
+       const auth = await subscriptionConnections.resolve(id, kind, modelId, recovery, preference);
+       if (!hostApiNetworkTransport.resolveSystemNetwork) return auth;
+diff --git a/packages/services/test/subscription-command-admission.test.ts b/packages/services/test/subscription-command-admission.test.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/services/test/subscription-command-admission.test.ts
+@@ -0,0 +1,92 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { CommandEnvelope } from "@zcode/shared/zcode-protocol-v4";
++import { bindSubscriptionAccountAtAdmission } from "../src/zcode-agent/subscriptionCommandAdmission.js";
++
++function command(type: CommandEnvelope["type"], payload: unknown): CommandEnvelope {
++  return {
++    type,
++    payload,
++    commandId: "command-1",
++    clientId: "desktop",
++    sessionId: "session-1",
++    issuedAt: 1,
++  };
++}
++
++test("Host replaces a forged account ID for queued, goal and first-message submissions", async () => {
++  const selection = { providerId: "chatgpt", modelId: "gpt-6-sol" };
++  const capture = async (providerId: string) => {
++    assert.equal(providerId, "chatgpt");
++    return "account-a";
++  };
++  for (const envelope of [
++    command("sendText", {
++      text: "Next",
++      requestedDelivery: "queue",
++      modelSelection: selection,
++      subscriptionAccountId: "forged",
++    }),
++    command("sendGoalCommand", {
++      text: "Goal",
++      modelSelection: selection,
++      subscriptionAccountId: "forged",
++    }),
++  ]) {
++    const bound = await bindSubscriptionAccountAtAdmission(envelope, capture);
++    assert.equal(
++      (bound.payload as { subscriptionAccountId?: string }).subscriptionAccountId,
++      "account-a",
++    );
++  }
++  for (const type of ["createSession", "createSelectionSideSession"] as const) {
++    const payload =
++      type === "createSession"
++        ? {
++            workspaceId: "workspace",
++            firstInput: {
++              text: "First",
++              modelSelection: selection,
++              subscriptionAccountId: "forged",
++            },
++          }
++        : {
++            firstInput: {
++              text: "First",
++              modelSelection: selection,
++              subscriptionAccountId: "forged",
++            },
++          };
++    const bound = await bindSubscriptionAccountAtAdmission(command(type, payload), capture);
++    assert.equal(
++      (bound.payload as { firstInput?: { subscriptionAccountId?: string } }).firstInput
++        ?.subscriptionAccountId,
++      "account-a",
++    );
++  }
++});
++
++test("Host drops an untrusted identity when the submission has no selected subscription account", async () => {
++  const withoutSelection = await bindSubscriptionAccountAtAdmission(
++    command("sendText", { text: "Next", subscriptionAccountId: "forged" }),
++    async () => {
++      throw new Error("must not capture without a model");
++    },
++  );
++  assert.equal(
++    (withoutSelection.payload as { subscriptionAccountId?: string }).subscriptionAccountId,
++    undefined,
++  );
++  const api = await bindSubscriptionAccountAtAdmission(
++    command("sendText", {
++      text: "Next",
++      modelSelection: { providerId: "deepseek", modelId: "deepseek-chat" },
++      subscriptionAccountId: "forged",
++    }),
++    async () => undefined,
++  );
++  assert.equal(
++    (api.payload as { subscriptionAccountId?: string }).subscriptionAccountId,
++    undefined,
++  );
++});
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -133,6 +133,44 @@
+   await f.owner.disconnect("one");
+   await assert.rejects(f.owner.resolve("one"), /Sign in/);
+   assert.equal((await f.owner.resolve("two")).apiKey, "bob");
++});
++test("captured subscription identity survives a default switch and refuses a removed account", async () => {
++  const f = fixture();
++  f.credentials.set(
++    "model-subscription:one",
++    JSON.stringify({
++      kind: "openai-codex",
++      accounts: [
++        { id: "account-a", credential: token("alice") },
++        { id: "account-b", credential: token("bob") },
++      ],
++      activeAccountId: "account-a",
++      revision: "initial",
++    }),
++  );
++  const captured = await f.owner.captureAccountId("one");
++  await f.owner.updateAccounts("one", { select: "account-b" });
++  assert.equal(captured, "account-a");
++  assert.equal(await f.owner.captureAccountId("one"), "account-b");
++  const release = Promise.withResolvers<void>();
++  f.queues.set("one", release.promise);
++  const switching = f.owner.updateAccounts("one", { select: "account-a" });
++  const captureAfterSwitch = f.owner.captureAccountId("one");
++  release.resolve();
++  await switching;
++  assert.equal(await captureAfterSwitch, "account-a");
++  assert.equal(
++    (await f.owner.resolve("one", "openai-codex", undefined, undefined, { accountId: captured }))
++      .apiKey,
++    "alice",
++  );
++  await f.owner.updateAccounts("one", { remove: "account-a" });
++  await assert.rejects(
++    f.owner.resolve("one", "openai-codex", undefined, undefined, { accountId: captured }),
++    /no longer available/i,
++  );
++  f.states.set("api", { type: "api-key", provider: "openai-codex", connected: true } as any);
++  assert.equal(await f.owner.captureAccountId("api"), undefined);
+ });
+ test("disconnect prevents a late authorization response restoring credentials", async () => {
+   const f = fixture();
+diff --git a/packages/ui/src/v4/SessionPane.tsx b/packages/ui/src/v4/SessionPane.tsx
+--- a/packages/ui/src/v4/SessionPane.tsx
++++ b/packages/ui/src/v4/SessionPane.tsx
+@@ -1970,7 +1970,8 @@
+       );
+       const chosen = inherited ? await recommendStartPlan(inherited) : undefined;
+       if (chosen === null) return false;
+-      const modelSelection = chosen && chosen !== inherited ? chosen : undefined;
++      // The child may start after another account/model edit; submit the inherited choice too.
++      const modelSelection = chosen ?? inherited;
+       // 参数命令每次都是新 child；同一条文本在 ACK 未回时重试仍复用 pending，
+       // 不同文本则不能与 bare `/side` 或另一条 prompt 合并。
+       const pendingKey = `${selectionSideChatKey}\u0000prompt\u0000${text}`;
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -47,7 +47,7 @@
+     "architecture:report": "node scripts/architecture/architecture-check.mjs report",
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+-    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
++    "test:provider-subscriptions": "tsx --test packages/services/test/subscription-login-interaction.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",

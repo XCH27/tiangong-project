@@ -1,85 +1,78 @@
 # AGENTS.md — collaboration and code-development rules
 
-Mandatory entry for every executing agent. Read this file, then only the documents your task routes
-to. Do not preload the whole `docs/` tree.
+Mandatory entry for every executing agent. Read this file, then the documents your task routes
+to. A requested repository-wide documentation audit may traverse the whole set; ordinary tasks
+should not preload unrelated modules.
 
 ## Current boundary
 
-- `app/` is official Craft Agents v0.13.4 plus the bounded, declared entry corrections.
-  `scripts/check-upstream-delta.py` enforces zero undeclared difference from the pin; every change
-  you make must earn a line in
-  [`docs/UPSTREAM-DELTA.tsv`](docs/UPSTREAM-DELTA.tsv).
-- The owner's order is **documentation and preparation → joint walkthrough of original Craft →
-  approved rectification slices → implementation and acceptance → added capabilities.**
-- The owner reauthorized **one bounded R1 entry slice**: separate All Conversations and Board
-  navigation; place Release Notes under Settings → App → About; move the desktop Craft logo menu to the lower-left
-  footer, informed by ZCode. The upper-right Help button remains; the later owner direction removes
-  genuinely duplicate desktop menu entries and the Debug submenu after checking other access paths
-  and shortcuts. App Settings owns update check/install UI; developer tools keep their debug gate.
-  The latest owner-approved Settings correction **reuses the original left sidebar slot**: opening
-  Settings replaces its rows with Settings categories, and the top New Conversation row becomes
-  Back to Workspace. The selected form occupies the existing content panel; no extra sidebar or
-  drill-in page is mounted. The upper-right Help button retains Craft's topic menu and opens
-  packaged local Craft reference documents in its existing full-document reader; the native Help
-  action and contextual Learn More use the same local documents. Existing feature-page Agent
-  controls own contextual questions and edits. Page titles and ellipses
-  are reduced without changing Craft's visual values. The owner also authorized the Messaging
-  settings width correction and a source-backed review of additional IM channels. A channel is
-  not surfaced as connectable until receive, scope, permission, send and reconnect are real.
-  This does not authorize the old 11-item R1 plan,
-  Workspace removal, unrelated composer or right-panel work. Project unification (a project is a
-  folder; OV-024) and Agent operability of every feature are authorized. See
-  [`docs/modules/shell.md`](docs/modules/shell.md#active-entry-slice) and [`TODO.md`](TODO.md).
-- Later owner instructions separately authorize a model-connection correction across setup,
-  discovery, model/effort selection and runtime credentials. Keep it bounded to existing
-  connection, credential, Session and provider owners; do not infer model capabilities,
-  subscription allowances or Grok subscription login from API-key support. See
-  [`docs/modules/context.md`](docs/modules/context.md#model-connection-correction).
-- A 2026-09-22 attempt at this slice was rejected and reverted. The owner's words:
-  「你的很多修改是完全错误的，我只让你修改所有对话和项目等模块，你却随意修改了其他部份，而且你的UI
-  设计没有遵循原版的配色间距设计风格，交互逻辑和排版方案也没使用两个参考项目的，完全自己随意创建了
-  一套」. Rules 1–3 below exist so that does not happen again.
+- Fleet is a local-first workbench where people and Agents operate the same native artifacts.
+  Read [product](docs/product.md) before proposing scope or architecture. Coding benchmarks cover
+  only part of this product. Contextual Agent operation of feature pages is required baseline
+  behavior under OV-024/026/062, not an optional future assistant.
+- **Active candidate:** `.fleet/zcode`, reconstructed from ZCode `29628c9` and the ordered patches.
+  It uses ZCode `AgentRuntime` as Host with a Pi `AgentSession` loop (OV-069). Host owns requests,
+  tools, permissions and durable state; Pi defaults and extension autoload are not enabled. See
+  [candidate setup and verification](docs/engineering.md#zcode-candidate).
+- **Retained implementation:** `app/`, Craft v0.13.4 plus declared changes. Preserve its dirty work
+  and data. Its old R0/R1 restrictions and code maps describe that branch; they do not cancel later
+  owner-authorized ZCode work. Changes *to app/* still require `docs/UPSTREAM-DELTA.tsv` and its gates.
+- **Current order (OV-067):** implement and verify the execution/application kernel first, then
+  connect page-local Agent operations, generation, statistics, document plugins and canvas.
+  [TODO](TODO.md#delivery-order) owns the order. Source audit accompanies this engineering work.
+- OV-069 integrates the Pi AgentSession loop beneath the existing ZCode Host; it does not declare the
+  kernel complete. Native executor boundaries, admission, permissions, durable state and
+  recovery must be proved before feature-page expansion. Alternative sources remain bounded
+  references; a live authority/data cutover retains its explicit checkpoint.
+- The owner has authorized comprehensive source-backed audit and bounded rectification. Preserve
+  original useful interactions, current records and unrelated changes. Do not expand a bounded fix
+  into a new visual system, new service or data migration without its applicable checkpoint.
 
 ## Read this first
 
-[`docs/product.md`](docs/product.md) is the single authority on what Fleet is and is not.
-Where another document disagrees, it wins. In one line: **Craft Agents decides the look and the
-runtime base; Cindy decides how features are built and how surfaces talk to the backend; ZCode is
-the layout and interaction reference for the conversation shell and composer; OpenChamber decides
-Git and GitHub; the canvas, documents and video are Fleet's own.**
+Authority order: current owner instructions → `docs/product.md` for product meaning → applicable
+current decisions → module contracts. `TODO.md` owns execution order; the capability register owns
+status. References and research supply evidence only. If they disagree, reconcile the lower source
+instead of silently selecting whichever passage permits an action.
+
+ZCode is the selected reconstruction direction. Craft supplies contextual Agent interaction and
+useful Board/Pages behavior; Cindy supplies application-plugin comparisons; OpenChamber supplies
+Git/GitHub comparisons. These roles do not import several independent products' authorities.
 
 ## Rules
 
-1. **Port, do not invent.** Almost every surface already exists in Craft, and the surfaces being
-   rectified exist in Cindy or ZCode. Before writing a line, open the upstream component and the
-   reference component and diff them (see *Before you write UI*). Take their structure, layout and
-   interaction; apply only Craft's colour, spacing, radius, type and motion tokens. If you cannot
-   name why your version differs from the reference, the difference is an invention.
-2. **Change only what the slice names.** Do not touch neighbouring surfaces, shared styles or
-   unrelated behaviour. A change outside the slice needs its own approval.
-3. **Never create a second authority.** One Session store, one permission path, one timeline, one
-   task store, one settings home. Extend the existing owner.
-4. **Simplifying is not deleting.** A control, page or function that disappears must have a named
-   new home, declared as `L2` in `docs/UPSTREAM-DELTA.tsv`. `scripts/check-orphaned-components.py`
-   flags components upstream mounts and we do not.
-5. **Decide with evidence; ask only what is genuinely the owner's.** Research how Codex, Claude
-   Code, Cursor and the reference projects solve the problem, then propose the landing path. Do not
-   ask the owner how they want something designed. Report designs and landing plans for
-   confirmation before large implementation.
-6. **Keep the task fixed.** Do not silently change the request, acceptance, tests or harness.
-7. **Halt after two non-progressing attempts.** Preserve evidence and report the smallest next
-   decision.
-8. **Check reality first.** Existence, installation, running process, permission, input path —
-   cheapest checks first. A missing tool or preview is a classified limitation, not permission to
-   rebuild infrastructure.
-9. **Report status with the fixed vocabulary only:** `usable` · `wired but not visually checked` ·
-   `display-only` · `not implemented`. "Tests pass" is never a capability status.
-10. **Documentation serves implementation.** Update the canonical document whose contract changed;
-    absorb, relink, then delete superseded material. No dated progress reports, duplicate plans or
-    in-tree archives. Git history is the archive. Documentation is English-first; keep Chinese for
-    exact owner quotations and `zh-Hans` UI literals.
-11. **Do not dispatch sub-agents to decide design, layout or architecture**, and do not dispatch
-    them casually at all (owner: 「不要乱派子智能体」). They arrive without this context and invent.
+1. **Reuse before redesign.** Inspect the current component and its pinned original, then the
+   named reference. Before implementing each module, inspect the relevant vendors' official
+   clients/SDKs or published contracts and their plugin ecosystem. Record the actual request,
+   credential, persistence and recovery mechanisms in the existing reference record; screenshots
+   or matching field names are insufficient. Follow the [source intake gate](docs/engineering.md#source-intake-before-module-implementation).
+   Preserve the working interaction and host primitives. A new domain capability
+   may need new code; justify that gap and its consumers instead of inventing unrelated controls.
+2. **Keep scope and acceptance fixed.** Later messages steer the active work; they do not erase
+   earlier unfinished requirements. A discovered adjacent issue does not silently replace the task.
+3. **One owner per logical entity.** Human UI, Agent tools and automations invoke the same domain
+   operation. Native editor data/undo and an executor's opaque continuation state are legitimate
+   separate entities. Do not force all data into one database or duplicate Fleet Session/settings.
+4. **Retire without losing capability or data.** Name each removed control's new home or the owner's
+   explicit retirement. In `app/`, declare L2 in `UPSTREAM-DELTA.tsv`; in the candidate, preserve the
+   reviewable patch chain. Obsolete docs may be removed after unique content and links are absorbed.
+5. **Evidence must match the claim.** Distinguish source inspection, fake transport, real local
+   execution, live provider behavior and owner visual acceptance. None implies the next level.
+6. **Check reality first.** Verify the checkout, process, dependencies, permission and input path
+   before debugging. Missing optional evidence is not permission to rebuild unrelated infrastructure.
+7. **Stop a non-progressing approach after two attempts.** Preserve the observed failure and choose
+   the smallest evidence-backed alternative; ask only for a decision genuinely requiring the owner.
+8. **Use capability statuses precisely:** `usable`, `wired but not visually checked`, `display-only`,
+   `not implemented`. These describe capability delivery, not research quality or document completeness.
+9. **Keep documentation singular.** Product meaning, execution order, capability status, module
+   contracts, engineering, evidence and history have separate homes. English-first; Chinese remains
+   for exact owner quotations and UI literals. No dated progress reports or in-tree archives.
+10. **Primary owns integration.** Follow the owner's no-casual-delegation direction. OV-043 account
+    correction and the current NewMax frontend/backend/model-configuration study are primary-only.
+    The owner has stopped delegation for that study; its earlier worker authorization does not
+    permit further dispatch for that study. OV-080 authorizes parallel rectification in bounded,
+    disjoint code areas with explicit acceptance and cross-review; primary retains account work,
+    product/layout decisions, integration and final running verification.
 
 ## Routing — read before you touch
 
@@ -90,11 +83,14 @@ and execution rows. Read the module first, and the shared documents only for wha
 | Before you touch… | Read |
 |---|---|
 | **Anything rendered** — a value, layout, motion | [`DESIGN.md`](DESIGN.md), then the module — mandatory before UI code |
-| Sidebar, navigation, Workspace/Project, new conversation, composer, right panel (paused R1) | [`docs/modules/shell.md`](docs/modules/shell.md) |
-| Updater, hosted Pages, telemetry, help, OAuth relays, branding (R2) | [`docs/modules/services.md`](docs/modules/services.md), then [packaging](docs/engineering.md#building-and-packaging) |
-| The walkthrough, baseline exit, or any original-Craft behaviour (R0) | [`docs/modules/baseline.md`](docs/modules/baseline.md) |
+| Sidebar, navigation, Project, new conversation, composer and right panel | [`docs/modules/shell.md`](docs/modules/shell.md) |
+| Updater, hosted Pages, telemetry, help, OAuth relays, branding (R2) | [`docs/modules/services.md`](docs/modules/services.md), then [packaging](docs/packaging.md) |
+| Retained Craft walkthrough, baseline evidence or original-Craft behavior | [`docs/modules/baseline.md`](docs/modules/baseline.md) |
 | Sessions, permissions, actions, tasks, orchestration | [`docs/modules/agent-core.md`](docs/modules/agent-core.md) |
-| Prompt, tools, tokens, memory, Skills loadout | [`docs/modules/context.md`](docs/modules/context.md) |
+| Provider setup, catalogs, subscriptions, model options, connection diagnostics | [`docs/modules/models.md`](docs/modules/models.md) |
+| Prompt, tools, tokens, Skills loadout | [`docs/modules/context.md`](docs/modules/context.md) |
+| Memory retrieval, curation, foreign-history imports | [`docs/modules/memory.md`](docs/modules/memory.md) |
+| Delegation, coordination and intervention | [`docs/modules/orchestration.md`](docs/modules/orchestration.md) |
 | Browser pane, capture, evidence | [`docs/modules/browser.md`](docs/modules/browser.md) |
 | Canvas, design, documents | [`docs/modules/canvas.md`](docs/modules/canvas.md) |
 | Image, audio, video, decks | [`docs/modules/media.md`](docs/modules/media.md) |
@@ -106,6 +102,7 @@ and execution rows. Read the module first, and the shared documents only for wha
 | A capability's status, acceptance ID, page or surface ID | [`docs/capabilities.md`](docs/capabilities.md) — the register; edit rows there |
 | "Is this already decided?", the owner's exact words | [`docs/decisions.md`](docs/decisions.md) |
 | A cross-module invariant, authority or code entry point | [`docs/architecture.md`](docs/architecture.md) |
+| Cross-platform packaging and release constraints | [`docs/packaging.md`](docs/packaging.md) |
 | A component, a gate, a test, a commit, a build | [`docs/engineering.md`](docs/engineering.md) |
 | Which open-source project to reference, and where | [`docs/references.md`](docs/references.md) |
 | What to do now | [`TODO.md`](TODO.md) |
@@ -136,28 +133,15 @@ These checkouts carry their own `.git`. A `checkout` run inside one silently mov
 
 ## Before you write UI
 
-### Step 0 — open the upstream and reference components and diff them
+Read [DESIGN](DESIGN.md), then the routed module. Diff the affected implementation against its
+own original: `.fleet/zcode` against `源码参考/software/ZCode`; `app/` against the pinned Craft
+checkout. Read the named reference's actual component/controller, not just a screenshot.
+Use that host's existing controls and values; Craft look-pin measurements are scoped in DESIGN
+and must not be applied blindly to unrelated ZCode components. UI redesign needs a concrete reason.
 
-```bash
-U=源码参考/software/craft-agents-oss
-diff app/apps/electron/src/renderer/<path> $U/apps/electron/src/renderer/<path>
-```
-
-For a future approved R1 surface, also open the named Cindy and ZCode components listed in [source comparison](docs/modules/shell.md#source-comparison) and in
-[`docs/references.md`](docs/references.md). Read what they do, then justify each delta. Real cases
-this step would have caught: a button given `h-7` because `size="sm"` "looked too big" while
-upstream uses `size="sm"` everywhere; a dropdown hand-rolled from `<button>` rows beside a sibling
-using `Popover` + `cmdk`; a picker rebuilt next to two steps that already use
-`AddWorkspace_RadioOption`.
-
-**Never produce a concept mockup or redesign image as implementation input.** The reference is
-source code, not a picture you drew.
-
-### Then the values
-
-[`DESIGN.md`](DESIGN.md) — colours, opacity ladder, type, radius, elevation, icon slots, shared
-primitives, required states, and motion. The in-app `lint:ui-contract` guard was removed with the
-original-source reset; restoring it is part of an approved slice, not a preparation patch.
+A disappearing interaction needs a retained path or an explicit retirement. Verify light/dark,
+English/Chinese, keyboard and narrow-window states appropriate to the change. A style linter is
+not visual acceptance. Do not create mockup images as substitutes for source-backed implementation.
 
 ## Owner protocol
 
@@ -175,6 +159,9 @@ original-source reset; restoring it is part of an approved slice, not a preparat
   light and dark, `zh-Hans` and English, narrow windows — and accepts, which promotes the capability
   to `usable`, or names the mismatch for the next bounded fix. Agents own logic, data integrity and
   code quality. Show the running change; do not describe it.
+  Before asking the owner to review, personally test and inspect the built running change. Fix
+  known failures first; never delegate basic QA to the owner. Open and focus the exact page, explain
+  what changed and limit owner acceptance to the already-checked scope and its user experience.
 - **Status meanings:** `usable` = real path verified and visible behaviour owner-accepted;
   `wired but not visually checked` = real path verified, visual acceptance pending; `display-only` =
   UI without real behaviour; `not implemented` = absent. "Mostly done" and "should work" are not

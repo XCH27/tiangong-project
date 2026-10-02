@@ -1,5 +1,7 @@
 .DS_Store
 .fleet/
+# Isolated review profiles can contain copied credentials and private keys.
+.fleet-profile/
 .claude/
 node_modules/
 **/node_modules/

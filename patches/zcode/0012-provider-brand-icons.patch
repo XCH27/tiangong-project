@@ -1,0 +1,238 @@
+diff --git a/packages/ui/package.json b/packages/ui/package.json
+index 7b149f6..9cbcf17 100644
+--- a/packages/ui/package.json
++++ b/packages/ui/package.json
+@@ -28,6 +28,7 @@
+     "@extend-ai/react-docx": "^0.8.1",
+     "@extend-ai/react-xlsx": "^0.16.0",
+     "@lexical/react": "^0.42.0",
++    "@lobehub/icons-static-svg": "1.95.1",
+     "@pierre/diffs": "^1.1.22",
+     "@radix-ui/react-radio-group": "^1.3.8",
+     "@radix-ui/react-use-controllable-state": "^1.2.2",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index 1bde651..26d2452 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -1,61 +1,56 @@
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import { PackageIcon } from "lucide-react";
+-import { useState } from "react";
+ import { cn } from "@/components/lib/utils.js";
+-import { useZCodeStoreWithDefault } from "@/store/StoreProvider.js";
+-import { resolveTheme, type ResolvedTheme } from "@/useTheme.js";
+-import alibabaModelStudioLogo from "@/assets/provider-icons/model-provider-alibaba-cloud.png";
+-import anthropicLogo from "@/assets/provider-icons/model-provider-anthropic.png";
+-import bigModelLogo from "@/assets/provider-icons/logo-bigmodel.svg";
+-import deepSeekLogo from "@/assets/provider-icons/model-provider-deepseek.png";
+-import miniMaxLogo from "@/assets/provider-icons/model-provider-minimax.png";
+-import moonshotKimiLogo from "@/assets/provider-icons/model-provider-moonshot-kimi.png";
+-import openAiLogo from "@/assets/provider-icons/model-provider-openai.png";
+-import xAiLogo from "@/assets/provider-icons/model-provider-xai.png";
+-import xiaomiMimoLogo from "@/assets/provider-icons/model-provider-xiaomi-mimo.png";
+ import startPlanLogo from "@/assets/provider-icons/model-provider-start-plan.png";
+-import zaiLogo from "@/assets/provider-icons/model-provider-zai-app.png";
+-import openrouterLight from "@/assets/provider-icons/model-provider-openrouter-light.svg";
+-import openrouterDark from "@/assets/provider-icons/model-provider-openrouter-dark.svg";
+-import opencodeLight from "@/assets/provider-icons/model-provider-opencode-light.svg";
+-import opencodeDark from "@/assets/provider-icons/model-provider-opencode-dark.svg";
++import Zai from "@lobehub/icons-static-svg/icons/zai.svg";
++import Zhipu from "@lobehub/icons-static-svg/icons/zhipu-color.svg";
++import Kimi from "@lobehub/icons-static-svg/icons/kimi-color.svg";
++import Minimax from "@lobehub/icons-static-svg/icons/minimax-color.svg";
++import DeepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
++import AlibabaCloud from "@lobehub/icons-static-svg/icons/alibabacloud-color.svg";
++import XiaomiMiMo from "@lobehub/icons-static-svg/icons/xiaomimimo.svg";
++import OpenAI from "@lobehub/icons-static-svg/icons/openai.svg";
++import Anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg";
++import XAI from "@lobehub/icons-static-svg/icons/xai.svg";
++import OpenRouter from "@lobehub/icons-static-svg/icons/openrouter.svg";
++import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg";
++import GithubCopilot from "@lobehub/icons-static-svg/icons/githubcopilot.svg";
++import Groq from "@lobehub/icons-static-svg/icons/groq.svg";
++import Cerebras from "@lobehub/icons-static-svg/icons/cerebras-color.svg";
++import Mistral from "@lobehub/icons-static-svg/icons/mistral-color.svg";
++import Nvidia from "@lobehub/icons-static-svg/icons/nvidia-color.svg";
++import Together from "@lobehub/icons-static-svg/icons/together-color.svg";
++import Gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg";
++import SiliconCloud from "@lobehub/icons-static-svg/icons/siliconcloud-color.svg";
+ 
+ type ProviderLogoRef = NonNullable<ProviderConfigObject["logo"]>;
+ 
+-interface BuiltinProviderLogoAsset {
+-  readonly light: string;
+-  readonly dark?: string;
+-}
+-
+-// 这里只负责把 Config 中的资源 key 解析为打包素材；禁止加入 Provider ID、名称或排序逻辑。
+-const BUILTIN_PROVIDER_LOGO_ASSETS: Readonly<Record<string, BuiltinProviderLogoAsset>> = {
+-  // 用户指定 Dock 应用图标；同名旧 SVG 带灰色描边，不能当作同一素材复用。
+-  zai: { light: zaiLogo },
+-  bigmodel: { light: bigModelLogo },
+-  "start-plan": { light: startPlanLogo },
+-  "moonshot-kimi": { light: moonshotKimiLogo },
+-  minimax: { light: miniMaxLogo },
+-  deepseek: { light: deepSeekLogo },
+-  "alibaba-model-studio": { light: alibabaModelStudioLogo },
+-  "xiaomi-mimo": { light: xiaomiMimoLogo },
+-  openai: { light: openAiLogo },
+-  anthropic: { light: anthropicLogo },
+-  xai: { light: xAiLogo },
+-  openrouter: { light: openrouterLight, dark: openrouterDark },
+-  opencode: { light: opencodeLight, dark: opencodeDark },
++// Resolve only existing config asset keys. Provider owns identity and authentication.
++// Official Lobe Icons static assets preserve host tokens without another UI runtime or CDN.
++const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; color: boolean }>> = {
++  zai: { src: Zai, color: false },
++  bigmodel: { src: Zhipu, color: true },
++  "moonshot-kimi": { src: Kimi, color: true },
++  minimax: { src: Minimax, color: true },
++  deepseek: { src: DeepSeek, color: true },
++  "alibaba-model-studio": { src: AlibabaCloud, color: true },
++  "xiaomi-mimo": { src: XiaomiMiMo, color: false },
++  openai: { src: OpenAI, color: false },
++  anthropic: { src: Anthropic, color: false },
++  xai: { src: XAI, color: false },
++  openrouter: { src: OpenRouter, color: false },
++  opencode: { src: OpenCode, color: false },
++  github: { src: GithubCopilot, color: false },
++  groq: { src: Groq, color: false },
++  cerebras: { src: Cerebras, color: true },
++  mistral: { src: Mistral, color: true },
++  nvidia: { src: Nvidia, color: true },
++  together: { src: Together, color: true },
++  google: { src: Gemini, color: true },
++  siliconflow: { src: SiliconCloud, color: true },
++  "start-plan": { src: startPlanLogo, color: true },
+ };
+ 
+-function resolveBuiltinProviderLogoAsset(
+-  logo: ProviderLogoRef | null | undefined,
+-  theme: ResolvedTheme,
+-): string | null {
+-  if (logo?.type !== "builtin") {
+-    return null;
+-  }
+-  const asset = BUILTIN_PROVIDER_LOGO_ASSETS[logo.key];
+-  return asset ? (theme === "dark" ? (asset.dark ?? asset.light) : asset.light) : null;
+-}
+-
+ export function ProviderLogo({
+   logo,
+   className,
+@@ -63,19 +58,29 @@ export function ProviderLogo({
+   logo?: ProviderLogoRef | null;
+   className?: string;
+ }) {
+-  const theme = useZCodeStoreWithDefault((state) => state.theme, "zai-dark");
+-  const src = resolveBuiltinProviderLogoAsset(logo, resolveTheme(theme));
+-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+-  if (!src || failedSrc === src) {
+-    return <PackageIcon className={cn("shrink-0", className)} aria-hidden="true" />;
++  const asset = logo?.type === "builtin" ? BUILTIN_PROVIDER_ICONS[logo.key] : undefined;
++  if (!asset) return <PackageIcon className={cn("shrink-0", className)} aria-hidden="true" />;
++  if (asset.color) {
++    return (
++      <img
++        src={asset.src}
++        alt=""
++        aria-hidden="true"
++        className={cn("shrink-0 object-contain", className)}
++      />
++    );
+   }
++  // A mask gives monochrome SVGs semantic foreground in both themes without a painted backplate.
+   return (
+-    <img
+-      src={src}
+-      alt=""
++    <span
+       aria-hidden="true"
+-      className={cn("shrink-0 object-contain", className)}
+-      onError={() => setFailedSrc(src)}
++      className={cn("inline-block shrink-0 bg-current", className)}
++      style={{
++        maskImage: `url("${asset.src}")`,
++        maskSize: "contain",
++        maskRepeat: "no-repeat",
++        maskPosition: "center",
++      }}
+     />
+   );
+ }
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index f251e80..09b3dc3 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -1066,6 +1066,9 @@ importers:
+       '@lexical/react':
+         specifier: ^0.42.0
+         version: 0.42.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.30)
++      '@lobehub/icons-static-svg':
++        specifier: 1.95.1
++        version: 1.95.1
+       '@pierre/diffs':
+         specifier: ^1.1.22
+         version: 1.1.22(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+@@ -2597,6 +2600,9 @@ packages:
+     peerDependencies:
+       yjs: '>=13.5.22'
+ 
++  '@lobehub/icons-static-svg@1.95.1':
++    resolution: {integrity: sha512-Hw7EPPgVnC4NZLXBfTNJG6hyQgqECfUPC11VVXodPSr1aebKcFxDZlSpxhWwYNdCc6bhxps/x5TtXoPmfKH2ag==}
++
+   '@lydell/node-pty-darwin-arm64@1.2.0-beta.10':
+     resolution: {integrity: sha512-C+eqDyRNHRYvx7RaHj6VVCx6nCpRBPuuxhTcc3JH3GuBMoxTsYeY4GkWH2XOktrgbAq1BG8e/Y8bu/wNQreCEw==}
+     cpu: [arm64]
+@@ -11777,6 +11783,8 @@ snapshots:
+       lexical: 0.42.0
+       yjs: 13.6.30
+ 
++  '@lobehub/icons-static-svg@1.95.1': {}
++
+   '@lydell/node-pty-darwin-arm64@1.2.0-beta.10': {}
+ 
+   '@lydell/node-pty-darwin-x64@1.2.0-beta.10': {}
+diff --git a/third-party/npm-overrides.json b/third-party/npm-overrides.json
+index 5836982..27ba2a0 100644
+--- a/third-party/npm-overrides.json
++++ b/third-party/npm-overrides.json
+@@ -507,5 +507,11 @@
+     "source": "https://registry.npmjs.org/%40arms%2frum-electron%400.0.3",
+     "evidenceKind": "publisher-license-identifier-and-standard-terms",
+     "license": "MIT"
++  },
++  {
++    "package": "@lobehub/icons-static-svg@1.95.1",
++    "file": "third-party/upstream/add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a.txt",
++    "sha256": "add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a",
++    "source": "https://raw.githubusercontent.com/lobehub/lobe-icons/49a2130df7bfa5eb1b088261bff20a37e2967789/LICENSE"
+   }
+ ]
+diff --git a/third-party/upstream/add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a.txt b/third-party/upstream/add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a.txt
+new file mode 100644
+index 0000000..1dd53d2
+--- /dev/null
++++ b/third-party/upstream/add9d7531d1b21646317a8958e38fc727506fa39d24bdecb44154d943c82753a.txt
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2023 LobeHub
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.

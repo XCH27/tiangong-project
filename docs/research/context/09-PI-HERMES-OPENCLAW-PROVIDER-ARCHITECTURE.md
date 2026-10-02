@@ -2,11 +2,11 @@
 
 Status: **EVIDENCE_ONLY**
 
-This note retains provider-mechanism findings at the source locks below. Current observation on
-2026-09-21: Fleet/Craft v0.13.4 pins `@earendil-works/pi-ai` and `pi-coding-agent` **0.85.1**.
-`models-pi.ts` and `llm-connections.ts` still import the compatibility catalog. The earlier
-0.80.6→0.82.1 upgrade recommendation is obsolete; inspect the installed 0.85.1 adapter and current
-provider gap before recommending another upgrade. No dependency update is authorized by this note.
+This note retains provider mechanisms at the source locks below. It describes the older Craft
+branch and reviewed package versions, not the active ZCode candidate. Current root, package and
+execution choices are in [Engineering](../../engineering.md#zcode-candidate) and
+[References](../../references.md#official-harnesses-versus-pi). No upgrade or migration instruction
+in a historical recommendation overrides those current contracts.
 
 ## Source lock
 
@@ -22,7 +22,7 @@ Those numbers are historical source locks, not today's dependency baseline. The 
 records refreshed checkouts separately. Source findings below apply to their recorded revisions;
 revalidate relevant exports, authentication and usage semantics against the installed package.
 
-## How Fleet embeds Pi
+## Reviewed Craft embedding
 
 Fleet does not copy Pi source into its application kernel. It consumes version-pinned npm
 packages and runs a Fleet-owned subprocess adapter:
@@ -45,7 +45,7 @@ the `Models` collection, `Provider.refreshModels()`, and an application-supplied
 `CredentialStore`. A Pi update should therefore be treated as an adapter migration, not only
 as changing two version strings.
 
-## Current Pi findings
+## Pi findings at the review lock
 
 Relevant files:
 

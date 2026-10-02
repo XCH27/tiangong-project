@@ -1,0 +1,1851 @@
+diff --git a/apps/zcode-cli/docs/provider-subscriptions.md b/apps/zcode-cli/docs/provider-subscriptions.md
+index 6b663ae..7a4e147 100644
+--- a/apps/zcode-cli/docs/provider-subscriptions.md
++++ b/apps/zcode-cli/docs/provider-subscriptions.md
+@@ -13,25 +13,31 @@ cannot restore a disconnected/deleted connection. No paid request is made by log
+ A subscription's endpoint/protocol is fixed to its adapter. Before each model request the
+ existing runtime-header RPC resolves that connection's credentials; missing credentials fail
+ closed. Background/title/compaction requests use the same hook. No vendor gateway rewrites.
+-API templates remain editable, independently instantiable, and retain all three native protocols.
++API templates remain independently instantiable. One internal model contract dispatches to native
++protocol adapters; it does not convert all traffic through Chat Completions. Presets supply their
++declared protocol automatically. Custom endpoints retain explicit protocol configuration.
+ API discovery reads the selected connection's authenticated catalog, imports exact model IDs
+ through the existing model mutations and preserves manual overrides. Subscription discovery uses
+ the pinned Pi adapter catalog, not a live account entitlement response. Catalog availability is
+ not proof of successful inference or entitlement; a model's connection test is a separate action.
+ 
+ UI retains upstream ZCode provider picker, inline editor, model list and feedback patterns.
+-Model discovery sits beside Add Model in the existing model-list header. Its selection dialog
+-uses ZCode's existing Dialog/Input/Checkbox/Button primitives; Cherry Studio's
+-`ProviderModelPullReconcile`, `ModelListSyncDrawer` and `ModelListSyncContent` supply the
+-fetch → search → select missing models → add interaction. It does not delete missing models,
+-overwrite overrides or introduce another provider store. The address and API format remain above
+-credentials, as the owner requested.
+-
+-Discovery first awaits the inline editor's current save, including an already in-flight blur
+-save. A failed save prevents the request. Editing endpoint, format or credentials, switching
+-providers or closing the dialog invalidates the operation's result. Imports re-read the existing
+-provider snapshot, skip existing IDs, preserve completed additions on partial failure and leave
+-remaining selections available for retry. No model request is made by opening this dialog.
++Model discovery is part of the existing model list, with no fetch button or selection dialog.
++Cindy's `UnifiedModelList` supplies the single searchable list and inline refresh; Cherry Studio's
++`ModelListSyncContent` supplies the distinction between configured and available models. The
++existing ZCode model rows retain their edit, enable, test and reorder operations. Available rows
++are selected and added in place; manual model-ID addition remains available. The address and API
++format remain above credentials, as the owner requested.
++
++On entry and after a committed connection/account change, load the catalog read-only. Unsaved
++connection drafts and incomplete credentials block loading; opening this list must never save a
++draft or run inference. A connection edit, account change or navigation invalidates late replies.
++Model additions/reordering do not trigger repeated discovery. Search spans configured and available
++models; reordering is disabled while filtering to preserve hidden rows. Refresh/loading/error/retry
++remain in the list. Imports re-read the existing provider snapshot, skip existing IDs, preserve
++completed additions on partial failure and leave remaining selections available for retry. A failed
++refresh retains the current connection's previous catalog and all configured models; a changed
++connection never reuses another connection's catalog.
+ Official catalog display names are shown alongside exact IDs; the existing model identity remains
+ the ID. Unknown capabilities stay unknown and use the existing metadata editor.
+ 
+@@ -70,7 +76,9 @@ provider action. Cindy supplies vendor-first selection; the owner's follow-up re
+ or dropdown for choosing a connection. NewMax's installed model setup keeps selection and the
+ connection form in one content slot. Fleet therefore replaces the gallery in place with a local
+ setup draft: visible service/plan choices, regional choices only when multiple regions exist,
+-then address and segmented API formats, followed by the existing multi-key controls. The visual
++then address and credentials. Presets show the selected protocol as a compact summary; declared
++alternative routes are available in an inline advanced section. Custom endpoints expose segmented
++formats directly. There is no protocol probing or failure-driven protocol switch. The visual
+ values/primitives remain ZCode's. Subscription choices show account connection instead of API fields.
+ Selecting a vendor or switching a route never writes a Provider. Back discards only the local
+ setup draft. Existing providers and their credentials are not changed. An explicit Add persists
+@@ -89,6 +97,29 @@ only the selected route. Invalid or removed selections cannot create a different
+ Regression checks cover route reachability, locale search, domain roundtrip, draft validation and
+ credential isolation. Native desktop inspection checks the in-place choices and existing editor.
+ 
++## Protocol configuration contract
++
++Reference mechanisms: Cherry Studio hides dialect settings for system providers; Pi binds native
++API implementations to providers; OpenCode supplies provider-specific SDK loaders; Cindy and
++OpenClaw retain explicit per-route capability metadata. CC Switch presets bind protocol, endpoint
++and model compatibility together. Reuse these boundaries, not their account stores or Agent loops.
++
++The existing Provider template is the only default owner. Unchanged preset endpoint/protocol values
++are inherited rather than copied into a new personal overlay. A pure provider-domain policy is
++shared by setup, the existing editor and host-side config validation. The host rejects a newly
++introduced mismatched protocol at a preset's declared endpoint; editing a custom endpoint or
++creating an untemplated connection keeps all supported adapters available. Declared alternate
++templates are selected atomically before creation, including their model rules. No model-name or
++URL-substring guessing, fabricated support, endpoint rewrite on failure, or subscription-to-API fallthrough.
++
++Existing explicit overrides remain visible and unchanged; unrelated name/key edits must still save.
++Subscription endpoint/protocol/auth kind stay adapter-owned. No storage migration or new authority.
++Event order: local draft → existing config service validates against the current template → one
++repository update → existing Registry/model binding refresh. Discovery starts from committed configuration and rejects
++stale responses. Desktop and remote clients share this host boundary. Neither mounting nor opening
++advanced settings writes configuration. Tests cover host rejection without writes, custom endpoints,
++legacy overrides, subscription isolation, inheritance and actual adapter dispatch.
++
+ Plan templates retain regional
+ endpoints and explicit API-key authentication: GLM, Kimi Code, MiniMax Token Plan, Alibaba Coding
+ Plan / Token Plan, MiMo Token Plan and OpenCode Go. China/global keys are not interchangeable;
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index 59128b4..4112a49 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -12,9 +12,15 @@ it does not automatically capture the current settings page, grant permission, o
+ 
+ ## Model connections
+ 
+-Open **Settings → Models**. Select the provider or a custom endpoint, set its Base URL, API format
+-and credential, then use the connection controls and model discovery. API format means the actual
+-request protocol: Chat Completions, Responses and Anthropic Messages are different endpoints.
++Open **Settings → Models**. Select the provider and connection method, then enter its credentials.
++Presets supply their supported API format; declared alternatives expand under advanced connection
++settings. Custom endpoints expose format selection. Chat Completions, Responses and Anthropic
++Messages are different request protocols, not interchangeable display preferences.
++
++The model list loads automatically from saved connection settings. Search and select additional
++models in the same list, or add a model ID manually. Refresh and errors stay in place. Loading a
++catalog does not add models, overwrite your settings or run a model test. Subscription catalogs
++currently come from the installed adapter; they are not live account entitlement lists.
+ A provider's brand or a model's name does not prove support for every format.
+ 
+ Use the provider's documented URL and supported protocol. Retrieved model IDs are request IDs;
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index 4bfbc2e..492e726 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -10,9 +10,14 @@
+ 
+ ## 模型连接
+ 
+-打开 **设置 → 模型**。选择供应商或自定义端点，填写 API 地址、格式和凭据，再使用连接测试
+-与模型拉取功能。API 格式是实际使用的请求协议：Chat Completions、Responses、Anthropic
+-Messages 对应不同端点。不能因为供应商品牌或模型名称，就认定它支持所有格式。
++打开 **设置 → 模型**。选择供应商和连接方式，填写凭据。预置服务自动使用已声明的 API
++格式；有其他已适配格式时，可在高级连接设置中展开。自定义地址直接显示格式选择。
++Chat Completions、Responses、Anthropic Messages 是不同的请求协议，不是显示偏好。
++
++连接保存后，模型列表会自动加载。在原列表内搜索、勾选添加，也可以手动添加模型 ID。
++刷新与错误提示都在列表内。读取目录不会自动添加模型、覆盖配置或发起模型测试。
++订阅模型目录目前来自已安装的适配器，不代表账号实时可用的全部模型。
++不能因为供应商品牌或模型名称，就认定它支持所有格式。
+ 
+ 使用供应商文档明确支持的地址与协议。拉取到的模型 ID 用于请求，展示名称不能替代 ID。
+ 检查模型列表，手动纠正缺失的元数据。上下文大小表示容量，不是已使用 token 数量。
+diff --git a/package.json b/package.json
+index 595730e..adc42ab 100644
+--- a/package.json
++++ b/package.json
+@@ -48,7 +48,7 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/provider-catalog.test.ts"
++    "test:provider-catalog": "tsx --test packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index 5ae36c6..b1c7ab0 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -17,6 +17,7 @@ import {
+   resolveProviderTemplateName,
+ } from "./config/index.js";
+ import { resolveOwnedOrder } from "./owned-order.js";
++import { assertProviderProtocolChange, resolveTemplateProtocolFormats } from "./protocol-policy.js";
+ import type { ModelSelection } from "@zcode/shared/model-selection";
+ import type { ProviderConfigSnapshot, ProviderSource } from "./sources.js";
+ 
+@@ -194,6 +195,19 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+         ),
+       );
+       const currentRule = current.providers.getRule(providerId);
++      const nextTemplateId = metadata?.templateId ?? currentRule?.templateId;
++      const templateConfig = nextTemplateId
++        ? zcodeBuiltin.providerTemplates?.get(nextTemplateId)?.config
++        : builtin;
++      assertProviderProtocolChange(
++        templateConfig?.toJSON(),
++        (templateConfig ? templateConfig.overlay(next) : next).toJSON(),
++        resolvePersonalProviderBaselines(zcodeBuiltin, current.providers).get(providerId)?.toJSON(),
++        resolveTemplateProtocolFormats(
++          nextTemplateId,
++          zcodeBuiltin.providerTemplates?.toJSON() ?? [],
++        ),
++      );
+       const providers = current.providers.setRule({
+         ...currentRule,
+         providerId,
+@@ -247,6 +261,12 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+         effectiveProviders,
+       );
+       const initial = input.initialConfig ?? new ProviderConfigValue();
++      assertProviderProtocolChange(
++        template?.config.toJSON(),
++        (template ? template.config.overlay(initial) : initial).toJSON(),
++        undefined,
++        resolveTemplateProtocolFormats(templateId, zcodeBuiltin.providerTemplates?.toJSON() ?? []),
++      );
+       const providers = current.providers.setRule({
+         providerId,
+         ...(templateId ? { templateId } : {}),
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 6b0cebe..49dc420 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -1,11 +1,13 @@
+ /* oxlint-disable eslint(max-lines) -- Settings/Selection Facade 共享同一套 Registry 投影与写入边界。 */
+ import type { ConfigValidationIssue } from "./config-overlay.js";
+ import type { ProviderModelMembership } from "./config-service.js";
++import { resolveTemplateProtocolFormats } from "./protocol-policy.js";
+ import type {
+   ModelConfig,
+   ModelConfigObject,
+   ModelId,
+   ProviderConfig,
++  ProviderApiType,
+   ProviderConfigObject,
+   ProviderId,
+   ProviderTemplateId,
+@@ -157,6 +159,8 @@ export interface ProviderSettingsProviderView extends Pick<
+   /** 当前 Effective Config 是否已经进入 Registry，可用于模型选择和创建。 */
+   readonly executable: boolean;
+   readonly effectiveBuiltinConfig?: ProviderConfigObject;
++  readonly templateConfig?: ProviderConfigObject;
++  readonly templateApiFormats?: readonly ProviderApiType[];
+   readonly personalConfig?: ProviderConfigObject;
+   readonly effectiveConfig: ProviderConfigObject;
+   readonly issues: readonly ConfigValidationIssue[];
+@@ -629,6 +633,10 @@ function createProviderSettingsView(input: {
+         : {}),
+       executable: executableProviderIds.has(provider.providerId),
+       ...(provider.templateConfig ? { templateConfig: provider.templateConfig.toJSON() } : {}),
++      templateApiFormats: resolveTemplateProtocolFormats(
++        provider.templateId,
++        input.zcodeBuiltinProviderTemplates.toJSON(),
++      ),
+       ...(provider.effectiveBuiltinConfig
+         ? { effectiveBuiltinConfig: provider.effectiveBuiltinConfig.toJSON() }
+         : {}),
+diff --git a/packages/provider/src/index.ts b/packages/provider/src/index.ts
+index 1df2c30..090388d 100644
+--- a/packages/provider/src/index.ts
++++ b/packages/provider/src/index.ts
+@@ -8,6 +8,7 @@ export * from "./facades.js";
+ export * from "./effective-model-selection.js";
+ export * from "./model-selection-config.js";
+ export * from "./owned-order.js";
++export * from "./protocol-policy.js";
+ export * from "./resolver.js";
+ export * from "./registry.js";
+ export * from "./registry-service.js";
+diff --git a/packages/provider/src/protocol-policy.ts b/packages/provider/src/protocol-policy.ts
+new file mode 100644
+index 0000000..f63b3d2
+--- /dev/null
++++ b/packages/provider/src/protocol-policy.ts
+@@ -0,0 +1,101 @@
++import type {
++  ProviderApiType,
++  ProviderConfigObject,
++  ProviderTemplateObject,
++} from "./config/index.js";
++
++export const CUSTOM_PROVIDER_API_FORMATS: readonly ProviderApiType[] = [
++  "anthropic-messages",
++  "openai-chat-completions",
++  "openai-responses",
++];
++
++export interface ProviderProtocolPolicy {
++  readonly mode: "preset" | "custom" | "override" | "subscription";
++  readonly recommended?: ProviderApiType;
++  readonly formats: readonly ProviderApiType[];
++}
++
++/** 同一服务/区域/地址的显式变体可以共用格式；不能从同品牌其他套餐推断。 */
++export function resolveTemplateProtocolFormats(
++  templateId: string | null | undefined,
++  templates: readonly ProviderTemplateObject[],
++): ProviderApiType[] {
++  const template = templates.find((item) => item.templateId === templateId);
++  const catalog = template?.catalog;
++  const formats = templates
++    .filter(
++      (item) =>
++        item === template ||
++        (catalog &&
++          item.catalog?.vendorId === catalog.vendorId &&
++          item.catalog.serviceId === catalog.serviceId &&
++          item.catalog.region === catalog.region &&
++          endpoint(item.config.api?.baseUrl) === endpoint(template?.config.api?.baseUrl) &&
++          item.config.access?.type === template?.config.access?.type),
++    )
++    .map((item) => item.config.api?.type)
++    .filter((api): api is ProviderApiType => api != null);
++  return [...new Set(formats)];
++}
++
++function endpoint(value: string | null | undefined): string {
++  return value?.trim().replace(/\/+$/, "") ?? "";
++}
++
++/** 模板是推荐值的唯一来源；不按域名片段、模型名称或返回文本猜协议。 */
++export function resolveProviderProtocolPolicy(
++  template: ProviderConfigObject | undefined,
++  config: ProviderConfigObject,
++  declaredFormats?: readonly ProviderApiType[],
++): ProviderProtocolPolicy {
++  const recommended = template?.api?.type ?? undefined;
++  if (template?.access?.type === "subscription" || config.access?.type === "subscription") {
++    return { mode: "subscription", recommended, formats: [] };
++  }
++  if (
++    !recommended ||
++    !endpoint(template?.api?.baseUrl) ||
++    endpoint(template?.api?.baseUrl) !== endpoint(config.api?.baseUrl)
++  ) {
++    return { mode: "custom", formats: CUSTOM_PROVIDER_API_FORMATS };
++  }
++  const current = config.api?.type;
++  const formats = [...new Set([recommended, ...(declaredFormats ?? [])])];
++  return current && !formats.includes(current)
++    ? { mode: "override", recommended, formats: [...formats, current] }
++    : { mode: "preset", recommended, formats };
++}
++
++/** 公共写入边界也校验；旧覆盖不迁移，无关编辑不因旧格式而失败。 */
++export function assertProviderProtocolChange(
++  template: ProviderConfigObject | undefined,
++  next: ProviderConfigObject,
++  previous?: ProviderConfigObject,
++  declaredFormats?: readonly ProviderApiType[],
++): void {
++  if (!template) return;
++  if (template.access?.type === "subscription") {
++    if (
++      next.access?.type !== "subscription" ||
++      next.access.provider !== template.access.provider ||
++      next.api?.type !== template.api?.type ||
++      endpoint(next.api?.baseUrl) !== endpoint(template.api?.baseUrl) ||
++      JSON.stringify(next.api?.headers) !== JSON.stringify(template.api?.headers)
++    ) {
++      throw new Error("Subscription connection transport and authentication are adapter-owned");
++    }
++    return;
++  }
++  const policy = resolveProviderProtocolPolicy(template, next, declaredFormats);
++  if (policy.mode !== "override") return;
++  if (
++    previous &&
++    previous.api?.type === next.api?.type &&
++    endpoint(previous.api?.baseUrl) === endpoint(next.api?.baseUrl)
++  )
++    return;
++  throw new Error(
++    "Protocol is not declared for this preset endpoint; use its preset or a custom connection",
++  );
++}
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 518ecf9..d79ec34 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -176,6 +176,7 @@ test("creation sends only a personal overlay, preserving template ownership and
+     automatic: true,
+   };
+   const config = providerSetupConfig(template, draft)!;
++  assert.equal(config.api, undefined, "preset protocol/address remain inherited");
+   assert.deepEqual(config.access, {
+     type: "api-key",
+     apiKey: "primary",
+@@ -199,6 +200,34 @@ test("creation sends only a personal overlay, preserving template ownership and
+   );
+ });
+ 
++test("custom setup includes an explicit protocol, while mismatched native presets cannot submit", () => {
++  const custom = {
++    templateId: "custom",
++    templateNameMap: {},
++    config: {
++      access: { type: "api-key" as const },
++      api: { type: "openai-chat-completions" as const },
++    },
++  };
++  assert.deepEqual(
++    providerSetupConfig(custom, {
++      ...newProviderSetupDraft(custom),
++      baseUrl: "https://proxy.example/v1",
++      primary: "synthetic",
++    })?.api,
++    { type: "openai-chat-completions", baseUrl: "https://proxy.example/v1" },
++  );
++  const openai = family("openai").find((t) => t.templateId === "openai")!;
++  assert.equal(
++    providerSetupConfig(openai, {
++      ...newProviderSetupDraft(openai),
++      primary: "synthetic",
++      api: "anthropic-messages",
++    }),
++    undefined,
++  );
++});
++
+ test("fresh region and service drafts never inherit another connection's secrets", () => {
+   const cn = family("minimax").find((template) => template.templateId === "minimax")!;
+   const global = family("minimax").find((template) => template.templateId === "fleet-minimax")!;
+diff --git a/packages/services/test/provider-protocol-policy.test.ts b/packages/services/test/provider-protocol-policy.test.ts
+new file mode 100644
+index 0000000..738f045
+--- /dev/null
++++ b/packages/services/test/provider-protocol-policy.test.ts
+@@ -0,0 +1,178 @@
++import assert from "node:assert/strict";
++import { mkdtemp, readFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import test from "node:test";
++import {
++  parseProviderConfig,
++  assertProviderProtocolChange,
++  resolveTemplateProtocolFormats,
++  parseProviderTemplateMap,
++  resolveProviderProtocolPolicy,
++} from "@zcode/provider";
++import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
++
++const preset = {
++  api: { type: "openai-responses" as const, baseUrl: "https://api.openai.com/v1" },
++  access: { type: "api-key" as const },
++};
++
++test("declared protocols share only the exact service/region/endpoint and survive host validation", async () => {
++  const json = JSON.parse(
++    await readFile(new URL("../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"),
++  );
++  const templates = parseProviderTemplateMap(
++    json.config.providerConfigRules.templateRules,
++  ).toJSON();
++  assert.deepEqual(resolveTemplateProtocolFormats("openai", templates), ["openai-responses"]);
++  const declared = resolveTemplateProtocolFormats("opencode-go-chat", templates);
++  assert.equal(declared.length, 3);
++  const template = templates.find((t) => t.templateId === "opencode-go-chat")!.config;
++  for (const type of declared)
++    assert.doesNotThrow(() =>
++      assertProviderProtocolChange(
++        template,
++        {
++          ...template,
++          api: { ...template.api, type },
++        },
++        undefined,
++        declared,
++      ),
++    );
++  const f = await fixture();
++  try {
++    const service = f.runtime.configService;
++    const { providerId } = await service.createPersonalProvider({ templateId: "opencode-go-chat" });
++    await service.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig({ api: { type: "openai-responses" } }),
++    );
++    assert.equal(
++      (await service.read()).personalProviders.get(providerId)?.api?.type,
++      "openai-responses",
++    );
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("preset defaults are automatic; custom addresses retain explicit adapter choice", () => {
++  const native = resolveProviderProtocolPolicy(preset, preset);
++  assert.equal(native.mode, "preset");
++  assert.deepEqual(native.formats, ["openai-responses"]);
++  assert.equal(
++    resolveProviderProtocolPolicy(preset, {
++      ...preset,
++      api: { ...preset.api, baseUrl: "https://api.openai.com/v1/" },
++    }).mode,
++    "preset",
++  );
++  const custom = resolveProviderProtocolPolicy(preset, {
++    ...preset,
++    api: { ...preset.api, baseUrl: "https://proxy.example/v1" },
++  });
++  assert.equal(custom.mode, "custom");
++  assert.equal(custom.formats.length, 3);
++  assert.equal(resolveProviderProtocolPolicy(undefined, preset).mode, "custom");
++});
++
++test("a legacy override remains selected, never advertised as a recommended protocol", () => {
++  const legacy = resolveProviderProtocolPolicy(preset, {
++    ...preset,
++    api: { ...preset.api, type: "anthropic-messages" },
++  });
++  assert.equal(legacy.mode, "override");
++  assert.equal(legacy.recommended, "openai-responses");
++  assert.deepEqual(legacy.formats, ["openai-responses", "anthropic-messages"]);
++  const previous = { ...preset, api: { ...preset.api, type: "anthropic-messages" as const } };
++  assert.doesNotThrow(() =>
++    assertProviderProtocolChange(
++      preset,
++      {
++        ...previous,
++        access: { type: "api-key", apiKey: "replacement-key" },
++      },
++      previous,
++    ),
++  );
++  assert.doesNotThrow(() => assertProviderProtocolChange(preset, preset, previous));
++});
++
++async function fixture() {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-protocol-"));
++  const personalFilePath = join(dir, "personal.json");
++  const runtime = createProviderConfigRuntime({
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalFilePath,
++    personalPollingIntervalMs: false,
++    watch: false,
++  });
++  await runtime.start();
++  return {
++    runtime,
++    personalFilePath,
++    dispose: async () => {
++      runtime.dispose();
++      await rm(dir, { recursive: true, force: true });
++    },
++  };
++}
++
++test("host rejects a mismatched preset protocol before creating or modifying records", async () => {
++  const f = await fixture();
++  try {
++    const service = f.runtime.configService;
++    const { providerId } = await service.createPersonalProvider({ templateId: "openai" });
++    const before = await readFile(f.personalFilePath, "utf8");
++    const invalid = parseProviderConfig({ api: { type: "anthropic-messages" } });
++    await assert.rejects(
++      service.createPersonalProvider({ templateId: "openai", initialConfig: invalid }),
++      /protocol/i,
++    );
++    await assert.rejects(service.savePersonalProviderOverlay(providerId, invalid), /protocol/i);
++    assert.equal(await readFile(f.personalFilePath, "utf8"), before);
++    await service.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig({
++        api: { type: "anthropic-messages", baseUrl: "https://proxy.example/anthropic" },
++      }),
++    );
++    assert.equal(
++      (await service.read()).personalProviders.get(providerId)?.api?.type,
++      "anthropic-messages",
++    );
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("host preserves subscription-owned transport and rejects API credential fallthrough", async () => {
++  const f = await fixture();
++  try {
++    const service = f.runtime.configService;
++    const { providerId } = await service.createPersonalProvider({
++      templateId: "fleet-openai-codex",
++    });
++    const before = await readFile(f.personalFilePath, "utf8");
++    for (const config of [
++      { api: { type: "anthropic-messages" as const } },
++      { api: { baseUrl: "https://proxy.example" } },
++      { access: { type: "api-key" as const, apiKey: "synthetic" } },
++    ]) {
++      await assert.rejects(
++        service.savePersonalProviderOverlay(providerId, parseProviderConfig(config)),
++        /subscription/i,
++      );
++    }
++    assert.equal(await readFile(f.personalFilePath, "utf8"), before);
++    await service.savePersonalProviderOverlay(providerId, parseProviderConfig({}), undefined, {
++      providerName: "My subscription",
++    });
++  } finally {
++    await f.dispose();
++  }
++});
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index 23607e6..3ce0ff0 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -240,46 +240,58 @@ test("DeepSeek Anthropic discovery uses the documented shared bearer catalog", a
+   });
+ });
+ 
+-test("discovery waits for a saved draft and drops an obsolete endpoint response", async () => {
+-  const { fetchSavedModelCatalog } =
++test("automatic discovery requires a committed connection and drops obsolete responses", async () => {
++  const { fetchSavedModelCatalog, modelDiscoveryBlockReason } =
+     await import("../../ui/src/settings/model-provider-section/modelDiscoveryActions.js");
+-  const save = Promise.withResolvers<void>();
++  const config = {
++    api: { type: "openai-responses" as const, baseUrl: "https://provider.example/v1" },
++    access: { type: "api-key" as const, apiKey: "synthetic" },
++  };
+   const response = Promise.withResolvers<any>();
+   let current = true;
+   let calls = 0;
+-  const result = fetchSavedModelCatalog({
+-    providerId: "one",
+-    saveDraft: () => save.promise,
+-    isCurrent: () => current,
+-    service: {
+-      async discoverModels() {
+-        calls++;
+-        return response.promise;
+-      },
++  const service = {
++    async discoverModels() {
++      calls++;
++      return response.promise;
+     },
+-  });
+-  await Promise.resolve();
+-  assert.equal(calls, 0);
+-  save.resolve();
+-  await Promise.resolve();
++  };
++  for (const blocked of [
++    modelDiscoveryBlockReason(config, true),
++    modelDiscoveryBlockReason({ ...config, access: { type: "api-key", apiKey: "" } }, false),
++    modelDiscoveryBlockReason(
++      { ...config, api: { type: "openai-responses", baseUrl: "https://" } },
++      false,
++    ),
++    modelDiscoveryBlockReason(
++      { access: { type: "subscription", provider: "openai-codex", connected: false } },
++      false,
++    ),
++  ]) {
++    assert.ok(blocked);
++    assert.equal(
++      await fetchSavedModelCatalog({
++        providerId: "one",
++        service,
++        blocked: Boolean(blocked),
++        isCurrent: () => current,
++      }),
++      undefined,
++    );
++  }
++  assert.equal(calls, 0, "editing, missing credentials and incomplete URLs never issue requests");
++  assert.equal(modelDiscoveryBlockReason(config, false), undefined);
++  const result = fetchSavedModelCatalog({ providerId: "one", service, isCurrent: () => current });
+   assert.equal(calls, 1);
+   current = false;
+   response.resolve({ source: "provider", models: [{ id: "old-server", name: "Old", config: {} }] });
+   assert.equal(await result, undefined);
+-  await assert.rejects(
+-    fetchSavedModelCatalog({
+-      providerId: "one",
+-      isCurrent: () => true,
+-      saveDraft: async () => {
+-        throw new Error("save failed");
+-      },
+-      service: {
+-        async discoverModels() {
+-          throw new Error("must not request");
+-        },
+-      },
+-    }),
+-    /save failed/,
++  assert.equal(
++    modelDiscoveryBlockReason(
++      { access: { type: "subscription", provider: "openai-codex", connected: true } },
++      false,
++    ),
++    undefined,
+   );
+ });
+ 
+@@ -330,7 +342,7 @@ test("partial model import retries preserve existing manual configuration and co
+   });
+ });
+ 
+-test("closing discovery before the snapshot returns admits no import mutation", async () => {
++test("leaving model settings before the snapshot returns admits no import mutation", async () => {
+   const { addDiscoveredModels } =
+     await import("../../ui/src/settings/model-provider-section/modelDiscoveryActions.js");
+   let current = true;
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 5375a58..8723b04 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -1,16 +1,19 @@
+ /** English translations */
+ const enUS: Record<string, string> = {
+-  "settings.modelProvider.discovery.title": "Get models",
+   "settings.modelProvider.discovery.search": "Search model name or ID",
+   "settings.modelProvider.discovery.selectVisible": "Select search results",
+   "settings.modelProvider.discovery.noMatches": "No matching models",
+   "settings.modelProvider.discovery.loading": "Fetching models…",
+-  "settings.modelProvider.discovery.fetch": "Fetch model list",
++  "settings.modelProvider.discovery.available": "Available models",
++  "settings.modelProvider.discovery.allAdded": "All catalog models have been added",
++  "settings.modelProvider.discovery.pendingConnection":
++    "The model list updates after the connection is saved",
++  "settings.modelProvider.discovery.connectFirst": "Connect a subscription account to load models",
++  "settings.modelProvider.discovery.configureConnection":
++    "Configure an API address and key to load models",
+   "settings.modelProvider.discovery.catalog":
+-    "Adapter catalog; account availability may vary. Select models to add.",
+-  "settings.modelProvider.discovery.provider":
+-    "Provider model list. Existing models and your edits are preserved.",
+-  "settings.modelProvider.discovery.added": "Added",
++    "Adapter catalog; availability depends on your account.",
++  "settings.modelProvider.discovery.provider": "From provider",
+   "settings.modelProvider.discovery.import": "Add selected ({count})",
+   "settings.modelProvider.discovery.empty": "No models returned. You can add a model manually.",
+ 
+@@ -2858,6 +2861,9 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.apiFormat.short.responses": "Responses",
+   "settings.modelProvider.apiFormat.short.anthropicMessages": "Anthropic",
+   "settings.modelProvider.apiFormat.title.chatCompletions": "Chat completions",
++  "settings.modelProvider.protocol.preset": "Configured for this service",
++  "settings.modelProvider.protocol.override": "Existing custom protocol",
++  "settings.modelProvider.protocol.advanced": "Advanced connection settings",
+   "settings.modelProvider.apiFormat.title.responses": "Responses",
+   "settings.modelProvider.apiFormat.title.anthropicMessages": "Anthropic messages",
+   "settings.modelProvider.apiKey": "API key",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 25a226b..9bee774 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -1,16 +1,16 @@
+ /** 中文翻译 */
+ const zhCN: Record<string, string> = {
+-  "settings.modelProvider.discovery.title": "获取模型",
+   "settings.modelProvider.discovery.search": "搜索模型名称或 ID",
+   "settings.modelProvider.discovery.selectVisible": "全选搜索结果",
+   "settings.modelProvider.discovery.noMatches": "没有匹配的模型",
+   "settings.modelProvider.discovery.loading": "正在获取模型…",
+-  "settings.modelProvider.discovery.fetch": "从服务商获取模型列表",
+-  "settings.modelProvider.discovery.catalog":
+-    "适配器目录，实际可用性取决于账号。选择要添加的模型。",
+-  "settings.modelProvider.discovery.provider":
+-    "服务商返回的模型列表。已添加的模型和手动设置会保留。",
+-  "settings.modelProvider.discovery.added": "已添加",
++  "settings.modelProvider.discovery.available": "可添加的模型",
++  "settings.modelProvider.discovery.allAdded": "目录中的模型均已添加",
++  "settings.modelProvider.discovery.pendingConnection": "连接保存后自动更新模型列表",
++  "settings.modelProvider.discovery.connectFirst": "连接订阅账号后自动加载模型列表",
++  "settings.modelProvider.discovery.configureConnection": "配置 API 地址和密钥后自动加载模型列表",
++  "settings.modelProvider.discovery.catalog": "适配器目录，实际可用性取决于账号。",
++  "settings.modelProvider.discovery.provider": "来自服务商",
+   "settings.modelProvider.discovery.import": "添加所选模型（{count}）",
+   "settings.modelProvider.discovery.empty": "未返回模型，可手动添加。",
+ 
+@@ -2671,6 +2671,9 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.apiFormat.short.responses": "Responses",
+   "settings.modelProvider.apiFormat.short.anthropicMessages": "Anthropic",
+   "settings.modelProvider.apiFormat.title.chatCompletions": "Chat Completions",
++  "settings.modelProvider.protocol.preset": "已按服务配置",
++  "settings.modelProvider.protocol.override": "保留的自定义协议",
++  "settings.modelProvider.protocol.advanced": "高级连接设置",
+   "settings.modelProvider.apiFormat.title.responses": "Responses",
+   "settings.modelProvider.apiFormat.title.anthropicMessages": "Anthropic Messages",
+   "settings.modelProvider.apiKey": "API Key",
+diff --git a/packages/ui/src/lib/providerSettingsFormProjection.ts b/packages/ui/src/lib/providerSettingsFormProjection.ts
+index 7dd2a2b..29a9561 100644
+--- a/packages/ui/src/lib/providerSettingsFormProjection.ts
++++ b/packages/ui/src/lib/providerSettingsFormProjection.ts
+@@ -16,6 +16,8 @@ function projectProviderSettingsProviders(
+     providerId: provider.providerId,
+     providerName: provider.providerName,
+     templateId: provider.templateId,
++    templateConfig: provider.templateConfig ?? provider.effectiveBuiltinConfig,
++    templateApiFormats: provider.templateApiFormats,
+     executable: provider.executable,
+     enabled: provider.enabled,
+     accountState: provider.accountState,
+diff --git a/packages/ui/src/lib/providerSettingsFormTypes.ts b/packages/ui/src/lib/providerSettingsFormTypes.ts
+index 08c03b2..5c9ac7b 100644
+--- a/packages/ui/src/lib/providerSettingsFormTypes.ts
++++ b/packages/ui/src/lib/providerSettingsFormTypes.ts
+@@ -4,6 +4,7 @@ import type {
+   AccountProviderState,
+   ModelConfigObject,
+   ProviderConfigObject,
++  ProviderApiType,
+   ProviderSettingsProviderView,
+ } from "@zcode/provider";
+ 
+@@ -25,6 +26,9 @@ export interface ProviderSettingsFormProvider extends Pick<
+   hasPersonalConfig: boolean;
+   /** Renderer 只修改并提交这一份稀疏 Personal Overlay。 */
+   personalConfig: ProviderConfigObject;
++  /** 模板推荐连接信息来自已有 Registry 投影，不另建客户端供应商目录。 */
++  templateConfig?: ProviderConfigObject;
++  templateApiFormats?: readonly ProviderApiType[];
+   /** 只读继承基线与即时表单展示值，不直接持久化。 */
+   config: ProviderConfigObject;
+   models: ProviderSettingsFormModel[];
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index f9e95c3..b4a602d 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -1,3 +1,4 @@
++import { modelDiscoveryBlockReason } from "./modelDiscoveryActions.js";
+ import { SubscriptionConnectionSection } from "./SubscriptionConnectionSection.js";
+ /* oxlint-disable eslint(max-lines) -- provider 卡片同时承载名称、连接、鉴权、模型和映射编辑；本阶段先维持单组件，后续再按表单域拆分。 */
+ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+@@ -226,7 +227,7 @@ export function InlineEditableProviderCard({
+   const draftRevisionRef = useRef(0);
+   const lastSubmittedDraftSignatureRef = useRef<string | null>(null);
+   const pendingDraftSaveRef = useRef<Promise<void> | null>(null);
+-  // Opaque UI lease: connection edits invalidate discovery, model-list updates do not.
++  // Opaque UI lease: only committed connection changes reload the catalog, never model edits.
+   // Never put API keys in React keys, DOM attributes or logs.
+   const [subscriptionRevision, setSubscriptionRevision] = useState("");
+   const discoveryConnectionIdentity = useMemo(
+@@ -234,16 +235,20 @@ export function InlineEditableProviderCard({
+     [
+       provider.providerId,
+       subscriptionRevision,
+-      apiFormat,
+-      baseUrlValue,
+-      apiKeyValue,
+-      JSON.stringify(additionalApiKeys),
+-      autoSwitchCredentials,
+-      provider.config.access?.type,
+-      provider.config.access?.type === "subscription" ? provider.config.access.connected : false,
+-      JSON.stringify(provider.config.api?.headers ?? {}),
++      JSON.stringify(provider.config.api),
++      JSON.stringify(provider.config.access),
+     ],
+   );
++  const discoveryBlocked = modelDiscoveryBlockReason(
++    provider.config,
++    apiFormat !== (provider.config.api?.type ?? "anthropic-messages") ||
++      baseUrlValue !== (provider.config.api?.baseUrl ?? "") ||
++      apiKeyValue !== getProviderFormApiKey(provider) ||
++      (isApiKeyAccess(provider.config.access) &&
++        (JSON.stringify(additionalApiKeys) !==
++          JSON.stringify(provider.config.access.additionalApiKeys ?? []) ||
++          autoSwitchCredentials !== (provider.config.access.autoSwitchCredentials === true))),
++  );
+   const providerDisplayName = resolveModelProviderDisplayName(provider);
+   const saveNotificationRef = useRef({
+     providerId: provider.providerId,
+@@ -938,7 +943,7 @@ export function InlineEditableProviderCard({
+           providerEnabled={provider.enabled}
+           providerAccess={provider.config.access}
+           discoveryConnectionIdentity={discoveryConnectionIdentity}
+-          onBeforeDiscover={() => commitPendingDraft("model-discovery")}
++          discoveryBlockedReason={discoveryBlocked}
+           models={models}
+           onTestModel={onTestModel ? handleTestModel : undefined}
+           onModelCommit={handleModelCommit}
+diff --git a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+index 591ae0a..21796d0 100644
+--- a/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
++++ b/packages/ui/src/settings/model-provider-section/ModelDiscoverySection.tsx
+@@ -1,17 +1,8 @@
+-import { useRef, useEffect, useState } from "react";
+-import { DownloadIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
++import { useCallback, useRef, useEffect, useState, type ReactNode } from "react";
++import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { Checkbox } from "@/components/ui/checkbox.js";
+ import { Input } from "@/components/ui/input.js";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogHeader,
+-  DialogTitle,
+-  DialogTrigger,
+-  DialogFooter,
+-} from "@/components/ui/dialog.js";
+ import { useServices } from "@/hooks/useServices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { reloadProviderSettingsSnapshot } from "@/lib/providerSettingsSnapshot.js";
+@@ -23,23 +14,20 @@ import {
+ 
+ export function ModelDiscoverySection({
+   providerId,
+-  providerName,
+   disabledReason,
+   existingIds,
+   connectionIdentity,
+-  onBeforeDiscover,
++  renderConfiguredModels,
+ }: {
+   providerId: string;
+-  providerName?: string;
+   disabledReason?: string;
+   existingIds: string[];
+   connectionIdentity?: object;
+-  onBeforeDiscover?: () => Promise<void>;
++  renderConfiguredModels: (query: string) => ReactNode;
+ }) {
+   const { providerSettingsService } = useServices();
+   const { intl } = useZCodeIntl();
+   const t = (id: string) => intl.formatMessage({ id: `settings.modelProvider.discovery.${id}` });
+-  const [open, setOpen] = useState(false);
+   const [catalog, setCatalog] = useState<DiscoveredCatalog>();
+   const [selected, setSelected] = useState<Set<string>>(new Set());
+   const [added, setAdded] = useState<Set<string>>(new Set());
+@@ -48,76 +36,83 @@ export function ModelDiscoverySection({
+   const [error, setError] = useState<string>();
+   const generation = useRef(0);
+   const busyRef = useRef(false);
+-  const reset = () => {
++  const loadCatalog = useCallback(async () => {
++    if (busyRef.current || disabledReason) return;
++    busyRef.current = true;
++    const version = ++generation.current;
++    const isCurrent = () => version === generation.current;
++    setBusy("fetch");
++    setError(undefined);
++    try {
++      const result = await fetchSavedModelCatalog({
++        providerId,
++        service: providerSettingsService,
++        isCurrent,
++      });
++      if (result) {
++        setCatalog(result);
++        setSelected(
++          (previous) =>
++            new Set(
++              result.models.filter((model) => previous.has(model.id)).map((model) => model.id),
++            ),
++        );
++      }
++    } catch (reason) {
++      if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
++    } finally {
++      if (isCurrent()) {
++        setBusy(null);
++        busyRef.current = false;
++      }
++    }
++  }, [providerId, providerSettingsService, disabledReason]);
++
++  useEffect(() => {
++    // 连接变化清掉旧目录；模型行的添加、排序和编辑不改变此 lease。
+     generation.current++;
+     busyRef.current = false;
+     setBusy(null);
+     setCatalog(undefined);
+     setSelected(new Set());
+     setAdded(new Set());
+-    setQuery("");
+     setError(undefined);
+-  };
+-  useEffect(() => {
+-    reset();
+-    setOpen(false);
++    void loadCatalog();
+     return () => {
+       generation.current++;
+     };
+-  }, [providerId, connectionIdentity]);
+-  const setDialogOpen = (value: boolean) => {
+-    reset();
+-    setOpen(value);
+-    if (value) void run("fetch");
+-  };
+-  const run = async (operation: "fetch" | "import") => {
+-    if (busyRef.current) return;
++  }, [connectionIdentity, loadCatalog]);
++
++  const importSelected = async () => {
++    if (busyRef.current || disabledReason || !catalog) return;
+     busyRef.current = true;
+     const version = ++generation.current;
+     const isCurrent = () => version === generation.current;
+-    setBusy(operation);
++    setBusy("import");
+     setError(undefined);
+     try {
+-      if (operation === "fetch") {
+-        setCatalog(undefined);
+-        setSelected(new Set());
+-        const result = await fetchSavedModelCatalog({
+-          providerId,
+-          service: providerSettingsService,
+-          saveDraft: onBeforeDiscover,
+-          isCurrent,
+-        });
+-        if (result) setCatalog(result);
+-      } else if (catalog) {
+-        await addDiscoveredModels({
+-          providerId,
+-          catalog,
+-          selected,
+-          service: providerSettingsService,
+-          isCurrent,
+-          onAdded(id) {
+-            setAdded((previous) => new Set(previous).add(id));
+-            setSelected((previous) => {
+-              const next = new Set(previous);
+-              next.delete(id);
+-              return next;
+-            });
+-          },
+-        });
+-        if (isCurrent()) setOpen(false);
+-      }
++      await addDiscoveredModels({
++        providerId,
++        catalog,
++        selected,
++        service: providerSettingsService,
++        isCurrent,
++        onAdded(id) {
++          setAdded((previous) => new Set(previous).add(id));
++          setSelected((previous) => {
++            const next = new Set(previous);
++            next.delete(id);
++            return next;
++          });
++        },
++      });
+     } catch (reason) {
+       if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+     } finally {
+-      if (operation === "import") {
+-        try {
+-          await reloadProviderSettingsSnapshot();
+-        } catch (reason) {
+-          if (isCurrent()) {
+-            setOpen(true);
+-            setError(reason instanceof Error ? reason.message : String(reason));
+-          }
+-        }
++      try {
++        await reloadProviderSettingsSnapshot();
++      } catch (reason) {
++        if (isCurrent()) setError(reason instanceof Error ? reason.message : String(reason));
+       }
+       if (isCurrent()) {
+         setBusy(null);
+@@ -127,12 +122,12 @@ export function ModelDiscoverySection({
+   };
+   const existing = new Set([...existingIds, ...added]);
+   const search = query.trim().toLocaleLowerCase();
+-  const visible = (catalog?.models ?? []).filter((model) =>
++  const available = (catalog?.models ?? []).filter((model) => !existing.has(model.id));
++  const visible = available.filter((model) =>
+     `${model.name} ${model.id}`.toLocaleLowerCase().includes(search),
+   );
+-  const selectable = visible.filter((model) => !existing.has(model.id));
+-  const selectedCount = [...selected].filter((id) => !existing.has(id)).length;
+-  const allSelected = selectable.length > 0 && selectable.every((model) => selected.has(model.id));
++  const selectedCount = available.filter((model) => selected.has(model.id)).length;
++  const allSelected = visible.length > 0 && visible.every((model) => selected.has(model.id));
+   const toggle = (ids: string[], checked: boolean) =>
+     setSelected((previous) => {
+       const next = new Set(previous);
+@@ -142,137 +137,141 @@ export function ModelDiscoverySection({
+       }
+       return next;
+     });
++
+   return (
+-    <Dialog open={open} onOpenChange={setDialogOpen}>
+-      <DialogTrigger asChild>
++    <div className="space-y-3" data-testid="model-discovery">
++      <div className="flex items-center gap-2">
++        <Input
++          value={query}
++          onChange={(event) => setQuery(event.target.value)}
++          placeholder={t("search")}
++          aria-label={t("search")}
++        />
+         <Button
+-          variant="secondary"
+-          className="rounded-lg"
+-          data-testid="model-discovery"
+-          disabled={Boolean(disabledReason)}
+-          title={disabledReason}
++          type="button"
++          variant="ghost"
++          size="icon-sm"
++          disabled={busy !== null || Boolean(disabledReason)}
++          aria-label={intl.formatMessage({ id: "common.refresh" })}
++          title={disabledReason ?? intl.formatMessage({ id: "common.refresh" })}
++          onClick={() => void loadCatalog()}
+         >
+-          <DownloadIcon data-icon="inline-start" aria-hidden="true" />
+-          {t("fetch")}
++          <RefreshCwIcon className={busy === "fetch" ? "size-4 animate-spin" : "size-4"} />
+         </Button>
+-      </DialogTrigger>
+-      <DialogContent className="max-h-[min(48rem,calc(100vh-4rem))] max-w-2xl grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-clip">
+-        <DialogHeader className="pr-8">
+-          <DialogTitle>
+-            {providerName ?? providerId} · {t("title")}
+-          </DialogTitle>
+-          <DialogDescription>
+-            {t(catalog?.source === "catalog" ? "catalog" : "provider")}
+-          </DialogDescription>
+-        </DialogHeader>
+-        <div className="flex items-center gap-2">
+-          <Input
+-            value={query}
+-            onChange={(event) => setQuery(event.target.value)}
+-            placeholder={t("search")}
+-            aria-label={t("search")}
+-            disabled={!catalog || busy !== null}
+-          />
+-          <Button
+-            variant="ghost"
+-            size="icon-sm"
+-            disabled={busy !== null}
+-            aria-label={intl.formatMessage({ id: "common.refresh" })}
+-            onClick={() => void run("fetch")}
+-          >
+-            <RefreshCwIcon className="size-4" />
+-          </Button>
+-        </div>
+-        <div className="min-h-0 overflow-y-auto rounded-lg border border-input-border bg-input">
++      </div>
++      {renderConfiguredModels(query)}
++      {disabledReason ? (
++        <p role="status" className="text-ui-caption text-foreground-subtle">
++          {disabledReason}
++        </p>
++      ) : (
++        <div className="space-y-2">
++          <div className="flex flex-wrap items-center justify-between gap-2 text-ui-caption text-foreground-subtle">
++            <span>
++              {t("available")} {catalog ? available.length : ""}
++            </span>
++            {catalog ? (
++              <span>{t(catalog.source === "catalog" ? "catalog" : "provider")}</span>
++            ) : null}
++          </div>
+           {busy === "fetch" ? (
+-            <div
+-              className="flex items-center justify-center gap-2 p-6 text-ui-base text-foreground-subtle"
++            <p
++              className="flex items-center gap-2 text-ui-caption text-foreground-subtle"
+               role="status"
+             >
+               <LoaderCircleIcon className="size-4 animate-spin" />
+               {t("loading")}
+-            </div>
+-          ) : error && !catalog ? (
+-            <div className="space-y-3 p-4">
+-              <p className="text-ui-base text-destructive" role="alert">
++            </p>
++          ) : null}
++          {error ? (
++            <div className="flex flex-wrap items-center justify-between gap-2">
++              <p className="min-w-0 text-ui-base text-destructive" role="alert">
+                 {error}
+               </p>
+-              <Button variant="secondary" onClick={() => void run("fetch")}>
++              <Button
++                type="button"
++                variant="ghost"
++                size="sm"
++                disabled={busy !== null}
++                onClick={() => void loadCatalog()}
++              >
+                 {intl.formatMessage({ id: "common.retry" })}
+               </Button>
+             </div>
+-          ) : visible.length === 0 ? (
+-            <p className="p-6 text-ui-base text-foreground-subtle">
+-              {t(search ? "noMatches" : "empty")}
+-            </p>
+-          ) : (
+-            visible.map((model) => {
+-              const exists = existing.has(model.id);
+-              return (
+-                <label
+-                  key={model.id}
+-                  className="flex items-center gap-3 border-b border-border px-3 py-2 last:border-b-0 hover:bg-hover"
+-                >
+-                  <Checkbox
+-                    checked={exists || selected.has(model.id)}
+-                    disabled={exists || busy !== null}
+-                    onCheckedChange={(checked) => toggle([model.id], checked === true)}
+-                  />
+-                  <span className="min-w-0 flex-1 text-ui-base break-all">
+-                    {model.name}
+-                    {model.name !== model.id ? (
+-                      <span className="block text-ui-caption text-foreground-subtle">
+-                        {model.id}
+-                      </span>
+-                    ) : null}
+-                  </span>
+-                  {exists ? (
+-                    <span className="text-ui-caption text-foreground-subtle">{t("added")}</span>
+-                  ) : null}
+-                </label>
+-              );
+-            })
+-          )}
+-        </div>
+-        <div className="space-y-3">
+-          {error && catalog ? (
+-            <p role="alert" className="text-ui-base text-destructive">
+-              {error}
+-            </p>
+           ) : null}
+-          <DialogFooter className="items-center sm:justify-between">
+-            <label className="flex items-center gap-2 text-ui-base">
+-              <Checkbox
+-                disabled={busy !== null || selectable.length === 0}
+-                checked={
+-                  allSelected
+-                    ? true
+-                    : selectable.some((model) => selected.has(model.id))
+-                      ? "indeterminate"
+-                      : false
+-                }
+-                onCheckedChange={(checked) =>
+-                  toggle(
+-                    selectable.map((model) => model.id),
+-                    checked === true,
+-                  )
+-                }
+-              />
+-              {t("selectVisible")}
+-            </label>
+-            <Button
+-              disabled={busy !== null || selectedCount === 0}
+-              onClick={() => void run("import")}
+-            >
+-              {busy === "import" ? <LoaderCircleIcon className="size-4 animate-spin" /> : null}
+-              {intl.formatMessage(
+-                { id: "settings.modelProvider.discovery.import" },
+-                { count: selectedCount },
+-              )}
+-            </Button>
+-          </DialogFooter>
++          {catalog ? (
++            visible.length === 0 ? (
++              <p className="text-ui-caption text-foreground-subtle">
++                {t(
++                  available.length && search
++                    ? "noMatches"
++                    : catalog.models.length
++                      ? "allAdded"
++                      : "empty",
++                )}
++              </p>
++            ) : (
++              <div className="max-h-72 overflow-y-auto rounded-lg border border-input-border bg-input">
++                {visible.map((model) => (
++                  <label
++                    key={model.id}
++                    className="flex items-center gap-3 border-b border-input-border px-3 py-2 last:border-b-0 hover:bg-hover"
++                  >
++                    <Checkbox
++                      checked={selected.has(model.id)}
++                      disabled={busy !== null}
++                      onCheckedChange={(checked) => toggle([model.id], checked === true)}
++                    />
++                    <span className="min-w-0 flex-1 text-ui-base break-all">
++                      {model.name}
++                      {model.name !== model.id ? (
++                        <span className="block text-ui-caption text-foreground-subtle">
++                          {model.id}
++                        </span>
++                      ) : null}
++                    </span>
++                  </label>
++                ))}
++              </div>
++            )
++          ) : null}
++          {visible.length > 0 || selectedCount > 0 ? (
++            <div className="flex flex-wrap items-center justify-between gap-2">
++              <label className="flex items-center gap-2 text-ui-base">
++                <Checkbox
++                  disabled={busy !== null || visible.length === 0}
++                  checked={
++                    allSelected
++                      ? true
++                      : visible.some((model) => selected.has(model.id))
++                        ? "indeterminate"
++                        : false
++                  }
++                  onCheckedChange={(checked) =>
++                    toggle(
++                      visible.map((model) => model.id),
++                      checked === true,
++                    )
++                  }
++                />
++                {t("selectVisible")}
++              </label>
++              <Button
++                type="button"
++                size="sm"
++                disabled={busy !== null || selectedCount === 0}
++                onClick={() => void importSelected()}
++              >
++                {busy === "import" ? <LoaderCircleIcon className="size-4 animate-spin" /> : null}
++                {intl.formatMessage(
++                  { id: "settings.modelProvider.discovery.import" },
++                  { count: selectedCount },
++                )}
++              </Button>
++            </div>
++          ) : null}
+         </div>
+-      </DialogContent>
+-    </Dialog>
++      )}
++    </div>
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx b/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
+index 64fe5f3..33d0f69 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderApiFormatSelect.tsx
+@@ -1,11 +1,7 @@
+-import type { ProviderApiType } from "@zcode/provider";
++import { CUSTOM_PROVIDER_API_FORMATS, type ProviderApiType } from "@zcode/provider";
+ import { ProviderConnectionChoices } from "./ProviderConnectionChoices.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+-const PROVIDER_CONNECTION_API_FORMATS: readonly ProviderApiType[] = [
+-  "anthropic-messages",
+-  "openai-chat-completions",
+-  "openai-responses",
+-];
++const PROVIDER_CONNECTION_API_FORMATS = CUSTOM_PROVIDER_API_FORMATS;
+ 
+ const PROVIDER_CONNECTION_API_FORMAT_PATHS: Record<ProviderApiType, string> = {
+   "anthropic-messages": "/v1/messages",
+@@ -27,21 +23,28 @@ export function resolveProviderConnectionApiFormatDisplayLabel(
+   intl: { formatMessage: (descriptor: { id: string }) => string },
+   format: ProviderApiType,
+ ): string {
+-  const title = intl.formatMessage({
+-    id: PROVIDER_CONNECTION_API_FORMAT_TITLE_IDS[format],
+-  });
++  const title = resolveProviderConnectionApiFormatTitle(intl, format);
+   return `${title} (${PROVIDER_CONNECTION_API_FORMAT_PATHS[format]})`;
+ }
+ 
++export function resolveProviderConnectionApiFormatTitle(
++  intl: { formatMessage: (descriptor: { id: string }) => string },
++  format: ProviderApiType,
++): string {
++  return intl.formatMessage({ id: PROVIDER_CONNECTION_API_FORMAT_TITLE_IDS[format] });
++}
++
+ export function ProviderApiFormatSelect({
+   apiFormatOptions = PROVIDER_CONNECTION_API_FORMATS,
+   triggerId,
+   value,
++  disabled,
+   onChange,
+ }: {
+   apiFormatOptions?: readonly ProviderApiType[];
+   triggerId?: string;
+   value: ProviderApiType;
++  disabled?: boolean;
+   onChange: (value: ProviderApiType) => void;
+ }) {
+   const { intl } = useZCodeIntl();
+@@ -51,6 +54,7 @@ export function ProviderApiFormatSelect({
+       <ProviderConnectionChoices
+         label={intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
+         value={value}
++        disabled={disabled}
+         items={apiFormatOptions.map((format) => ({
+           value: format,
+           label: intl.formatMessage({ id: PROVIDER_CONNECTION_API_FORMAT_TITLE_IDS[format] }),
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+index b063381..1d60c03 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+@@ -13,7 +13,7 @@ import type {
+   ProviderSettingsFormModel,
+ } from "@/lib/providerSettingsFormTypes.js";
+ import type { ModelConnectivityResult } from "@zcode/shared";
+-import type { ProviderApiType } from "@zcode/provider";
++import { resolveProviderProtocolPolicy, type ProviderApiType } from "@zcode/provider";
+ import {
+   TID_MODEL_PROVIDER_ADD_MODEL_BUTTON,
+   TID_MODEL_PROVIDER_BASE_URL_INPUT,
+@@ -43,10 +43,8 @@ import { ModelRowInput } from "./ProviderFormControls.js";
+ import { PresetProviderApiKeyBanner } from "./PresetProviderApiKeyBanner.js";
+ import { type ProviderModelDraftValues } from "@/settings/model-provider-section/ProviderModelMetadata.js";
+ import { ProviderModelMetadataDialog } from "@/settings/model-provider-section/ProviderModelMetadataDialog.js";
+-import {
+-  ProviderApiFormatSelect,
+-  resolveProviderConnectionApiFormatDisplayLabel,
+-} from "@/settings/model-provider-section/ProviderApiFormatSelect.js";
++import { resolveProviderConnectionApiFormatDisplayLabel } from "@/settings/model-provider-section/ProviderApiFormatSelect.js";
++import { ProviderProtocolControl } from "./ProviderProtocolControl.js";
+ import { SortableProviderModelList } from "@/settings/model-provider-section/SortableProviderModelList.js";
+ import { useProviderModelDraft } from "@/settings/model-provider-section/useProviderModelDraft.js";
+ import { ProviderLogo } from "@/settings/model-provider-section/ProviderLogo.js";
+@@ -267,7 +265,18 @@ export function ProviderConnectionSection({
+         />
+       </div>
+       {showApiFormat ? (
+-        <ProviderApiFormatSelect value={apiFormat} onChange={onApiFormatChange} />
++        <ProviderProtocolControl
++          policy={resolveProviderProtocolPolicy(
++            provider.templateConfig,
++            {
++              ...provider.config,
++              api: { ...provider.config.api, type: apiFormat, baseUrl: baseUrlValue },
++            },
++            provider.templateApiFormats,
++          )}
++          value={apiFormat}
++          onChange={onApiFormatChange}
++        />
+       ) : null}
+     </>
+   );
+@@ -443,7 +452,7 @@ export function ProviderModelsSection({
+   providerEnabled = true,
+   providerAccess,
+   discoveryConnectionIdentity,
+-  onBeforeDiscover,
++  discoveryBlockedReason,
+   models,
+   onTestModel,
+   onModelCommit,
+@@ -458,7 +467,7 @@ export function ProviderModelsSection({
+   providerEnabled?: boolean;
+   providerAccess?: ProviderConfigObject["access"];
+   discoveryConnectionIdentity?: object;
+-  onBeforeDiscover?: () => Promise<void>;
++  discoveryBlockedReason?: string;
+   models: ProviderSettingsFormModel[];
+   onTestModel?: (model: string) => Promise<ModelConnectivityResult>;
+   onModelCommit: (
+@@ -562,6 +571,89 @@ export function ProviderModelsSection({
+       })
+     : null;
+ 
++  const renderConfiguredModels = (query: string) => {
++    const search = query.trim().toLocaleLowerCase();
++    const visibleModels = models.filter((model) =>
++      model.modelId.toLocaleLowerCase().includes(search),
++    );
++    return (
++      <div>
++        {visibleModels.length > 0 ? (
++          <div className="overflow-hidden rounded-lg border border-input-border bg-input">
++            <SortableProviderModelList
++              modelIds={visibleModels.map((model) => model.modelId)}
++              sortableModelIds={visibleModels.map((model) => model.modelId)}
++              onReorder={search ? undefined : onReorderModelIds}
++              renderModel={(_modelId, index) => {
++                const model = visibleModels[index]!;
++                const inputFormat = model.config.properties?.inputFormat;
++                const outputFormat = model.config.properties?.outputFormat;
++                const completeProperties =
++                  model.config.properties?.contextWindow != null &&
++                  inputFormat?.supportsText != null &&
++                  inputFormat.supportsImage != null &&
++                  inputFormat.supportsVideo != null &&
++                  inputFormat.supportsAudio != null &&
++                  inputFormat.supportsPdf != null &&
++                  outputFormat?.supportsText != null;
++                return (
++                  <>
++                    <ModelRowInput
++                      key={`${providerId}/${model.modelId}`}
++                      providerId={providerId}
++                      providerName={providerName}
++                      providerEnabled={providerEnabled}
++                      providerAccess={providerAccess}
++                      inputTestId={testId(TID_MODEL_PROVIDER_MODEL_INPUT, String(index))}
++                      deleteTestId={testId(TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON, String(index))}
++                      model={model}
++                      onCommit={(value, basedOnRevision) =>
++                        onModelCommit(model.modelId, value, basedOnRevision)
++                      }
++                      onResolveDraft={(nextModelId, personalConfig) =>
++                        providerSettingsService.resolveModelConfig({
++                          providerId,
++                          originalModelId: model.modelId,
++                          modelId: nextModelId,
++                          personalConfig: structuredClone(personalConfig),
++                        })
++                      }
++                      settingsRevision={settingsRevision}
++                      onDelete={!model.builtin ? () => onDeleteModel(model.modelId) : undefined}
++                      onEnabledChange={(enabled) => {
++                        void Promise.resolve(onModelEnabledChange?.(model.modelId, enabled)).catch(
++                          () => undefined,
++                        );
++                      }}
++                      onTest={onTestModel}
++                    />
++                    {!completeProperties && (
++                      <div className="px-3 pb-2 text-ui-sm text-destructive">
++                        {model.issues?.[0]?.message ??
++                          intl.formatMessage({
++                            id: "settings.modelProvider.modelConfigIncomplete",
++                          })}
++                      </div>
++                    )}
++                  </>
++                );
++              }}
++            />
++          </div>
++        ) : (
++          <div className="mt-1 flex h-12 items-center justify-start gap-2 rounded-lg border border-dashed border-border px-4 text-left text-ui-base text-foreground-subtle">
++            <InfoIcon className="size-4 shrink-0" aria-hidden="true" />
++            {intl.formatMessage({
++              id: search
++                ? "settings.modelProvider.discovery.noMatches"
++                : "settings.modelProvider.modelsEmpty",
++            })}
++          </div>
++        )}
++      </div>
++    );
++  };
++
+   return (
+     <div>
+       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+@@ -569,21 +661,6 @@ export function ProviderModelsSection({
+           {intl.formatMessage({ id: "settings.modelProvider.models" })}
+         </span>
+         <div className="flex flex-wrap items-center gap-2">
+-          {providerAccess?.type !== "zhipu-account" ? (
+-            <ModelDiscoverySection
+-              key={providerId}
+-              providerId={providerId}
+-              providerName={providerName}
+-              disabledReason={
+-                providerAccess?.type === "subscription" && !providerAccess.connected
+-                  ? intl.formatMessage({ id: "settings.modelProvider.subscription.connectFirst" })
+-                  : undefined
+-              }
+-              existingIds={models.map((model) => model.modelId)}
+-              connectionIdentity={discoveryConnectionIdentity}
+-              onBeforeDiscover={onBeforeDiscover}
+-            />
+-          ) : null}
+           <Button
+             type="button"
+             variant="secondary"
+@@ -597,71 +674,22 @@ export function ProviderModelsSection({
+           </Button>
+         </div>
+       </div>
+-      {models.length > 0 ? (
+-        <div className="overflow-hidden rounded-lg border border-input-border bg-input">
+-          <SortableProviderModelList
+-            modelIds={models.map((model) => model.modelId)}
+-            sortableModelIds={models.map((model) => model.modelId)}
+-            onReorder={onReorderModelIds}
+-            renderModel={(_modelId, index) => {
+-              const model = models[index]!;
+-              const inputFormat = model.config.properties?.inputFormat;
+-              const outputFormat = model.config.properties?.outputFormat;
+-              const completeProperties =
+-                model.config.properties?.contextWindow != null &&
+-                inputFormat?.supportsText != null &&
+-                inputFormat.supportsImage != null &&
+-                inputFormat.supportsVideo != null &&
+-                inputFormat.supportsAudio != null &&
+-                inputFormat.supportsPdf != null &&
+-                outputFormat?.supportsText != null;
+-              return (
+-                <>
+-                  <ModelRowInput
+-                    key={`${providerId}/${model.modelId}`}
+-                    providerId={providerId}
+-                    providerName={providerName}
+-                    providerEnabled={providerEnabled}
+-                    providerAccess={providerAccess}
+-                    inputTestId={testId(TID_MODEL_PROVIDER_MODEL_INPUT, String(index))}
+-                    deleteTestId={testId(TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON, String(index))}
+-                    model={model}
+-                    onCommit={(value, basedOnRevision) =>
+-                      onModelCommit(model.modelId, value, basedOnRevision)
+-                    }
+-                    onResolveDraft={(nextModelId, personalConfig) =>
+-                      providerSettingsService.resolveModelConfig({
+-                        providerId,
+-                        originalModelId: model.modelId,
+-                        modelId: nextModelId,
+-                        personalConfig: structuredClone(personalConfig),
+-                      })
+-                    }
+-                    settingsRevision={settingsRevision}
+-                    onDelete={!model.builtin ? () => onDeleteModel(model.modelId) : undefined}
+-                    onEnabledChange={(enabled) => {
+-                      void Promise.resolve(onModelEnabledChange?.(model.modelId, enabled)).catch(
+-                        () => undefined,
+-                      );
+-                    }}
+-                    onTest={onTestModel}
+-                  />
+-                  {!completeProperties && (
+-                    <div className="px-3 pb-2 text-ui-sm text-destructive">
+-                      {model.issues?.[0]?.message ??
+-                        intl.formatMessage({ id: "settings.modelProvider.modelConfigIncomplete" })}
+-                    </div>
+-                  )}
+-                </>
+-              );
+-            }}
+-          />
+-        </div>
++      {providerAccess?.type === "zhipu-account" ? (
++        renderConfiguredModels("")
+       ) : (
+-        <div className="mt-1 flex h-12 items-center justify-start gap-2 rounded-lg border border-dashed border-border px-4 text-left text-ui-base text-foreground-subtle">
+-          <InfoIcon className="size-4 shrink-0" aria-hidden="true" />
+-          {intl.formatMessage({ id: "settings.modelProvider.modelsEmpty" })}
+-        </div>
++        <ModelDiscoverySection
++          providerId={providerId}
++          disabledReason={
++            discoveryBlockedReason
++              ? intl.formatMessage({
++                  id: `settings.modelProvider.discovery.${discoveryBlockedReason}`,
++                })
++              : undefined
++          }
++          existingIds={models.map((model) => model.modelId)}
++          connectionIdentity={discoveryConnectionIdentity}
++          renderConfiguredModels={renderConfiguredModels}
++        />
+       )}
+       <>
+         <ProviderModelMetadataDialog
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx b/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx
+new file mode 100644
+index 0000000..2b7aa9d
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/ProviderProtocolControl.tsx
+@@ -0,0 +1,68 @@
++import { ChevronDownIcon } from "lucide-react";
++import type { ProviderApiType, ProviderProtocolPolicy } from "@zcode/provider";
++import { Button } from "@/components/ui/button.js";
++import {
++  Collapsible,
++  CollapsibleContent,
++  CollapsibleTrigger,
++} from "@/components/ui/collapsible.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import {
++  ProviderApiFormatSelect,
++  resolveProviderConnectionApiFormatTitle,
++} from "./ProviderApiFormatSelect.js";
++
++/** 普通预置连接无需猜协议；自定义端点才直接展示协议，替代路由原位展开。 */
++export function ProviderProtocolControl({
++  policy,
++  value,
++  formats = policy.formats,
++  disabled,
++  onChange,
++}: {
++  policy: ProviderProtocolPolicy;
++  value: ProviderApiType;
++  formats?: readonly ProviderApiType[];
++  disabled?: boolean;
++  onChange: (value: ProviderApiType) => void;
++}) {
++  const { intl } = useZCodeIntl();
++  if (policy.mode === "subscription") return null;
++  const choices = (
++    <ProviderApiFormatSelect
++      value={value}
++      apiFormatOptions={formats}
++      disabled={disabled}
++      onChange={onChange}
++    />
++  );
++  if (policy.mode === "custom") return choices;
++  const summary = (
++    <div className="flex min-w-0 flex-wrap items-center gap-2 text-ui-base text-foreground-subtle">
++      <span>{intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}</span>
++      <span className="text-foreground">
++        {resolveProviderConnectionApiFormatTitle(intl, value)}
++      </span>
++      <span>
++        {intl.formatMessage({
++          id: `settings.modelProvider.protocol.${policy.mode === "override" ? "override" : "preset"}`,
++        })}
++      </span>
++    </div>
++  );
++  if (formats.length < 2) return summary;
++  return (
++    <Collapsible className="space-y-2" defaultOpen={policy.mode === "override"}>
++      <div className="flex flex-wrap items-center justify-between gap-2">
++        {summary}
++        <CollapsibleTrigger asChild>
++          <Button type="button" variant="ghost" size="sm" disabled={disabled}>
++            {intl.formatMessage({ id: "settings.modelProvider.protocol.advanced" })}
++            <ChevronDownIcon className="size-3.5" />
++          </Button>
++        </CollapsibleTrigger>
++      </div>
++      <CollapsibleContent>{choices}</CollapsibleContent>
++    </Collapsible>
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+index aab85a7..d0ed258 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+@@ -2,6 +2,7 @@ import { useState } from "react";
+ import { ArrowLeftIcon } from "lucide-react";
+ import {
+   resolveProviderTemplateName,
++  resolveProviderProtocolPolicy,
+   type ProviderApiType,
+   type ProviderConfigObject,
+ } from "@zcode/provider";
+@@ -12,6 +13,7 @@ import { usePlatform } from "@/hooks/usePlatform.js";
+ import { ProviderApiKeySection } from "./ProviderCardSections.js";
+ import { ProviderLogo } from "./ProviderLogo.js";
+ import { ProviderConnectionChoices } from "./ProviderConnectionChoices.js";
++import { ProviderProtocolControl } from "./ProviderProtocolControl.js";
+ import {
+   newProviderSetupDraft,
+   providerSetupConfig,
+@@ -78,10 +80,10 @@ export function ProviderTemplateSetup({
+   const declaredFormats = [
+     ...new Set(protocolRoutes.map((template) => template.config.api?.type)),
+   ].filter((api): api is ProviderApiType => api != null);
+-  const formats: ProviderApiType[] =
+-    declaredFormats.length > 1
+-      ? declaredFormats
+-      : ["anthropic-messages", "openai-chat-completions", "openai-responses"];
++  const protocolPolicy = resolveProviderProtocolPolicy(custom ? undefined : selected.config, {
++    ...selected.config,
++    api: { type: draft.api, baseUrl: draft.baseUrl },
++  });
+   const choose = (change: Parameters<typeof selectProviderTemplate>[2]) => {
+     if (busy) return;
+     const next = selectProviderTemplate(vendor.templates, selectedId, change);
+@@ -172,20 +174,16 @@ export function ProviderTemplateSetup({
+                 placeholder="https://api.example.com/v1"
+               />
+             </div>
+-            <ProviderConnectionChoices
+-              label={intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
++            <ProviderProtocolControl
++              key={`${serviceId}:${selected.catalog?.region ?? ""}`}
++              policy={protocolPolicy}
+               value={draft.api}
+-              items={formats.map((format) => ({
+-                value: format,
+-                label: intl.formatMessage({
+-                  id: `settings.modelProvider.apiFormat.title.${format === "anthropic-messages" ? "anthropicMessages" : format === "openai-responses" ? "responses" : "chatCompletions"}`,
+-                }),
+-              }))}
++              formats={protocolPolicy.mode === "custom" ? protocolPolicy.formats : declaredFormats}
+               disabled={busy}
+               onChange={(api) => {
+-                if (declaredFormats.length > 1)
++                if (protocolPolicy.mode !== "custom" && declaredFormats.length > 1)
+                   choose({ serviceId, region: selected.catalog?.region ?? "", api });
+-                else patch({ api: api as ProviderApiType });
++                else patch({ api });
+               }}
+             />
+             <ProviderApiKeySection
+diff --git a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+index db1a80e..9567aa6 100644
+--- a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
++++ b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+@@ -1,3 +1,4 @@
++import type { ProviderConfigObject } from "@zcode/provider";
+ import type { IProviderSettingsService } from "@zcode/services";
+ 
+ export type DiscoveredCatalog = Awaited<ReturnType<IProviderSettingsService["discoverModels"]>>;
+@@ -5,11 +6,10 @@ export type DiscoveredCatalog = Awaited<ReturnType<IProviderSettingsService["dis
+ export async function fetchSavedModelCatalog(input: {
+   providerId: string;
+   service: Pick<IProviderSettingsService, "discoverModels">;
+-  saveDraft?: () => Promise<void>;
++  blocked?: boolean;
+   isCurrent: () => boolean;
+ }): Promise<DiscoveredCatalog | undefined> {
+-  await input.saveDraft?.();
+-  if (!input.isCurrent()) return;
++  if (input.blocked || !input.isCurrent()) return;
+   const catalog = await input.service.discoverModels(input.providerId);
+   return input.isCurrent() ? catalog : undefined;
+ }
+@@ -40,3 +40,25 @@ export async function addDiscoveredModels(input: {
+     if (input.isCurrent()) input.onAdded(model.id);
+   }
+ }
++
++// 自动读取只消费已保存连接；输入过程中不能补保存，也不能把密钥发往未提交的地址。
++export function modelDiscoveryBlockReason(
++  config: ProviderConfigObject,
++  pendingDraft: boolean,
++): "pendingConnection" | "connectFirst" | "configureConnection" | undefined {
++  if (pendingDraft) return "pendingConnection";
++  if (config.access?.type === "subscription")
++    return config.access.connected ? undefined : "connectFirst";
++  if (
++    (config.access?.type !== "api-key" && config.access?.type !== "zhipu-coding-plan-api-key") ||
++    !config.access.apiKey?.trim()
++  )
++    return "configureConnection";
++  try {
++    const endpoint = new URL(config.api?.baseUrl ?? "");
++    if (endpoint.protocol === "https:" || endpoint.protocol === "http:") return undefined;
++  } catch {
++    /* An incomplete address remains editable without issuing a request. */
++  }
++  return "configureConnection";
++}
+diff --git a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+index d31702a..1398c7a 100644
+--- a/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
++++ b/packages/ui/src/settings/model-provider-section/providerSetupDraft.ts
+@@ -1,5 +1,6 @@
+ import {
+   isApiKeyAccess,
++  resolveProviderProtocolPolicy,
+   type ProviderApiType,
+   type ProviderConfigObject,
+   type ProviderSettingsTemplateView,
+@@ -38,8 +39,18 @@ export function providerSetupConfig(
+     ...new Set([draft.primary, ...draft.additional].map((key) => key.trim()).filter(Boolean)),
+   ];
+   if (!keys.length || keys.length > 10) return undefined;
++  const api = { type: draft.api, baseUrl: draft.baseUrl.trim() };
++  const policy = resolveProviderProtocolPolicy(template.config, { ...template.config, api });
++  if (policy.mode === "override") return undefined;
++  // 默认连接跟随模板，避免创建时把推荐地址和协议永久复制为用户覆盖。
++  const apiOverride = {
++    ...(!template.config.api?.baseUrl || api.type !== template.config.api?.type
++      ? { type: api.type }
++      : {}),
++    ...(api.baseUrl !== template.config.api?.baseUrl ? { baseUrl: api.baseUrl } : {}),
++  };
+   return {
+-    api: { type: draft.api, baseUrl: draft.baseUrl.trim() },
++    ...(Object.keys(apiOverride).length ? { api: apiOverride } : {}),
+     access: {
+       type: template.config.access.type,
+       apiKey: keys[0],

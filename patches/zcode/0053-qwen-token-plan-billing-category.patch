@@ -1,0 +1,70 @@
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -1271,7 +1271,6 @@
+               "key": "alibaba-model-studio"
+             }
+           },
+-          "category": "subscription-plan",
+           "catalog": {
+             "vendorId": "alibaba",
+             "vendorNameMap": {
+@@ -1307,7 +1306,6 @@
+               "key": "alibaba-model-studio"
+             }
+           },
+-          "category": "subscription-plan",
+           "catalog": {
+             "vendorId": "alibaba",
+             "vendorNameMap": {
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -268,7 +268,7 @@
+   );
+ });
+ 
+-test("subscription/API sections keep all routes without treating key-based plans as ordinary API", () => {
++test("subscription/API sections distinguish fixed-fee Coding Plan from usage-billed Qwen Token Plan", () => {
+   const subscription = templates.filter(
+     (item) => providerConnectionCategory(item) === "subscription",
+   );
+@@ -278,6 +278,10 @@
+   assert.ok(api.some((item) => item.templateId === "openai"));
+   assert.ok(subscription.some((item) => item.templateId === "fleet-minimax-token-plan"));
+   assert.ok(api.some((item) => item.templateId === "fleet-minimax"));
++  assert.ok(subscription.some((item) => item.templateId === "fleet-qwen-coding-plan-cn"));
++  assert.ok(subscription.some((item) => item.templateId === "fleet-qwen-coding-plan"));
++  assert.ok(api.some((item) => item.templateId === "fleet-qwen-token-plan-cn"));
++  assert.ok(api.some((item) => item.templateId === "fleet-qwen-token-plan"));
+   for (const category of [subscription, api]) {
+     const vendors = groupProviderTemplates(category, "en-US");
+     assert.equal(vendors.flatMap((vendor) => vendor.templates).length, category.length);
+diff --git a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+--- a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+@@ -24,17 +24,22 @@
+ const builtin = JSON.parse(await readFile(new URL("../../../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"));
+ const templates = parseProviderTemplateMap(builtin.config.providerConfigRules.templateRules);
+ 
+-test("plan-key classification survives template serialization without changing authentication", () => {
++test("plan-key classification preserves each route's billing category and authentication", () => {
+   const roundtrip = parseProviderTemplateMap(templates.toJSON());
+   for (const id of ["zai-api", "bigmodel-api", "fleet-kimi-coding", "fleet-kimi-coding-global",
+     "fleet-minimax-token-plan", "fleet-minimax-token-plan-cn", "fleet-qwen-coding-plan",
+-    "fleet-qwen-coding-plan-cn", "fleet-qwen-token-plan", "fleet-qwen-token-plan-cn",
++    "fleet-qwen-coding-plan-cn",
+     "fleet-xiaomi-token-plan-cn", "opencode-go-chat", "opencode-go-messages", "opencode-go-responses"]) {
+     assert.equal(roundtrip.get(id)?.category, "subscription-plan", id);
+     assert.notEqual(roundtrip.get(id)?.config.access?.type, "subscription", id);
+   }
+   for (const id of ["openai", "anthropic", "minimax", "moonshot-kimi", "deepseek"])
+     assert.equal(roundtrip.get(id)?.category, undefined, id);
++  for (const id of ["fleet-qwen-token-plan", "fleet-qwen-token-plan-cn"]) {
++    assert.equal(roundtrip.get(id)?.category, undefined, id);
++    assert.equal(roundtrip.get(id)?.config.access?.type, "api-key", id);
++    assert.match(roundtrip.get(id)?.config.api?.baseUrl ?? "", /^https:\/\/token-plan\./);
++  }
+ });
+ type Captured = { url: string; headers: Headers; body: Record<string, unknown> };
+ 
