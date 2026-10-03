@@ -122,6 +122,19 @@ exact capability/credential scope, explicit paid tests, catalog membership witho
 commit-before-publish instead of importing those behaviors. Detailed consumers belong to
 [Models](modules/models.md); optional capability search belongs to [Context](modules/context.md#optional-capability-discovery-boundary).
 
+The primary also traced NewMax's vision-purpose settings: renderer `VisionFallbackPanel:254793`,
+`decideVisionFallback:58546`, `applyVisionFallbackForSend:64715`, Main `decideVisionFallback:81922`
+and `buildFallbackChain:81954`, settings store `setVisionFallback:3735`. Its model and enabled flag
+are separate; confirmed text-only input can preselect the configured image backend. It can cascade
+across providers (maximum three) and probe candidate vision with extra inference. Fleet reuses the
+purpose/confirmed-input mechanism on the existing admitted image adapter, without automatic probes
+or cross-account paid retries. `PlanExecModelPanel:255411` keeps planning/execution choices apart;
+this is evidence, not proof that Fleet has wired two-stage switching. Existing child-agent model
+settings remain the correct owner of child-agent defaults. Cindy `maker-core/src/session.ts:865`
+places its bridge after accepted reservation and checks cancellation before primary dispatch;
+its `desktop/src/main/vision-bridge/vision-channel.ts` shares routing/credentials but declares OAuth
+limitations. Neither reference replaces Fleet's Host ownership or proves live capability.
+
 ### Media acquisition and recovery comparison
 
 | Inspected implementation / contract | Mechanism and Fleet disposition |

@@ -1,5 +1,11 @@
 # Changelog
 
+- Correct repeated contextual-menu positioning and exact fixed/sortable provider targets; reuse
+  original region actions and remove the full composer toolbar from page helpers. Move purpose
+  defaults to Model Settings, wire the confirmed image-input default to the existing bridge,
+  and link child-agent model configuration to its original page. Provider persistence, cold reopen,
+  revision conflicts and renderer regressions are checked separately from live inference/owner acceptance.
+
 Releases and major project changes. Normative documents state what is true now; the history of how
 it became true lives here and in Git, not in "corrected on…" notes scattered through the docs.
 

@@ -196,6 +196,12 @@ The selected provider or exact right-clicked model is immutable; native field me
 Settings uses the local default conversation folder even with a remote Project active. Old/unsupported
 Hosts fail before input; close hides admitted work. OV-081 supersedes implicit target-based reuse:
 each invocation creates a fresh Session; only explicit history selection resumes an older assistant.
+The helper omits the main composer's Token ring, mode/model controls and command/mention menus;
+its configured purpose default selects the model, while existing approval cards, send and Stop remain.
+Provider header dropdown/right-click reuse rename/delete; model rows reuse edit/enable; both fixed
+and sortable navigation rows bind the clicked provider and share Open. Settings entries bind their
+own page. Repeated menus retain pointer access and update their virtual anchor while open; right
+mouse does not start model drag. These preserve existing writers and confirmation paths.
 
 Shared `model-settings-assistant.ts` defines allowlisted context/schema/instructions. Its Host-bound
 `ModelSettingsPort` exposes `ReadModelSettings` (connection kind, format, enabled state, evidenced

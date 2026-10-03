@@ -50,9 +50,7 @@ Reported output fields remain authoritative; ID-only unknown models gain no new 
 xAI keeps its dedicated language/image/video catalogs. Media-only entries remain visible in the
 saved connection, outside the chat picker. Catalog classification, pre-approval membership check
 and actual media execution are separate boundaries; refreshing a list does not prove a paid request.
-
 ## New-conversation model defaults
-
 ### Configuration interaction invariants
 
 The [primary NewMax implementation comparison](../references.md#primary-newmax-model-configuration-comparison)
@@ -71,7 +69,6 @@ the human draft, and preserves data on an unsuccessful write. Default selection 
 rules below; an unavailable historical/admitted binding must not silently borrow a first available
 connection. No competing Provider writer, model catalog, secret store or navigation hierarchy is
 introduced by this comparison.
-
 ### Default resolution and remembered options
 
 Defaults use the existing Host model-preference owner and scoped composer preference; no new page,
@@ -80,11 +77,15 @@ ordinary recent choice; a Project/remote identity retains its own recent choice 
 A page assistant uses its separate configured default, then the Host default/first executable model,
 and never writes ordinary/Project recent choices. Explicit drafts and existing Sessions always win.
 Unavailable preferences remain saved; only new initialization may select a legal fallback. Purpose
-defaults and their version are exposed through the existing General settings and Personal writer.
-Conditional writes validate model/options and preference revision inside the original transaction.
+defaults and their version now live in Model Settings → Default models, through the Personal writer.
+The primary inspected the built desktop's actual save/clear, vision-only list and Subagents navigation;
+menu relocation, contextual edit and compact-helper input/drag/resize were also checked. No inference
+was sent. Renderer fixtures cover both languages/themes and narrow forms; owner acceptance remains.
+Conditional writes validate model/options, confirmed vision capability and preference revision inside the original transaction.
+New-conversation, page-assistant and image-bridge defaults share this form. Subagent models link to
+the existing Subagents page; no duplicated child-agent settings or display-only planning controls.
 Picker changes are remembered immediately within their own purpose; late receipts cannot undo newer
 choices. Unsupported Fast/context are normalized without rewriting admitted/historical bindings.
-
 A new composer initialized before account/catalog readiness can acquire its missing default when
 the first connected catalog arrives. This fills only the model; typed content, permission/plan
 state and explicit selections stay intact. New Conversation's existing root-entry generation
@@ -104,7 +105,6 @@ and the ordinary new-task entry retained Grok 4.7. The Project row's New Task ac
 Projects, repeated entry and application restart retained their respective choices. Searching by
 connection name filtered the same direct list without changing its selection. These are local
 execution/UI checks, not live provider inference or owner acceptance.
-
 Model selection and parameter edits have different intent. The existing scoped composer preference
 record also retains parameters for each exact connection/model. Returning to a model restores its
 valid effort/Fast/context choices before sending; a parameter-only edit in an older Session does

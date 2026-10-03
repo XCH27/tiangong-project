@@ -165,3 +165,5 @@ assistance/default/filter and account-diagnostic integration; it does not declar
 Patch 0114 records the scoped native Codex integration, corrected allowance tracks/Claude usage
 and contextual popup interaction. It also preserves remaining catalog/account diagnostics;
 reconstruction and local execution do not declare whole-kernel, media or owner acceptance.
+
+| 0115 | [0115-contextual-menus-and-purpose-defaults.patch](0115-contextual-menus-and-purpose-defaults.patch) | `3ecd147570b61e48427676630fce0ccd8b1b1188` |

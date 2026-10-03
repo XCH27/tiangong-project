@@ -155,6 +155,12 @@ Job queue still require their own complete paths. This receipt implementation do
 ORCH-05's queue/fairness/platform acceptance or CREATE-02's native editing acceptance. See the
 [verification entry](../engineering.md#zcode-candidate) and [source comparison](../references.md#media-acquisition-and-recovery-comparison).
 
+Model Settings → Default models can save a confirmed image-input model through the existing Personal
+preference writer. The composer preselects it only for confirmed text-only main input; explicit
+message choices (including off), unknown capability and native vision take precedence. Withdrawn
+models/options remain saved but cannot dispatch; the user chooses again. Saving/refreshing never
+runs a capability probe. The actual call, queue binding and durable substitution stay below.
+
 For the requested vision bridge, use one optional pre-dispatch input adapter in the existing
 Session. The composer offers an explicit vision-model choice only with an image attached; a model
 with confirmed image support keeps the original path. For a confirmed text-only main model, the

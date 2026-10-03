@@ -2763,3 +2763,18 @@ complete menu-to-popup, movement, resizing, focus and context-delivery mechanism
 ZCode primitives and the existing Session/domain-operation owners. Inspect those mechanisms before
 future interaction changes; AGENTS rule 1 carries this source-intake requirement. This corrects
 the previous direct-open interpretation of OV-081 and does not authorize arbitrary page mutations.
+
+### OV-086 — Contextual menus, compact helpers and visible purpose defaults (2026-10-03)
+
+> 「重点是当我一直点右键右键弹窗并不会跟我一起换位置」
+> 「你胡乱增加了一堆的元素，什么token环，什么权限按钮模型选择」
+> 「把我们的一些默认 模型相关的设计可视化可配置化」
+> 「我们有子智能体配置的页面，有些我们有的就不要重复造」
+
+Repeated right-clicks must relocate the menu and capture the latest object. Preserve region-specific
+operations and reuse their existing callbacks, rather than filling every region with one generic
+assistant item. Compact page conversations omit the main composer toolbar; shared approval and
+Stop semantics remain. Model Settings owns visible ordinary/page/vision purpose defaults using the
+existing Personal preference owner. Child-agent choices retain their existing settings page.
+NewMax's two-stage planning/execution fields are reference evidence, not permission to add controls
+without actual dispatch behavior. This correction creates no new Session or credential authority.
