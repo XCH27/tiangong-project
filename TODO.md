@@ -11,7 +11,7 @@ branch. Its earlier Craft-only R0/R1 sequence is superseded by OV-027 and later 
 It must not block authorized candidate work or cause edits to the wrong implementation.
 
 [OV-067](docs/decisions.md#ov-067--implement-and-verify-the-kernel-before-feature-pages-2026-09-29)
-puts kernel engineering first. OV-069 makes Pi AgentSession the current default loop executor beneath the
+puts kernel engineering first. OV-084 selects Pi Agent Core as the default loop executor beneath the
 ZCode Host; selecting it does not mean its kernel is complete or accepted. First implement and test
 input/run ownership, commit/recovery, permissions, executor boundaries, usage attribution and the
 actual model-facing projection. Correct demonstrated context defects before adding plugin breadth. The
@@ -61,7 +61,7 @@ This is the coverage checklist for the delivery order above, not a parallel queu
 
 ### Host and selectable-executor proof
 
-The current default is a Pi AgentSession loop under the existing Fleet/ZCode Host (OV-069). The kernel
+The selected default is Pi Agent Core under the existing Fleet/ZCode Host (OV-084); OV-069 describes the superseded Coding Agent wrapper. The kernel
 is more than the model transport: it owns admission, immutable execution identity, the tool and
 permission boundary, durable state, cancellation/recovery and usage/artifact attribution. Plugin
 and page/domain capabilities consume this boundary. A chosen source base does not close its gaps.

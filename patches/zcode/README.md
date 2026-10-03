@@ -149,6 +149,8 @@ instructions are in [Engineering](../../docs/engineering.md#zcode-candidate).
 
 | 0110 | [0110-native-failed-preparation-recovery.patch](0110-native-failed-preparation-recovery.patch) | `a3008772f727f15b5b01f58015d04932a6b553b7` |
 
+| 0111 | [0111-pi-core-and-optional-tool-discovery.patch](0111-pi-core-and-optional-tool-discovery.patch) | `985671c44f761a96fad2fae334b65898972cfb79` |
+
 Tree observations are retained reconstruction evidence, not live-provider, visual or release acceptance.
 The source gate replays every patch and compares the final tree without modifying the working index.
 Patch 0108 is the committed kernel correction. Patch 0109 preserves the current unfinished contextual

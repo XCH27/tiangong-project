@@ -532,7 +532,7 @@ connection header. The existing Test action remains available without changing c
 ## Candidate implementation and verification
 
 The candidate uses pinned Pi model transport/OAuth for ChatGPT/Codex, GitHub Copilot and Grok
-beneath ZCode Host coordination and a Pi AgentSession loop (OV-069). Forty-nine offline cases cover
+beneath ZCode Host coordination and Pi Agent Core (OV-084). Forty-nine offline cases cover
 lifecycle, committed-connection gating, stale results, account selection/recovery, real Pi
 request/stream encoding, replay, allowance and isolated OAuth bundles. The single Codex account
 entry starts browser PKCE; device flow remains an adapter-level recovery mechanism, not a parallel

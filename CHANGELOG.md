@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Select Pi Agent Core as the default generic executor and remove the interim Coding Agent
+  session/resource-loader wrapper and hidden continuation messages. Add per-input optional tool
+  discovery over the existing Registry, semantic permissions and committed result writer; preserve
+  direct small loadouts and native executor contracts. Reconcile the supplied handoff against
+  current source and retain unresolved domain/plugin/native-route gaps explicitly.
+
 - Correct native executor receipt release to follow successful Host request assembly and the final
   Stop check. Keep committed effects when preparation fails and consume the final media projection
   in both streaming and non-streaming modes. Reduce duplicate Pi private assistant-body retention

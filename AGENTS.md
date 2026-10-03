@@ -11,7 +11,7 @@ should not preload unrelated modules.
   only part of this product. Contextual Agent operation of feature pages is required baseline
   behavior under OV-024/026/062, not an optional future assistant.
 - **Active candidate:** `.fleet/zcode`, reconstructed from ZCode `29628c9` and the ordered patches.
-  It uses ZCode `AgentRuntime` as Host with a Pi `AgentSession` loop (OV-069). Host owns requests,
+  It uses ZCode `AgentRuntime` as Host with Pi Agent Core as the default loop (OV-084). Host owns requests,
   tools, permissions and durable state; Pi defaults and extension autoload are not enabled. See
   [candidate setup and verification](docs/engineering.md#zcode-candidate).
 - **Retained implementation:** `app/`, Craft v0.13.4 plus declared changes. Preserve its dirty work
@@ -20,7 +20,7 @@ should not preload unrelated modules.
 - **Current order (OV-067):** implement and verify the execution/application kernel first, then
   connect page-local Agent operations, generation, statistics, document plugins and canvas.
   [TODO](TODO.md#delivery-order) owns the order. Source audit accompanies this engineering work.
-- OV-069 integrates the Pi AgentSession loop beneath the existing ZCode Host; it does not declare the
+- OV-084 replaces the interim Coding Agent wrapper with Pi Agent Core beneath the ZCode Host; it does not declare the
   kernel complete. Native executor boundaries, admission, permissions, durable state and
   recovery must be proved before feature-page expansion. Alternative sources remain bounded
   references; a live authority/data cutover retains its explicit checkpoint.

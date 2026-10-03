@@ -2727,3 +2727,24 @@ is insufficient. Measure the actual model-facing projection separately from priv
 Existing page/default/filter work remains preserved and incomplete until its own gates pass.
 Primary performs this kernel source review, implementation and verification directly; this owner
 correction restricts earlier bounded parallel authorization for the active work.
+
+### OV-084 — Use Pi Agent Core for the default general-purpose executor (2026-10-03)
+
+> 「重点是选出最佳的内核然后落地，而不是过测试」
+
+The implementation choice is Fleet's existing application Host plus Pi Agent Core 0.99.2 for
+the default generic model/tool loop, with separately selected official native executors for
+subscription-specific capabilities. Replace the interim Pi Coding Agent AgentSession wrapper,
+empty resource loader and hidden continuation message. Agent Core is already shipped transitively
+by the pinned Pi SDK; its direct import makes that existing dependency explicit without a new
+package/version or service. The comparison is driven by Fleet's general workbench requirements,
+not an assertion that a framework name raises model quality.
+
+Host retains admitted inputs, shared domain operations, permissions, request context projection,
+results and usage. Pi owns scheduling and settlement through its public prepare/finish hooks.
+Native vendors retain their own continuation/authentication semantics. Model-facing prompts and
+optional tool discovery remain narrow, shared projections; editor state is not moved into Pi.
+Source mechanisms from MiniMax's PiTurnRunner, Craft's AgentSession proxy and Cindy's Pi RPC are
+bounded comparisons. Built-in Coding Agent extension/CLI behavior is not implicitly enabled by
+using Agent Core. Source compatibility and execution verification are admission checks after
+this product/architecture choice, not the criterion used to select it.

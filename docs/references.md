@@ -3206,3 +3206,67 @@ and permission metadata that do not go into Pi's provider tool declarations. The
 character counts, not token counts, prices or a production loadout benchmark. They confirm that
 model-facing tool descriptions still require the bounded capability-loading work in the context
 contract; merely selecting Pi does not achieve the owner's lightweight-context goal.
+
+### Default executor selection under OV-084
+
+Primary read the installed/reference Pi 0.99.2 `agent/src/agent.ts`, `agent-loop.ts` and `types.ts`,
+Craft latest `pi-agent-server/src/index.ts`, Cindy `maker-core/src/agents/pi/{index,transport}.ts`,
+and MiniMax `agent-core/src/pi-turn-runner/{agent,pi-turn-runner}.ts`. Pi Agent Core exposes a
+generic Agent with public `prepareRequest` and `finishTurn`; it does not require a Coding Agent
+resource loader, CLI settings or SessionManager. MiniMax uses that Agent directly with Host
+history/tool/LLM hooks. Craft uses AgentSession plus proxy tools and a configured system prompt;
+Cindy invokes the actual Pi CLI through RPC and retains its product/extension runtime. These
+are different integrations, not proof that all three have a single interchangeable kernel.
+
+Fleet selects the generic Agent Core mechanism for a general workbench and keeps existing Host
+operations, permission and durable writers. The default route removes Coding Agent session/resource
+construction and hidden continuation messages, using Core's supported finish decision instead.
+Native executors remain sibling routes; their built-in capabilities are not forced through the
+default model loop. The existing 0.99.2 Agent Core transitive dependency becomes the declared direct
+dependency; no new version, remote service or storage owner is introduced. Compatibility checks
+verify implementation after this requirements-based decision; they are not the selection criterion.
+The default adapter removes 98 lines of Coding Agent construction and adds 34 lines of Core wiring and no longer imports Coding Agent. The staged
+CLI runs this Core route, including real file-tool execution and cold process restart. Controlled
+large-catalog fixtures keep core tools direct, discover one exact operation, reject same-batch
+hallucinated calls, preserve semantic denial and retire replaced/changed/restricted bindings.
+Successful search receipts use the existing tool ledger; failed persistence sends no later request.
+These verify the chosen boundary without claiming an unmeasured model-quality advantage.
+
+Pi's Coding Agent also exposes a built-in `createToolSearchExtension` (its tool uses BM25 and records
+active tool changes in its own SessionManager). That exact extension is not directly applicable to
+Fleet's Core/Host split: Host owns per-input availability and committed tool receipts. The small
+client search projection loads the original tool in the next Host request, using the same semantic
+handler/permission instead of creating an invocation broker. Official Anthropic tool search requires
+model-specific server support; the ChatGPT plan route explicitly excludes hosted tool search.
+Fleet's client path does not send those unsupported vendor fields. Provider-context savings and
+accepted-task quality still require their own measurement.
+
+### Primary reconciliation of the supplied Claude handoff
+
+The complete supplied `交接/问题报告.md` and `交接/方案与思路.md` were read against current
+source. Their timestamped observations and proposed rules are evidence, not implementation
+authority. This table records verification scope; delivery status remains in the register.
+
+| Handoff finding | Current source-backed disposition |
+|---|---|
+| “Complete Pi” was inaccurate | Confirmed for the interim wrapper: it disabled Coding Agent resources and ignored its provider context. OV-084 now uses Pi Agent Core directly; Host still owns projection, tools and durable records. No complete CLI/extension claim. |
+| Model-facing lightness was unproved | Confirmed. Character measurements distinguish provider declarations from larger internal contracts. Optional discovery now has local proof, while real-token and accepted-task quality remain unmeasured. |
+| Candidate/patches lacked version control | Superseded by local candidate feature commits and tracked root `patches/zcode`; the source gate reconstructs every non-ignored file. Independent archives/bundles are extracted and compared, without changing the real indexes. |
+| Core rows described Craft | Confirmed in earlier rows. CORE Project/Session/Settings and related active contracts now name the candidate. Remaining retained domain source rows are reference evidence until actual candidate callers land; their paths cannot be mechanically renamed. |
+| Product target was written as delivered | Product now explicitly says the all-page behavior is a required contract and points delivery status to the register. Current all-page entry does not mean all domain mutations exist. |
+| OV-024 could mislead | Its explicit partial-supersession notice now points to OV-025/027 and retains the still-current folder/page requirements. Historical gloss is not the selected base. |
+| Candidate/root rules and design were disconnected | Both link directions were checked. Candidate AGENTS points to root authority; root DESIGN links the candidate DESIGN and scopes original controls correctly. |
+| Stale parallel-frontier workflow | Confirmed: ignored `.claude/workflows/parallel-frontier.js` still references retired work-order/docs. Its independent source copy is retained. It is not an admitted workflow under OV-083 and has not been dispatched. |
+| Context prose bypassed readability limits | Oversized historical prose was reflowed; executable contracts and evidence remain in their distinct homes. The 700-line gate remains enforced. |
+| Quotation statistics and history counts | The reported 559 messages and 203 matching quotes are the handoff author’s snapshot. They were not fully recomputed in this source audit; alleged altered/untraceable quotations are not marked resolved. |
+| Remove quotations/reduce references to ten | Those are recommendations, not verified defects. Current owner rules retain exact decision evidence and reference pins. Bounded per-module intake prevents whole-ledger loading; unique evidence is not silently removed. |
+| Page assistant only changed model enablement | Superseded partly: model capacity and General preferences/defaults now share original writers; other pages have typed guidance/read scopes. Full domain coverage and visual acceptance remain open. |
+| Plugin formats already imply UI compatibility | Incorrect implication. Importers recognize contributions; candidate side-pane types and package metadata still lack a general registered UI host. That is a real later delivery gap. |
+| Folderless work needs only renaming the home folder | Insufficient: candidate uses a distinct conversation backing purpose and excludes it from Project grouping. Original home-folder behavior does not provide that isolation or Project suite lifecycle. |
+| All models should inherit Claude through a conversion proxy | NewMax source confirms that mechanism, but it does not establish better model behavior or native subscription legality/entitlement. Preserve vendor-native executors and Pi's API route instead of selecting a universal protocol-conversion gateway. |
+| Paseo image support proves native Antigravity media | Not established: its adapter passes materialized paths as text and unconditionally skips permissions. Installed `agy` and official SDK/hook contracts were inspected separately. Missing native execution remains a gap. |
+| Non-code output had no interface path | Confirmed earlier missing V4 references; the committed output projection now joins existing persisted artifacts/viewers. This does not complete all live generation or document editing. |
+
+Source owners: root AGENTS/DESIGN, current `product.md`, capability register, original Provider/Session
+code, candidate `pi-turn.ts`, `plugin-types.ts` and `workspaceSidePane.ts`, and the preserved source
+recipe. Individual live account failures remain separate from this documentation/source audit.

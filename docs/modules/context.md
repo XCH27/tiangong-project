@@ -93,17 +93,26 @@ do not inject every browser/media/document operation at the start. This is clien
 not a measured claim that models become smarter or that Fleet has implemented progressive search.
 See the [commercial reference](../references.md#commercial-desktop-references).
 
-The first Fleet proof must wrap the existing ToolRegistry/ToolExecutor with one optional operation
-family, retain core tools and route every invocation back through the actual semantic permission,
-input resolution, usage and result owner. A search reference is a lookup, never permission or a
-durable operation. Recheck current availability, target/account revision and exact schema before
-dispatch; disabled, expired, foreign-turn or changed targets require fresh discovery. Cold reopen
-retains the original committed tool result rather than replaying an opaque reference. Compare the
-same tasks/loadout for serialized schema size, correct operation recovery, denial and result
-fidelity before activation. Actual token/cost/accepted-outcome claims require measured requests;
-do not copy NewMax's mutable snapshots, provider-name distrust lists or permissive unknown-policy
-fallback. This proof follows the current kernel order and adds no registry, Session or permission
-authority.
+The first implementation uses one client-side `SearchTools` operation over the existing Registry.
+Core tools remain directly available. MCP and media-generation entries explicitly declare deferred
+loading; on the Pi path only, their complete serialized provider declaration is deferred when its
+payload exceeds 8,192 characters. Small or explicitly restricted loadouts retain direct tools. Native
+executors retain their verified fixed contract until their dynamic-update path is proved. No hosted
+`tool_search` or proprietary deferred field is sent to unsupported vendors.
+
+Search returns at most five currently available names and brief descriptions. After its result is
+committed through the original result writer, the next request loads each matched tool's exact
+declaration. Invocation uses the original named tool, scheduler, semantic permission, input
+validation, receipt and accounting path. Search is read-only and grants no authority. A hidden
+tool hallucinated in the search batch is rejected by that request's original allowed names.
+
+Discovery is private to the admitted input. Activation binds the Registry entry and serialized
+provider contract; replacement, schema change, revocation or changed model contract retires it.
+Search retains the same model/turn and candidate snapshot, without external catalogues or secrets.
+Cold reopen retains original receipts but new input starts fresh discovery. No lookup handles,
+second Registry, durable catalogue or invocation proxy are added. Compare declaration bytes and
+completed operations on the same loadout; token, price and task-quality improvements require
+measured requests. This consumes the kernel's existing permission/receipt boundary.
 
 ## Stop conditions
 
@@ -455,7 +464,11 @@ and observe final provider request assembly before adding cache optimization.
 
 ### References consumed
 
-The [vendor/Pi evidence](../references.md#official-harnesses-versus-pi) owns source locks and request checks; native harnesses are references, not additional runtimes. Preserve stable system/tool prefixes and measure provider cache reads per account/model/protocol. Keep context and input caps separate. The token ring uses current occupancy with estimate/stale and compaction provenance, never subscription quota or billed uncached input. `references.md` and `源码参考/meta/` remain license/admission authorities.
+The [vendor/Pi evidence](../references.md#official-harnesses-versus-pi) owns source locks and request checks;
+native harnesses are references, not additional runtimes. Preserve stable system/tool prefixes and measure
+provider cache reads per account/model/protocol. Keep context and input caps separate. The token ring uses
+current occupancy with estimate/stale and compaction provenance, never subscription quota or billed uncached
+input. `references.md` and `源码参考/meta/` remain license/admission authorities.
 
 ### Non-goals
 

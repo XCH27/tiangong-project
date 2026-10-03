@@ -44,7 +44,7 @@ reference and preservation obligations, not proof of a migrated or replaced runt
 
 ## Kernel target under OV-036
 
-OV-067 puts kernel implementation first. OV-069 uses a Pi AgentSession loop under the existing
+OV-067 puts kernel implementation first. OV-084 uses Pi Agent Core under the existing
 ZCode Host, with native vendor adapters at its boundary; source choice is not
 kernel acceptance. [Switching tests](../references.md#switching-executors-and-downstream-development)
 constrain binding, permission, recovery and native adapter behavior before feature-page expansion.
@@ -83,12 +83,14 @@ The [impact table](../architecture.md#executor-choice-and-feature-development) o
 
 ## First proof
 
-Pi uses `turn-loop.ts` → `pi-turn.ts` → `createAgentSession`; Claude uses `native-agent-turn.ts` → official SDK 0.3.286. Neither runs the legacy outer inference loop.
+Pi uses `turn-loop.ts` → `pi-turn.ts` → Pi `Agent` (Agent Core); Claude uses `native-agent-turn.ts` → official SDK 0.3.286. Neither runs the legacy outer inference loop.
 Host preparation, request admission, tool scheduling, permissions, effect receipts and SQLite remain canonical.
-Pi owns its loop, tool-call dispatch, abort and settlement. Its stream port delegates request
+Pi Agent Core owns loop scheduling, tool-call dispatch, abort and settlement. Its stream port delegates request
 assembly/provider calls and actual tool execution to Host ports. Host retains retry, compaction
-and durable history; Pi default prompts/tools, resource autoload, retry and compaction are disabled.
-Creating AgentSession does not enable the community extension ecosystem or prove context efficiency. Pi's private
+and durable history. OV-084 removes the empty Coding Agent resource/session wrapper. Public
+Agent Core prepare/finish hooks schedule Host requests without hidden continuation messages.
+No Coding Agent prompt, built-in tool or ambient extension autoload is enabled.
+Using Agent Core does not enable the Coding Agent CLI/extensions or prove context efficiency. Pi's private
 scheduling transcript keeps compact assistant receipts and exact tool-call identity/arguments. Full
 text, reasoning, tool results and usage remain in Host history; the provider receives that original
 projection. This reduces duplicate in-process retention, not provider tokens or billed usage. Claude's official safe mode retains OAuth/keychain authentication while disabling ambient customizations; explicit SDK tool/settings/MCP controls keep built-ins/hooks unavailable. Its MCP callbacks return committed Host receipts only after the next durable admission. Bare mode is not used: the bundled 2.1.286 CLI declares that it skips OAuth and keychain.
@@ -450,7 +452,7 @@ implementation has added them; extend a matching existing behavioral test instea
 
 **Runtime/provider adapters**
 
-- **Next:** `PROVE` — preserve one admitted Pi AgentSession or native executor per input; prove missing native governance before exposing additional protocols.
+- **Next:** `PROVE` — preserve one admitted Pi Agent Core run or native executor per input; prove missing native governance before exposing additional protocols.
 - **Sources:** [Executor dispatch](../../.fleet/zcode/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts); [Pi loop/Host ports](../../.fleet/zcode/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts); [Native boundary](../../.fleet/zcode/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts); [Claude executor](../../.fleet/zcode/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts).
 - **Deliver:** Keep Pi loop scheduling with Host-owned requests/tools/recovery and the existing official Claude native lane. For a requested CLI, inspect its installed version and supported native/ACP protocol, then adapt one real path without wrapping its native harness in another model loop.
 - **Data:** Connection authentication, model capability, installed executable and availability remain separate facts. Host Session owns admitted input/permission/usage; adapter continuation is private and bound to engine/version/account/Project/target.

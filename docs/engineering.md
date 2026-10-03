@@ -6,7 +6,7 @@ owner checkpoints are in [`AGENTS.md`](../AGENTS.md).
 ## Baseline selection and development method
 
 OV-025/027 make **completed user work** the unit of progress. OV-066 settles development on the
-ZCode Host with bounded native executor adapters; OV-069 uses Pi AgentSession as its default loop executor. OV-067 puts production kernel boundaries and
+ZCode Host with bounded native executor adapters; OV-084 uses Pi Agent Core as its default loop executor. OV-067 puts production kernel boundaries and
 acceptance first; selecting the baseline does not complete them. [TODO](../TODO.md#delivery-order) owns execution order.
 1. **Compare the affected original path.** Record source pin, licences and real owner/callers.
    Use isolated data, preserve references and distinguish inherited failures from Fleet regressions.

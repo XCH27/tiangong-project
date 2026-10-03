@@ -8,7 +8,7 @@ This file holds only what crosses modules: authorities, invariants, failure mode
 map. Each module's own boundary, orchestration detail and execution rows live in its document under
 [`modules/`](modules/); a module never opens a second architecture ledger.
 
-**OV-027 selects ZCode; OV-069 integrates a Pi AgentSession loop beneath its existing Host owners.
+**OV-027 selects ZCode; OV-084 selects Pi Agent Core beneath its existing Host owners.
 OV-067 requires kernel implementation and acceptance before feature-page expansion. Pi durable/Chord remains mechanism
 reference, not a replacement on the active path.** The Craft-specific map below describes the
 retained branch. Preserve single ownership of Session, permissions and domain operations;
@@ -49,7 +49,7 @@ not an additional required framework or a substitute for host permissions and pl
 │  │ image/video/web/deck modules (later) · design surface (later)│    │
 │  └───────────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────┘
-   selected default: Host admission → Pi AgentSession → Host model/tool ports
+   selected default: Host admission → Pi Agent Core → Host model/tool ports
    optional complete executors: native CLI/ACP/app-server, capability-gated
    user-hosted remote Fleet instance (P7/P9)
 ```

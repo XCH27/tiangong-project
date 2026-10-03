@@ -4,7 +4,7 @@
 `.fleet/zcode` sections describe the active candidate. [Current order](../../TODO.md) overrides old branch sequencing.
 
 **Current authority:** OV-027/OV-029 select the isolated ZCode product candidate; its existing
-AgentRuntime coordinates the Host; Pi AgentSession drives loop scheduling under OV-069, with existing transport/auth owners. The retained
+AgentRuntime coordinates the Host; Pi Agent Core drives loop scheduling under OV-084, with existing transport/auth owners. The retained
 Craft `app/` and its uncommitted entry corrections are preserved, not a second active product base.
 OV-023/OV-024 still require one folder-backed Project and an ordinary folderless conversation.
 The Craft entry/workflow descriptions below identify that retained tree; the candidate avatar

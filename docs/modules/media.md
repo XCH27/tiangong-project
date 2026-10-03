@@ -192,7 +192,7 @@ backend to tool-result images only with explicit egress/usage attribution and du
 evidence; never silently switch the main model or claim an image was seen after bridge failure.
 Pi's `pi-multimodal-proxy` demonstrates provider-scoped first-use egress consent and tool-result
 captions, but its hooks write Pi Session entries and require `pi-coding-agent`. The candidate embeds
-Pi AgentSession under OV-069, with explicit Host resources: installing that extension does not activate it here. The equivalent Fleet slice must
+Pi Agent Core under OV-084, with explicit Host resources: installing that extension does not activate it here. The equivalent Fleet slice must
 reuse its existing input intent, permission check and usage row, keep the user's explicit vision
 backend, and fail closed for tool-result images when no approved backend is available.
 
