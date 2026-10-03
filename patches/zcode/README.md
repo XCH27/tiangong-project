@@ -153,6 +153,8 @@ instructions are in [Engineering](../../docs/engineering.md#zcode-candidate).
 
 | 0112 | [0112-pi-core-admitted-tool-routing.patch](0112-pi-core-admitted-tool-routing.patch) | `4955944c43c2a41fdf59847c9707fd2946d5937b` |
 
+| 0113 | [0113-pi-core-loadout-and-release-intake.patch](0113-pi-core-loadout-and-release-intake.patch) | `e3e70df70fc71bf5633e6a99a10633080d3fc81c` |
+
 Tree observations are retained reconstruction evidence, not live-provider, visual or release acceptance.
 The source gate replays every patch and compares the final tree without modifying the working index.
 Patch 0108 is the committed kernel correction. Patch 0109 preserves the current unfinished contextual

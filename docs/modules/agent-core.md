@@ -90,6 +90,11 @@ assembly/provider calls and actual tool execution to Host ports. Host retains re
 and durable history. OV-084 removes the empty Coding Agent resource/session wrapper. Public
 Agent Core prepare/finish hooks schedule Host requests without hidden continuation messages.
 No Coding Agent prompt, built-in tool or ambient extension autoload is enabled.
+Pi release intake keeps Agent Core and Host Pi AI on one exact version. The 1.0.1 update retains
+the existing prepare/finish hooks, private receipts and Host retry/compaction owners. OAuth changes
+must preserve Host-scoped transport, selected-registration/account validation and one listener per
+login; a failed listener rejects before opening a browser. Released Coding Agent features are not
+enabled by updating these libraries, and an SDK update does not resolve live account failures.
 Using Agent Core does not enable the Coding Agent CLI/extensions or prove context efficiency. Pi's private
 scheduling transcript keeps compact assistant receipts and exact tool-call identity/arguments. Full
 text, reasoning, tool results and usage remain in Host history; the provider receives that original

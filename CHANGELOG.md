@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Synchronize the selected Pi Agent Core and Host Pi AI libraries to 1.0.1, retire the old patch
+  reference and unused Coding Agent dependency graph, and preserve scoped OAuth listeners,
+  registration/account checks and transport. Correct the handoff reconciliation so its open
+  questions are not attributed as stronger claims; keep unresolved native routes and live login
+  failures distinct from source and loopback verification.
+
 - Select Pi Agent Core as the default generic executor and remove the interim Coding Agent
   session/resource-loader wrapper and hidden continuation messages. Add per-input optional tool
   discovery over the existing Registry, semantic permissions and committed result writer; preserve

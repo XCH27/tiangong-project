@@ -47,7 +47,7 @@ not supply a media endpoint or make a chat subscription token usable for that en
 
 Fleet retains one `MediaGenerationPort` for provider execution, with the existing Session tool,
 permission, artifact and usage owners. A future creative Skill consumes that tool; it does not
-reimplement HTTP/credentials through shell commands. The current released Pi 0.99.2 image
+reimplement HTTP/credentials through shell commands. The inspected Pi AI 1.0.1 image
 registry supplies one built-in `openrouter-images` adapter. Its OpenRouter route may be reused
 when that provider is admitted, but the interface alone supplies neither xAI/OpenAI adapters,
 video execution nor ChatGPT media entitlement. Keep the already-tested xAI adapter until a

@@ -369,7 +369,7 @@ multi-account recovery. A template, OAuth login or meter alone proves none of th
 
 | Provider family / source | Evidence and landing boundary |
 |---|---|
-| ChatGPT; GitHub Copilot | Current Pi 0.99.2 supplies public ChatGPT and Copilot OAuth, registered through `bun-oauth` for the desktop bundle. Public ChatGPT uses Fleet registration, OIDC/JWKS account validation and public model/Responses routing; isolated minified/unminified tests use signed local identity fixtures. Earlier private Codex credentials retain refresh/read compatibility only. Prior region-policy HTTP 403 and OS-proxy investigation are historical transport evidence, not current public entitlement proof. |
+| ChatGPT; GitHub Copilot | The candidate uses patched Pi AI 1.0.1 public ChatGPT and Copilot OAuth, registered through `bun-oauth` for the desktop bundle. Public ChatGPT uses Fleet registration, OIDC/JWKS account validation and public model/Responses routing; isolated minified/unminified tests use signed local identity fixtures. Earlier private Codex credentials retain refresh/read compatibility only. Prior region-policy HTTP 403 and OS-proxy investigation are historical transport evidence, not current public entitlement proof. |
 | GLM, Kimi, MiniMax, Alibaba, MiMo, OpenCode Go | CC Switch `src/config/codingPlanProviders.ts` separates plan credentials from ordinary API credentials. Its substring-based host classification is not copied. Existing Fleet template metadata groups plan keys separately from OAuth accounts. Five additional regional routes cover MiniMax China/global, Kimi global and Alibaba Coding Plan China/global; saved provider instances remain untouched. Existing plan keys, API formats and same-model recovery keep their original owners. |
 | Kimi Code | [Official integration guide](https://www.kimi.com/code/docs/en/) documents third-party membership keys and China/global coding endpoints. Native-client OAuth identities and user-agent spoofing are not required for that key route. The current `kimi-code` source also has a distinct managed OAuth account, native catalog and `/usages` allowance path; Fleet has not implemented it. An ordinary Moonshot API key is not evidence of Kimi membership access. |
 | MiniMax; Alibaba | [MiniMax Token Plan](https://platform.minimax.io/subscribe/token-plan), [Alibaba regional Base URLs](https://help.aliyun.com/zh/model-studio/base-url) and [international Coding Plan](https://www.alibabacloud.com/help/tc/model-studio/coding-plan) distinguish plan/region routes. Hermes `plugins/model-providers/alibaba-coding-plan/__init__.py` confirms Coding Plan endpoints. Region and plan must survive retries; do not rewrite ordinary API connections or treat a key as an allowance response. |
@@ -2250,7 +2250,8 @@ fetched upstream default HEAD; `refs/fleet/upstream-current` keeps that observat
 Original ZCode, Craft/app and look pins stay fixed. The two `*-latest` comparison checkouts move
 to the fetched source while `refs/fleet/source-baselines/<sha>` retains their previous commits.
 
-Pi 0.99.2 now serves both the full executor and Host transport/OAuth. The existing proxy/media
+Historical OV-069 used Pi 0.99.2's Coding Agent wrapper plus Host transport/OAuth. OV-084 replaces
+that wrapper with Agent Core; the existing proxy/media
 patch applied cleanly to the released package; strict Anthropic schemas, overflow and retry fixes
 come from upstream. Host tools, credentials, canonical Session, permissions and accounting remain
 Fleet-owned; Pi's community resource discovery is not implicitly enabled by this version change.
@@ -3241,6 +3242,35 @@ model-specific server support; the ChatGPT plan route explicitly excludes hosted
 Fleet's client path does not send those unsupported vendor fields. Provider-context savings and
 accepted-task quality still require their own measurement.
 
+### Selected Pi library release intake
+
+The candidate's declared Agent Core and Pi AI dependencies are both 1.0.1; Coding Agent is a
+reference package, not a production executor. The official [release](https://github.com/earendil-works/pi/releases/tag/v1.0.1)
+and published package sources are preserved under `源码参考/sdk/pi-1.0.1` without moving a pinned
+Git checkout. `provenance.json` records archive hashes: Agent Core `eb7b19bc…b8a0a`, Pi AI
+`8a9e69b1…9138`, Coding Agent `99c2e195…735c5`.
+
+Primary compared the public Agent Core types and loop with installed 0.99.2: prepare/finish hooks
+and scheduling interfaces used by Fleet are unchanged. Pi AI's updated Anthropic SDK and provider
+cache behavior are upstream changes, not an additional Fleet retry or compaction owner. Its new
+ChatGPT listener failure refusal is retained: Fleet's existing patch assigns a separate ephemeral
+socket, uses that exact redirect for callback/exchange and rejects setup failure before browser
+opening. Issued-client, state/account checks, identity-only storage and Host-scoped OAuth fetch
+remain; old-version patch references are retired. No new direct dependency or credential store.
+
+Real local Agent Core/SQLite and signed loopback OAuth tests, plus the staged Pi CLI and real
+Claude binary with loopback inference, preserve receipt, permission, cancellation, media and
+restart paths. These checks do not resolve live subscription failures or prove better model quality.
+The ordinary controlled fixture now declares 9 tools / 13,049 JSON characters without Probe;
+system content is 6,542 characters. This is Host fixture projection, not production wire tokens or
+a whole-product savings percentage. Small read-only loadouts retain direct tools without search.
+The rebuilt desktop's loopback capture declares 10 tools including Skill/SearchTools, compared
+with the preceding 26-tool capture; system content is 12,207 characters, not the smaller terminal
+fixture. Primary operated the real composer, retained a stopped local-server failure, completed a
+fresh input after restoring that test server and reopened both records after normal app exit.
+The same model/capacity remained, with no automatic model request on reopen. This is one isolated
+local transport and one review instance; it is not a vendor-subscription or owner-acceptance result.
+
 ### Primary reconciliation of the supplied Claude handoff
 
 The complete supplied `交接/问题报告.md` and `交接/方案与思路.md` were read against current
@@ -3249,9 +3279,9 @@ authority. This table records verification scope; delivery status remains in the
 
 | Handoff finding | Current source-backed disposition |
 |---|---|
-| “Complete Pi” was inaccurate | Confirmed for the interim wrapper: it disabled Coding Agent resources and ignored its provider context. OV-084 now uses Pi Agent Core directly; Host still owns projection, tools and durable records. No complete CLI/extension claim. |
+| “Complete Pi” was inaccurate | Confirmed for the interim wrapper: it disabled Coding Agent resources and ignored its provider context. Candidate `apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts:2,136` now imports/constructs Agent Core; its prepare/finish hooks at 144/148 retain Host projection, tools and durable records. No complete CLI/extension claim. The missed engineering setup paragraph was corrected separately. |
 | Model-facing lightness was unproved | Confirmed. Character measurements distinguish provider declarations from larger internal contracts. Optional discovery now has local proof, while real-token and accepted-task quality remain unmeasured. |
-| Candidate/patches lacked version control | Superseded by local candidate feature commits and tracked root `patches/zcode`; the source gate reconstructs every non-ignored file. Independent archives/bundles are extracted and compared, without changing the real indexes. |
+| Candidate/patches lacked version control | Correct for the author's snapshot, superseded by local candidate feature commits and tracked root `patches/zcode`; `scripts/check-zcode-candidate.py:15` reconstructs every non-ignored file. Remaining uncommitted page integration is preserved in recipe 0109, not presented as a delivered feature. Independent archives/bundles are extracted and compared, without changing the real indexes. |
 | Core rows described Craft | Confirmed in earlier rows. CORE Project/Session/Settings and related active contracts now name the candidate. Remaining retained domain source rows are reference evidence until actual candidate callers land; their paths cannot be mechanically renamed. |
 | Product target was written as delivered | Product now explicitly says the all-page behavior is a required contract and points delivery status to the register. Current all-page entry does not mean all domain mutations exist. |
 | OV-024 could mislead | Its explicit partial-supersession notice now points to OV-025/027 and retains the still-current folder/page requirements. Historical gloss is not the selected base. |
@@ -3260,12 +3290,13 @@ authority. This table records verification scope; delivery status remains in the
 | Context prose bypassed readability limits | Oversized historical prose was reflowed; executable contracts and evidence remain in their distinct homes. The 700-line gate remains enforced. |
 | Quotation statistics and history counts | The reported 559 messages and 203 matching quotes are the handoff author’s snapshot. They were not fully recomputed in this source audit; alleged altered/untraceable quotations are not marked resolved. |
 | Remove quotations/reduce references to ten | Those are recommendations, not verified defects. Current owner rules retain exact decision evidence and reference pins. Bounded per-module intake prevents whole-ledger loading; unique evidence is not silently removed. |
-| Page assistant only changed model enablement | Superseded partly: model capacity and General preferences/defaults now share original writers; other pages have typed guidance/read scopes. Full domain coverage and visual acceptance remain open. |
-| Plugin formats already imply UI compatibility | Incorrect implication. Importers recognize contributions; candidate side-pane types and package metadata still lack a general registered UI host. That is a real later delivery gap. |
+| Page assistant only changed model enablement | Superseded partly: candidate `modelSettingsAssistant.ts` adds capacity operations through original writers. `packages/ui/src/root/RootShell.tsx:12` hosts `PageAssistantHost`; its new invocation at `PageAssistantHost.tsx:141` changes generation, while General preferences/defaults share original writers. Other pages have typed guidance/read scopes. Full domain mutation coverage and visual acceptance remain open. |
+| Plugins cannot add general UI | Confirmed, as the handoff says. Candidate `plugins/index.ts:110` recognizes manifest formats, while `packages/ui/src/lib/workspaceSidePane.ts:516` remains a finite built-in tab union. Format recognition and general registered UI contributions are different capabilities; the latter remains a later delivery gap. |
 | Folderless work needs only renaming the home folder | Insufficient: candidate uses a distinct conversation backing purpose and excludes it from Project grouping. Original home-folder behavior does not provide that isolation or Project suite lifecycle. |
-| All models should inherit Claude through a conversion proxy | NewMax source confirms that mechanism, but it does not establish better model behavior or native subscription legality/entitlement. Preserve vendor-native executors and Pi's API route instead of selecting a universal protocol-conversion gateway. |
-| Paseo image support proves native Antigravity media | Not established: its adapter passes materialized paths as text and unconditionally skips permissions. Installed `agy` and official SDK/hook contracts were inspected separately. Missing native execution remains a gap. |
-| Non-code output had no interface path | Confirmed earlier missing V4 references; the committed output projection now joins existing persisted artifacts/viewers. This does not complete all live generation or document editing. |
+| NewMax's Claude conversion proxy deserves comparison | Source confirms the reported mechanism, but it does not establish better model behavior or native subscription entitlement. The handoff itself recommends native vendors/Pi for incompatible endpoints, not a universal conversion gateway. Keep that distinction in the executor decision. |
+| Antigravity image support conflicts between sources | The handoff correctly calls this unverified. Paseo passes materialized paths as text and skips permissions; that is not proof of native visual input or Fleet policy. Installed `agy` and official SDK/hook contracts were inspected separately. Candidate `adapters/src/native-agent/index.ts` exports only Claude; the Antigravity type in `contracts/src/model/model.ts:47` does not implement an executor. |
+| Native CLI routes are incomplete | Confirmed. The candidate native adapter exports Claude, with no Codex app-server/ACP/agy executor. Public ChatGPT local callback/account tests do not resolve the owner's real `invalid_grant` or organization-policy failure. Native Codex authentication/control source inspection does not make its Fleet executor available. |
+| Non-code output had no interface path | Confirmed earlier missing V4 references. Committed `packages/ui/src/v4/conversationOutputs.ts:12` now collects durable successful image/video tool attachments and the existing output cards open original viewers. Its generation whitelist does not cover every document or live provider; those remain distinct gaps. |
 
 Source owners: root AGENTS/DESIGN, current `product.md`, capability register, original Provider/Session
 code, candidate `pi-turn.ts`, `plugin-types.ts` and `workspaceSidePane.ts`, and the preserved source

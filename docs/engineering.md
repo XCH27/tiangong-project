@@ -37,9 +37,9 @@ fresh candidate only with the [ordered patch recipe](../patches/zcode/README.md)
 that recipe twice or reset an existing checkout. Intermediate designs and test counts are not
 current capability status; the register and owning module describe the surviving behavior.
 
-The candidate embeds `pi-coding-agent@0.99.2` and its matching Pi types as the default executor
-inside the existing supervised CLI. Host models and subscription services use patched `pi-ai@0.99.2` for
-transport/OAuth; the same Pi release now serves execution and providers. The production default is Pi; the retired legacy executor selector no longer changes the loop.
+The candidate embeds `pi-agent-core@1.0.1` as the default loop inside the existing supervised CLI.
+Host models and subscription services use patched `pi-ai@1.0.1` for transport/OAuth. OV-084 retired
+the Coding Agent session/resource wrapper; the retired legacy selector no longer changes the loop.
 Native vendor routes use their own admitted adapter. No credential store or user-data migration was added.
 Resources are explicitly Host-owned; this does not enable arbitrary community extensions or pages.
 `pnpm exec tsx scripts/measure-context-projection.mts` measures fixed scripted fixtures without
