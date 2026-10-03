@@ -1,0 +1,74 @@
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
+index 24b5e21..4167a16 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/native-agent.port.ts
+@@ -31,7 +31,7 @@ export interface NativeAgentToolReceipt {
+ export interface NativeAgentTurn {
+   /** Observation-only model handle. It never starts a second model/tool loop. */
+   model: Model;
+-  /** Publish Host receipts only after the next Host request boundary is durably admitted. */
++  /** Release Host receipts only after durable admission, final request assembly and Stop validation. */
+   admitNextStep(): void;
+   retainToolReceipts(receipts: readonly NativeAgentToolReceipt[]): void;
+   /** Only a successful native terminal receipt can produce a resumable checkpoint. */
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+index e4910f6..745811f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+@@ -86,7 +86,7 @@ export async function runPiTurn(
+       registered.add(name);
+     }
+   };
+-  register(runtime.registry.list());
++  register(prepared.tools.map((tool) => tool.name));
+   const streamSimple: StreamFn = () => {
+     const stream = createAssistantMessageEventStream();
+     void (async () => {
+@@ -98,7 +98,7 @@ export async function runPiTurn(
+         pending = undefined;
+         results = new Map();
+         prepared ??= await prepareRegularModelStep(runtime, state);
+-        register(runtime.registry.list());
++        register(prepared.tools.map((tool) => tool.name));
+ 
+         let result: RuntimeModelTextResult | undefined;
+         const requestModel = state.model;
+diff --git a/apps/zcode-cli/packages/core/test/deferred-tools.test.ts b/apps/zcode-cli/packages/core/test/deferred-tools.test.ts
+index 354077a..f5cc737 100644
+--- a/apps/zcode-cli/packages/core/test/deferred-tools.test.ts
++++ b/apps/zcode-cli/packages/core/test/deferred-tools.test.ts
+@@ -3,6 +3,7 @@ import test from "node:test";
+ import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
+ import type { ToolEntry } from "../src/tool/types.js";
+ import { registerMcpTools } from "../src/mcp/index.js";
++import { Agent } from "@earendil-works/pi-agent-core";
+ 
+ const optionalName = (index: number) => `mcp__fixture__export_${index}`;
+ const search = (id = "search", query = optionalName(0)) => ({
+@@ -264,6 +265,26 @@ test("small optional catalog preserves direct tools without a search step", asyn
+   }
+ });
+ 
++test("the actual Pi Core starts with only the admitted routing tools, not the full optional registry", async () => {
++  const c = await catalog(),
++    { f } = c;
++  const prompt = Agent.prototype.prompt;
++  let routerNames: string[] = [];
++  Agent.prototype.prompt = async function (...args: Parameters<typeof prompt>) {
++    routerNames = this.state.tools.map((tool) => tool.name);
++    return prompt.apply(this, args);
++  } as typeof prompt;
++  try {
++    f.steps.push(() => reply("complete"));
++    await f.runtime.executeTurn("Explain this task without optional execution");
++    assert.deepEqual(routerNames, ["SearchTools", "Probe"]);
++    assert.equal(c.effects(), 0);
++  } finally {
++    Agent.prototype.prompt = prompt;
++    await c.close();
++  }
++});
++
+ test("real MCP registration is deferred and invokes its existing semantic transport once", async () => {
+   const f = await fixture(undefined, true, { config: { toolAllowlist: ["Probe", "SearchTools"] } });
+   const calls: unknown[] = [];

@@ -3256,7 +3256,7 @@ authority. This table records verification scope; delivery status remains in the
 | Product target was written as delivered | Product now explicitly says the all-page behavior is a required contract and points delivery status to the register. Current all-page entry does not mean all domain mutations exist. |
 | OV-024 could mislead | Its explicit partial-supersession notice now points to OV-025/027 and retains the still-current folder/page requirements. Historical gloss is not the selected base. |
 | Candidate/root rules and design were disconnected | Both link directions were checked. Candidate AGENTS points to root authority; root DESIGN links the candidate DESIGN and scopes original controls correctly. |
-| Stale parallel-frontier workflow | Confirmed: ignored `.claude/workflows/parallel-frontier.js` still references retired work-order/docs. Its independent source copy is retained. It is not an admitted workflow under OV-083 and has not been dispatched. |
+| Stale parallel-frontier workflow | Confirmed and retired: the ignored executable entry now refuses before any dispatch and references current AGENTS/TODO. Its complete original is retained outside the project by SHA-256; a controlled invocation verified zero Agent/pipeline calls. |
 | Context prose bypassed readability limits | Oversized historical prose was reflowed; executable contracts and evidence remain in their distinct homes. The 700-line gate remains enforced. |
 | Quotation statistics and history counts | The reported 559 messages and 203 matching quotes are the handoff author’s snapshot. They were not fully recomputed in this source audit; alleged altered/untraceable quotations are not marked resolved. |
 | Remove quotations/reduce references to ten | Those are recommendations, not verified defects. Current owner rules retain exact decision evidence and reference pins. Bounded per-module intake prevents whole-ledger loading; unique evidence is not silently removed. |
@@ -3270,3 +3270,9 @@ authority. This table records verification scope; delivery status remains in the
 Source owners: root AGENTS/DESIGN, current `product.md`, capability register, original Provider/Session
 code, candidate `pi-turn.ts`, `plugin-types.ts` and `workspaceSidePane.ts`, and the preserved source
 recipe. Individual live account failures remain separate from this documentation/source audit.
+
+The optional-tool controlled fixture measured 36,776 characters for its 25 optional declarations
+plus Probe, versus 721 for initial Probe/SearchTools. This narrow fixture does not include Fleet's
+ordinary core tool set, so it is not a whole-conversation savings percentage. Loading one matched
+operation preserves the original semantic permission and records three actual model requests
+(search, execution, answer). Small catalogs preserve direct invocation without that extra search.
