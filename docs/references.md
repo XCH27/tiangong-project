@@ -3189,7 +3189,8 @@ Releasing it before `runModelTextRequest` finished assembly could allow native c
 when assembly failed. Real SDK/bundled-CLI/loopback tests reproduced two releases for one successfully
 prepared request. The correction releases at the observation handle only after final assembly and
 Stop validation. Tests preserve the already committed effect, leave uncertain continuation inflight,
-and forbid another native request. Non-streaming observation also now consumes the final projected
+and forbid another native request. Cold reopen of that inflight state uses complete visible history
+and keeps the committed tool effect without replay. Non-streaming observation also consumes the final projected
 input, matching the existing streaming route; both retain real image/PDF blocks and derived paths.
 
 Pi's `streamSimple` uses the Host's final request; it does not use the private Pi context argument.

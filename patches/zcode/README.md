@@ -147,6 +147,8 @@ instructions are in [Engineering](../../docs/engineering.md#zcode-candidate).
 | 0108 | [0108-kernel-request-admission-and-private-receipts.patch](0108-kernel-request-admission-and-private-receipts.patch) | `39470aa6743221f78fc53f63a055a6de9ca54424` |
 | 0109 | [0109-contextual-assistance-integration.patch](0109-contextual-assistance-integration.patch) | `5a034fd3971ea125e25c8be9ef09c4f77bf02934` |
 
+| 0110 | [0110-native-failed-preparation-recovery.patch](0110-native-failed-preparation-recovery.patch) | `a3008772f727f15b5b01f58015d04932a6b553b7` |
+
 Tree observations are retained reconstruction evidence, not live-provider, visual or release acceptance.
 The source gate replays every patch and compares the final tree without modifying the working index.
 Patch 0108 is the committed kernel correction. Patch 0109 preserves the current unfinished contextual
