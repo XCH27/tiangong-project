@@ -1,0 +1,1010 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+index 80370ca2826aa7c5c195262211545ef8e1fb823a..f49a9087164b4569b7bdd03ff24d71acb1b7296a 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/product-projection.ts
+@@ -4605,6 +4605,7 @@ export class ProductProjection {
+     if (isMainTurn) this.outputContinuationTextRowId = null;
+     if (
+       isMainTurn &&
++      (payload.outcome === undefined || payload.outcome === "completed") &&
+       payload.stopReason?.trim().toLowerCase() === "length" &&
+       payload.toolCallCount === 0
+     ) {
+diff --git a/apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts b/apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..61cef4d93002cbd8be7d6437691edd3b5f420b90
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts
+@@ -0,0 +1,147 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { createInMemorySessionEventStore, SessionEventType, type SessionId } from "@zcode/contracts";
++import { fixture, reply, call } from "../../core/test/helpers/pi-runtime-fixture.js";
++import { ProductProjection } from "../src/zcode-protocol-v4/product-projection.js";
++import { synthesizeEventsFromMessages } from "../src/zcode-protocol-v4/transcript-hydration.js";
++import { sessionUsageSeedFromRuntimeContextUsage } from "../src/zcode-protocol/v4-bridge.js";
++
++const sessionId = "session" as SessionId;
++for (const streaming of [false, true]) {
++  test(`known ${streaming ? "streaming" : "non-streaming"} Stop consumption reaches live V4, the original ledger and cold replay`, async () => {
++    const eventStore = createInMemorySessionEventStore();
++    const f = await fixture("pi", streaming, { deps: { eventStore } });
++    const entered = Promise.withResolvers<void>();
++    const release = Promise.withResolvers<void>();
++    let running: Promise<unknown> | undefined;
++    try {
++      if (streaming) {
++        const runtime = f.runtime as any;
++        const factory = runtime.modelFactory;
++        runtime.modelFactory = (input: any) => {
++          const model = factory(input);
++          return { ...model, async *streamText(request: any) {
++            yield { type: "reasoning_start", id: "thought" };
++            yield { type: "reasoning_delta", id: "thought", text: "Known thought" };
++            yield { type: "reasoning_end", id: "thought" };
++            yield* model.streamText(request);
++          } };
++        };
++      }
++      f.steps.push(async () => {
++        entered.resolve(); await release.promise;
++        return { ...reply("Received before Stop settled", [call("never-execute", "no effect")]),
++          reasoning: [{ type: "reasoning", text: "Known thought" }],
++          providerMetadata: { fleetAccounting: { accountId: "actually-served-account" } } };
++      });
++      running = f.runtime.executeTurn("Observe consumed response without completing the turn");
++      const rejected = assert.rejects(running);
++      await entered.promise;
++      f.runtime.stopActiveForegroundExecution();
++      release.resolve(); await rejected;
++      const events = await eventStore.getEvents(sessionId);
++      const reports = events.filter(e => e.type === SessionEventType.ModelComplete);
++      assert.equal(reports.length, 1);
++      assert.equal((reports[0]!.payload as any).outcome, "cancelled");
++      const live = new ProductProjection(sessionId, "live");
++      for (const event of events) live.applyEventAtomically(event, () => true);
++      const snapshot = live.getSnapshot();
++      assert.equal(snapshot.usage.lastRequest?.accountId, "actually-served-account");
++      assert.equal(snapshot.usage.lastRequest?.inputTokens, 100);
++      assert.equal(snapshot.usage.lastRequest?.outputTokens, 10);
++      assert.equal(snapshot.usage.cumulative.inputTokens, 100);
++      assert.equal(snapshot.usage.cumulative.outputTokens, 10);
++      assert.equal((await f.runtime.rebuildProjection()).totalTokenCount, 110);
++      assert.equal(snapshot.rows.window.filter(row => row.kind === "assistantText").map(row => row.text).join(""), "Received before Stop settled");
++      assert.equal(snapshot.rows.window.filter(row => row.kind === "reasoning").map(row => row.text).join(""), "Known thought");
++      assert.equal(snapshot.rows.window.find(row => row.kind === "turnHeader")?.state, "completedInterrupted");
++      assert.equal(f.effects, 0);
++      assert.equal(f.requests.length, 1);
++      const retained = await f.store.queryTaskUsage({ sessionID: sessionId });
++      assert.equal(retained.lastRequest?.accountId, "actually-served-account");
++      assert.equal(retained.cumulativeMainUsage?.inputTokens, 100);
++      await f.reopen();
++      const cold = new ProductProjection(sessionId, "cold");
++      for (const event of synthesizeEventsFromMessages(await f.store.messages({ sessionID: sessionId }), { sessionId }))
++        cold.applyEventAtomically(event, () => true);
++      const saved = await f.store.queryTaskUsage({ sessionID: sessionId });
++      const seed = sessionUsageSeedFromRuntimeContextUsage(undefined, undefined, saved.lastRequest, saved.cumulativeMainUsage);
++      assert.ok(seed); cold.seedUsage(seed);
++      assert.deepEqual(cold.getSnapshot().usage.lastRequest, { ...snapshot.usage.lastRequest, observedAt: saved.lastRequest!.observedAt });
++      assert.deepEqual(cold.getSnapshot().usage.cumulative, snapshot.usage.cumulative);
++      assert.equal(cold.getSnapshot().rows.window.find(row => row.kind === "turnHeader")?.state, "completedInterrupted");
++      assert.equal(cold.getSnapshot().rows.window.filter(row => row.kind === "assistantText").map(row => row.text).join(""), "Received before Stop settled");
++      assert.equal(cold.getSnapshot().rows.window.filter(row => row.kind === "reasoning").map(row => row.text).join(""), "Known thought");
++    } finally { release.resolve(); await running?.catch(() => {}); await f.close(); }
++  });
++}
++
++test("a known failed response with a length finish never advertises successful continuation", async () => {
++  const eventStore = createInMemorySessionEventStore();
++  const f = await fixture("pi", true, { deps: { eventStore } });
++  try {
++    const runtime = f.runtime as any;
++    const factory = runtime.modelFactory;
++    runtime.modelFactory = (input: any) => {
++      const model = factory(input);
++      return { ...model, async *streamText(request: any) {
++        for await (const event of model.streamText(request)) {
++          yield event;
++          if (event.type === "finish") throw Object.assign(new Error("Trailing failure"), { code: "model_network_error" });
++        }
++      } };
++    };
++    f.steps.push(() => ({ ...reply("Known response"), finishReason: "length" }));
++    await assert.rejects(f.runtime.executeTurn("Retain known usage; do not continue"));
++    const projection = new ProductProjection(sessionId, "failed");
++    const events = await eventStore.getEvents(sessionId);
++    for (const event of events) projection.applyEventAtomically(event, () => true);
++    assert.equal((events.find(e => e.type === SessionEventType.ModelComplete)!.payload as any).outcome, "error");
++    assert.equal(projection.getSnapshot().usage.lastRequest?.inputTokens, 100);
++    assert.equal((await f.runtime.rebuildProjection()).totalTokenCount, 110);
++    assert.equal(projection.getSnapshot().rows.window.filter(row => row.kind === "assistantText").map(row => row.text).join(""), "Known response");
++    assert.equal(projection.getSnapshot().rows.window.find(row => row.kind === "turnHeader")?.state, "failed");
++    assert.equal(f.requests.length, 1);
++    assert.equal(f.effects, 0);
++  } finally { await f.close(); }
++});
++
++test("a failed streamed text write publishes only the missing saved suffix after a known finish", async () => {
++  const eventStore = createInMemorySessionEventStore();
++  const append = eventStore.append.bind(eventStore);
++  let deltas = 0;
++  eventStore.append = async event => {
++    if (event.type === SessionEventType.ModelStreaming && (event.payload as any).kind === "text_delta" && ++deltas === 2)
++      throw new Error("One failed text-frame write");
++    return append(event);
++  };
++  const f = await fixture("pi", true, { deps: { eventStore } });
++  try {
++    const runtime = f.runtime as any;
++    const factory = runtime.modelFactory;
++    runtime.modelFactory = (input: any) => {
++      const model = factory(input);
++      return { ...model, async *streamText(request: any) {
++        await model.generateText(request);
++        yield { type: "start" };
++        yield { type: "text_delta", text: "First " };
++        yield { type: "text_delta", text: "tail" };
++        yield { type: "finish", finishReason: "stop", usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } };
++      } };
++    };
++    f.steps.push(() => reply("placeholder"));
++    await assert.rejects(f.runtime.executeTurn("Preserve the one failed delivery"));
++    const live = new ProductProjection(sessionId, "partial");
++    const events = await eventStore.getEvents(sessionId);
++    for (const event of events) live.applyEventAtomically(event, () => true);
++    assert.equal(live.getSnapshot().rows.window.filter(row => row.kind === "assistantText").map(row => row.text).join(""), "First tail");
++    assert.equal(events.filter(e => e.type === SessionEventType.ModelComplete).length, 1);
++    assert.equal(live.getSnapshot().usage.cumulative.inputTokens, 100);
++    assert.equal(f.requests.length, 1);
++    await f.reopen();
++    const cold = new ProductProjection(sessionId, "partial-cold");
++    for (const event of synthesizeEventsFromMessages(await f.store.messages({ sessionID: sessionId }), { sessionId }))
++      cold.applyEventAtomically(event, () => true);
++    assert.equal(cold.getSnapshot().rows.window.filter(row => row.kind === "assistantText").map(row => row.text).join(""), "First tail");
++  } finally { await f.close(); }
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/events/event-reducer.ts b/apps/zcode-cli/packages/contracts/src/events/event-reducer.ts
+index f252b55d91d4b88bad19e43ee0a70fc2298f210e..0f4506acc6ea566a66c5e61031a80b99290f7e35 100644
+--- a/apps/zcode-cli/packages/contracts/src/events/event-reducer.ts
++++ b/apps/zcode-cli/packages/contracts/src/events/event-reducer.ts
+@@ -323,6 +323,7 @@ export class EventReducer {
+       return {
+         ...p,
+         status: "error" as SessionStatus,
++        totalTokenCount: p.totalTokenCount + (payload.tokenCount ?? 0),
+         // projection 是重启/恢复链路的数据来源，必须保留真实 provider/subagent 根因。
+         lastError: {
+           type: payload.error.type,
+diff --git a/apps/zcode-cli/packages/contracts/src/events/session.events.ts b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+index 4651aac3e2e2a831be86afe3cb064e0336d16846..d53d11089ded92237355ced693fe0d7adc68538a 100644
+--- a/apps/zcode-cli/packages/contracts/src/events/session.events.ts
++++ b/apps/zcode-cli/packages/contracts/src/events/session.events.ts
+@@ -593,6 +593,9 @@ export interface TurnCompletePayload {
+ 
+ export interface TurnErrorPayload {
+   error: ErrorPayload;
++  /** Known consumption before failure; older events can have no report. */
++  tokenCount?: number;
++  usage?: ModelUsageSummary;
+   turnPhase: string;
+   inputId?: string;
+   /** 当前 turn 是否消费过来源为 subagent 的后台结果通知。 */
+@@ -763,6 +766,8 @@ export interface NetworkRequestStatusPayload {
+ }
+ 
+ export interface ModelCompletePayload {
++  /** A returned response can have known usage even when its enclosing request is cancelled/error. */
++  outcome?: "completed" | "cancelled" | "error";
+   /** Local identity of the subscription account that actually served the request; never a token. */
+   accountId?: string;
+   cacheHit?: {
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/turn-errors.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/turn-errors.ts
+index adb7a81c8816c7e6cd7849bd0dac9d30a9d9e673..044df0a8956859939a8fc7f0749f91c6cc8c0052 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/turn-errors.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/turn-errors.ts
+@@ -161,14 +161,15 @@ export async function appendTurnOutcomeEvent(
+   const { coreError, events, traceContext, turnPhase, inputId } = params;
+   const cancelled = coreError.type === CoreErrorType.TurnCancelled;
+   const externalFault = findExternalTurnFault(coreError);
++  const usage = createModelUsageSummaryFromEvents(events);
+ 
+   const outcomeEvent = cancelled
+     ? runtime.createEvent(
+         SessionEventType.TurnComplete,
+         {
+           response: "",
+-          tokenCount: 0,
+-          usage: createModelUsageSummaryFromEvents(events),
++          tokenCount: usage?.totalTokens ?? 0,
++          usage,
+           toolCallCount: 0,
+           historyRoundCount: params.historyRoundCount ?? 0,
+           duration: params.durationMs,
+@@ -195,6 +196,7 @@ export async function appendTurnOutcomeEvent(
+             stack: coreError.stack,
+           },
+           turnPhase,
++          ...(usage ? { tokenCount: usage.totalTokens, usage } : {}),
+           inputId,
+           ...(params.backgroundSubagentResultConsumed
+             ? { backgroundSubagentResultConsumed: true }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/cancelled-stream-persistence.ts b/apps/zcode-cli/packages/core/src/runtime/methods/cancelled-stream-persistence.ts
+index cd38f08cfcbef2df18e908be5a1accb0e806d564..8133a655085c60cab6624f7f8c43f122d781986c 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/cancelled-stream-persistence.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/cancelled-stream-persistence.ts
+@@ -1,5 +1,5 @@
+-import { createPartId } from "../deps.js";
+-import type { MessageId, TraceContext } from "../deps.js";
++import { createPartId, SessionEventType } from "../deps.js";
++import type { MessageId, TraceContext, SessionEvent, ModelStreamingPayload } from "../deps.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import type { RuntimeModelStreamSnapshot } from "../types.js";
+ import { hasAssistantReasoningContent } from "./turn-output-token-continuation.js";
+@@ -10,6 +10,7 @@ export async function persistCancelledStreamSnapshot(
+     assistantCreatedAt: number;
+     assistantMessageId: MessageId;
+     snapshot: RuntimeModelStreamSnapshot;
++    events?: SessionEvent[];
+     traceContext: TraceContext;
+   },
+ ): Promise<void> {
+@@ -34,10 +35,7 @@ export async function persistCancelledStreamSnapshot(
+       options.traceContext,
+     );
+   }
+-  if (!options.snapshot.text) {
+-    return;
+-  }
+-  await runtime.persistPart(
++  if (options.snapshot.text) await runtime.persistPart(
+     {
+       id: createPartId(),
+       sessionID: runtime.sessionId,
+@@ -51,4 +49,26 @@ export async function persistCancelledStreamSnapshot(
+     },
+     options.traceContext,
+   );
++  if (!options.events) return;
++  const streamed = options.events.filter(event => event.type === SessionEventType.ModelStreaming &&
++    (event.payload as ModelStreamingPayload).assistantMessageId === options.assistantMessageId)
++    .map(event => event.payload as ModelStreamingPayload);
++  const emit = (kind: ModelStreamingPayload["kind"], delta = "", done = false) =>
++    runtime.emitModelStreamingEvent({ assistantMessageId: options.assistantMessageId, kind, delta, done },
++      options.traceContext, options.events!);
++  let published = false;
++  // Streaming requests may already have published some/all content. Send only a
++  // known missing suffix; non-streaming responses have no prior deltas at all.
++  for (const [start, deltaKind, end, text] of [
++    ["reasoning_start", "reasoning_delta", "reasoning_end", options.snapshot.reasoning.map(block => block.text).join("")],
++    ["text_start", "text_delta", "text_end", options.snapshot.text],
++  ] as const) {
++    const prior = streamed.filter(part => part.kind === deltaKind).map(part => part.delta).join("");
++    if (!text || !text.startsWith(prior) || text.length === prior.length) continue;
++    if (!prior) await emit(start);
++    await emit(deltaKind, text.slice(prior.length));
++    await emit(end);
++    published = true;
++  }
++  if (published) await emit("finish", "", true);
+ }
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/model.ts b/apps/zcode-cli/packages/core/src/runtime/methods/model.ts
+index fc8721ea1b135731d56ade75bb10f51bbb35be67..165bf46ec8a65c4f3f669a3e146d2955c18480fd 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/model.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/model.ts
+@@ -164,7 +164,9 @@ export async function runModelTextRequest(
+   const toolCalls: ModelToolCall[] = [];
+   const toolCallIds = new Set<string>();
+   const toolInputDeltaBuffers = new Map<ToolCallId, string>();
+-  const publishStreamSnapshot = () => options.onStreamSnapshot?.({ reasoning, text });
++  let completedResult: RuntimeModelTextResult | undefined;
++  const publishStreamSnapshot = () =>
++    options.onStreamSnapshot?.({ completedResult, reasoning, text });
+   const streamingEventQueue = createModelStreamingEventQueue({
+     events: options.events,
+     runtime: this,
+@@ -424,6 +426,18 @@ export async function runModelTextRequest(
+           finishReason = event.finishReason;
+           usage = event.usage;
+           providerMetadata = event.providerMetadata;
++          // finish 已报告物理请求完成；iterator 尾部或落库仍可能失败。
++          // 通过原快照回调保留这份事实，取消与恢复不能把已发生的消耗当成未知。
++          completedResult = {
++            ...(contextUsageBreakdown.length > 0 ? { contextUsageBreakdown } : {}),
++            finishReason,
++            providerMetadata,
++            reasoning: reasoning.length > 0 ? reasoning : undefined,
++            text,
++            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
++            usage,
++          };
++          publishStreamSnapshot();
+           await flushAllToolInputDeltas();
+           await enqueueStreamingEventAndDrain({
+             assistantMessageId: options.assistantMessageId,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step-usage.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step-usage.ts
+index 2029bdd2d896b1b01407a0209cc726e7fb9637a4..fb980ecc83156793c4e78b2bf75e568b76bb651f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step-usage.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step-usage.ts
+@@ -1,4 +1,5 @@
+-import type { MessageId, MessageWithParts, Model, ModelUsage, TraceContext } from "../deps.js";
++import { SessionEventType } from "../deps.js";
++import type { MessageId, MessageWithParts, Model, ModelUsage, TraceContext, TurnFileChangeSummary } from "../deps.js";
+ import type { MainTurnCacheHitAggregate, RuntimeModelTextResult } from "../types.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import type { RegularTurnLoopState } from "./turn-loop-state.js";
+@@ -44,6 +45,40 @@ export async function recordMainTurnModelUsage(
+   });
+ }
+ 
++/** One observation path for known responses; logical cancellation is not zero consumption. */
++export async function publishModelResponseObservation(
++  runtime: AgentRuntimeInternal,
++  state: RegularTurnLoopState,
++  input: {
++    result: RuntimeModelTextResult;
++    querySource: string;
++    contextWindow?: number | null;
++    traceContext: TraceContext;
++    toolCallCount: number;
++    outcome?: "completed" | "cancelled" | "error";
++    content?: string;
++    cacheHit?: ReturnType<typeof recordMainTurnCacheHitUsage>;
++    fileChanges?: TurnFileChangeSummary;
++  },
++): Promise<void> {
++  const accountId = (input.result.providerMetadata?.fleetAccounting as { accountId?: unknown } | undefined)?.accountId;
++  const event = runtime.createEvent(SessionEventType.ModelComplete, {
++    content: input.content ?? input.result.text,
++    ...(typeof accountId === "string" && accountId ? { accountId } : {}),
++    ...(input.querySource === "main_turn" && input.contextWindow != null ? { contextWindow: input.contextWindow } : {}),
++    querySource: input.querySource,
++    stopReason: input.result.finishReason,
++    usage: input.result.usage,
++    ...(input.outcome && input.outcome !== "completed" ? { outcome: input.outcome } : {}),
++    ...(input.cacheHit ? { cacheHit: input.cacheHit } : {}),
++    ...(input.fileChanges ? { fileChanges: input.fileChanges } : {}),
++    ...(input.querySource === "main_turn" && input.result.contextUsageBreakdown ? { contextUsageBreakdown: input.result.contextUsageBreakdown } : {}),
++    toolCallCount: input.toolCallCount,
++  }, input.traceContext);
++  await runtime.appendEvent(event, input.traceContext);
++  state.events.push(event);
++}
++
+ export function querySourceForTask(taskType: AgentRuntimeInternal["config"]["taskType"]): string {
+   if (taskType === "page_assistant") return "page_assistant";
+   if (taskType === "subagent_child") return "subagent";
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+index dc1e0a2127d19c4fb6adc79e848c75f8135f7b14..dbd06ad0ba9c37d25a38e9ed19c25c662e01be4b 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+@@ -29,6 +29,7 @@ import {
+   isModelContextExceededError,
+   isTurnCancellationError,
+   buildTurnFileChangeSummary,
++  toTokenUsageInfo,
+ } from "../helpers/index.js";
+ import type {
+   DrainedPendingInputDiagnostics,
+@@ -67,6 +68,7 @@ import {
+   querySourceForTask,
+   recordMainTurnCacheHitUsage,
+   recordMainTurnModelUsage,
++  publishModelResponseObservation,
+ } from "./turn-model-step-usage.js";
+ import { estimateCurrentModelInputTokens } from "./compact.js";
+ import {
+@@ -239,6 +241,7 @@ async function runModelBackedTurnStepImpl(
+   };
+ 
+   let result: RuntimeModelTextResult;
++  let receivedResult: RuntimeModelTextResult | undefined;
+   try {
+     const baselineMaxOutputTokens = resolveNormalRequestMaxOutputTokens({
+       modelMaxOutputTokens: executionMaxOutputTokens,
+@@ -271,26 +274,40 @@ async function runModelBackedTurnStepImpl(
+       tools: options.tools,
+       traceContext: modelTraceContext,
+     });
++    // 原版在完整响应返回后检查 Stop，却把已收到的 usage/正文当成未返回而丢弃。
++    // 保留这次物理请求的回执；中止仍阻止工具和后续请求，不能把已发生消耗归零。
++    receivedResult = result;
+     throwIfTurnAborted(state.turnAbortSignal);
+   } catch (error) {
+     let finalError = error;
++    receivedResult ??= latestStreamSnapshot.completedResult;
+     await recordMainTurnModelUsage(this, state, {
+       assistantMessageId,
+       error: finalError,
+       model,
+       modelTraceContext,
+       networkEventStartIndex,
++      result: receivedResult,
+       startedAt: modelStartedAt,
+       status: state.turnAbortSignal.aborted ? "cancelled" : "error",
+     });
++    if (receivedResult) {
++      await publishModelResponseObservation(this, state, {
++        result: receivedResult, querySource, contextWindow: publishedContextWindow,
++        traceContext: modelTraceContext, toolCallCount: receivedResult.toolCalls?.length ?? 0,
++        outcome: state.turnAbortSignal.aborted ? "cancelled" : "error",
++        cacheHit: querySource === "main_turn" ? recordMainTurnCacheHitUsage(this, receivedResult.usage) : undefined,
++      });
++    }
+     const failedRequestId = latestFailedModelRequestId ?? latestModelRequestId;
+     const toolCallCountBeforeStreamRecovery = state.toolCallCount;
+     if (
+-      await streamingToolCoordinator.recoverFromModelFailure(
++      !receivedResult &&
++      (await streamingToolCoordinator.recoverFromModelFailure(
+         error,
+         assistantCreatedAt,
+         failedRequestId ? { failedRequestId } : undefined,
+-      )
++      ))
+     ) {
+       if (state.toolCallCount > toolCallCountBeforeStreamRecovery) {
+         completeOutputTokenRecovery(state.turnRequestState);
+@@ -303,7 +320,7 @@ async function runModelBackedTurnStepImpl(
+       state,
+       turnNumber: this.turnNumber,
+     });
+-    if (!state.turnAbortSignal.aborted && admissionRetryDelayMs !== undefined) {
++    if (!receivedResult && !state.turnAbortSignal.aborted && admissionRetryDelayMs !== undefined) {
+       // 第二轮及以后 Start Plan 可能在首 token 前被 admission 并发限制拒绝；
+       // 这时没有文本或 tool anchor，旧 stream recovery 不会启动，必须关闭空 assistant 后短重试。
+       const recoveryAttempt = beginStartPlanBusyAdmissionRetryAttempt(state);
+@@ -365,6 +382,7 @@ async function runModelBackedTurnStepImpl(
+       return "continue";
+     }
+     if (
++      !receivedResult &&
+       state.streamRecoveryRetryCount > 0 &&
+       !state.turnAbortSignal.aborted &&
+       isStartPlanBusyStreamRecoveryFailure(finalError)
+@@ -377,27 +395,32 @@ async function runModelBackedTurnStepImpl(
+       state.turnAbortSignal.aborted ? "cancelled" : "model_failed",
+     );
+     if (
+-      state.turnAbortSignal.aborted &&
+-      isTurnCancellationError(finalError, state.turnAbortSignal)
++      receivedResult ||
++      (state.turnAbortSignal.aborted && isTurnCancellationError(finalError, state.turnAbortSignal))
+     ) {
++      const cancelledSnapshot = receivedResult
++        ? { reasoning: receivedResult.reasoning ?? [], text: receivedResult.text }
++        : latestStreamSnapshot;
+       await persistCancelledStreamSnapshot(this, {
+         assistantCreatedAt,
+         assistantMessageId,
+-        snapshot: latestStreamSnapshot,
++        snapshot: cancelledSnapshot,
++        events: state.events,
+         traceContext: modelTraceContext,
+       });
+-      const reasoning = latestStreamSnapshot.reasoning.filter(hasAssistantReasoningContent);
+-      if (latestStreamSnapshot.text.length > 0 || reasoning.length > 0) {
++      const reasoning = cancelledSnapshot.reasoning.filter(hasAssistantReasoningContent);
++      if (cancelledSnapshot.text.length > 0 || reasoning.length > 0) {
+         // 取消时 durable snapshot 已经持久化，但成功路径的 live history commit
+         // 和 historyRoundCount 不会执行，导致当前进程与 cold resume 的 provider history 不一致。
+         commitTurnRequestEntries(this, state.turnRequestState, [
+           createRuntimeAssistantEntry(
+-            latestStreamSnapshot.text,
++            cancelledSnapshot.text,
+             undefined,
+             reasoning,
+             state.model
+               ? { providerId: state.model.providerId, modelId: state.model.modelId }
+               : undefined,
++            receivedResult ? toTokenUsageInfo(receivedResult.usage) : undefined,
+           ),
+         ]);
+         recordModelHistoryRound(state);
+@@ -419,6 +442,7 @@ async function runModelBackedTurnStepImpl(
+       assistantCreatedAt,
+       {
+         completed: Date.now(),
++        ...(receivedResult ? { tokens: toTokenUsageInfo(receivedResult.usage) } : {}),
+         error: {
+           name: finalError instanceof Error ? finalError.name : "UnknownError",
+           data: {
+@@ -438,6 +462,7 @@ async function runModelBackedTurnStepImpl(
+       model,
+     );
+     if (
++      !receivedResult &&
+       isModelContextExceededError(finalError) &&
+       (await recoverModelStepAfterContextExceeded.call(
+         this,
+@@ -603,38 +628,10 @@ async function runModelBackedTurnStepImpl(
+     supportsTurnFileChanges && toolCalls.length === 0
+       ? buildTurnFileChangeSummary(this.currentTurnFileChanges)
+       : undefined;
+-  const servedAccountId = (
+-    result.providerMetadata?.fleetAccounting as { accountId?: unknown } | undefined
+-  )?.accountId;
+-  const modelCompleteEvent = this.createEvent(
+-    SessionEventType.ModelComplete,
+-    {
+-      content: state.modelResponse,
+-      ...(typeof servedAccountId === "string" && servedAccountId
+-        ? { accountId: servedAccountId }
+-        : {}),
+-      // 桌面 continuous 实时事件只携带当前 model_complete payload。
+-      // 如果主轮次只发 usage 不发 contextWindow，旧 task stream 无法生成 usage_update，
+-      // 长程任务中输入栏会拿不到 context meter 的 size 而隐藏。
+-      ...(querySource === "main_turn" &&
+-      publishedContextWindow !== null &&
+-      publishedContextWindow !== undefined
+-        ? { contextWindow: publishedContextWindow }
+-        : {}),
+-      querySource,
+-      stopReason: result.finishReason,
+-      usage: result.usage,
+-      ...(cacheHit ? { cacheHit } : {}),
+-      ...(fileChanges ? { fileChanges } : {}),
+-      ...(querySource === "main_turn" && result.contextUsageBreakdown
+-        ? { contextUsageBreakdown: result.contextUsageBreakdown }
+-        : {}),
+-      toolCallCount: toolCalls.length,
+-    },
+-    modelTraceContext,
+-  );
+-  await this.appendEvent(modelCompleteEvent, modelTraceContext);
+-  state.events.push(modelCompleteEvent);
++  await publishModelResponseObservation(this, state, {
++    result, querySource, contextWindow: publishedContextWindow, content: state.modelResponse,
++    traceContext: modelTraceContext, toolCallCount: toolCalls.length, cacheHit, fileChanges,
++  });
+   this.lastAssistantCompletedAtMs = Date.now();
+   await recordMainTurnModelUsage(this, state, {
+     assistantMessageId,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index fe193ae67f8dad36b6c6c56567d7db8c917c38c1..8645ac158c9b05186df068a8fe31a484f2197e1f 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -851,6 +851,8 @@ export interface RunModelTextRequestOptions {
+ }
+ 
+ export interface RuntimeModelStreamSnapshot {
++  /** 仅在真实 finish 帧到达后存在；尾部失败不能抹掉已报告用量或触发盲重放。 */
++  completedResult?: RuntimeModelTextResult;
+   reasoning: ModelReasoningContentBlock[];
+   text: string;
+ }
+diff --git a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+index c282aa3930d767b3b7ee1938187271a55c8de080..7372831104033c0a247f3dae20aa162a604de516 100644
+--- a/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
++++ b/apps/zcode-cli/packages/core/test/helpers/pi-runtime-fixture.ts
+@@ -107,7 +107,12 @@ export async function fixture(
+         yield { type: "start" };
+         if (result.text) yield { type: "text_delta", text: result.text };
+         for (const toolCall of result.toolCalls ?? []) yield { type: "tool_call", toolCall };
+-        yield { type: "finish", finishReason: result.finishReason, usage: result.usage };
++        yield {
++          type: "finish",
++          finishReason: result.finishReason,
++          usage: result.usage,
++          providerMetadata: result.providerMetadata,
++        };
+       },
+     };
+     return model;
+diff --git a/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts b/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
+index b45e6023005e9632f745d731c4277ef9e83af025..ffe4b19bdc15bbf55a0e273cd6bb845fe811220c 100644
+--- a/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-admission-recovery.test.ts
+@@ -1,7 +1,400 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
++import { DatabaseSync } from "node:sqlite";
++import { join } from "node:path";
+ import { fixture, selection, reply, call } from "./helpers/pi-runtime-fixture.js";
+ 
++for (const stop of [false, true]) {
++  test(
++    `a received finish frame survives ${stop ? "Stop and " : ""}a trailing iterator failure without paid replay`,
++    { timeout: 10000 },
++    async () => {
++      const f = await fixture("pi", true);
++      const finished = Promise.withResolvers<void>();
++      const releaseTail = Promise.withResolvers<void>();
++      let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++      try {
++        const runtime = f.runtime as any;
++        const factory = runtime.modelFactory;
++        runtime.modelFactory = (input: any) => {
++          const model = factory(input);
++          return {
++            ...model,
++            async *streamText(request: any) {
++              for await (const event of model.streamText(request)) {
++                yield event;
++                if (event.type === "finish") {
++                  finished.resolve();
++                  await releaseTail.promise;
++                  throw Object.assign(new Error("Transport tail failed after finish"), {
++                    code: "model_network_error",
++                  });
++                }
++              }
++            },
++          };
++        };
++        f.steps.push(() => ({
++          ...reply("Completed text received at finish", [call("finish-call", "must not run")]),
++          usage: { inputTokens: 321, outputTokens: 12, totalTokens: 333 },
++          providerMetadata: {
++            fleetAccounting: { accountId: "finish-account", requestId: "finish-receipt" },
++          },
++        }));
++        running = f.runtime.executeTurn("Retain completed response evidence");
++        const rejected = assert.rejects(running);
++        await finished.promise;
++        if (stop) f.runtime.stopActiveForegroundExecution();
++        releaseTail.resolve();
++        await rejected;
++        assert.equal(f.requests.length, 1, "A known finished request entered stream recovery");
++        assert.equal(f.effects, 0, "Trailing failure must not execute returned tools");
++        const receipts = () => {
++          const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++          try {
++            return db
++              .prepare(
++                "select status, input_tokens, output_tokens, provider_total_tokens, raw_usage_json, provider_metadata_json from model_usage",
++              )
++              .all();
++          } finally {
++            db.close();
++          }
++        };
++        const saved = receipts();
++        assert.equal(saved.length, 1);
++        assert.equal(saved[0]!.status, stop ? "cancelled" : "error");
++        assert.equal(saved[0]!.input_tokens, 321);
++        assert.equal(saved[0]!.output_tokens, 12);
++        assert.equal(saved[0]!.provider_total_tokens, 333);
++        assert.deepEqual(JSON.parse(String(saved[0]!.raw_usage_json)), {
++          inputTokens: 321,
++          outputTokens: 12,
++          totalTokens: 333,
++        });
++        const accounting = JSON.parse(String(saved[0]!.provider_metadata_json)).fleetAccounting;
++        assert.equal(accounting.accountId, "finish-account");
++        assert.equal(accounting.requestId, "finish-receipt");
++        const assertText = async () => {
++          const assistants = (await f.store.messages({ sessionID: "session" as never })).filter(
++            (message) => message.info.role === "assistant",
++          );
++          assert.equal(assistants.length, 1);
++          assert.ok(
++            assistants[0]!.parts.some(
++              (part) => part.type === "text" && part.text === "Completed text received at finish",
++            ),
++          );
++          assert.equal(
++            assistants[0]!.info.role === "assistant" && assistants[0]!.info.tokens.input,
++            321,
++          );
++          assert.equal(
++            assistants[0]!.parts.some((part) => part.type === "tool"),
++            false,
++          );
++        };
++        await assertText();
++        await f.reopen();
++        await assertText();
++        assert.deepEqual(
++          receipts(),
++          saved,
++          "Restart rewrote or duplicated the finished request receipt",
++        );
++        assert.equal(f.requests.length, 1);
++        f.steps.push((request) => {
++          assert.ok(JSON.stringify(request.messages).includes("Completed text received at finish"));
++          return reply("A later explicit input");
++        });
++        await f.runtime.executeTurn("Continue after reopening");
++        assert.equal(f.requests.length, 2);
++        assert.deepEqual(receipts()[0], saved[0], "Later input changed the finished receipt");
++      } finally {
++        releaseTail.resolve();
++        await running?.catch(() => {});
++        await f.close();
++      }
++    },
++  );
++}
++
++for (const streaming of [false, true]) {
++  test(
++    `Stop retains a fully returned ${streaming ? "streaming" : "non-streaming"} receipt without executing its tools`,
++    { timeout: 10000 },
++    async () => {
++      const f = await fixture("pi", streaming);
++      const entered = Promise.withResolvers<void>();
++      const finish = Promise.withResolvers<void>();
++      let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++      try {
++        f.steps.push(async () => {
++          entered.resolve();
++          await finish.promise;
++          return {
++            ...reply("Already received before cancellation settled", [
++              call("late-call", "must not run"),
++            ]),
++            providerMetadata: {
++              fleetAccounting: { accountId: "served-account-a", requestId: "late-receipt" },
++            },
++          };
++        });
++        running = f.runtime.executeTurn("Stop while the provider is finishing");
++        const cancelled = assert.rejects(running);
++        await entered.promise;
++        const firstStop = f.runtime.stopActiveForegroundExecution();
++        assert.equal(firstStop.kind, "stopped");
++        assert.equal(f.runtime.stopActiveForegroundExecution().kind, "idle");
++        finish.resolve();
++        await cancelled;
++        assert.equal(f.requests.length, 1, "Stop started another model request");
++        assert.equal(f.effects, 0, "A late response executed a tool after Stop");
++
++        const receipts = () => {
++          const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++          try {
++            return db
++              .prepare(
++                "select status, input_tokens, output_tokens, provider_total_tokens, cancelled_by_user, provider_metadata_json from model_usage order by started_at, id",
++              )
++              .all();
++          } finally {
++            db.close();
++          }
++        };
++        const saved = receipts();
++        assert.equal(saved.length, 1);
++        assert.equal(saved[0]!.status, "cancelled");
++        assert.equal(saved[0]!.cancelled_by_user, 1);
++        assert.equal(saved[0]!.input_tokens, 100);
++        assert.equal(saved[0]!.output_tokens, 10);
++        assert.equal(saved[0]!.provider_total_tokens, 110);
++        assert.equal(
++          JSON.parse(String(saved[0]!.provider_metadata_json)).fleetAccounting.accountId,
++          "served-account-a",
++        );
++        assert.equal(
++          JSON.parse(String(saved[0]!.provider_metadata_json)).fleetAccounting.requestId,
++          "late-receipt",
++        );
++        const assistants = (await f.store.messages({ sessionID: "session" as never })).filter(
++          (message) => message.info.role === "assistant",
++        );
++        assert.equal(assistants.length, 1);
++        assert.equal(assistants[0]!.parts.filter((part) => part.type === "text").length, 1);
++        assert.ok(
++          assistants[0]!.parts.some(
++            (part) =>
++              part.type === "text" && part.text === "Already received before cancellation settled",
++          ),
++        );
++        assert.equal(
++          assistants[0]!.info.role === "assistant" && assistants[0]!.info.tokens.input,
++          100,
++        );
++        assert.equal(
++          assistants[0]!.parts.some((part) => part.type === "tool"),
++          false,
++        );
++
++        await f.reopen();
++        assert.deepEqual(
++          receipts(),
++          saved,
++          "Cold recovery duplicated or rewrote the charged receipt",
++        );
++        const restored = await f.store.messages({ sessionID: "session" as never });
++        assert.ok(
++          restored.some((message) =>
++            message.parts.some(
++              (part) =>
++                part.type === "text" &&
++                part.text === "Already received before cancellation settled",
++            ),
++          ),
++        );
++        f.runtime.setSessionModelSelection(selection("model-b"));
++        f.steps.push((request) => {
++          assert.ok(
++            JSON.stringify(request.messages).includes(
++              "Already received before cancellation settled",
++            ),
++          );
++          return reply("New turn result");
++        });
++        await f.runtime.executeTurn("A new turn is independent");
++        assert.deepEqual(
++          f.requests.map((request) => request.selection.modelId),
++          ["model-a", "model-b"],
++        );
++        assert.equal(f.effects, 0);
++        assert.deepEqual(receipts()[0], saved[0]);
++        assert.equal(receipts().length, 2, "Cold recovery or repeated Stop duplicated model spend");
++      } finally {
++        finish.resolve();
++        await running?.catch(() => {});
++        await f.close();
++      }
++    },
++  );
++
++  test(
++    `a late ${streaming ? "streaming" : "non-streaming"} failure after Stop keeps reported usage unknown`,
++    { timeout: 10000 },
++    async () => {
++      const f = await fixture("pi", streaming);
++      const entered = Promise.withResolvers<void>();
++      const finish = Promise.withResolvers<void>();
++      let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++      try {
++        f.steps.push(async () => {
++          entered.resolve();
++          await finish.promise;
++          throw new Error("Transport ended without a usage receipt");
++        });
++        running = f.runtime.executeTurn("Stop before a response");
++        const cancelled = assert.rejects(running);
++        await entered.promise;
++        f.runtime.stopActiveForegroundExecution();
++        finish.resolve();
++        await cancelled;
++        const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        try {
++          const rows = db
++            .prepare("select status, raw_usage_json, provider_total_tokens from model_usage")
++            .all();
++          assert.equal(rows.length, 1);
++          assert.equal(rows[0]!.status, "cancelled");
++          assert.equal(rows[0]!.raw_usage_json, null);
++          assert.equal(rows[0]!.provider_total_tokens, null);
++        } finally {
++          db.close();
++        }
++        await f.reopen();
++        assert.equal(f.requests.length, 1);
++        assert.equal(f.effects, 0);
++      } finally {
++        finish.resolve();
++        await running?.catch(() => {});
++        await f.close();
++      }
++    },
++  );
++
++  test(
++    `a stopped ${streaming ? "streaming" : "non-streaming"} request settles its receipt before a queued replacement turn`,
++    { timeout: 10000 },
++    async () => {
++      const f = await fixture("pi", streaming);
++      const entered = Promise.withResolvers<void>();
++      const finish = Promise.withResolvers<void>();
++      const replacementEntered = Promise.withResolvers<void>();
++      const replacementFinish = Promise.withResolvers<void>();
++      const running: Array<ReturnType<typeof f.runtime.executeTurn>> = [];
++      try {
++        f.steps.push(
++          async () => {
++            entered.resolve();
++            await finish.promise;
++            return reply("First charged result");
++          },
++          async (request) => {
++            replacementEntered.resolve();
++            await replacementFinish.promise;
++            assert.ok(JSON.stringify(request.messages).includes("First charged result"));
++            return {
++              ...reply("Second result"),
++              usage: { inputTokens: 200, outputTokens: 20, totalTokens: 220 },
++            };
++          },
++        );
++        const first = f.runtime.executeTurn("First input");
++        running.push(first);
++        const cancelled = assert.rejects(first);
++        await entered.promise;
++        const oldForegroundId = f.runtime.getActiveForegroundExecutionId();
++        f.runtime.stopActiveForegroundExecution({ expectedForegroundExecutionId: oldForegroundId });
++        f.runtime.setSessionModelSelection(selection("model-b"));
++        const next = f.runtime.executeTurn("Replacement input");
++        running.push(next);
++        assert.equal(
++          f.requests.length,
++          1,
++          "Replacement ran before the old physical response settled",
++        );
++        finish.resolve();
++        await cancelled;
++        await replacementEntered.promise;
++        assert.equal(
++          f.runtime.stopActiveForegroundExecution({
++            expectedForegroundExecutionId: oldForegroundId,
++          }).kind,
++          "mismatch",
++          "A delayed Stop cancelled the replacement turn",
++        );
++        replacementFinish.resolve();
++        await next;
++        assert.deepEqual(
++          f.requests.map((request) => request.selection.modelId),
++          ["model-a", "model-b"],
++        );
++        const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        let receipts;
++        try {
++          receipts = db
++            .prepare(
++              "select model_id, status, input_tokens, output_tokens, provider_total_tokens from model_usage order by started_at, id",
++            )
++            .all();
++          assert.deepEqual(
++            receipts.map((row) => ({ ...row })),
++            [
++              {
++                model_id: "model-a",
++                status: "cancelled",
++                input_tokens: 100,
++                output_tokens: 10,
++                provider_total_tokens: 110,
++              },
++              {
++                model_id: "model-b",
++                status: "completed",
++                input_tokens: 200,
++                output_tokens: 20,
++                provider_total_tokens: 220,
++              },
++            ],
++          );
++        } finally {
++          db.close();
++        }
++        await f.reopen();
++        const restored = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++        try {
++          assert.deepEqual(
++            restored
++              .prepare(
++                "select model_id, status, input_tokens, output_tokens, provider_total_tokens from model_usage order by started_at, id",
++              )
++              .all(),
++            receipts,
++          );
++        } finally {
++          restored.close();
++        }
++        assert.equal(f.requests.length, 2, "Restart repeated a charged request");
++      } finally {
++        finish.resolve();
++        replacementFinish.resolve();
++        await Promise.allSettled(running);
++        await f.close();
++      }
++    },
++  );
++}
++
+ test("a rejected durable Guide admission cannot reach the model or survive as a queue event", { timeout: 10000 }, async () => {
+   const f = await fixture("pi", true);
+   const entered = Promise.withResolvers<void>();
+diff --git a/package.json b/package.json
+index 457741e8baff39d728bcaac71abada5f3b47ec0a..541c09795b5ce593500d21d3f45c6ea09b02e066 100644
+--- a/package.json
++++ b/package.json
+@@ -50,7 +50,7 @@
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
+-    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts",
++    "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+     "test:browser-scope": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/browserPopupScope.test.ts",

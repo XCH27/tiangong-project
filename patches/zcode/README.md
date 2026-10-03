@@ -137,5 +137,9 @@ instructions are in [Engineering](../../docs/engineering.md#zcode-candidate).
 
 | 0102 | [0102-durable-non-code-turn-outputs.patch](0102-durable-non-code-turn-outputs.patch) | `6e44155d2ac70a184c059a9ad218b23c4dfa1f3c` |
 
+| 0103 | [0103-native-login-lifecycle.patch](0103-native-login-lifecycle.patch) | `72b016f1b74bfe56ae05c290ef4a3f51ea2bdb5b` |
+| 0104 | [0104-cancelled-response-receipts.patch](0104-cancelled-response-receipts.patch) | `055230c1a0fa482fc2cef72b3b1ba31b1866fe90` |
+| 0105 | [0105-effective-tool-dispatch-and-skill-facts.patch](0105-effective-tool-dispatch-and-skill-facts.patch) | `0aeb6a381756aa6e9af49ba987559a4dc2a89105` |
+
 Tree observations are retained reconstruction evidence, not live-provider, visual or release acceptance.
 The source gate replays every patch and compares the final tree without modifying the working index.

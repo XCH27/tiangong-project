@@ -646,6 +646,9 @@ proxy route and CA preferences, rather than depending on a sanitized shell envir
 supervision consumes bounded stderr to classify network, timeout or authorization failure, exposing
 only a reason and exit status; OAuth URLs/codes/tokens are not returned. Local CLI supervision and
 renderer fixtures prove reason-specific recovery without opening a model editor.
+Provider teardown cancels its pending native login children and fences launches, inspections and
+late account publication after asynchronous waits. Cleanup stays private to the existing Host;
+no disposal RPC or credential import is added.
 Claude allowance uses the same native connection and existing account/usage service contract;
 [Context](context.md#subscription-allowance-acquisition-and-display) owns its acquisition and
 freshness rules. The existing account card and conversation meter share the same reading, with no
@@ -658,7 +661,10 @@ official CLI: its image capability writes a private temporary file and passes it
 not a native image content block. That mechanism is a viable adapter reference; paid image
 understanding was not verified. Paseo forces `--dangerously-skip-permissions`, so its launch policy
 cannot establish Fleet-governed execution. CLI hooks, MCP routing, Stop/restart and account/usage
-identity still need actual proof. The separate Python SDK uses Gemini/Vertex endpoints; it is not
+identity still need actual proof. The official PreToolUse hook uses camelCase fields, unlike the
+snake_case stream protocol; the isolated preflight now validates that contract and sends only the
+operation identity/args to its loopback callback. Its five transport tests do not establish a live
+native executor or headless approval integration. The separate Python SDK uses Gemini/Vertex endpoints; it is not
 evidence for or against the official CLI consumer route. Antigravity remains unimplemented in
 Fleet, not declared impossible. Do not substitute API billing, import foreign tokens or advertise
 the reserved native kind before its declared capabilities and permission/receipt path are proved.

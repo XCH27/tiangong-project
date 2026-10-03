@@ -3,9 +3,17 @@ import { stdin, stdout } from "node:process";
 
 export async function decide(input, env, fetcher = fetch) {
   const denied = reason => ({ decision: "deny", reason });
-  if (!input || typeof input !== "object" || !input.tool_call?.name)
+  // PreToolUse is camelCase, unlike AGY's snake_case NDJSON stream events.
+  // Validate only this hook contract; guessing between protocols loses identity.
+  if (!input || typeof input !== "object" || Array.isArray(input) ||
+    typeof input.toolCall?.name !== "string" || !input.toolCall.name.trim() ||
+    !input.toolCall.args || typeof input.toolCall.args !== "object" || Array.isArray(input.toolCall.args) ||
+    !Array.isArray(input.workspacePaths) || !input.workspacePaths.length ||
+    input.workspacePaths.some(path => typeof path !== "string" || !path.trim()) ||
+    !Number.isSafeInteger(input.stepIdx) || input.stepIdx < 0 ||
+    typeof input.modelName !== "string" || !input.modelName.trim())
     return denied("Malformed native tool request");
-  if (!env.FLEET_NATIVE_SESSION || input.conversation_id !== env.FLEET_NATIVE_SESSION)
+  if (!env.FLEET_NATIVE_SESSION || input.conversationId !== env.FLEET_NATIVE_SESSION)
     return denied("Native session changed");
   if (!env.FLEET_NATIVE_HOOK_TOKEN) return denied("Missing session authorization");
   let url;
@@ -17,7 +25,13 @@ export async function decide(input, env, fetcher = fetch) {
     const response = await fetcher(url, {
       method: "POST", redirect: "error", signal: AbortSignal.timeout(15000),
       headers: { "content-type": "application/json", "authorization": `Bearer ${env.FLEET_NATIVE_HOOK_TOKEN}` },
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        conversationId: input.conversationId,
+        workspacePaths: input.workspacePaths,
+        modelName: input.modelName,
+        stepIdx: input.stepIdx,
+        toolCall: { name: input.toolCall.name, args: input.toolCall.args },
+      }),
     });
     if (!response.ok) return denied("Host refused the tool request");
     const answer = await response.json();

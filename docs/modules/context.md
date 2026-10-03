@@ -62,6 +62,12 @@ Plugin references also intersect actual Skill/Agent dispatch visibility and excl
 Skill discovery. Explicit human invocation remains available. Child contexts omit the Skill
 catalog when their actual tools exclude Skill. These correct serialized request content and cold
 reopen behavior; they do not claim measured task-quality or paid-token improvements.
+The final per-step tool intersection now also projects Skill discovery/guidance and fences actual
+dispatch, including streaming and native wrappers. Explicit invocation cannot bypass a disallowed
+tool. This view derives from the already constructed context; it does not reread files or mix later
+language/style settings into active input. Existing loaded bodies and ordinary permitted manual
+invocation remain. Loaded-Skill success pairs a result with its declaring assistant batch; a failed
+call cannot borrow a later reused ID. The current registry and policy remain the execution owners.
 Next preserve logical cache scope through compact but isolate forks/accounts/routes, retain native replay
 and explicit option overrides. Logical cache-scope preservation across compact and forks
 is not yet added. Do not copy forced `max` thinking or insert duplicate cache markers.

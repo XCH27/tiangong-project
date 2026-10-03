@@ -90,6 +90,16 @@ assembly/provider calls and actual tool execution to Host ports. Host retains re
 and durable history; Pi default prompts/tools, resource autoload, retry and compaction are disabled.
 Creating AgentSession does not enable the community extension ecosystem or prove context efficiency. Claude's official safe mode retains OAuth/keychain authentication while disabling ambient customizations; explicit SDK tool/settings/MCP controls keep built-ins/hooks unavailable. Its MCP callbacks return committed Host receipts only after the next durable admission. Bare mode is not used: the bundled 2.1.286 CLI declares that it skips OAuth and keychain.
 Admission snapshots model/account/effort/Fast, intent and attachments before async work; queued inputs cannot inherit later edits. Failed configuration writes cannot publish new bindings.
+An actual returned response or stream finish is retained even if Stop or an iterator tail error
+wins afterward. Its original account/request, usage and received text/reasoning remain in the
+existing ledger and transcript; a known complete response is not blindly replayed. Logical outcome
+stays interrupted/failed and returned tools are not newly dispatched. The same observation feeds
+live V4, cold usage restoration and the compatible Session counter. Only missing saved text/reasoning
+suffixes enter the original stream-row path; no second output or accounting owner is introduced.
+No-finish failures retain unknown consumption rather than fabricating a report.
+The final handler boundary rechecks the original registry entity/handler and current owner policy
+after input resolution, hooks and permission waits. Removing/replacing a tool or revoking policy
+invalidates its old approval; a captured schema or alias is not an execution grant.
 Guide admission now persists the input before publishing its event or exposing it to Pi. A failed
 write rejects the caller without executing a ghost input. If Stop or turn settlement wins during a
 slow save, the committed input uses the existing ordinary queue with its original model/account

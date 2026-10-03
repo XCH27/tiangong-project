@@ -134,7 +134,7 @@ data retention with regenerated derived commands. `test:native-executor` also co
 Claude usage control and scoped cache/reopen; `test:native-ui` uses the desktop stylesheet for
 Chinese/English, light/dark, narrow-card and late-account response cases. Temporary protocol/SQLite
 fixtures are distinct from a live subscription read and from owner visual acceptance. The integrated
-pre-push gate passed 569 tests with zero architecture violations; both staged CLI restart probes
+pre-push gate passed 591 tests with zero architecture violations; both staged CLI restart probes
 passed using loopback inference, and the native account UI passed 11 renderer cases.
 
 `test:conversation-outputs` covers four projection cases and nine actual renderer cases using the
@@ -148,6 +148,13 @@ light/dark and English/Chinese were inspected. The fixture supplies synthetic lo
 vendor result. Its minimal injected runtime lacks the file execution adapter, so document Write
 failure is retained rather than counted as a generated document; document action routing is
 covered by the renderer cases. Paid quality/entitlement and owner acceptance remain separate.
+
+Four bootstrap cases trace known cancelled/error responses through the ledger, V4, compatible
+Session counter and cold replay, including missing saved suffixes and no completed-response retry.
+Native login cases fence teardown, async launch and late publication; tool/context cases enforce
+final visibility and approval-time registry/policy revocation without losing aliases or Skill bodies.
+Five AGY hook preflight tests prove only that prototype transport. Inference uses local scripted or
+loopback transports; live provider acceptance remains separate.
 
 ## Retained Craft setup
 

@@ -1,5 +1,11 @@
 # Changelog
 
+- Preserve known model consumption and received text/reasoning through Stop and trailing stream
+  failures; join live/cold V4, the usage ledger and compatible Session counters without replaying
+  completed requests. Fence dispatch by the final request tool set and correct failed/reused-ID
+  Skill success detection. Provider teardown now cancels pending native login and denies late
+  account publication. Correct the isolated AGY hook preflight to its published camelCase contract.
+
 - Correct the non-code result path: preserve successful media attachment refs in live/cold V4
   projections, bind reads to the original tool entity, show current-turn outputs without Git,
   and reuse the existing preview for document/media file-summary names while retaining Review/Undo.

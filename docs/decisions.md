@@ -2530,7 +2530,8 @@ plugins, whole-Host replacement or a live-data migration.
 Full Pi AgentSession now drives each admitted input's model/tool continuation inside the existing
 supervised CLI process. Host context, protocol, tool scheduling, permissions and canonical SQLite
 remain authoritative. Private SDK state is in-memory per input; restart uses committed Host history.
-The legacy executor remains an explicit control/rollback option, not another user-facing selector.
+The initial legacy comparison path has since been retired from production; the current loop
+selects Pi or an admitted native adapter, without a legacy environment selector.
 Model binding is changed in Pi only after Host commit. Preserve lazy persistence for unsent drafts.
 
 [Agent core](modules/agent-core.md#first-proof) owns this boundary; tests and actual binary evidence

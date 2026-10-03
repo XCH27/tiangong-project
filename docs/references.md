@@ -3019,6 +3019,30 @@ final vendor wire, accepted-outcome test or a like-for-like reduction from the o
 The fixture disables optional memory/title/workflow; model-side lightness is still an open measured
 delivery requirement, not established by the SDK choice or this read-only profile.
 
+Per-tool projection measurement separates description and input-schema JSON: the same sixteen-tool
+terminal fixture reports 15,555 description characters and 10,620 schema characters. AskUserQuestion,
+EnterPlanMode, ExitPlanMode, Agent and Bash account for 17,029 of 27,322 tool-array characters. The
+Host-only contract is not duplicated into the request. Removing required contracts without an
+accepted-outcome comparison is not a verified economy improvement. The bounded correction instead
+fixes actual turn-disallowed Skill discovery/dispatch and failed-call-ID success attribution.
+
+The original ZCode `core/runtime/methods/turn-model-step.ts:263–276` drops a result received after
+Stop; the candidate inherited this before the receipt correction. Current Host/Pi/SQLite fixtures
+also reproduce a finish frame followed by iterator failure. One existing response snapshot and
+usage writer now preserve the known response without replay; the original V4/legacy observations
+and stream-row path consume it, while logical error/cancellation stays distinct. This is source
+and isolated execution evidence, not a comparison of model intelligence or paid vendor latency.
+
+The official [AGY headless contract](https://www.antigravity.google/docs/cli/headless/) supports text
+input and cumulative session results, rejects Claude control messages, and soft-denies unavailable
+approvals. Its [PreToolUse contract](https://www.antigravity.google/docs/hooks/) uses camelCase
+`conversationId`, `workspacePaths`, `modelName`, `stepIdx`, `toolCall.name/args`; the NDJSON stream
+uses a different schema. The isolated native preflight is corrected to those actual fields,
+omits transcript/artifact paths and arbitrary metadata, and accepts only an explicit local Host
+allow/deny response. Five tests prove that transport boundary; no production hook installation,
+native account binding or inference is implied. The official Python SDK and forced-bypass Paseo
+adapter remain separate mechanisms, neither a substitute for that missing executor proof.
+
 The owner-supplied audits are hypotheses; the following source comparisons resolve their material
 claims without importing another Agent's instructions or declaring complete-product delivery.
 
