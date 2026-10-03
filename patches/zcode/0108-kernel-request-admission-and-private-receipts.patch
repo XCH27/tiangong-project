@@ -1,0 +1,372 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
+index bdc035a..e5c81d2 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
+@@ -18,7 +18,6 @@ import type {
+   Model,
+   ModelEvent,
+   ModelResult,
+-  ModelToolContract,
+   ModelInputMessage,
+   NativeAgentPort,
+   NativeAgentToolReceipt,
+@@ -296,10 +295,11 @@ export function createClaudeNativeAgentPort(
+         bind() {
+           return model;
+         },
+-        async generateText() {
++        async generateText(input) {
+           let text = "";
+           const calls: NonNullable<ModelResult["toolCalls"]> = [];
+-          for await (const event of model.streamText({ messages: request.messages, tools: [] })) {
++          // 非流式也必须消费 Host 最终媒体投影；创建时的快照尚未完成路径物化。
++          for await (const event of model.streamText(input)) {
+             if (event.type === "text_delta") text += event.text;
+             if (event.type === "tool_call") calls.push(event.toolCall);
+             if (event.type === "finish")
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
+index ca010ae..80a3b02 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/native-agent-turn.ts
+@@ -3,7 +3,11 @@ import type { RegularTurnLoopState } from "./turn-loop-state.js";
+ import { prepareRegularModelStep } from "./turn-step-prepare.js";
+ import { runModelBackedTurnStep, type ExternalModelTools } from "./turn-model-step.js";
+ import { executeToolCallsForModelStep } from "./turn-tools.js";
+-import { buildRuntimeProviderRequestMessages, modelContentForToolResult, throwIfTurnAborted } from "../helpers/index.js";
++import {
++  buildRuntimeProviderRequestMessages,
++  modelContentForToolResult,
++  throwIfTurnAborted,
++} from "../helpers/index.js";
+ import { prepareNativeContinuation } from "./native-continuation.js";
+ 
+ /** Observe native continuation through the original Host writers; never run an outer inference loop. */
+@@ -18,13 +22,13 @@ export async function runNativeAgentTurn(
+   let prepared = await prepareRegularModelStep(runtime, state, true);
+   const create = async () => {
+     const continuation = await prepareNativeContinuation(runtime, {
+-    model: state.model,
+-    messages: prepared.messages,
+-    tools: prepared.tools,
+-    sessionId: runtime.sessionId,
+-    turnId: state.turnId,
+-    workingDirectory: runtime.workingDirectory,
+-    signal: state.turnAbortSignal,
++      model: state.model,
++      messages: prepared.messages,
++      tools: prepared.tools,
++      sessionId: runtime.sessionId,
++      turnId: state.turnId,
++      workingDirectory: runtime.workingDirectory,
++      signal: state.turnAbortSignal,
+     });
+     return { native: port.createTurn(continuation.request), continuation };
+   };
+@@ -36,9 +40,25 @@ export async function runNativeAgentTurn(
+       const outcome = await runModelBackedTurnStep.call(runtime, state, {
+         ...prepared,
+         requestModelText: async (options) => {
+-          // runModelBackedTurnStep commits its request before reaching this observation handle.
+-          native.admitNextStep();
+-          return runtime.runModelTextRequest({ ...options, model: native.model });
++          const current = native;
++          const observationModel = {
++            ...current.model,
++            bind() {
++              return observationModel;
++            },
++            generateText(input: Parameters<typeof current.model.generateText>[0]) {
++              // Host 持久化后仍需解析媒体与上下文；完成组装并复查 Stop 才能放行 SDK 回执。
++              throwIfTurnAborted(state.turnAbortSignal);
++              current.admitNextStep();
++              return current.model.generateText(input);
++            },
++            async *streamText(input: Parameters<typeof current.model.streamText>[0]) {
++              throwIfTurnAborted(state.turnAbortSignal);
++              current.admitNextStep();
++              yield* current.model.streamText(input);
++            },
++          };
++          return runtime.runModelTextRequest({ ...options, model: observationModel });
+         },
+         externalToolExecution: (value) => {
+           batch = value;
+@@ -62,7 +82,8 @@ export async function runNativeAgentTurn(
+         if (toolsOutcome === "break") return;
+       } else {
+         const committed = buildRuntimeProviderRequestMessages(runtime, {
+-          entries: state.turnRequestState.entries, model: state.model,
++          entries: state.turnRequestState.entries,
++          model: state.model,
+         }).messages;
+         await native.close();
+         await continuation.settle(await native.checkpoint?.(), committed);
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
+index a9d85ed..c52be28 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn-message.ts
+@@ -37,10 +37,9 @@ export function piHostMessage(
+     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+   };
+   const content: AssistantMessage["content"] = [];
+-  for (const block of result?.reasoning ?? []) {
+-    if (block.text) content.push({ type: "thinking", thinking: block.text });
+-  }
+-  if (result?.text) content.push({ type: "text", text: result.text });
++  // Pi 只调度下一轮；provider 请求始终来自 Host。不要在私有轨迹重复保存大段正文与思考。
++  if (result?.text || result?.reasoning?.some((block) => block.text))
++    content.push({ type: "text", text: "Model response retained in Host context." });
+   for (const call of result?.toolCalls ?? []) {
+     content.push({
+       type: "toolCall",
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+index ca94b97..8de1353 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/pi-turn.ts
+@@ -24,7 +24,7 @@ import { executeToolCallsForModelStep } from "./turn-tools.js";
+ import { piHostMessage, piHostModel } from "./pi-turn-message.js";
+ import type { RuntimeModelTextResult } from "../types.js";
+ 
+-/** One full AgentSession owns the model/tool loop for one admitted input in the existing CLI process.
++/** One AgentSession schedules model/tool rounds for an admitted input in the existing CLI process.
+  * Host preparation, retries, compaction, artifacts and durable events retain their existing owners.
+  * Native SDK state is private/in-memory; restart is hydrated by the existing canonical Session store.
+  */
+diff --git a/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts b/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
+index 9b023f2..77519af 100644
+--- a/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
++++ b/apps/zcode-cli/packages/core/test/claude-native-turn.test.ts
+@@ -15,9 +15,10 @@ const nativeExecutable = resolveClaudeNativeExecutable(process.env.FLEET_CLAUDE_
+ execFileSync(nativeExecutable, ["--version"], { stdio: "ignore", timeout: 15000 });
+ const nativeAvailable = true;
+ 
+-async function nativeFixture(accountId?: string, checkMedia = false, admission?: import("@zcode/contracts").ModelRequestAdmission, beforeFinal?: () => Promise<void>) {
++async function nativeFixture(accountId?: string, checkMedia = false, admission?: import("@zcode/contracts").ModelRequestAdmission, beforeFinal?: () => Promise<void>, streaming = true) {
+   const profile = await mkdtemp(join(tmpdir(), "fleet-claude-native-"));
+   let requests = 0;
++  let nativeAdmissions = 0;
+   let failure: unknown;
+   const continuationReasons: string[] = [];
+   const nativeInputs: any[] = [];
+@@ -60,10 +61,16 @@ async function nativeFixture(accountId?: string, checkMedia = false, admission?:
+   const address = server.address(); assert.ok(address && typeof address === "object");
+   const port = createClaudeNativeAgentPort({ env: { ANTHROPIC_API_KEY: "synthetic-native-test", ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}`, CLAUDE_CONFIG_DIR: profile } });
+   const createTurn = port.createTurn.bind(port);
+-  port.createTurn = (request) => { nativeInputs.push(structuredClone(request.messages)); return createTurn(request); };
++  port.createTurn = (request) => {
++    nativeInputs.push(structuredClone(request.messages));
++    const turn = createTurn(request);
++    const admit = turn.admitNextStep.bind(turn);
++    turn.admitNextStep = () => { nativeAdmissions++; admit(); };
++    return turn;
++  };
+   const logger = { info(_message: string, data: any) { if (data?.event === "native.continuation.selected") continuationReasons.push(data.reason); }, debug() {}, warn() {}, error() {}, child() { return logger; }, withContext() { return logger; } };
+-  const f = await fixture(undefined, true, { nativeExecutor: { kind: "claude", executable: nativeExecutable, accountId }, supportsPdf: checkMedia, deps: { nativeAgentPort: port, logger: logger as never, ...(admission ? { modelRequestAdmission: admission } : {}) } });
+-  return { f, continuationReasons, nativeInputs, payloads, requests: () => requests, assertTransport() { if (failure) throw failure; }, async close() { await f.close(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); await rm(profile, { recursive: true, force: true }); } };
++  const f = await fixture(undefined, streaming, { nativeExecutor: { kind: "claude", executable: nativeExecutable, accountId }, supportsPdf: checkMedia, deps: { nativeAgentPort: port, logger: logger as never, ...(admission ? { modelRequestAdmission: admission } : {}) } });
++  return { f, continuationReasons, nativeInputs, payloads, requests: () => requests, nativeAdmissions: () => nativeAdmissions, assertTransport() { if (failure) throw failure; }, async close() { await f.close(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); await rm(profile, { recursive: true, force: true }); } };
+ }
+ 
+ test("native Claude owns continuation while Host permissions, effect receipts and usage remain canonical", { timeout: 30000, skip: !nativeAvailable }, async () => {
+@@ -180,6 +187,70 @@ test("a failed Host continuation admission cannot release a native tool receipt"
+   } finally { await n.close(); }
+ });
+ 
++test("failed Host request preparation does not release a committed native tool receipt", { timeout: 30000 }, async () => {
++  const n = await nativeFixture();
++  const runtime = n.f.runtime as any;
++  const build = runtime.buildContextUsageSnapshot.bind(runtime);
++  let preparations = 0;
++  runtime.buildContextUsageSnapshot = (...args: any[]) => {
++    if (++preparations === 2) throw new Error("Fixture request preparation failed");
++    return build(...args);
++  };
++  try {
++    await assert.rejects(runtime.executeTurn("Use Probe"));
++    assert.equal(preparations, 2);
++    assert.equal(n.nativeAdmissions(), 1, "Host released the native receipt before request preparation succeeded");
++    assert.equal(n.requests(), 1);
++    assert.equal(n.f.effects, 1);
++    assert.equal(await n.f.read(), "native-approved");
++    const saved = (await n.f.store.sessionEntries({ sessionID: "session" as never, type: "runtime/native_continuation" }))[0]!.data as any;
++    assert.equal(saved.phase, "inflight");
++  } finally { await n.close(); }
++});
++
++test(
++  "Stop during native request preparation retains the tool effect without releasing another receipt",
++  { timeout: 30000 },
++  async () => {
++    const n = await nativeFixture();
++    const runtime = n.f.runtime as any,
++      run = runtime.runModelTextRequest.bind(runtime);
++    const preparing = Promise.withResolvers<void>(),
++      release = Promise.withResolvers<void>();
++    let requests = 0;
++    runtime.runModelTextRequest = async (input: any) => {
++      if (++requests === 2) {
++        preparing.resolve();
++        await release.promise;
++      }
++      return run(input);
++    };
++    let running: Promise<unknown> | undefined;
++    try {
++      running = runtime.executeTurn("Use Probe, then stop before the next request");
++      const rejected = assert.rejects(running);
++      await preparing.promise;
++      assert.equal(runtime.stopActiveForegroundExecution().kind, "stopped");
++      release.resolve();
++      await rejected;
++      assert.equal(n.nativeAdmissions(), 1);
++      assert.equal(n.requests(), 1);
++      assert.equal(n.f.effects, 1);
++      assert.equal(await n.f.read(), "native-approved");
++      const saved = (
++        await n.f.store.sessionEntries({
++          sessionID: "session" as never,
++          type: "runtime/native_continuation",
++        })
++      )[0]!.data as any;
++      assert.equal(saved.phase, "inflight");
++    } finally {
++      release.resolve();
++      await running?.catch(() => {});
++      await n.close();
++    }
++  },
++);
+ test("native Claude refusal reaches the original Host permission path before any effect", { timeout: 30000, skip: !nativeAvailable }, async () => {
+   const n = await nativeFixture();
+   try {
+@@ -221,14 +292,22 @@ test("Stop while native work awaits Host approval has no effect or next native r
+ });
+ 
+ 
+-test("native SDK receives images and PDF bytes as real media blocks", { timeout: 30000, skip: !nativeAvailable }, async () => {
+-  const n = await nativeFixture(undefined, true);
+-  try {
+-    const image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+-    await n.f.runtime.executeTurn("Review the supplied image and PDF", [{ type: "image", content: image, mimeType: "image/png" }, { type: "pdf", content: "data:application/pdf;base64,JVBERi0xLjQK", mimeType: "application/pdf" }]);
+-    n.assertTransport();
+-  } finally { await n.close(); }
+-});
++for (const streaming of [true, false]) {
++  test(`native ${streaming ? "streaming" : "non-streaming"} observation receives final media projection`, { timeout: 30000 }, async () => {
++    const n = await nativeFixture(undefined, true, undefined, undefined, streaming);
++    try {
++      const image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
++      await n.f.runtime.executeTurn("Review the supplied image and PDF", [{ type: "image", content: image, mimeType: "image/png" }, { type: "pdf", content: "data:application/pdf;base64,JVBERi0xLjQK", mimeType: "application/pdf" }]);
++      n.assertTransport();
++      assert.equal(n.requests(), 2);
++      assert.equal(n.f.effects, 1);
++      for (const body of n.payloads) {
++        assert.ok(JSON.stringify(body.messages).includes("[Image: source:"), "Native observation bypassed Host materialized media paths");
++        assert.ok(JSON.stringify(body.messages).includes("[PDF: source:"), "Native observation lost Host final PDF projection");
++      }
++    } finally { await n.close(); }
++  });
++}
+ 
+  test("native execution rejects an unenforceable request policy before any SDK inference or effect", { timeout: 30000, skip: !nativeAvailable }, async () => {
+   const n = await nativeFixture(undefined, false, { acquire: async () => { throw new Error("Denied policy"); } });
+diff --git a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+index 063e544..0089ce9 100644
+--- a/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
++++ b/apps/zcode-cli/packages/core/test/pi-turn-integration.test.ts
+@@ -3,7 +3,95 @@ import test from "node:test";
+ import { readFile, writeFile } from "node:fs/promises";
+ import { join } from "node:path";
+ import { fixture, selection, reply, call, usage } from "./helpers/pi-runtime-fixture.js";
++import { piHostMessage } from "../src/runtime/methods/pi-turn-message.js";
+ 
++test("Pi scheduling retains a compact assistant receipt while preserving exact tool identity", async () => {
++  const f = await fixture();
++  try {
++    const result = {
++      ...reply("PRIVATE_DUPLICATE_TEXT ".repeat(10000), [call("exact-tool-id", "exact-input")]),
++      reasoning: [{ text: "PRIVATE_DUPLICATE_REASONING ".repeat(10000) }],
++    };
++    const message = piHostMessage(
++      (f.runtime as any).modelFactory({ selection: selection() }),
++      result,
++    );
++    const content = JSON.stringify(message.content);
++    assert.ok(content.length < 500, "Pi scheduling copied Host-owned assistant bodies");
++    assert.ok(!content.includes("PRIVATE_DUPLICATE"));
++    assert.deepEqual(
++      message.content.filter((block) => block.type === "toolCall"),
++      [
++        {
++          type: "toolCall",
++          id: "exact-tool-id",
++          name: "Probe",
++          arguments: { value: "exact-input" },
++        },
++      ],
++    );
++    assert.equal(message.stopReason, "toolUse");
++    assert.equal(message.usage.totalTokens, usage.totalTokens);
++  } finally {
++    await f.close();
++  }
++});
++
++for (const streaming of [false, true]) {
++  test(`compact Pi scheduling keeps the complete Host assistant output and reasoning, ${streaming ? "streaming" : "non-streaming"}`, async () => {
++    const f = await fixture(undefined, streaming);
++    const text = "HOST_BODY ".repeat(2000),
++      thought = "HOST_REASONING ".repeat(2000);
++    if (streaming) {
++      const runtime = f.runtime as any,
++        factory = runtime.modelFactory;
++      runtime.modelFactory = (input: any) => {
++        const model = factory(input);
++        return {
++          ...model,
++          async *streamText(request: any) {
++            for await (const event of model.streamText(request)) {
++              yield event;
++              if (event.type === "start") yield { type: "reasoning_delta", text: thought };
++            }
++          },
++        };
++      };
++    }
++    try {
++      f.steps.push(
++        () => ({ ...reply(text, [call("exact", "saved")]), reasoning: [{ text: thought }] }),
++        (request) => {
++          const messages = JSON.stringify(request.messages);
++          assert.ok(messages.includes(text));
++          assert.ok(messages.includes(thought));
++          assert.ok(!messages.includes("Model response retained in Host context."));
++          return reply("complete");
++        },
++      );
++      assert.equal(
++        (await f.runtime.executeTurn("Preserve original assistant evidence")).response,
++        "complete",
++      );
++      assert.equal(f.requests.length, 2);
++      assert.equal(f.effects, 1);
++      await f.reopen();
++      f.steps.push((request) => {
++        const messages = JSON.stringify(request.messages);
++        assert.ok(messages.includes(text));
++        assert.ok(messages.includes(thought));
++        return reply("reopened");
++      });
++      assert.equal(
++        (await f.runtime.executeTurn("Continue with retained evidence")).response,
++        "reopened",
++      );
++      assert.equal(f.effects, 1);
++    } finally {
++      await f.close();
++    }
++  });
++}
+ test("the Host ledger retains a native Grok Fast model as Fast without API priority intent", async () => {
+   const f = await fixture(undefined, false, { config: { modelSelection: selection("grok-4.7-build-fast") as never } });
+   try {

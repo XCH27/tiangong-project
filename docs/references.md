@@ -3158,3 +3158,50 @@ SQL read aggregation omitted them. The corrected projection groups those saved f
 rewriting history, guessing from the current connection or introducing a billing store. A public
 monthly reference and the retained requests' API-equivalent value remain separate facts; this read
 correction alone does not implement the future visible comparison or establish an invoice amount.
+
+### Primary Craft contextual-assistant and model-default trace
+
+Primary inspected Craft v0.13.4 `EditPopover.tsx:675,719,779,949,963,1055`, `AppShell.tsx:1878,3758`,
+`AiSettingsPage.tsx:949,967,1058` and `SessionManager.ts:2562,2596`. Right-click retains an actual item
+identity and anchor; a short typed edit request becomes a context badge. Opening clears the inline
+Session; first send creates a hidden ordinary Session and uses the normal send/permission/credential
+callbacks. Its `fast` hint resolves through the selected connection's mini/default model ID, not a
+service-tier speed flag. App and workspace defaults live with existing configuration owners;
+restored Sessions are separate from new defaults. Fleet retains these lifecycle/scope mechanisms
+and its own original primitives, permissions and version-checked writers; it does not copy allow-all
+or arbitrary config-file editing. Craft's visible `currentModel` state and inline creation's `model`
+prop are separate in the inspected code; Fleet must prove the selected/default identity reaches
+the physical request instead of taking a changed picker label as execution evidence.
+
+Cherry Studio `e22924df` `ModelTypeFilterTabs.tsx:127` hides categories without results;
+`modelListDerivedState.ts:119` distinguishes generated output and dedicated speech endpoints.
+`MODEL_COUNT_THRESHOLD=10` is declared but not used by its actual header, which exposes a manual
+filter control. Fleet's automatic threshold is its own bounded enhancement. The source is AGPL;
+these are mechanism comparisons, not copied implementation. Input vision/audio and a known model
+name do not alone establish a generation or transcription route.
+
+### Kernel receipt release and private Pi projection
+
+Primary source inspection follows the original ZCode `turn-loop.ts`/`model.ts`, the candidate's
+`native-agent-turn.ts`, and the installed Claude SDK 0.3.286 and Pi 0.99.2. Host request persistence
+precedes media/context assembly; the native adapter's `admitNextStep` releases a waiting MCP callback.
+Releasing it before `runModelTextRequest` finished assembly could allow native continuation even
+when assembly failed. Real SDK/bundled-CLI/loopback tests reproduced two releases for one successfully
+prepared request. The correction releases at the observation handle only after final assembly and
+Stop validation. Tests preserve the already committed effect, leave uncertain continuation inflight,
+and forbid another native request. Non-streaming observation also now consumes the final projected
+input, matching the existing streaming route; both retain real image/PDF blocks and derived paths.
+
+Pi's `streamSimple` uses the Host's final request; it does not use the private Pi context argument.
+`piHostMessage` previously copied full assistant text/reasoning into that private scheduling ledger.
+A compact receipt removes that duplicate while retaining exact tool-call identity/arguments and
+usage. Real Host/Pi/SQLite tests prove full text/reasoning/tool/media history and cold reopen are
+unchanged. This is in-process retention reduction, not a provider-token or task-quality result.
+
+The controlled core fixture with the default available tools measured 6,799 serialized system
+characters and 27,446 characters for the 17 name/description/input-schema tool entries (including
+a synthetic Probe). Its full internal contracts were 65,278 characters and include output schemas
+and permission metadata that do not go into Pi's provider tool declarations. These are fixture
+character counts, not token counts, prices or a production loadout benchmark. They confirm that
+model-facing tool descriptions still require the bounded capability-loading work in the context
+contract; merely selecting Pi does not achieve the owner's lightweight-context goal.

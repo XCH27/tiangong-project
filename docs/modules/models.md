@@ -74,14 +74,16 @@ introduced by this comparison.
 
 ### Default resolution and remembered options
 
-Model defaults remain in the existing Host `ModelSelectionView` and scoped composer preference;
-there is no new Default Models page, configuration service or Session store. A new ordinary
-conversation and each Project/remote identity read their own most recent model choice, then the
-Host's configured default or first executable model in registry order. Picker changes are remembered
-immediately; an older submission's late acceptance cannot overwrite a newer human choice. Valid
-selected options remain paired with that model. New-default normalization retires only unsupported
-Fast/context preferences and uses automatic reasoning for ID-only models; it does not rewrite
-historical or admitted input bindings or erase temporarily unavailable saved preferences.
+Defaults use the existing Host model-preference owner and scoped composer preference; no new page,
+configuration service or Session store. Under OV-081, an explicit ordinary-chat default precedes
+ordinary recent choice; a Project/remote identity retains its own recent choice before that default.
+A page assistant uses its separate configured default, then the Host default/first executable model,
+and never writes ordinary/Project recent choices. Explicit drafts and existing Sessions always win.
+Unavailable preferences remain saved; only new initialization may select a legal fallback. Purpose
+defaults and their version are exposed through the existing General settings and Personal writer.
+Conditional writes validate model/options and preference revision inside the original transaction.
+Picker changes are remembered immediately within their own purpose; late receipts cannot undo newer
+choices. Unsupported Fast/context are normalized without rewriting admitted/historical bindings.
 
 A new composer initialized before account/catalog readiness can acquire its missing default when
 the first connected catalog arrives. This fills only the model; typed content, permission/plan

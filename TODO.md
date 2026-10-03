@@ -18,6 +18,13 @@ actual model-facing projection. Correct demonstrated context defects before addi
 first page assistant consumes that verified boundary afterward. Audit remains part of every unit;
 critical regressions interrupt it, while unrelated expansion waits.
 
+The owner's latest correction keeps the kernel as the current repair priority. First close
+admission/permission/effect/recovery failures in the Pi and native execution paths; then prove
+subscription identity, login and model requests through those paths. Measure the actual model-facing
+projection before claiming lightness. Existing page/default/filter changes are integration work in
+progress, not an exit from this gate. Do not expand feature pages, media UI or plugins while these
+kernel proofs are incomplete.
+
 ### Delivery order
 
 | Order | Complete deliverable | Exit before moving on |

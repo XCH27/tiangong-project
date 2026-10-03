@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Correct native executor receipt release to follow successful Host request assembly and the final
+  Stop check. Keep committed effects when preparation fails and consume the final media projection
+  in both streaming and non-streaming modes. Reduce duplicate Pi private assistant-body retention
+  while preserving Host history, tool identity, usage and cold recovery.
+
 - Extend the existing Model Settings assistant with exact context/output limit corrections and
   leaf inheritance through the human editor's version-checked writer. Preserve mappings, unknown
   companion facts and manual drafts; reuse the original permission card with localized requested

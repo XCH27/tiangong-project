@@ -2682,8 +2682,48 @@ selected original/reference mechanism, not feature count, code volume or passing
 Preserve existing owners and replace only demonstrated inferior paths; no new framework is needed
 merely to coordinate these workers. Existing unfinished requirements and delivery order remain.
 
+### OV-081 — Application-wide contextual assistants and purpose defaults (2026-10-02)
+
+> 「他应该能软件的页面点击右键就能唤醒，并且默认在不同的页面点击右键，都会唤醒一个全新的助手」
+> 「对于新建对话新建助手等等，各个方面默认用什么模型应该有可以设置的地方」
+> 「你应该亲自去看这个功能的主要参考项目，它在这个东西相关设计各个方面都是怎么做的？」
+
+Make the contextual entry application-wide, preserving native and domain context-menu actions.
+Each user invocation creates a fresh assistant; command retries remain idempotent. Explicit history
+selection continues an existing Session without replacing its model or target. Purpose defaults use
+the existing model-preference owner, with an independently configurable page-assistant model.
+Configured ordinary-chat defaults precede ordinary recent choices; Project recent choices retain
+their own priority. Assistant selection must not write ordinary/Project recent-model preferences.
+Primary traces Craft's complete interaction and creation/default/permission implementation. Page
+availability is distinct from which domain mutations have real scoped operations.
+
+### OV-082 — Capability filters for large model directories (2026-10-02)
+
+> 「当前API或订阅会员的模型数量超过一定数量的时候，是不是应该在搜索框前面新增这样的按钮」
+> 「这个按钮最好根据API下所有的模型种类进行自动变化」
+
+Show capability filters before search only for a large unfiltered directory, using evidenced output
+types and hiding empty categories. The bounded implementation chooses more than ten models as its
+threshold; that number is an implementation choice, not an owner quotation or a reference guarantee.
+Unknown models remain visible in All; vision input cannot establish image generation. Audio kinds
+must come from real output/endpoint evidence before speech/transcription filters are advertised.
+Search and type filters compose; filtering must not reorder only part of the stored catalog.
+
 ### Rules for this file
 
 Add a signal here only when the owner actually said it (with date) and it is not already carried
 verbatim in an active document. When a signal's substance is promoted into a decision, note the
 decision ID rather than rewriting the quote.
+
+### OV-083 — Kernel rectification remains first; primary owns this audit (2026-10-03)
+
+> 「重点应该是内核」
+> 「不要乱派子智能体」
+
+The current execution/application kernel remains the first deliverable under OV-067. Close
+reproduced admission, permission, stop, durable-effect and recovery failures before expanding
+feature pages or plugins. Vendor login/model routes are kernel proofs; a functioning account form
+is insufficient. Measure the actual model-facing projection separately from private SDK state.
+Existing page/default/filter work remains preserved and incomplete until its own gates pass.
+Primary performs this kernel source review, implementation and verification directly; this owner
+correction restricts earlier bounded parallel authorization for the active work.

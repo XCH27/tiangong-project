@@ -26,7 +26,7 @@ R4 Action/R11 Job contracts are extracted from real callers, without parallel Se
 | CORE-09 | Updates, packaging and distribution | not implemented | R2 / CORE-09-A | P-09 |
 | CORE-10 | Internationalization and identity | wired but not visually checked | R1 / CORE-10-A | P-01,P-05 |
 | EXEC-01 | Permissions, approvals and safety | wired but not visually checked | R2,R4 / EXEC-01-A | P-18 |
-| EXEC-02 | Actions and caller-aware action seam | Model Settings availability/capacity operations wired but not visually checked; general action seam not implemented | R4 / EXEC-02-A | P-05,P-18,P-50 |
+| EXEC-02 | Actions and caller-aware action seam | Model Settings and General operations wired but not visually checked; broader domain operations not implemented | R4 / EXEC-02-A | P-05,P-18,P-50 |
 | EXEC-03 | Terminal and local execution | wired but not visually checked | R0,R4,R18 / EXEC-03-A | P-19 |
 | EXEC-04 | Multi-agent delegation | Craft child Sessions/TaskRunner wired but not visually checked; Fleet delegation gates not implemented | R6 / EXEC-04-A | P-20 |
 | EXEC-05 | Runtime/provider adapters | candidate Pi, Claude native and retained Craft lanes wired but not visually checked; native governed execution and general CLI adapters not implemented | R0,R6 / EXEC-05-A | P-21 |
@@ -88,7 +88,14 @@ Host preparation, request admission, tool scheduling, permissions, effect receip
 Pi owns its loop, tool-call dispatch, abort and settlement. Its stream port delegates request
 assembly/provider calls and actual tool execution to Host ports. Host retains retry, compaction
 and durable history; Pi default prompts/tools, resource autoload, retry and compaction are disabled.
-Creating AgentSession does not enable the community extension ecosystem or prove context efficiency. Claude's official safe mode retains OAuth/keychain authentication while disabling ambient customizations; explicit SDK tool/settings/MCP controls keep built-ins/hooks unavailable. Its MCP callbacks return committed Host receipts only after the next durable admission. Bare mode is not used: the bundled 2.1.286 CLI declares that it skips OAuth and keychain.
+Creating AgentSession does not enable the community extension ecosystem or prove context efficiency. Pi's private
+scheduling transcript keeps compact assistant receipts and exact tool-call identity/arguments. Full
+text, reasoning, tool results and usage remain in Host history; the provider receives that original
+projection. This reduces duplicate in-process retention, not provider tokens or billed usage. Claude's official safe mode retains OAuth/keychain authentication while disabling ambient customizations; explicit SDK tool/settings/MCP controls keep built-ins/hooks unavailable. Its MCP callbacks return committed Host receipts only after the next durable admission. Bare mode is not used: the bundled 2.1.286 CLI declares that it skips OAuth and keychain.
+Native receipt release follows both durable Host admission and successful final request assembly.
+Media resolution, context validation and the final Stop check precede the observation handle's
+`generateText`/`streamText` entry; failed preparation cannot release a tool receipt or another request.
+Both observation modes consume the final projected request, including resolved media.
 Admission snapshots model/account/effort/Fast, intent and attachments before async work; queued inputs cannot inherit later edits. Failed configuration writes cannot publish new bindings.
 An actual returned response or stream finish is retained even if Stop or an iterator tail error
 wins afterward. Its original account/request, usage and received text/reasoning remain in the
@@ -169,10 +176,11 @@ advertised as configurable. Those broader bridges remain separate deliveries.
 
 ### First Model Settings assistant implementation
 
-Candidate `ModelSettingsAssistant.tsx` reuses Popover, normal V4 Session creation and `SessionPane`.
+Candidate `PageAssistantHost.tsx` reuses Popover, normal V4 Session creation and `SessionPane`.
 The selected provider or exact right-clicked model is immutable; native field menus remain. Local
 Settings uses the local default conversation folder even with a remote Project active. Old/unsupported
-Hosts fail before input; close hides admitted work, and reopen reuses the target's retained Session.
+Hosts fail before input; close hides admitted work. OV-081 supersedes implicit target-based reuse:
+each invocation creates a fresh Session; only explicit history selection resumes an older assistant.
 
 Shared `model-settings-assistant.ts` defines allowlisted context/schema/instructions. Its Host-bound
 `ModelSettingsPort` exposes `ReadModelSettings` (connection kind, format, enabled state, evidenced
@@ -195,6 +203,36 @@ characters: projection evidence, not measured token savings or model quality. Re
 covers allow/deny, invented-tool refusal, receipt/reopen and no completed-effect replay; Provider tests
 cover redaction, deletion and concurrent human writes. Local UI self-checks and live/owner acceptance
 remain distinct. Other pages need their own scoped operations before exposing the assistant.
+
+### Application-wide assistant contract under OV-081
+
+One application-level presentation host supplies the existing compact Session pane. Each visible
+surface contributes a typed page/selection target; ordinary blank-page right-click opens a fresh
+small conversation directly. Existing DOM domain menus and native text/browser menus retain their
+original actions and add the same assistant entry. Keyboard context menus and a direct page action share that entry. Nested selection
+targets override the page fallback; hidden underlying surfaces cannot contribute a target.
+
+An invocation generation fences context loading, creation acknowledgement and presentation. A new
+generation carries a new create command; Strict Mode or transport retry retains that command's
+identity. Remove live/cold provider-target scans from creation. Closing never cancels admitted
+work or deletes its transcript. A compact history entry lists the existing scoped assistant
+Sessions; selecting one resumes its original target/model, with no default reapplication or replay.
+
+Model Settings retains its scoped Provider operations. Other pages use a bounded context/read port
+and only their declared operations. General may correct explicitly allowlisted non-secret preferences through the existing Setting
+writer with expected-value checks inside its write queue; Appearance currently supplies guidance
+only because its renderer preference writer is a distinct existing owner;
+General may set a purpose model default through the existing model-preference writer. Usage reads
+retain the existing usage-store tool. Unsupported domain mutations remain unavailable rather than
+granting terminal, arbitrary-file, credential, plugin-install or unrestricted MCP access.
+Page context is a short packaged explanation plus allowlisted owner data, never a DOM scrape or
+the entire catalogue. Connection/model identifiers remain data, not instructions. Existing legacy
+model-setting target journal entries stay readable; missing/unknown targets fail closed on resume.
+
+Purpose defaults apply only at new initialization. Page assistants keep their own draft/Session
+choices and do not read or write ordinary/Project recent-model preferences. An explicit requested
+model that fails creation admission cannot silently execute with another model. Expected-model
+and current-provider validation must precede effects; failed configuration cannot publish success.
 
 ## Acceptance and references
 
@@ -377,7 +415,7 @@ implementation has added them; extend a matching existing behavioral test instea
 **Actions and caller-aware action seam**
 
 - **Next:** `IMPLEMENT` — retain the Model Settings proof; add a second real dual-caller operation before general extraction.
-- **Sources:** [Shared Provider operation](../../.fleet/zcode/packages/services/src/model-provider/modelSettingsAssistant.ts); [Existing writer](../../.fleet/zcode/packages/provider/src/facades.ts); [Scoped tool](../../.fleet/zcode/apps/zcode-cli/packages/core/src/tool/handlers/model-settings.ts); [Page Session](../../.fleet/zcode/packages/ui/src/settings/model-provider-section/ModelSettingsAssistant.tsx).
+- **Sources:** [Shared Provider operation](../../.fleet/zcode/packages/services/src/model-provider/modelSettingsAssistant.ts); [Existing writer](../../.fleet/zcode/packages/provider/src/facades.ts); [Scoped tool](../../.fleet/zcode/apps/zcode-cli/packages/core/src/tool/handlers/model-settings.ts); [Page Session](../../.fleet/zcode/packages/ui/src/page-assistant/PageAssistantHost.tsx).
 - **Deliver:** Verify the first Human/Agent model-enable operation, including bound target, confirmation, current-page refresh and cold reopen. Then extract only the contract consumed by a second real domain operation; retained Craft labels remain comparison evidence.
 - **Data:** Existing Provider revision/membership gates commit state; normal Session journal, tool receipt, permission and usage carry caller/result evidence. No invocation database or credential projection.
 - **Failure:** Ask resumes the same tool identity; stale/deleted targets refuse. Interrupted or ambiguous writes do not trigger automatic mutation replay. Native records and human drafts remain.
