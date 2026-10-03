@@ -1,0 +1,576 @@
+diff --git a/apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts b/apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts
+new file mode 100644
+index 0000000..3695e41
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts
+@@ -0,0 +1,266 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { createServer } from "node:http";
++import { classify } from "@earendil-works/pi-ai/api/typesafe-system-one";
++import { classify as classifyCloudflare } from "@earendil-works/pi-ai/api/cloudflare-workers-ai-system-one";
++import type { ClassifierContext, ClassifierModel } from "@earendil-works/pi-ai";
++
++const model: ClassifierModel<"typesafe-system-one"> = {
++  type: "classifier",
++  id: "decision-fixture",
++  name: "Decision fixture",
++  api: "typesafe-system-one",
++  provider: "typesafe",
++  baseUrl: "https://fixture.invalid/v1",
++  input: ["text"],
++  contextWindow: 8192,
++  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
++};
++const context: ClassifierContext = {
++  state: { article: "Synthetic news; no user data or actual model inference." },
++  questions: {
++    event: {
++      type: "choice",
++      instructions: "Which event?",
++      criteria: { earnings: "Financial results", other: "Other news" },
++    },
++    relevance: {
++      type: "score",
++      instructions: "Rate relevance",
++      criteria: ["low", "medium", "high"],
++    },
++    related: {
++      type: "bool",
++      instructions: "Is this related?",
++      criteria: { true: "Related", false: "Unrelated" },
++    },
++  },
++};
++const answers = () => ({
++  event: {
++    type: "choice",
++    choice: "earnings",
++    probabilities: { earnings: 0.8, other: 0.2 },
++    confidence: 0.3,
++  },
++  relevance: { type: "score", score: 1.5, confidence: 0.8 },
++  related: { type: "noul", noul: 0.9 },
++});
++
++for (const [name, change] of [
++  [
++    "an option never offered",
++    (a: any) => {
++      a.event.choice = "trade_now";
++    },
++  ],
++  [
++    "a choice inconsistent with its distribution",
++    (a: any) => {
++      a.event.choice = "other";
++    },
++  ],
++  [
++    "an inherited option name",
++    (a: any) => {
++      a.event.choice = "toString";
++    },
++  ],
++  [
++    "probabilities outside zero to one",
++    (a: any) => {
++      a.event.probabilities = { earnings: 1.8, other: -0.8 };
++    },
++  ],
++  [
++    "a missing option probability",
++    (a: any) => {
++      delete a.event.probabilities.other;
++    },
++  ],
++  [
++    "an extra option probability",
++    (a: any) => {
++      a.event.probabilities.trade_now = 0;
++    },
++  ],
++  [
++    "a distribution with missing mass",
++    (a: any) => {
++      a.event.probabilities = { earnings: 0.2, other: 0.2 };
++    },
++  ],
++  [
++    "confidence outside zero to one",
++    (a: any) => {
++      a.event.confidence = 7;
++    },
++  ],
++  [
++    "a score outside its rubric",
++    (a: any) => {
++      a.relevance.score = 99;
++    },
++  ],
++  [
++    "a boolean probability outside zero to one",
++    (a: any) => {
++      a.related.noul = -0.7;
++    },
++  ],
++] as const) {
++  test(`System One rejects ${name} and retains the billed usage`, async () => {
++    const wire = answers();
++    change(wire);
++    let calls = 0;
++    const result = await classify(model, context, {
++      apiKey: "synthetic-key",
++      maxRetries: 0,
++      fetch: async () => {
++        calls++;
++        return Response.json({ answers: wire, usage: { input_tokens: 18, output_tokens: 0 } });
++      },
++    });
++    assert.equal(result.stopReason, "error");
++    assert.deepEqual(result.answers, {});
++    assert.equal(result.usage?.input, 18);
++    assert.equal(calls, 1);
++  });
++}
++
++test("valid System One responses preserve probability and confidence as distinct quantities", async () => {
++  const result = await classify(model, context, {
++    apiKey: "synthetic-key",
++    maxRetries: 0,
++    fetch: async () => Response.json({ answers: answers() }),
++  });
++  assert.equal(result.stopReason, "stop");
++  assert.deepEqual(result.answers.event, answers().event);
++  assert.deepEqual(result.answers.relevance, answers().relevance);
++  assert.deepEqual(result.answers.related, { type: "bool", probability: 0.9 });
++  assert.equal(result.usage, undefined);
++});
++
++test("a local compatible server uses the real SDK protocol and cancels without retry", async () => {
++  const calls: { path: string; body: any }[] = [];
++  const server = createServer(async (request, response) => {
++    let body = "";
++    for await (const chunk of request) body += chunk;
++    const parsed = JSON.parse(body);
++    calls.push({ path: request.url!, body: parsed });
++    if (parsed.state.stall) return;
++    response.setHeader("content-type", "application/json");
++    response.end(
++      JSON.stringify({
++        model: "served-fixture",
++        answers: answers(),
++        usage: { input_tokens: 18, output_tokens: 0 },
++      }),
++    );
++  });
++  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++  const address = server.address();
++  assert(address && typeof address === "object");
++  const local = { ...model, baseUrl: `http://127.0.0.1:${address.port}/v1` };
++  try {
++    const result = await classify(local, context, {
++      apiKey: "synthetic-local",
++      maxRetries: 0,
++      timeoutMs: 1000,
++    });
++    assert.equal(result.stopReason, "stop");
++    assert.equal(calls[0]?.path, "/v1/systemone");
++    assert.equal(calls[0]?.body.questions.related.type, "noul");
++    assert.equal(result.usage?.input, 18);
++    const stop = new AbortController();
++    const pending = classify(
++      local,
++      { ...context, state: { stall: true } },
++      { apiKey: "synthetic-local", maxRetries: 0, signal: stop.signal },
++    );
++    const timeout = setTimeout(() => stop.abort(), 30);
++    const cancelled = await pending;
++    clearTimeout(timeout);
++    assert.equal(cancelled.stopReason, "aborted");
++    assert(calls.length <= 2);
++  } finally {
++    server.closeAllConnections();
++    await new Promise<void>((resolve) => server.close(() => resolve()));
++  }
++});
++
++test("four-decimal local distributions remain compatible without inventing normalized probabilities", async () => {
++  const criteria = Object.fromEntries(
++    Array.from({ length: 255 }, (_, i) => [`label-${i}`, `Option ${i}`]),
++  );
++  const distribution = Object.fromEntries(Object.keys(criteria).map((key) => [key, 0.0039]));
++  const result = await classify(
++    model,
++    { state: {}, questions: { q: { type: "choice", instructions: "Select a label", criteria } } },
++    {
++      apiKey: "synthetic-key",
++      maxRetries: 0,
++      fetch: async () =>
++        Response.json({
++          answers: {
++            q: { type: "choice", choice: "label-0", probabilities: distribution, confidence: 0 },
++          },
++        }),
++    },
++  );
++  assert.equal(result.stopReason, "stop");
++  assert.deepEqual(result.answers.q, {
++    type: "choice",
++    choice: "label-0",
++    probabilities: distribution,
++    confidence: 0,
++  });
++});
++
++test("explicit prototype-like labels are valid own options", async () => {
++  const criteria = JSON.parse('{"toString":"A real label","other":"Other"}');
++  const probabilities = JSON.parse('{"toString":0.8,"other":0.2}');
++  const result = await classify(
++    model,
++    { state: {}, questions: { q: { type: "choice", instructions: "Pick a label", criteria } } },
++    {
++      apiKey: "synthetic-key",
++      maxRetries: 0,
++      fetch: async () =>
++        Response.json({
++          answers: { q: { type: "choice", choice: "toString", probabilities, confidence: 0.3 } },
++        }),
++    },
++  );
++  assert.equal(result.stopReason, "stop");
++  assert.equal(result.answers.q?.type, "choice");
++});
++
++test("Cloudflare's completed-run envelope uses the same strict validation and preserves usage on failure", async () => {
++  const wire = answers();
++  wire.related.noul = 7;
++  const result = await classifyCloudflare(
++    {
++      ...model,
++      api: "cloudflare-workers-ai-system-one",
++      provider: "cloudflare-workers-ai",
++      baseUrl: "https://fixture.invalid/accounts/synthetic/ai",
++    },
++    context,
++    {
++      apiKey: "synthetic-key",
++      maxRetries: 0,
++      fetch: async () =>
++        Response.json({
++          success: true,
++          result: {
++            state: "Completed",
++            result: { answers: wire, usage: { input_tokens: 18, output_tokens: 0 } },
++          },
++        }),
++    },
++  );
++  assert.equal(result.stopReason, "error");
++  assert.equal(result.usage?.input, 18);
++  assert.deepEqual(result.answers, {});
++});
+diff --git a/package.json b/package.json
+index b1c9910..f42ca86 100644
+--- a/package.json
++++ b/package.json
+@@ -12,11 +12,11 @@
+     "dev:desktop:bytecode": "node scripts/dev-desktop-env.mjs production --agent-bytecode",
+     "dev:desktop:remote-prod": "node scripts/dev-desktop-remote-prod.mjs",
+     "dev:server": "pnpm --filter @zcode/server dev",
+-    "prepare": "husky",
++    "prepare": "node scripts/prepare-git-hooks.mjs",
+     "prepare:desktop-runtime": "pnpm --filter @zcode/desktop prepare:runtime-assets",
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+-    "verify:pre-push": "pnpm run lint && pnpm run test:pi-executor && pnpm run test:page-assistant && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
++    "verify:pre-push": "pnpm run test:git-hooks && pnpm run lint && pnpm run test:pi-executor && pnpm run test:decision-classifier && pnpm run test:page-assistant && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
+     "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+@@ -73,7 +73,9 @@
+     "test:conversation-outputs": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/conversationOutputs.test.ts && node scripts/test-usage-hooks.mjs packages/ui/test/conversationOutputs.browser.test.tsx __conversationOutputTests --desktop-styles",
+     "test:page-assistant": "tsx --test packages/services/test/page-assistant.test.ts packages/services/test/page-assistant-rpc.test.ts apps/zcode-cli/packages/core/test/page-assistant.test.ts apps/zcode-cli/packages/bootstrap/test/page-assistant-lifecycle.test.ts",
+     "test:catalog-filter-ui": "tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/providerCatalogFilters.test.ts && node scripts/test-usage-hooks.mjs packages/ui/test/providerCatalogFilters.browser.test.tsx __providerCatalogFilterTests --desktop-styles --focused-window",
+-    "test:page-assistant-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pageAssistant.browser.test.tsx __pageAssistantTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/modelPurposeDefaults.browser.test.tsx __modelPurposeDefaultTests --desktop-styles"
++    "test:page-assistant-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pageAssistant.browser.test.tsx __pageAssistantTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/modelPurposeDefaults.browser.test.tsx __modelPurposeDefaultTests --desktop-styles",
++    "test:decision-classifier": "tsx --test apps/zcode-cli/packages/adapters/test/decision-classifier.test.ts",
++    "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/patches/@earendil-works__pi-ai@1.0.1.patch b/patches/@earendil-works__pi-ai@1.0.1.patch
+index 12a322e..f33e78e 100644
+--- a/patches/@earendil-works__pi-ai@1.0.1.patch
++++ b/patches/@earendil-works__pi-ai@1.0.1.patch
+@@ -1,5 +1,93 @@
++diff --git a/dist/api/system-one-shared.js b/dist/api/system-one-shared.js
++index 5735aee8c487e5b11f94abf8db6b18c4f71184e2..0a6f2c175ace1a90366e17d5e23bbbee451686d3 100644
++--- a/dist/api/system-one-shared.js
+++++ b/dist/api/system-one-shared.js
++@@ -26,13 +26,27 @@ function requiredNumber(label, value, field) {
++     }
++     return value;
++ }
++-function probabilities(label, value, id) {
++-    if (!isRecord(value))
++-        throw new Error(`${label} returned invalid probabilities for ${id}`);
++-    return Object.fromEntries(Object.entries(value).map(([key, probability]) => [
++-        key,
++-        requiredNumber(label, probability, `probability for ${id}.${key}`),
+++function requiredProbability(label, value, field) {
+++    const probability = requiredNumber(label, value, field);
+++    if (probability < 0 || probability > 1) {
+++        throw new Error(`${label} returned an out-of-range ${field}`);
+++    }
+++    return probability;
+++}
+++function probabilities(label, value, id, expectedKeys) {
+++    if (!isRecord(value) || Object.keys(value).length !== expectedKeys.length ||
+++        !expectedKeys.every((key) => Object.hasOwn(value, key))) {
+++        throw new Error(`${label} returned invalid probability labels for ${id}`);
+++    }
+++    const result = Object.fromEntries(expectedKeys.map((key) => [
+++        key, requiredProbability(label, value[key], `probability for ${id}`),
++     ]));
+++    // Compatible local servers round to four decimals. Bound cumulative rounding error
+++    // by option count; never normalize malformed mass into a decision.
+++    if (Math.abs(Object.values(result).reduce((sum, probability) => sum + probability, 0) - 1) > Math.max(0.001, expectedKeys.length * 0.00005)) {
+++        throw new Error(`${label} returned an invalid probability total for ${id}`);
+++    }
+++    return result;
++ }
++ function parseAnswers(label, value, context) {
++     if (!isRecord(value))
++@@ -46,25 +60,36 @@ function parseAnswers(label, value, context) {
++             if (answer.type !== "choice" || typeof answer.choice !== "string") {
++                 throw new Error(`${label} did not return a choice answer for ${id}`);
++             }
+++            if (!Object.hasOwn(question.criteria, answer.choice)) {
+++                throw new Error(`${label} returned an unoffered choice for ${id}`);
+++            }
+++            const distribution = probabilities(label, answer.probabilities, id, Object.keys(question.criteria));
+++            if (distribution[answer.choice] + 0.001 < Math.max(...Object.values(distribution))) {
+++                throw new Error(`${label} returned a choice inconsistent with its probabilities for ${id}`);
+++            }
++             answers.push([
++                 id,
++                 {
++                     type: "choice",
++                     choice: answer.choice,
++-                    probabilities: probabilities(label, answer.probabilities, id),
++-                    confidence: requiredNumber(label, answer.confidence, `confidence for ${id}`),
+++                    probabilities: distribution,
+++                    confidence: requiredProbability(label, answer.confidence, `confidence for ${id}`),
++                 },
++             ]);
++         }
++         else if (question.type === "score") {
++             if (answer.type !== "score")
++                 throw new Error(`${label} did not return a score answer for ${id}`);
+++            const score = requiredNumber(label, answer.score, `score for ${id}`);
+++            if (score < 0 || score > question.criteria.length - 1) {
+++                throw new Error(`${label} returned a score outside the rubric for ${id}`);
+++            }
++             answers.push([
++                 id,
++                 {
++                     type: "score",
++-                    score: requiredNumber(label, answer.score, `score for ${id}`),
++-                    confidence: requiredNumber(label, answer.confidence, `confidence for ${id}`),
+++                    score,
+++                    confidence: requiredProbability(label, answer.confidence, `confidence for ${id}`),
++                 },
++             ]);
++         }
++@@ -75,7 +100,7 @@ function parseAnswers(label, value, context) {
++                 id,
++                 {
++                     type: "bool",
++-                    probability: requiredNumber(label, answer.noul, `probability for ${id}`),
+++                    probability: requiredProbability(label, answer.noul, `probability for ${id}`),
++                 },
++             ]);
++         }
+ diff --git a/dist/auth/oauth/github-copilot.js b/dist/auth/oauth/github-copilot.js
+-index 09e5494..88e6ebf 100644
++index 09e54941f456ab1b5cedd23710711c2c2a40db39..88e6ebf8dd42e43d42c3677bed414242362dc2c9 100644
+ --- a/dist/auth/oauth/github-copilot.js
+ +++ b/dist/auth/oauth/github-copilot.js
+ @@ -1,3 +1,4 @@
+@@ -26,7 +114,7 @@ index 09e5494..88e6ebf 100644
+          const text = await response.text();
+          throw new Error(`${response.status} ${response.statusText}: ${text}`);
+ diff --git a/dist/auth/oauth/openai-chatgpt.js b/dist/auth/oauth/openai-chatgpt.js
+-index f5a4232..c9a750b 100644
++index f5a423268f4de59191905fd05dc5a153a552290b..c9a750b6558956d3d76b01508eeceeeb8576e341 100644
+ --- a/dist/auth/oauth/openai-chatgpt.js
+ +++ b/dist/auth/oauth/openai-chatgpt.js
+ @@ -1,3 +1,4 @@
+@@ -237,7 +325,7 @@ index f5a4232..c9a750b 100644
+      catch (error) {
+          if (interaction.signal.aborted)
+ diff --git a/dist/auth/oauth/openai-codex.js b/dist/auth/oauth/openai-codex.js
+-index 2ea03fc..722d973 100644
++index 2ea03fc282a4ce547122e7f1031bb2aff5293422..722d9739498e48e38aa1de9f7d3174b9f853a992 100644
+ --- a/dist/auth/oauth/openai-codex.js
+ +++ b/dist/auth/oauth/openai-codex.js
+ @@ -1,3 +1,4 @@
+@@ -264,7 +352,7 @@ index 2ea03fc..722d973 100644
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+ diff --git a/dist/auth/oauth/xai.js b/dist/auth/oauth/xai.js
+-index f70a3be..5dd8051 100644
++index f70a3beaf50222a12006d8f4ffc951397d1a9b62..5dd8051aed33b0552d9c1dc93590d75263c03400 100644
+ --- a/dist/auth/oauth/xai.js
+ +++ b/dist/auth/oauth/xai.js
+ @@ -1,3 +1,4 @@
+@@ -283,7 +371,7 @@ index f70a3be..5dd8051 100644
+                  Accept: "application/json",
+ diff --git a/dist/utils/oauth-fetch.d.ts b/dist/utils/oauth-fetch.d.ts
+ new file mode 100644
+-index 0000000..0d3bd3b
++index 0000000000000000000000000000000000000000..0d3bd3b737d59e8521a92dfb4bf38ae871c5c1d1
+ --- /dev/null
+ +++ b/dist/utils/oauth-fetch.d.ts
+ @@ -0,0 +1,2 @@
+@@ -291,7 +379,7 @@ index 0000000..0d3bd3b
+ +export declare const oauthFetch: typeof globalThis.fetch;
+ diff --git a/dist/utils/oauth-fetch.js b/dist/utils/oauth-fetch.js
+ new file mode 100644
+-index 0000000..c69983a
++index 0000000000000000000000000000000000000000..c69983a66798218ce465072083aaf51ae5d87d7f
+ --- /dev/null
+ +++ b/dist/utils/oauth-fetch.js
+ @@ -0,0 +1,9 @@
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 36ad105..f256336 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -19,7 +19,7 @@ patchedDependencies:
+     hash: 36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97
+     path: patches/@arms__rum-electron@0.0.3.patch
+   '@earendil-works/pi-ai@1.0.1':
+-    hash: b5e2c040d1da0e7afe18958f69a927a15220b6b1e3ff9f97ae51fb51b20fd70b
++    hash: eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a
+     path: patches/@earendil-works__pi-ai@1.0.1.patch
+ 
+ importers:
+@@ -150,7 +150,7 @@ importers:
+         version: 0.3.286(@anthropic-ai/sdk@0.129.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(zod@4.6.5)
+       '@earendil-works/pi-ai':
+         specifier: 1.0.1
+-        version: 1.0.1(patch_hash=b5e2c040d1da0e7afe18958f69a927a15220b6b1e3ff9f97ae51fb51b20fd70b)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++        version: 1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@modelcontextprotocol/client':
+         specifier: 2.0.0
+         version: 2.0.0
+@@ -373,7 +373,7 @@ importers:
+         version: 1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@earendil-works/pi-ai':
+         specifier: 1.0.1
+-        version: 1.0.1(patch_hash=b5e2c040d1da0e7afe18958f69a927a15220b6b1e3ff9f97ae51fb51b20fd70b)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++        version: 1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@zcode/contracts':
+         specifier: workspace:*
+         version: link:../contracts
+@@ -970,7 +970,7 @@ importers:
+     dependencies:
+       '@earendil-works/pi-ai':
+         specifier: 1.0.1
+-        version: 1.0.1(patch_hash=b5e2c040d1da0e7afe18958f69a927a15220b6b1e3ff9f97ae51fb51b20fd70b)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)
++        version: 1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)
+       '@larksuiteoapi/node-sdk':
+         specifier: 1.64.0
+         version: 1.64.0
+@@ -11101,7 +11101,7 @@ snapshots:
+ 
+   '@earendil-works/pi-agent-core@1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
+     dependencies:
+-      '@earendil-works/pi-ai': 1.0.1(patch_hash=b5e2c040d1da0e7afe18958f69a927a15220b6b1e3ff9f97ae51fb51b20fd70b)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-ai': 1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       typebox: 1.3.27
+     transitivePeerDependencies:
+       - '@aws-sdk/credential-provider-node'
+@@ -11116,7 +11116,7 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-ai@1.0.1(patch_hash=b5e2c040d1da0e7afe18958f69a927a15220b6b1e3ff9f97ae51fb51b20fd70b)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)':
++  '@earendil-works/pi-ai@1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.129.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+@@ -11141,7 +11141,7 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-ai@1.0.1(patch_hash=b5e2c040d1da0e7afe18958f69a927a15220b6b1e3ff9f97ae51fb51b20fd70b)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
++  '@earendil-works/pi-ai@1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.129.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+diff --git a/scripts/prepare-git-hooks.mjs b/scripts/prepare-git-hooks.mjs
+new file mode 100644
+index 0000000..1d0f1ac
+--- /dev/null
++++ b/scripts/prepare-git-hooks.mjs
+@@ -0,0 +1,18 @@
++import { existsSync } from "node:fs";
++import { spawnSync } from "node:child_process";
++
++// Dependency installation must not replace Fleet's configured commit gates.
++if (process.env.HUSKY !== "0" && existsSync(".git")) {
++  const current = spawnSync("git", ["config", "--get", "core.hooksPath"], { encoding: "utf8" });
++  if (current.error || (current.status !== 0 && current.status !== 1)) {
++    throw new Error("Unable to inspect the configured Git hooks");
++  }
++  const hooksPath = current.stdout.trim();
++  if (hooksPath && hooksPath !== ".husky" && hooksPath !== ".husky/_") {
++    console.log("Preserved the configured Git hooks.");
++  } else {
++    const { default: install } = await import("husky");
++    const message = install(".husky");
++    if (message) console.log(message);
++  }
++}
+diff --git a/scripts/prepare-git-hooks.test.mjs b/scripts/prepare-git-hooks.test.mjs
+new file mode 100644
+index 0000000..98fe457
+--- /dev/null
++++ b/scripts/prepare-git-hooks.test.mjs
+@@ -0,0 +1,34 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { spawnSync } from "node:child_process";
++
++const script = fileURLToPath(new URL("./prepare-git-hooks.mjs", import.meta.url));
++const env = {
++  ...process.env,
++  GIT_CONFIG_GLOBAL: join(tmpdir(), `fleet-no-global-config-${process.pid}`),
++  GIT_CONFIG_NOSYSTEM: "1",
++  HUSKY: "1",
++};
++for (const existing of ["/fixture/fleet/.githooks/zcode", ".githooks", undefined]) {
++  test(`dependency preparation preserves ${existing ?? "ordinary Husky setup"}`, async () => {
++    const cwd = await mkdtemp(join(tmpdir(), "fleet-hooks-test-"));
++    const git = (...args) => {
++      const result = spawnSync("git", args, { cwd, env, encoding: "utf8" });
++      assert.equal(result.status, 0, result.stderr);
++      return result.stdout.trim();
++    };
++    try {
++      git("init", "--quiet");
++      if (existing) git("config", "core.hooksPath", existing);
++      const prepare = spawnSync(process.execPath, [script], { cwd, env, encoding: "utf8" });
++      assert.equal(prepare.status, 0, prepare.stderr);
++      assert.equal(git("config", "--get", "core.hooksPath"), existing ?? ".husky/_");
++    } finally {
++      await rm(cwd, { recursive: true, force: true });
++    }
++  });
++}

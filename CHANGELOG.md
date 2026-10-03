@@ -11,6 +11,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Inspect current Craft/Pi and relevant decision/quantitative sources on separate immutable copies;
+  select the existing Pi classifier path and record its required Host/consumer boundaries. Harden
+  the installed System One response parser while preserving billed failure usage and legacy calls.
+  Preserve configured Fleet commit hooks through dependency preparation; add real temporary-Git checks.
+
 - Correct contextual assistance to open through the existing right-click menu at the captured
   pointer, with movable/resizable compact windows and keyboard controls; retire repeated page
   buttons while preserving target binding, fresh Sessions and explicit history. Add the complete

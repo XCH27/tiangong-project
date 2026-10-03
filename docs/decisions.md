@@ -2778,3 +2778,17 @@ Stop semantics remain. Model Settings owns visible ordinary/page/vision purpose 
 existing Personal preference owner. Child-agent choices retain their existing settings page.
 NewMax's two-stage planning/execution fields are reference evidence, not permission to add controls
 without actual dispatch behavior. This correction creates no new Session or credential authority.
+
+### OV-087 — Current decision-model sources and optional quantitative suite (2026-10-03)
+
+> 「Craft Agents的最新版增加了对决策模型的支持等」
+> 「很多软件也有了新版本记得更新看看哪些是值得吸收的」
+> 「我们后期要做量化交易的插件我觉得这么模型可以有大用」
+
+Review fresh, locked relevant source copies without replacing required original pins. Typed
+classification and planning/execution chat models are separate operations. Under OV-084 the selected
+implementation disposition is existing Host + installed Pi classifier transport, with bounded
+validation/admission and optional feature policy; no new execution framework is selected. Existing
+Subagents remains the owner of named worker defaults. The quantitative capability stays an optional
+suite: semantic screening can support research but supplies neither market-return probabilities nor
+order authority. Source/fixture proof does not establish prediction quality or full feature delivery.

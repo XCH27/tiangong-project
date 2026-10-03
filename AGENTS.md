@@ -46,6 +46,8 @@ Git/GitHub comparisons. These roles do not import several independent products' 
    clients/SDKs or published contracts and their plugin ecosystem. Record the actual request,
    credential, persistence and recovery mechanisms in the existing reference record; screenshots
    or matching field names are insufficient. Follow the [source intake gate](docs/engineering.md#source-intake-before-module-implementation).
+   Check current upstream releases/tips before that comparison; review newer source in a separate
+   immutable copy while preserving required pins, and record the exact version and proof level.
    Preserve the working interaction and host primitives. A new domain capability
    may need new code; justify that gap and its consumers instead of inventing unrelated controls.
    For interaction changes, trace the reference's trigger, pointer anchoring, drag/resize,

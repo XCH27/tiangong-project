@@ -13,7 +13,7 @@ this contract does not create a credential or model authority.
 
 | ID | Capability | Status | Release / acceptance | Surfaces |
 |---|---|---|---|---|
-| INTEL-03 | Model routing and capability negotiation | Craft thinking mapping and isolated ZCode endpoint/credential binding wired but not visually checked; full routing not implemented | R17 / INTEL-03-A | P-30 |
+| INTEL-03 | Model routing and capability negotiation | Craft thinking mapping and isolated ZCode endpoint/credential binding wired but not visually checked; full routing/classifier operations not implemented | R17 / INTEL-03-A | P-30 |
 <!-- /module-card -->
 
 ## Source entry points
@@ -92,7 +92,6 @@ state and explicit selections stay intact. New Conversation's existing root-entr
 reloads the preference even when the root slot is already open. An empty reused root retires its old
 model intent; text, mentions, unknown/nonempty rich editor data and actual unfinished input retain
 their model. Existing Sessions with no model remain explicit until the person selects one.
-
 The combined composer keeps compact Fast/Effort/Model rows and the Brain collapse. Model opens one
 searchable list with connection headings and direct model rows, rather than another provider menu.
 Search focuses on opening, ArrowDown reaches the list, empty results are localized, and search does
@@ -325,7 +324,8 @@ panel manages authentication, discovery and picker visibility; it does not conta
 conversation-model or utility-model selector. The existing composer owns the draft/Session model
 and effort. A new conversation starts from the app's selected connection and its saved model
 fallback, then persists that effective model and connection so an unsent conversation does not
-later inherit a hidden workspace override. Cindy's planning/execution split remains separate;
+later inherit a hidden workspace override. Current classifier/staged-execution contracts are in
+[Model decisions](model-decisions.md); these are separate from named child-agent configuration.
 the requested vision bridge is a distinct input-adapter slice (see
 [media](media.md#model-pairing-and-agent-dispatch)), not a chat-model default. Global and workspace
 default-effort controls are retired: a new Session uses the built-in level reconciled to its

@@ -21,6 +21,46 @@ Raw research notes live in [`research/`](research/) and have these consumers:
 | [Video candidates](research/video/00-CANDIDATE-INVENTORY.md) | [SYS-06](modules/media.md) |
 | [MiniMax hub plugin stack](research/plugins/00-MINIMAX-HUB-PLUGIN-STACK.md) | [marketplace](modules/marketplace.md#plugin-skill-and-marketplace-design) |
 
+## Typed decision model and quantitative research intake
+
+Primary-only source inspection on immutable current copies, not a re-pin or whole-tree import.
+Required Craft look/retained pins remain v0.10.5/v0.13.4. `git fetch` refreshed references; local
+shared-clone attempts failed on promisor objects, so fresh official shallow copies were used.
+The observed refs/commits below identify the reviewed source, not installed app/dependency upgrades.
+Fresh copies live under `/Volumes/AIGC/天工参考/software/intake/`; prior source/data remain intact.
+
+| Source lock | Inspected mechanism and exact entry | Fleet disposition |
+|---|---|---|
+| Craft **v0.14.0**, `73bd9c2a3573` | `shared/src/decisions/{settings,providers,resolve,client,records,usage}.ts`; `server-core/src/decisions/{decision-point,tool-callbacks,adaptive-thinking,large-results,automation-condition,guarded-mode}.ts`; `session-tools-core/src/handlers/decide.ts`; renderer `AiSettingsPage.tsx:1060,1472`; RPC `decisions.ts`. Settings/RPC/key resolution gate typed choice/score/noul, compact batch output and feature/outcome records. | Reuse optional per-purpose/consumer gating and outcome evaluation through Fleet owners. Do not import its credential namespace/log as another authority or turn on every automatic feature. Source tests below narrow its response/failure guarantees. |
+| Pi **v1.0.1**, `a7229ddc2181` | `ai/src/types.ts:633,1151`, `api/{typesafe-system-one,system-one-shared,cloudflare-workers-ai-system-one,llama-cpp-classify}.ts`; `coding-agent/examples/extensions/jev-router.ts`; `ai/CHANGELOG.md`. Distinct chat/image/classifier catalogs and `classify`, native System One transport, bool/noul translation and priced reported usage already exist in the installed version. | Selected transport reuse; no new SDK/runtime. The coding-specific first-edit handoff is not Fleet's phase boundary. Fresh source includes Clef/Clef Flash and inline Anthropic tool changes; these are source facts, not accepted provider/task improvements. |
+| TypeSafe JS SDK **v0.6.0**, `66880ccded6c` | `src/{client,types,questions,retry}.ts`: native `/v1/systemone`, ordered score criteria, overridable fetch/abort/timeout/retry. Default timeout 10s and two retries differ from a foreground advisory budget. | Protocol reference. Pi already implements this transport; adding the SDK would duplicate it. Preserve actual request deadlines/usage and independent model/account binding. |
+| Laya **0.3.26 main**, `2e4d9c87e8b1` | `laya/{serve,router,agent,common,confidence}.py`: local Jev-compatible server, multilingual routing, model/head/state budgets, four-decimal probabilities and separate entropy/answer confidence. `common.py:669,689` explains why calibration depends on held-out data and option-count bucket. | Preferred local evaluation candidate, with an explicitly selected hosted Jev route as alternative. No weights/service/dependency were installed. Mac CPU latency, Chinese/domain quality and all model licences remain their own admission evidence. Do not call entropy confidence a success/return probability. |
+| System One / Pi extension **core 0.2.1 main**, `d58104b676ea` | `system-one-core/src/{validation,providers/http}.ts` validates own labels, probability mass and rubric; `pi-system-one/src/{tool,render,extension}.ts` uses one batch tool with on-demand instructions. | Reuse strict validation/compact-result lessons, not another SDK plus permissive argument-alias framework or extension autoload. Its fixed mass tolerance must accommodate the actual backend's serialization. MIT package declaration; no production dependency added. |
+| TradingAgents **v0.6.0**, `ff0d0b1b4d72` | `agents/post_screen.py` optional Jev relevance/stance filtering; `agents/{structured,managers/portfolio_manager,trader/trader}.py`; `graph/trading_graph.py:141`; `default_config.py`; `backtest.py:1`. Separate quick/deep providers, structured proposals, settings/portfolio-bound resume, dated independent decision evaluation. | Optional quantitative-suite comparison. Preserve original evidence on failed screening. Its 16-worker/three-attempt post requests finish in the background after first failure; do not copy cancellation/budget behavior. Its backtest is explicitly not a filled-order/cash-ledger simulator. |
+| Qlib **v0.9.7**, `da920b7f954f`; RD-Agent **v1.0.0**, `484776c211e4` | Qlib `data/dataset/{handler,processor}.py`, `workflow/record_temp.py`; RD-Agent `app/qlib_rd_loop/factor.py`, `scenarios/qlib/{developer/factor_runner,experiment/workspace}.py`: factor/model experiment, train/valid/test ranges, controlled execution and actual backtest artifacts. | Quantitative data/experiment engines and patterns, not a Fleet host replacement or proof of a profitable strategy. No datasets, Docker/Conda runtime or live trades were run. Both source licences are MIT. |
+| Cindy **v0.1.95**, `2a0ccfcd4ca6` | `main/utility-model/resolveAuxiliaryModelChain.ts:1,119`; `maker-core/src/session.ts:1658`; `agents/shared/auto-review-decision.ts`. User-selected chains/route snapshots and rechecked permission/plan generations; automatic review failure returns Ask. | Routing/revision and failure-attribution reference. This is a language-model utility/reviewer mechanism, not evidence of a native Jev/Laya classifier. Retain Fleet's permission owner. |
+| OpenCode **v1.18.34**, `aec0b9a6d889`; Qwen Code **main 0.24.7**, `2c591ecc08a6` | OpenCode `agent/agent.ts:38,153` separates primary Plan/Build and child roles with explicit model/permissions. Qwen `permissions/{classifier,autoMode}.ts:1,827`, `subagents/{types,subagent-manager}.ts` uses two generated-JSON risk stages, hard-rule floors and unavailable/manual fallback; stage 1 actually reserves 256 output tokens. | Explicit phase/worker configuration and revision/permission lessons. A permission "classifier" may be a generative LLM, not System One. Do not import default permissive child modes or a two-stage token budget as a lightweight universal decision layer. Qwen's main lock is not a published stable-app claim. |
+| Grok Build **main**, `2bdd1d6a6369` | Updated reference metadata confirms the existing source lock; no newer published release was returned by GitHub. Its existing explicit plan/execute research remains the source route. | No inferred release or new decision feature. Existing source remains retained. |
+
+**Executable evidence.** The unchanged community System One core validation/client/mock suites pass
+29 Node tests without installs/network. Exact Craft parser and extracted Guarded leaves are probed
+in [the retained comparison](</Volumes/AIGC/天工参考/software/intake/decision-model-comparison/craft-probes.json>):
+its parser accepts an inherited `toString` option, clamps out-of-range probability/confidence,
+and accepts missing probability mass. Active Guarded checks preserve an existing allow after a
+missing answer or thrown error; disabled checks instead resolve to Ask through `mode-manager.ts`.
+This is deliberate source policy and leaf evidence, not a live whole-app vulnerability claim.
+The `decide` tool caches a resolution for 1s, and its callback invokes `client.decide` without a
+Stop signal; Fleet must retain dispatch/revocation and cancellation checks rather than copying it.
+
+Installed Pi classifier response tests reproduced nine malformed-response successes before the
+bounded patch. The candidate now rejects unoffered/inconsistent labels, invalid ranges/key sets,
+probability mass and out-of-rubric scores while retaining reported billed usage. Four-decimal local
+distributions and own prototype-like labels remain supported. The same guard covers Cloudflare's
+completed-run envelope. Actual loopback HTTP proves bool/noul request mapping and abort without
+retry; no hosted model inference, price/accuracy benchmark, local weights or user-data request ran.
+These close decoder/transport checks, not Host/classifier UI or quantitative-suite delivery.
+The [typed-decision contract](modules/model-decisions.md) owns selected integration and acceptance.
+
 ## Composer defaults and selector comparison
 
 Owner OV-077 requests actual Cursor interaction and project/global default comparison. Installed

@@ -167,3 +167,5 @@ and contextual popup interaction. It also preserves remaining catalog/account di
 reconstruction and local execution do not declare whole-kernel, media or owner acceptance.
 
 | 0115 | [0115-contextual-menus-and-purpose-defaults.patch](0115-contextual-menus-and-purpose-defaults.patch) | `3ecd147570b61e48427676630fce0ccd8b1b1188` |
+
+| 0116 | [0116-typed-decision-validation-and-intake.patch](0116-typed-decision-validation-and-intake.patch) | `fff60fbbc55594798d97d394dc64523b8ce4bf01` |

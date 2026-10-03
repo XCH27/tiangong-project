@@ -116,7 +116,7 @@ non-ignored source, including untracked additions and removals. It never changes
 Use `--recipe-only` to inspect the recipe independently; that mode does **not** prove it describes
 current work. Candidate pre-push and the root patch commit gate require the full comparison.
 
-`init.sh` installs candidate-specific hooks as well as retained-branch gates. Candidate commit
+`init.sh` installs candidate-specific hooks as well as retained-branch gates; candidate dependency preparation now preserves configured hooks instead of replacing them with Husky. Candidate commit
 checks cover desktop/services and all CLI packages directly; the full project verifier selects
 the candidate by default, with `--retained-craft` reserved for the preserved implementation.
 
