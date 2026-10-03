@@ -3121,7 +3121,40 @@ JSON fallback, using the same timeline/permission rendering path. Pi/SQLite test
 invented registered tools outside the page scope, stale human writes and deleted targets. No live
 provider content or credential was sent; synthetic inference is distinct from live model quality.
 
-The first implementation exposes only model-enabled state. It does not implement every page's
+The scoped implementation exposes model-enabled state and context/output capacity correction. It does not implement every page's
 operations, price-correction tools, secure conversational credential entry or plugin/UI lifecycle.
 Those requirements retain their owning contracts and execution order rather than being counted as
 complete by this single proof.
+
+### Capacity correction and recorded usage identities
+
+Original ZCode `29628c9` already owns the human metadata editor, personal rule layering and option
+maps. Current `ProviderFormControls.tsx` captures the first draft revision; `ProviderSettingsFacade`
+and `NodeProviderConfigService.savePersonalModelDraft` check registry revision, personal-file
+revision and model membership under the existing serialized atomic writer. Fleet's page operation
+uses that same path; no generic configuration or file-edit tool is introduced. Craft v0.13.4's
+`EditPopover.tsx:684,957` supplies target-bound context and a normal Session; its default allow-all
+and edit-then-validate path are not copied. Cindy `a46bb58fc326`
+`apps/desktop/src/main/maker-host/plugins/settings-reader.ts:100` read/modify/write
+has no caller CAS and cannot replace this writer; its navigation helper is not a mutation service.
+The current provider catalog and sparse rule schema, rather than names or Pi runtime fallback
+limits, supply capacity evidence. The Host's existing preflight reserve remains a separate policy:
+one pure function now serves the original compact policy and the shared writer. It does not become
+a vendor output limit. Local real Pi/SQLite tests prove permissions, stop, stale writes, committed
+receipt and reopen; renderer checks use the original permission card in both languages/themes.
+The built desktop additionally completed a loopback capacity correction and refreshed its original
+model row. It exposed a redundant read title and a false effort prompt on a fixed-level legacy
+Session; both were corrected using the original summary/picker primitives. The prior ZCode
+`ThoughtLevelCycleControl.tsx` fixed-level branch is retained behavior, not a new effort choice or
+default writer. Actual renderer tests keep model/Fast selection and mount-time no-write checks.
+
+For the next simple subscription-value view, CodeBurn `models.ts` uses a 24-hour price cache and
+generation-aware refresh; Fleet already has its own six-hour runtime catalog/cache. Its
+`plan-usage.ts` monthly allocation/reset-day calculation is incompatible with OV-057. CodeBurn
+`plans.ts` also uses credit budget as `monthlyUsd` for some plans, so that value cannot be treated as
+the public subscription price. CC Switch's `modelsDevPricing.ts` missing-price-to-zero fallback is
+not adopted. Fleet's existing request writers already freeze auth and billing identities, but its
+SQL read aggregation omitted them. The corrected projection groups those saved facts without
+rewriting history, guessing from the current connection or introducing a billing store. A public
+monthly reference and the retained requests' API-equivalent value remain separate facts; this read
+correction alone does not implement the future visible comparison or establish an invoice amount.

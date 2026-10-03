@@ -1,5 +1,17 @@
 # Changelog
 
+Releases and major project changes. Normative documents state what is true now; the history of how
+it became true lives here and in Git, not in "corrected on…" notes scattered through the docs.
+
+## Unreleased
+
+- Extend the existing Model Settings assistant with exact context/output limit corrections and
+  leaf inheritance through the human editor's version-checked writer. Preserve mappings, unknown
+  companion facts and manual drafts; reuse the original permission card with localized requested
+  values. Correct usage read grouping to retain saved auth/billing identities across reopen without
+  rewriting history or introducing a payment system. Remove duplicate read-summary titles and
+  false effort choices on fixed-level models without changing saved options on presentation.
+
 - Preserve known model consumption and received text/reasoning through Stop and trailing stream
   failures; join live/cold V4, the usage ledger and compatible Session counters without replaying
   completed requests. Fence dispatch by the final request tool set and correct failed/reused-ID
@@ -11,11 +23,6 @@
   and reuse the existing preview for document/media file-summary names while retaining Review/Undo.
   Local Host/Pi/SQLite and rendered fixtures distinguish this wiring from paid-provider validation
   and owner visual acceptance.
-
-Releases and major project changes. Normative documents state what is true now; the history of how
-it became true lives here and in Git, not in "corrected on…" notes scattered through the docs.
-
-## Unreleased
 
 - Reconciled the owner-supplied handoff audit with current source: clarified Pi/Host responsibilities, rebound core execution contracts and capability comments to the active candidate, corrected the historical Project-layer conflict, marked partial supersession, and linked candidate/root engineering and design rules. Reflowed oversized context prose. Source-only Antigravity image-path adaptation and its permission-bypass limit are explicit; fixture context measurements are reproducible and are not token-savings claims.
 

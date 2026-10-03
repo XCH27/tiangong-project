@@ -134,8 +134,9 @@ data retention with regenerated derived commands. `test:native-executor` also co
 Claude usage control and scoped cache/reopen; `test:native-ui` uses the desktop stylesheet for
 Chinese/English, light/dark, narrow-card and late-account response cases. Temporary protocol/SQLite
 fixtures are distinct from a live subscription read and from owner visual acceptance. The integrated
-pre-push gate passed 591 tests with zero architecture violations; both staged CLI restart probes
-passed using loopback inference, and the native account UI passed 11 renderer cases.
+pre-push gate passed 611 tests with zero architecture violations; both staged CLI restart probes
+passed using loopback inference. The built capacity edit refreshed the original row and survived reopen without replay;
+20 renderer cases cover original permissions, numeric/inherit changes, keyboard denial and zh/en light/dark narrow layouts.
 
 `test:conversation-outputs` covers four projection cases and nine actual renderer cases using the
 desktop stylesheet: Chinese/English, light/dark, narrow cards, exact read targets, hidden-card IO,

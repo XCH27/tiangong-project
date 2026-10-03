@@ -227,7 +227,9 @@ buckets may block a run, but must not overwrite a still-available bucket's repor
 API-equivalent estimated cost stays separately labelled and is never a subscription bill. OV-041's
 [statistics comparison](../references.md#usage-accounting-and-quota-monitor-comparison) retains the
 existing Session/SQLite usage owner. Preserve request/attempt/account/model/source identity, raw
-counter semantics, known-zero versus missing, price basis/version and observed coverage. Reconcile
+counter semantics, known-zero versus missing, price basis/version and observed coverage. Read projections
+retain frozen `authKind` and `billingProvider` alongside account/model/speed; subscription, API and
+legacy unknown identities cannot merge merely because those other fields match. Reconcile
 request snapshots without summing duplicates; distinct retries and auxiliary calls remain
 attributable. OV-047 authorized payment records and account/model/speed accounting snapshots in
 existing model_usage rows; OV-057 retires new payment entry from App Settings while preserving

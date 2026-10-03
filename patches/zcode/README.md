@@ -141,5 +141,8 @@ instructions are in [Engineering](../../docs/engineering.md#zcode-candidate).
 | 0104 | [0104-cancelled-response-receipts.patch](0104-cancelled-response-receipts.patch) | `055230c1a0fa482fc2cef72b3b1ba31b1866fe90` |
 | 0105 | [0105-effective-tool-dispatch-and-skill-facts.patch](0105-effective-tool-dispatch-and-skill-facts.patch) | `0aeb6a381756aa6e9af49ba987559a4dc2a89105` |
 
+| 0106 | [0106-recorded-usage-auth-and-billing.patch](0106-recorded-usage-auth-and-billing.patch) | `7e1dfbdfe89fec1227b5a48308ee9f65722f5193` |
+| 0107 | [0107-model-settings-capacity-operations.patch](0107-model-settings-capacity-operations.patch) | `6c71ea5de950bc6c4ad0045c39a846f4eca09908` |
+
 Tree observations are retained reconstruction evidence, not live-provider, visual or release acceptance.
 The source gate replays every patch and compares the final tree without modifying the working index.

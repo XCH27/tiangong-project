@@ -40,6 +40,8 @@ Non-composer provider leaf menus keep the existing dropdown portal. The combined
 the direct searchable model list below. Actual renderer checks cover both API/native groups in both
 languages/themes and exact selection callbacks; original controls and styling remain.
 The right provider-catalog category is Usage-based / 用量计费; API Key and wire-format terms remain.
+The composer offers an effort submenu only for multiple advertised levels. A missing legacy value
+on a fixed-level model creates neither a false selection prompt nor a presentation-time write.
 
 Official OpenAI `/models` membership can be combined with the exact published GPT Image IDs to
 classify image output before first inference. This evidence applies only to the official global

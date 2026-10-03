@@ -26,7 +26,7 @@ R4 Action/R11 Job contracts are extracted from real callers, without parallel Se
 | CORE-09 | Updates, packaging and distribution | not implemented | R2 / CORE-09-A | P-09 |
 | CORE-10 | Internationalization and identity | wired but not visually checked | R1 / CORE-10-A | P-01,P-05 |
 | EXEC-01 | Permissions, approvals and safety | wired but not visually checked | R2,R4 / EXEC-01-A | P-18 |
-| EXEC-02 | Actions and caller-aware action seam | first Model Settings operation wired but not visually checked; general action seam not implemented | R4 / EXEC-02-A | P-05,P-18,P-50 |
+| EXEC-02 | Actions and caller-aware action seam | Model Settings availability/capacity operations wired but not visually checked; general action seam not implemented | R4 / EXEC-02-A | P-05,P-18,P-50 |
 | EXEC-03 | Terminal and local execution | wired but not visually checked | R0,R4,R18 / EXEC-03-A | P-19 |
 | EXEC-04 | Multi-agent delegation | Craft child Sessions/TaskRunner wired but not visually checked; Fleet delegation gates not implemented | R6 / EXEC-04-A | P-20 |
 | EXEC-05 | Runtime/provider adapters | candidate Pi, Claude native and retained Craft lanes wired but not visually checked; native governed execution and general CLI adapters not implemented | R0,R6 / EXEC-05-A | P-21 |
@@ -154,12 +154,12 @@ expected revision plus membership inside the write transaction. Connection draft
 editing revision; only their own committed receipt can advance it. Incoming views cannot silently
 rebase dirty input. Service readiness and serialized writes snapshot submitted configuration and
 target identity. `onDidChange` refreshes settings; `useProviderSettingsServiceView` rejects stale host
-and revision responses. The first Agent operation now exposes only non-secret model-enable through that shared writer;
+and revision responses. The Agent bridge exposes non-secret availability and capacity-leaf corrections through that shared writer;
 whole-provider and credential operations remain outside this scoped bridge. `ListModels` is a read-only workflow catalog. A secret request
 must bind to the initiating Session, host, provider, operation and revision, return only completion,
 and reuse the existing credential owner; generic AskUserQuestion text is not that channel.
 
-The first delivery covers explanation and one non-secret model-enable operation; direct credential
+The Model Settings delivery covers explanation, availability and context/output limit correction; direct credential
 setup stays in its existing form. Its acceptance covers exact target/doc context,
 normal permission/cancel paths, committed-state refresh, conflicts with manual edits, deleted or
 switched targets, remote disconnect, no configured model, and close/reopen without duplicate work.
@@ -176,7 +176,12 @@ Hosts fail before input; close hides admitted work, and reopen reuses the target
 
 Shared `model-settings-assistant.ts` defines allowlisted context/schema/instructions. Its Host-bound
 `ModelSettingsPort` exposes `ReadModelSettings` (connection kind, format, enabled state, evidenced
-limits/options) and `SetModelEnabled` through the same revision-checked facade as human controls.
+limits/options and editability), `SetModelEnabled` and `SetModelLimits` through the same
+revision-checked facade as human controls. Capacity changes preserve model ID, recommendation mode,
+parameter mappings and unrelated personal leaves. `inherit` removes only the requested leaf;
+unknown companion values stay unknown. Explicit parent-null blockers require the existing editor.
+The shared writer checks declared context choices and the Host's existing output reservation for
+numeric changes; restoring inheritance does not materialize runtime defaults or refuse old unknowns.
 No key, token, URL or full Provider view enters the prompt. Exact target membership and stale-writer
 checks run inside the existing owner. The original permission card confirms one change with a
 localized target summary; no raw JSON dump or blanket access choice. Actual executor dispatch and
@@ -185,8 +190,8 @@ schemas deny files, terminal, account selection, plugin installation and active-
 The existing journal retains `runtime/model_settings_assistant`; `page_assistant` hides it from the
 ordinary task list while preserving transcript/receipts/usage. Cold resume requires its typed target,
 never an unrestricted fallback. The profile disables unrelated Skills/MCP/hooks/memory/workflows
-and title side calls. Built loopback inference observed three schemas and approximately 1.1K system
-characters: bounded projection evidence, not measured token savings or model quality. Real Pi/SQLite
+and title side calls. Built loopback inference observed four scoped schemas and 1,558 system-content
+characters: projection evidence, not measured token savings or model quality. Real Pi/SQLite
 covers allow/deny, invented-tool refusal, receipt/reopen and no completed-effect replay; Provider tests
 cover redaction, deletion and concurrent human writes. Local UI self-checks and live/owner acceptance
 remain distinct. Other pages need their own scoped operations before exposing the assistant.
