@@ -40,7 +40,7 @@ current capability status; the register and owning module describe the surviving
 The candidate embeds `pi-agent-core@1.0.1` as the default loop inside the existing supervised CLI.
 Host models and subscription services use patched `pi-ai@1.0.1` for transport/OAuth. OV-084 retired
 the Coding Agent session/resource wrapper; the retired legacy selector no longer changes the loop.
-Native vendor routes use their own admitted adapter. No credential store or user-data migration was added.
+Native vendor routes use their admitted adapters; [the optional Codex SDK recipe](../patches/codex-host/README.md) builds the scoped executable for `pnpm test:codex-native`. No credential store or migration was added.
 Resources are explicitly Host-owned; this does not enable arbitrary community extensions or pages.
 `pnpm exec tsx scripts/measure-context-projection.mts` measures fixed scripted fixtures without
 reading user history or calling a provider. It reports model-facing character lengths separately
@@ -58,17 +58,18 @@ pnpm test:combined-model-ui && pnpm test:model-settings-tool-ui
 pnpm test:draft-model-defaults
 pnpm test:pi-executor && pnpm test:native-executor && pnpm test:native-ui && pnpm test:chatgpt-ui
 PATH="$PWD/node_modules/.bin:$PATH" node scripts/build-desktop-agent-cli.mjs
+pnpm --filter @zcode/desktop build:no-runtime-assets
 pnpm test:pi-bundle && pnpm test:native-bundle
 ```
 
-The renderer self-check runner refuses a recorded live review of the same candidate before creating
-a test profile or starting Electron. Quit the review first and run renderer tests serially.
-
+The renderer self-check runner refuses a recorded live review before starting another Electron.
+Quit the review first and run renderer tests serially.
 The usage-hook and provider-draft regressions use the installed Electron renderer with an isolated temporary
 profile and blocked HTTP(S); Linux needs a display or the existing CI display wrapper. It adds no
 production dependency. Run tests appropriate to changed paths; synthetic OAuth/catalog/permission/usage fixtures do not
-prove live login, model access or billing. Build desktop main/host/preload before launching an
-isolated preview; stale development ready markers do not prove a newly built runtime is running.
+prove live login, model access or billing. Build the CLI/dependency outputs before the desktop Host,
+then launch the isolated preview. These builds are dependent; running them concurrently can bundle
+stale adapters. Development ready markers do not prove a newly built runtime is running.
 The observed development host uses Node 26.3.0/pnpm 10.33.2; upstream's pinned release toolchain
 and all target platforms still require packaging verification. Do not change the lockfile to
 match the local machine or silently execute new dependency lifecycle scripts.
@@ -133,8 +134,7 @@ replacement turns, Skill/Agent projection under actual dispatch visibility, and 
 data retention with regenerated derived commands. `test:native-executor` also covers prompt-free
 Claude usage control and scoped cache/reopen; `test:native-ui` uses the desktop stylesheet for
 Chinese/English, light/dark, narrow-card and late-account response cases. Temporary protocol/SQLite
-fixtures are distinct from a live subscription read and from owner visual acceptance. The integrated
-pre-push gate passed 611 tests with zero architecture violations; both staged CLI restart probes
+fixtures are distinct from a live subscription read and owner visual acceptance. The integrated pre-push gate passed 611 tests with zero architecture violations; both staged CLI restart probes
 passed using loopback inference. The built capacity edit refreshed the original row and survived reopen without replay;
 20 renderer cases cover original permissions, numeric/inherit changes, keyboard denial and zh/en light/dark narrow layouts.
 

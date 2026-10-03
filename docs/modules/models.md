@@ -155,7 +155,7 @@ The built desktop visibly toggled between the two native IDs and retained Fast t
 The original ordinary-model preference was restored after self-check; actual paid inference was
 not requested. Owner visual acceptance remains pending.
 
-ChatGPT defaults to patched Pi AI 1.0.1’s public Sign in with ChatGPT flow. One random host UUID is created
+New ChatGPT connections use the scoped native Codex CLI: its official login/refresh owner supplies the public account and model controls. Fleet binds workspace, account label and backend together, publishes the catalog through the existing Provider writer and shares native allowance between Settings and the conversation. This Mac candidate's account/catalog/allowance read was verified; live inference, other platforms and owner acceptance remain separate. Saved public-grant registrations retain patched Pi AI 1.0.1’s Sign in with ChatGPT flow. One random host UUID is created
 under the existing credential lock; Pi owns PKCE/listener/exchange, and Fleet validates RS256/JWKS,
 issuer, issued-client audience, expiry, nonce and returning subject. Reauthorization reuses the
 selected registration; refresh rotates under the same owner/lock. A verified login that declines

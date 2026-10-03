@@ -155,7 +155,13 @@ instructions are in [Engineering](../../docs/engineering.md#zcode-candidate).
 
 | 0113 | [0113-pi-core-loadout-and-release-intake.patch](0113-pi-core-loadout-and-release-intake.patch) | `e3e70df70fc71bf5633e6a99a10633080d3fc81c` |
 
+| 0114 | [0114-native-codex-and-contextual-interaction.patch](0114-native-codex-and-contextual-interaction.patch) | `15d1bc304d945f9602c44018c3673fbc1b890842` |
+
 Tree observations are retained reconstruction evidence, not live-provider, visual or release acceptance.
 The source gate replays every patch and compares the final tree without modifying the working index.
 Patch 0108 is the committed kernel correction. Patch 0109 preserves the current unfinished contextual
 assistance/default/filter and account-diagnostic integration; it does not declare those paths accepted.
+
+Patch 0114 records the scoped native Codex integration, corrected allowance tracks/Claude usage
+and contextual popup interaction. It also preserves remaining catalog/account diagnostics;
+reconstruction and local execution do not declare whole-kernel, media or owner acceptance.

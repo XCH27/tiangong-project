@@ -100,6 +100,14 @@ scheduling transcript keeps compact assistant receipts and exact tool-call ident
 text, reasoning, tool results and usage remain in Host history; the provider receives that original
 projection. This reduces duplicate in-process retention, not provider tokens or billed usage. Claude's official safe mode retains OAuth/keychain authentication while disabling ambient customizations; explicit SDK tool/settings/MCP controls keep built-ins/hooks unavailable. Its MCP callbacks return committed Host receipts only after the next durable admission. Bare mode is not used: the bundled 2.1.286 CLI declares that it skips OAuth and keychain.
 Native receipt release follows both durable Host admission and successful final request assembly.
+Codex's native adapter uses the official stdio app-server handshake and public account/model
+controls. Bind the returned ChatGPT workspace ID and account label together; a label alone is not
+an account fence. The CLI owns login, refresh and continuation. A scoped run exposes exact Host
+dynamic functions, disables ambient plugins/MCP/hooks and native environment access, and refuses
+an unsupported protocol instead of weakening policy. Reverse requests must match thread, turn,
+call and input; committed tool receipts remain held until the next Host admission. Stop closes the
+owned process without returning a recoverable tool error to its live model loop. Durable cache
+pointers and per-response usage remain within the existing continuation and ledger contracts.
 Media resolution, context validation and the final Stop check precede the observation handle's
 `generateText`/`streamText` entry; failed preparation cannot release a tool receipt or another request.
 Both observation modes consume the final projected request, including resolved media.
@@ -214,10 +222,14 @@ remain distinct. Other pages need their own scoped operations before exposing th
 ### Application-wide assistant contract under OV-081
 
 One application-level presentation host supplies the existing compact Session pane. Each visible
-surface contributes a typed page/selection target; ordinary blank-page right-click opens a fresh
-small conversation directly. Existing DOM domain menus and native text/browser menus retain their
-original actions and add the same assistant entry. Keyboard context menus and a direct page action share that entry. Nested selection
+surface contributes a typed page/selection target. Right-click opens the existing context menu;
+choosing its assistant action creates a fresh small conversation beside the captured pointer.
+Existing DOM domain menus and native text/browser menus retain their original actions and add the
+same entry. Shift+F10 and touch long-press use that menu; repeated page-header buttons are retired. Nested selection
 targets override the page fallback; hidden underlying surfaces cannot contribute a target.
+The existing virtual-anchor API owns placement; the inner popover surface owns bounded drag and
+resize, independent of the outer entry animation. New invocations reset geometry; explicit history
+selection retains it. Move/resize controls also support arrow keys and never create or retarget a Session.
 
 An invocation generation fences context loading, creation acknowledgement and presentation. A new
 generation carries a new create command; Strict Mode or transport retry retains that command's

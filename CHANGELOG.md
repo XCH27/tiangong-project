@@ -5,6 +5,18 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Correct contextual assistance to open through the existing right-click menu at the captured
+  pointer, with movable/resizable compact windows and keyboard controls; retire repeated page
+  buttons while preserving target binding, fresh Sessions and explicit history. Add the complete
+  reference-interaction trace to the mandatory source-intake rule.
+- Fix native Claude allowance retrieval: the explicit structured usage control no longer inherits
+  Fleet's blanket traffic opt-out, while separate telemetry/report/feedback/update restrictions
+  remain. Check the CLI account again through a fresh control process before publishing a reading.
+
+- Restore visible full-width quota tracks and ZCode's original window colors/thickness in Settings
+  and the conversation allowance detail; repair the shared Progress's missing background token and
+  accessible value. Preserve account readings, refresh behavior and unknown/unlimited states.
+
 - Synchronize the selected Pi Agent Core and Host Pi AI libraries to 1.0.1, retire the old patch
   reference and unused Coding Agent dependency graph, and preserve scoped OAuth listeners,
   registration/account checks and transport. Correct the handoff reconciliation so its open

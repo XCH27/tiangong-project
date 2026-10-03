@@ -48,6 +48,10 @@ Git/GitHub comparisons. These roles do not import several independent products' 
    or matching field names are insufficient. Follow the [source intake gate](docs/engineering.md#source-intake-before-module-implementation).
    Preserve the working interaction and host primitives. A new domain capability
    may need new code; justify that gap and its consumers instead of inventing unrelated controls.
+   For interaction changes, trace the reference's trigger, pointer anchoring, drag/resize,
+   focus/keyboard/close behavior, context/rule delivery and conversation lifetime before coding.
+   Record the mechanism being reused or adapted; screenshots, similarly named features and
+   per-page substitute controls do not establish an equivalent interaction.
 2. **Keep scope and acceptance fixed.** Later messages steer the active work; they do not erase
    earlier unfinished requirements. A discovered adjacent issue does not silently replace the task.
 3. **One owner per logical entity.** Human UI, Agent tools and automations invoke the same domain

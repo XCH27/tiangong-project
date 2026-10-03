@@ -317,6 +317,8 @@ payments are compatibility data, not a visible cost chart or an inferred invoice
   zero-value quota tracks are forbidden.
 - Counts and shares for one category occupy one row. All numbers use tabular figures and locale
   formatting; percent bars expose their label/value to assistive technology.
+- Candidate allowance meters reuse ZCode's `PlanUsageMetricCard`: 6px rounded bars, a visible
+  `secondary` full-width track and the original `usage-chart` window palette in Settings and the composer.
 - A turn footer may rest at `opacity-0`, but `group-hover`, `group-focus-within` and an explicit
   touch/coarse-pointer reveal path are all required. Hover-only metadata or actions fail review.
   Icon-only copy/revert controls require `aria-label`, tooltip/title and visible focus state.

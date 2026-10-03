@@ -2748,3 +2748,18 @@ Source mechanisms from MiniMax's PiTurnRunner, Craft's AgentSession proxy and Ci
 bounded comparisons. Built-in Coding Agent extension/CLI behavior is not implicitly enabled by
 using Agent Core. Source compatibility and execution verification are admission checks after
 this product/architecture choice, not the criterion used to select it.
+
+### OV-085 — Reference-backed contextual popup interaction (2026-10-03)
+
+> 「而不是像现在一样，在每个页面加一个让Agent帮忙的按钮」
+> 「人家的右键不是直接唤出对话框」
+> 「它唤出的对话框也能根据鼠标点击的位置不同而在原位唤出」
+> 「你唤出的对话框也不能自由拖动啊等等」
+> 「这一项优化优化最好写进规则里」
+
+Right-click retains the menu; its contextual assistant action opens a fresh conversation beside
+the captured pointer/selection. Retire repeated page-header substitute buttons. Reuse Craft's
+complete menu-to-popup, movement, resizing, focus and context-delivery mechanisms while retaining
+ZCode primitives and the existing Session/domain-operation owners. Inspect those mechanisms before
+future interaction changes; AGENTS rule 1 carries this source-intake requirement. This corrects
+the previous direct-open interpretation of OV-081 and does not authorize arbitrary page mutations.

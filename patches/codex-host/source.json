@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/openai/codex.git",
+  "tag": "rust-v0.156.1",
+  "commit": "b412ff32c417f855c2b2d1581b77058eed87c84b",
+  "patch": "0001-scoped-host-tools-and-receipts.patch",
+  "patchSha256": "f8a27128f173f1d642e6cb77a89f3cb52adfe76bfdd46b4816db5c921207c94b",
+  "tree": "8394abdf66de6c14698f2da727c14dbee68567ef",
+  "license": "Apache-2.0"
+}
