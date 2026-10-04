@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Correct Model Studio, BigModel and native Codex brand projection; restore admitted OpenRouter
+  theme colors and shared asset-load fallback. OAuth surfaces use the same renderer and original slots.
+
 - Correct Together native array/classes, Kimi catalogue auth/media facts and SiliconFlow full/class
   membership plus declared native thinking/output fields; retain sparse Cerebras metadata without
   adding an unproved public-enrichment request.

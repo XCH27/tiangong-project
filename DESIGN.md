@@ -265,8 +265,8 @@ keyboard behavior:
   labelled result/action so Enter never ambiguously saves the surrounding form.
 - Provider icons come from one admitted icon projection. A missing brand uses the shared generic
   model/provider icon; it never introduces a one-off glyph or hand-drawn SVG.
-  In the ZCode candidate, `ProviderLogo` maps existing asset keys to pinned Lobe Icons
-  static SVGs, bundled locally. Preserve each caller's icon slot and semantic foreground;
+  In the ZCode candidate, `ProviderLogo` maps asset keys to pinned Lobe Icons static SVGs
+  and admitted official theme variants, bundled locally. Preserve each caller's icon slot and semantic foreground;
   brand color variants may retain their supplied fills. Action icons remain Lucide.
 
 ### Candidate component-library boundary

@@ -1,0 +1,180 @@
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 53e3510..13d7ed8 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -1339,7 +1339,7 @@
+             "builtinModelIds": [],
+             "logo": {
+               "type": "builtin",
+-              "key": "openai"
++              "key": "codex"
+             }
+           },
+           "catalog": {
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json b/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
+index 0fadf17..4799930 100644
+--- a/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
++++ b/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
+@@ -120,5 +120,31 @@
+       "sourceOwner": "xAI",
+       "normalization": "Official GitHub organization avatar downsampled from 460x460 to 80x80 RGB."
+     }
+-  ]
++  ],
++  "scope": "Retained source-asset provenance. Runtime rendering is owned by ProviderLogo.tsx; entries below are not a second lookup table.",
++  "currentCorrections": {
++    "reference": "https://uiedsvg.com/components/comet-api",
++    "sharedPackage": {
++      "name": "@lobehub/icons-static-svg",
++      "version": "1.95.1",
++      "license": "MIT"
++    },
++    "bailian": {
++      "asset": "@lobehub/icons-static-svg/icons/bailian-color.svg",
++      "evidence": "UIEDSVG Bailian component/shared SVG paths and https://bailian.console.aliyun.com/"
++    },
++    "bigmodel": {
++      "asset": "@lobehub/icons-static-svg/icons/zai.svg",
++      "evidence": "https://bigmodel.cn/static/images/favicon.png and official app asset https://static.bigmodel.cn/wd-paas-front/img/z-pure-logo.b65701e5.svg show the current Z mark; OAuth surfaces share the same renderer."
++    },
++    "codex": {
++      "asset": "@lobehub/icons-static-svg/icons/codex.svg",
++      "evidence": "Codex native-client template plus installed com.openai.codex official app icon; generic OpenAI/ChatGPT keys remain."
++    },
++    "openrouter": {
++      "asset": "model-provider-openrouter-light.svg",
++      "darkAsset": "model-provider-openrouter-dark.svg",
++      "evidence": "Existing admitted official assets; https://openrouter.ai/brand requires supplied theme variants without recoloring."
++    }
++  }
+ }
+diff --git a/packages/ui/src/lib/oauthProviderIcon.tsx b/packages/ui/src/lib/oauthProviderIcon.tsx
+index 61d9c0d..3a22932 100644
+--- a/packages/ui/src/lib/oauthProviderIcon.tsx
++++ b/packages/ui/src/lib/oauthProviderIcon.tsx
+@@ -2,21 +2,20 @@ import type { OAuthProviderId } from "@zcode/shared";
+ import { BIGMODEL_PROVIDER_ID, ZAI_PROVIDER_ID } from "@zcode/shared";
+ import { LogInIcon } from "lucide-react";
+ import { cn } from "@/components/lib/utils.js";
+-import bigModelIcon from "@/assets/provider-icons/logo-bigmodel.svg";
+-import zaiIcon from "@/assets/provider-icons/logo-zai.svg";
++import { ProviderLogo } from "@/settings/model-provider-section/ProviderLogo.js";
+ 
+-const OAUTH_PROVIDER_ICON_SRC: Partial<Record<OAuthProviderId, string>> = {
+-  [BIGMODEL_PROVIDER_ID]: bigModelIcon,
+-  [ZAI_PROVIDER_ID]: zaiIcon,
++const OAUTH_PROVIDER_LOGO_KEY: Partial<Record<OAuthProviderId, string>> = {
++  [BIGMODEL_PROVIDER_ID]: "bigmodel",
++  [ZAI_PROVIDER_ID]: "zai",
+ };
+ 
+ export function renderOAuthProviderIcon(provider: OAuthProviderId, className?: string) {
+-  const src = OAUTH_PROVIDER_ICON_SRC[provider];
+-  if (!src) {
++  const key = OAUTH_PROVIDER_LOGO_KEY[provider];
++  if (!key) {
+     return <LogInIcon className={cn("shrink-0", className)} />;
+   }
+ 
+   return (
+-    <img src={src} alt="" aria-hidden="true" className={cn("shrink-0 object-contain", className)} />
++    <ProviderLogo logo={{ type: "builtin", key }} className={className} />
+   );
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index a896681..aad943c 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -1,20 +1,24 @@
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import { PackageIcon } from "lucide-react";
++import { useState } from "react";
+ import { cn } from "@/components/lib/utils.js";
++import { useZCodeStoreWithDefault } from "@/store/StoreProvider.js";
++import { resolveTheme } from "@/useTheme.js";
+ import startPlanLogo from "@/assets/provider-icons/model-provider-start-plan.png";
++import openrouterLight from "@/assets/provider-icons/model-provider-openrouter-light.svg";
++import openrouterDark from "@/assets/provider-icons/model-provider-openrouter-dark.svg";
+ import Zai from "@lobehub/icons-static-svg/icons/zai.svg";
+-import Zhipu from "@lobehub/icons-static-svg/icons/zhipu-color.svg";
+ import Kimi from "@lobehub/icons-static-svg/icons/kimi.svg";
+ import Minimax from "@lobehub/icons-static-svg/icons/minimax-color.svg";
+ import DeepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
+-import AlibabaCloud from "@lobehub/icons-static-svg/icons/alibabacloud-color.svg";
++import Bailian from "@lobehub/icons-static-svg/icons/bailian-color.svg";
+ import XiaomiMiMo from "@lobehub/icons-static-svg/icons/xiaomimimo.svg";
+ import OpenAI from "@lobehub/icons-static-svg/icons/openai.svg";
++import Codex from "@lobehub/icons-static-svg/icons/codex.svg";
+ import Anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg";
+ import Claude from "@lobehub/icons-static-svg/icons/claude-color.svg";
+ import XAI from "@lobehub/icons-static-svg/icons/xai.svg";
+ import Grok from "@lobehub/icons-static-svg/icons/grok.svg";
+-import OpenRouter from "@lobehub/icons-static-svg/icons/openrouter.svg";
+ import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg";
+ import GithubCopilot from "@lobehub/icons-static-svg/icons/githubcopilot.svg";
+ import Groq from "@lobehub/icons-static-svg/icons/groq.svg";
+@@ -30,20 +34,21 @@ type ProviderLogoRef = NonNullable<ProviderConfigObject["logo"]>;
+ 
+ // Resolve only existing config asset keys. Provider owns identity and authentication.
+ // Official Lobe Icons static assets preserve host tokens without another UI runtime or CDN.
+-const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; color: boolean }>> = {
++const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: string; color: boolean }>> = {
+   zai: { src: Zai, color: false },
+-  bigmodel: { src: Zhipu, color: true },
++  bigmodel: { src: Zai, color: false },
+   "moonshot-kimi": { src: Kimi, color: false },
+   minimax: { src: Minimax, color: true },
+   deepseek: { src: DeepSeek, color: true },
+-  "alibaba-model-studio": { src: AlibabaCloud, color: true },
++  "alibaba-model-studio": { src: Bailian, color: true },
+   "xiaomi-mimo": { src: XiaomiMiMo, color: false },
+   openai: { src: OpenAI, color: false },
++  codex: { src: Codex, color: false },
+   anthropic: { src: Anthropic, color: false },
+   claude: { src: Claude, color: true },
+   xai: { src: XAI, color: false },
+   grok: { src: Grok, color: false },
+-  openrouter: { src: OpenRouter, color: false },
++  openrouter: { src: openrouterLight, dark: openrouterDark, color: true },
+   opencode: { src: OpenCode, color: false },
+   github: { src: GithubCopilot, color: false },
+   groq: { src: Groq, color: false },
+@@ -64,15 +69,20 @@ export function ProviderLogo({
+   logo?: ProviderLogoRef | null;
+   className?: string;
+ }) {
++  const theme = useZCodeStoreWithDefault((state) => state.theme, "zai-dark");
++  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+   const asset = logo?.type === "builtin" ? BUILTIN_PROVIDER_ICONS[logo.key] : undefined;
+-  if (!asset) return <PackageIcon className={cn("shrink-0", className)} aria-hidden="true" />;
++  const src = asset && resolveTheme(theme) === "dark" ? asset.dark ?? asset.src : asset?.src;
++  if (!asset || !src || failedSrc === src)
++    return <PackageIcon className={cn("shrink-0", className)} aria-hidden="true" />;
+   if (asset.color) {
+     return (
+       <img
+-        src={asset.src}
++        src={src}
+         alt=""
+         aria-hidden="true"
+         className={cn("shrink-0 object-contain", className)}
++        onError={() => setFailedSrc(src)}
+       />
+     );
+   }
+@@ -82,11 +92,13 @@ export function ProviderLogo({
+       aria-hidden="true"
+       className={cn("inline-block shrink-0 bg-current", className)}
+       style={{
+-        maskImage: `url("${asset.src}")`,
++        maskImage: `url("${src}")`,
+         maskSize: "contain",
+         maskRepeat: "no-repeat",
+         maskPosition: "center",
+       }}
+-    />
++    >
++      <img src={src} alt="" className="hidden" onError={() => setFailedSrc(src)} />
++    </span>
+   );
+ }

@@ -188,3 +188,4 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0125 | [0125-api-completion-and-continuation-integrity.patch](0125-api-completion-and-continuation-integrity.patch) | `794c4fd646c04e40877f4140841c4d8951ffda6b` |
 | 0126 | [0126-platform-api-catalog-contracts.patch](0126-platform-api-catalog-contracts.patch) | `1dcfb59b8848d5cbfc795dfeac7a4e599297dd35` |
 | 0127 | [0127-native-api-catalog-and-thinking-contracts.patch](0127-native-api-catalog-and-thinking-contracts.patch) | `3d8231773a401646d893b801312e82e026a857e2` |
+| 0128 | [0128-provider-brand-svg-corrections.patch](0128-provider-brand-svg-corrections.patch) | `19f591d07afd9b33ff6568ef67f4083136b9fc88` |
