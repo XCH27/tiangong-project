@@ -11,6 +11,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Remove the repeated Subagents link and restore ZCode settings card/select styling. Separate
+  recent, fixed and automatic new-conversation policies while retaining scoped Project history.
+  Add the opt-in classifier purpose and deferred Decide operation through existing Provider,
+  confirmation, admission, artifact and usage owners; preserve billed failures and fence replay.
+  Local source/renderer/HTTP/SQLite proof remains distinct from hosted inference and owner acceptance.
+
 - Inspect current Craft/Pi and relevant decision/quantitative sources on separate immutable copies;
   select the existing Pi classifier path and record its required Host/consumer boundaries. Harden
   the installed System One response parser while preserving billed failure usage and legacy calls.

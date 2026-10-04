@@ -58,7 +58,10 @@ probability mass and out-of-rubric scores while retaining reported billed usage.
 distributions and own prototype-like labels remain supported. The same guard covers Cloudflare's
 completed-run envelope. Actual loopback HTTP proves bool/noul request mapping and abort without
 retry; no hosted model inference, price/accuracy benchmark, local weights or user-data request ran.
-These close decoder/transport checks, not Host/classifier UI or quantitative-suite delivery.
+The subsequent Host slice reuses those checks: `test:decision-host` exercises permission, admission,
+actual SQLite/artifact receipts, replay fencing and bounded real Node HTTP with authored responses.
+Renderer checks exercise opt-in classifier choices and defaults. No weights, paid hosted inference
+or quantitative-suite quality is established; automatic consumers remain unfinished.
 The [typed-decision contract](modules/model-decisions.md) owns selected integration and acceptance.
 
 ## Composer defaults and selector comparison
@@ -88,6 +91,22 @@ Cindy's `ChatInput.tsx` distinguishes explicit model choices (`markModelChoice`)
 preference changes and scopes remote-device writes. OpenChamber's `useConfigStore.ts` resolves
 project defaults before profile/agent/server defaults and keeps a project's variant paired with
 its model. Those are reference mechanisms, not dependencies or new Fleet preference authorities.
+The primary rechecked current refs for this correction: Craft HEAD/tag remains `73bd9c2a3573`;
+OpenCode tip is `907b3bc518fa` and Cindy tip `d2e3da04f295`. Separate immutable tip copies under
+`software/intake/` preserve all pins. OpenCode `packages/app/src/context/local.tsx:152,158,164,180`
+keeps configured → valid recent → provider/first-model fallback; that component is unchanged from
+v1.18.34. Current Cindy `apps/mobile/src/session/newSession.ts:431,668,729` binds model/provider/
+effort and device/Agent scope together, waits for a fresh catalog before source fallback, and its
+new `modelReselection.ts` preserves a hidden saved choice for explicit replacement. Fleet reuses
+its existing scoped recent/CAS mechanisms and retains established new-draft fallback; it never
+repairs an admitted/historical selection silently. Original ZCode `newTaskDraft.ts:12` and
+`composerRecent.ts:54,84` establish scoped accepted-submission memory; original `SettingsPageParts`
+and `selectTriggerVariants` supply the reused card and form-input rules. No reference UI code or
+second data owner is imported. OV-088 removes the duplicate Subagents link and distinguishes
+recent/fixed/automatic behavior. Settings also opts out of the composer focus selector on close,
+using the same Radix return-to-trigger branch as the original non-chat selectors. Page inheritance
+is labelled automatic available-model selection; it does not claim to read a Renderer recent record.
+The test boundary is the rebuilt Host, not a copied label.
 The [Models contract](modules/models.md#new-conversation-model-defaults) owns the selected behavior
 and actual local regressions; no Cursor/Codex proprietary code was imported.
 

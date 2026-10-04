@@ -2792,3 +2792,18 @@ validation/admission and optional feature policy; no new execution framework is 
 Subagents remains the owner of named worker defaults. The quantitative capability stays an optional
 suite: semantic screening can support research but supplies neither market-return probabilities nor
 order authority. Source/fixture proof does not establish prediction quality or full feature delivery.
+
+
+### OV-088 — Original settings and explicit default policies (2026-10-03)
+
+> 「你的新页面又不符合软件的原版设计风格和交互逻辑」
+> 「又他妈的制造了一个子智能体的重复入口」
+> 「一种是沿用之前的新建对话的模型，一种是固定一个默认的对话模型」
+> 「你应该仔细去看看原版项目和各种参考项目，它们相关设计是怎么制作的」
+
+Keep scoped defaults in the existing model-settings host with ZCode settings controls. Remove the
+repeated Subagents link; the original Subagents page remains its sole settings entry. Distinguish
+recent, fixed and automatic ordinary defaults using the Personal writer; reuse the existing scoped
+recent owner. Projects retain their own recent preference. Existing drafts and admitted/historical
+Sessions are not rewritten by a default change. This corrects the ambiguous automatic label and
+repeat entry; it adds no second preference, Session, credential or child-agent authority.

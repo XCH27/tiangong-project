@@ -30,9 +30,12 @@ Backend availability, calibration and per-platform latency still need their own 
 | Child agents | Existing Subagents settings and runtime | Reuse named roles instead of duplicating their configuration |
 | Quantitative prediction | Domain model/features/dataset and backtest run | Not an ordinal score or sentiment probability |
 
-The classifier transport's response guard is implemented in the existing Pi AI patch. The Host
-classifier purpose, operation, Settings control and plugin entry still need implementation; library
-availability and loopback tests do not establish those capabilities. Do not expose inert switches.
+The first Host consumer is the explicitly requested, deferred `Decide` tool. Settings is opt-in and
+uses existing Personal/Provider persistence, catalogs and keys. Native System One and published
+compatible gateway classifiers stay separate from chat; a declared dual-operation model retains
+both lanes. TypeSafe and local Laya presets add no running service or dependency. Laya has no
+OpenAI model-directory endpoint; its preset catalog is not a verified server/model entitlement.
+Automatic routing, phase handoff and the quantitative plugin remain separate unfinished consumers.
 
 ## Request and receipt contract
 
@@ -43,7 +46,8 @@ availability and loopback tests do not establish those capabilities. Do not expo
    under more than one operation type. Do not materialize a classifier as a chat model with invented
    reasoning levels, text generation, tool support or context capacity.
 3. Bind provider/account, catalog/settings revisions, requested model, question-schema version,
-   input/evidence version, Session/operation and cancellation scope before dispatch. Resolve the
+   input/evidence version, Session/operation and cancellation scope before dispatch. Unrelated
+   page/ordinary-default edits do not invalidate the bound classifier route. Resolve the
    credential through the existing Provider owner and revalidate before every batch item starts.
    A one-second credential/settings cache is not a revocation boundary.
 4. Project only the evidence needed for these questions. Never forward a complete conversation,
@@ -156,8 +160,16 @@ bool/noul mapping, Cloudflare's envelope and actual loopback HTTP cancellation w
 They use authored outputs and synthetic credentials, with no model weights or hosted inference.
 The main Pi/Provider regressions and staged CLI/desktop build check that existing execution remains.
 
-Production delivery still requires real Host admission/receipt/reopen and account/revision/Stop
-races, explicit enablement/Settings operations, supported-platform local service checks and a
-measured Chinese/English/domain evaluation. Judge total cost/latency and accepted task quality,
+Host integration is in `adapters/src/model/decision-model.ts`, `core/tool/handlers/decide.ts` and
+bootstrap assembly. `test:decision-host` checks existing confirmation, real SQLite/artifact intent
+and restart, no duplicate submission, billed save failure and opt-in tool visibility. Loopback
+requests through the real Node HTTP adapter check binding changes, admission/Stop, malformed and
+truncated responses, raw served-model/cost facts and zero retries with synthetic credentials.
+Inputs are bounded to 8 KiB/16 questions. Bindings expire in five minutes; the total HTTP/admission
+budget is ten seconds. No classifier schema reaches the main model until optional tool discovery.
+A durable unknown intent fences replay; it never automatically resubmits uncertain inference.
+Renderer/default-policy fixtures check CAS, withdrawal, old service receipts, languages/themes and
+narrow forms. Paid providers, loaded local weights, other platforms and Chinese/domain quality
+still need their own proof. Judge total cost/latency and accepted task quality,
 false negatives and abstention against the unchanged baseline; a shorter prompt or a 250ms vendor
 claim does not close that acceptance.

@@ -169,3 +169,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0115 | [0115-contextual-menus-and-purpose-defaults.patch](0115-contextual-menus-and-purpose-defaults.patch) | `3ecd147570b61e48427676630fce0ccd8b1b1188` |
 
 | 0116 | [0116-typed-decision-validation-and-intake.patch](0116-typed-decision-validation-and-intake.patch) | `fff60fbbc55594798d97d394dc64523b8ce4bf01` |
+
+| 0117 | [0117-governed-decisions-and-default-policies.patch](0117-governed-decisions-and-default-policies.patch) | `a9cdb14f47a7f728615c910f8ed650b8832ad357` |

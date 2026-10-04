@@ -13,7 +13,7 @@ this contract does not create a credential or model authority.
 
 | ID | Capability | Status | Release / acceptance | Surfaces |
 |---|---|---|---|---|
-| INTEL-03 | Model routing and capability negotiation | Craft thinking mapping and isolated ZCode endpoint/credential binding wired but not visually checked; full routing/classifier operations not implemented | R17 / INTEL-03-A | P-30 |
+| INTEL-03 | Model routing and capability negotiation | Craft thinking mapping and isolated ZCode endpoint/credential binding wired but not visually checked; optional Host classifier wired but not visually checked; full automatic routing not implemented | R17 / INTEL-03-A | P-30 |
 <!-- /module-card -->
 
 ## Source entry points
@@ -72,18 +72,18 @@ introduced by this comparison.
 ### Default resolution and remembered options
 
 Defaults use the existing Host model-preference owner and scoped composer preference; no new page,
-configuration service or Session store. Under OV-081, an explicit ordinary-chat default precedes
-ordinary recent choice; a Project/remote identity retains its own recent choice before that default.
-A page assistant uses its separate configured default, then the Host default/first executable model,
-and never writes ordinary/Project recent choices. Explicit drafts and existing Sessions always win.
-Unavailable preferences remain saved; only new initialization may select a legal fallback. Purpose
-defaults and their version now live in Model Settings → Default models, through the Personal writer.
-The primary inspected the built desktop's actual save/clear, vision-only list and Subagents navigation;
-menu relocation, contextual edit and compact-helper input/drag/resize were also checked. No inference
-was sent. Renderer fixtures cover both languages/themes and narrow forms; owner acceptance remains.
-Conditional writes validate model/options, confirmed vision capability and preference revision inside the original transaction.
-New-conversation, page-assistant and image-bridge defaults share this form. Subagent models link to
-the existing Subagents page; no duplicated child-agent settings or display-only planning controls.
+configuration service or Session store. New ordinary conversations can follow the last choice,
+use a fixed model or automatically select an executable model. `newConversationModelPolicy` lives
+in the existing versioned Personal owner; scoped recent choices retain the original composer owner.
+Projects prefer their own recent choice, then this policy. Existing drafts/Sessions remain explicit.
+A page assistant uses its own default, then an available Host default. Its edits never write ordinary
+or Project recents. Unavailable preferences stay saved; only new initialization may use a fallback.
+Model Settings → Default models uses the original `SettingsGroupCard` and input-select values.
+Child models stay solely in the existing Subagents page; the repeated link has been removed.
+Conversation/page/vision choices and the off-by-default classifier share the same original writer.
+Conditional writes validate model/options, confirmed vision capability and preference revision
+inside the original transaction. The primary must inspect the built change before owner review;
+source, renderer and local transport checks do not establish live inference or owner acceptance.
 Picker changes are remembered immediately within their own purpose; late receipts cannot undo newer
 choices. Unsupported Fast/context are normalized without rewriting admitted/historical bindings.
 A new composer initialized before account/catalog readiness can acquire its missing default when
@@ -221,8 +221,8 @@ mounted by model settings. The original unmounted footer plan-summary island is 
 conversation allowance, Model Settings account details and the existing Usage entry remain mounted,
 with no extra footer reader. Its unreferenced personal purchase-preview hook is removed; the
 enterprise pricing reader remains for active Team source/identity projections, with 403 denial
-distinct from explicit OAuth expiry. OV-045 retires the added Default models page and favorite
-picker group; model enablement and the existing conversation picker own selection. Legacy preference
+distinct from explicit OAuth expiry. OV-045 retired the then-added default/favorite surfaces;
+OV-086/088 now locate scoped defaults in Model Settings without restoring favorites or child entries. Legacy preference
 data stays compatible. Valid provider defaults are applied when selecting a model; otherwise
 automatic mode omits the effort parameter instead of guessing the highest level. The composer keeps
 effort and Fast as independent request fields, while OV-074 combines their visible entry with the
