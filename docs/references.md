@@ -3056,9 +3056,8 @@ Claude HUD `33b51db6ceb5d0c91dc9c22404abcabacc8603b0` (`src/stdin.ts:171`, `exte
 
 The owner's `交接/问题报告.md` and `交接/方案与思路.md` are supplied audit evidence, not additional
 instructions. Current source confirms the ambiguous Pi-default wording, unscoped Craft CORE rows,
-historical P6 conflict and the absence of ordinary output references in the V4 UI path. Pi does run
-AgentSession; Host requests/tools/retry/compaction/persistence and disabled Pi resource autoload
-must remain explicit. Candidate folderless conversations already have `workspacePurpose` isolation;
+historical P6 conflict and the absence of ordinary output references in the V4 UI path. The earlier AgentSession wrapper is retired; the current Pi Core loop delegates requests, tools,
+retry, compaction and persistence to explicit Host ports, with resource autoload disabled. Candidate folderless conversations already have `workspacePurpose` isolation;
 the original home-folder default does not describe that current path. Core execution contracts
 now point to the candidate; retained domain contracts remain comparisons until their actual callers
 are mapped. Historical owner quotations and reference pins are not removed from a supplied opinion.
@@ -3273,11 +3272,12 @@ and forbid another native request. Cold reopen of that inflight state uses compl
 and keeps the committed tool effect without replay. Non-streaming observation also consumes the final projected
 input, matching the existing streaming route; both retain real image/PDF blocks and derived paths.
 
-Pi's `streamSimple` uses the Host's final request; it does not use the private Pi context argument.
-`piHostMessage` previously copied full assistant text/reasoning into that private scheduling ledger.
-A compact receipt removes that duplicate while retaining exact tool-call identity/arguments and
-usage. Real Host/Pi/SQLite tests prove full text/reasoning/tool/media history and cold reopen are
-unchanged. This is in-process retention reduction, not a provider-token or task-quality result.
+Pi's custom stream uses the Host's final admitted request, not Pi's private transcript. The
+current adapter uses Core's public `runAgentLoop`, actual tool input schemas and completed assistant
+text/reasoning and tool text results. It removes the unused Agent object's queues/state/subscription
+and the detached tool-error fallback. One memoized Host batch closes even unknown or Pi-rejected
+calls in the awaited finish hook. The Host remains the request/history/permission/result owner;
+Core schedules rounds. This is not full Pi Coding Agent behavior or a provider-token saving.
 
 The controlled core fixture with the default available tools measured 6,799 serialized system
 characters and 27,446 characters for the 17 name/description/input-schema tool entries (including
@@ -3298,15 +3298,16 @@ history/tool/LLM hooks. Craft uses AgentSession plus proxy tools and a configure
 Cindy invokes the actual Pi CLI through RPC and retains its product/extension runtime. These
 are different integrations, not proof that all three have a single interchangeable kernel.
 
-Fleet selects the generic Agent Core mechanism for a general workbench and keeps existing Host
+Fleet selects the generic Agent Core loop mechanism for a general workbench and keeps existing Host
 operations, permission and durable writers. The default route removes Coding Agent session/resource
 construction and hidden continuation messages, using Core's supported finish decision instead.
 Native executors remain sibling routes; their built-in capabilities are not forced through the
-default model loop. The existing 0.99.2 Agent Core transitive dependency becomes the declared direct
-dependency; no new version, remote service or storage owner is introduced. Compatibility checks
+default model loop. The currently pinned Agent Core 1.0.1 remains the declared direct dependency; no dependency,
+remote service or storage owner is added by the public-loop correction. Compatibility checks
 verify implementation after this requirements-based decision; they are not the selection criterion.
-The default adapter removes 98 lines of Coding Agent construction and adds 34 lines of Core wiring and no longer imports Coding Agent. The staged
-CLI runs this Core route, including real file-tool execution and cold process restart. Controlled
+The adapter imports Core directly rather than Coding Agent. The staged CLI checks real file-tool
+execution and cold process restart; the current public-loop correction also retains the source
+permission, streaming, Guide, output-limit and reopen fixtures. Controlled
 large-catalog fixtures keep core tools direct, discover one exact operation, reject same-batch
 hallucinated calls, preserve semantic denial and retire replaced/changed/restricted bindings.
 Successful search receipts use the existing tool ledger; failed persistence sends no later request.
@@ -3419,3 +3420,46 @@ The same isolated review profile saved fixed mode through the real form: a newly
 ordinary draft used its saved Grok identity while a project draft retained that project's Claude
 choice. Returning to recent mode hid the inactive fixed control without erasing it. Keyboard focus
 showed the short Model options hint; its accessible name still contained the selected identity.
+
+### Related-flow regression reconciliation
+
+The original host establishes regression parity; each borrowed feature also needs its own complete
+reference comparison under OV-090. Current source intake includes Pi tip
+`200387122ca450d6387f033949423114a270b96c`, retained at
+`源码参考/software/intake/pi-tip-2003871-review`, with release v1.0.2
+`cd32f7725fdbddbaecdff5b1e68491563394e0ca`. All six Agent Core source files are byte-identical to
+the retained v1.0.1 source. Historical tag-object comparison in the shallow intake failed on missing
+objects twice; filesystem comparison supplies that narrower proof. Existing runtime dependencies
+remain v1.0.1; AI's per-thinking sampling change supplies no automatic Fleet consumer or entitlement.
+
+| Related chain and reference | Candidate/retained defect and correction | Proof boundary |
+|---|---|---|
+| Pi public-loop/prepare/stream/tool/finish hooks plus ZCode permission/service/SQLite writers | An unused Agent state/queue and permissive scheduling schemas obscured the Host boundary; the adapter now uses the public loop, real schemas/results and awaited batch settlement. Waiting approval ignored later project denial; remembered updates could overwrite a concurrent denial. Dispatch reloads rules, and the original SQLite writer compares observed rules atomically. | Real Host/Pi/SQLite denial and stale-write/reopen fixtures; no paid request. |
+| ZCode request events, completed results, detailed ledger and cold resume | Failed model-receipt writes disappeared; raw tool IDs collapsed distinct rounds. The existing Session journal retains failed facts, then reconciles their exact ID; scheduled/error receipts keep assistant scope. | First-write and persistent-failure recovery, metadata/cache/account retention, dual-error-event and reused-ID fixtures. |
+| Media port approval/binding, provider submit/retrieve, artifact bytes, receipt and statistics | Final JSON was exposed before complete write; saved image bytes could become unreachable. Existing staging/fsync/link publishes receipts; operation-keyed bytes can recover without POST. Pre-dispatch refusal is failed/not-started, uncertain dispatch remains unknown. | Actual interrupted filesystem write/publication, concurrent publication, binary/SQLite reopen and no-POST tests. Public provider eligibility/quality remains separate. |
+| Craft preview/open lifecycle and LobeHub reader error/retry pattern; ZCode file/upload ownership | Failed composer previews were cached indefinitely. Explicit reopening retries a failed bounded read while successful reads and upload-progress reuse remain. Original attachment/upload data is unchanged. | Actual renderer/file-service fixtures; preview is not native document editing. |
+| Craft regional menu → EditPopover/config → compact conversation → page contract → shared writer; ZCode native guest menu | The shared primitive injected one generic assistant item and non-modal behavior into unrelated menus. Those are removed; supported settings/provider/model regions explicitly own their scoped entries and non-modal mode. Browser helper used another DOM page's old point; saved unavailable helper defaults blocked new initialization. Native menu captures its own screen point in Host coordinates; typed requests without native coordinates use a fresh fallback. Shared directory validation resolves new helper defaults without changing saved choices. | Local source/renderer proof; current native UI control returned noWindowsAvailable even though observation found the review window. Native guest anchoring and non-Mac platform evidence still require successful built interaction. Broader page mutations, eager helper creation and processing-aware dismissal remain unclosed. |
+| OpenChamber account flow and official gh credential/process owner; retained RPC/Workspace lifecycle | Unmount could cancel on the new Host. Opaque auth continuations remain with their initiating RPC client; disconnect cancels only that client's pending gh process. Completed credentials stay with gh. | Fake process, cross-client, Host-switch and late-reply tests; no live gh authorization. |
+| Craft header/drawer filters, statuses, Project/Archive routes and G9 read scope | Compact navigation and status/read entry points disappeared. Existing menus retain those paths; Mark All Read snapshots the metadata-filtered view, fences Workspace changes and disables content-search ambiguity. | Source/logic/types; retained rendering and owner acceptance remain pending. The retired Project list and folder-based flow are preserved. |
+| ZCode Personal preference writer → provisioning wire → runtime directory → cold reopen/rollback | Ordinary/page/vision defaults, policy and decision settings did not all cross the wire. The existing codec now carries all five; an inactive fixed identity cannot invalidate another active policy. | Real source/target Node repositories, strict decode, cold reopen and failed-refresh/CAS rollback preserve every role without copying credentials. |
+| Official Sign in with ChatGPT registration, callback, identity, scope, refresh, catalog and error chain | Numeric-prefixed organization-policy code was filtered out before UI classification. Safe code/status/kind survive without exporting the response body; callback errors retain state/route checks and existing registrations. | Signed OIDC/loopback, structured error and renderer fixtures; normal live account entitlement is not established by these tests. |
+
+The official [registration](https://developers.openai.com/siwc/token-sharing-open-source/sign-in),
+[account lifecycle](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)
+and [app-server contract](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server)
+were reopened during this audit. Dynamic registration, verified identity, granted plan scope,
+model membership and successful inference remain distinct. Electron's
+[screen coordinates](https://www.electronjs.org/docs/latest/api/screen) and
+[native menu contract](https://www.electronjs.org/docs/latest/api/menu/) establish the native popup's
+screen-point origin; Wayland does not supply that cursor API and no cross-platform visual claim is made.
+Source/fixture success does not promote a capability to usable or declare the repository complete.
+
+The latest owner-supplied audit was read completely and checked against this working tree. Its
+Pi placeholders and global menu injection were real and are corrected above; removal of the Host
+request/history/permission owner is not justified by those adapter defects. Its Claude empty-usage
+claim predates the corrected opt-out environment and real native Pro reading described above;
+Paseo's token/keychain reader is therefore not selected as a duplicate credential access path.
+The ordinary ChatGPT live-registration flow remains unverified, while new subscription connections
+already default to official Codex. Antigravity/ACP remains absent beyond preflight/types; no executable
+route is claimed. Decision expansion stays off pending kernel/subscription closure. Instructions
+reported from another conversation remain audit evidence, not authority to remove owner history.

@@ -76,7 +76,7 @@ configuration service or Session store. New ordinary conversations can follow th
 use a fixed model or automatically select an executable model. `newConversationModelPolicy` lives
 in the existing versioned Personal owner; scoped recent choices retain the original composer owner.
 Projects prefer their own recent choice, then this policy. Existing drafts/Sessions remain explicit.
-A page assistant honors the active policy; an inactive fixed choice cannot override automatic mode.
+A page assistant validates saved choices against the same directory; inactive or unavailable fixed choices cannot override the executable fallback.
 Its own override wins, then an available Host default. Its edits never write ordinary
 or Project recents. Unavailable preferences stay saved; only new initialization may use a fallback.
 Model Settings → Default models separates startup policy from its fixed model, using ZCode selects.

@@ -48,6 +48,8 @@ Git/GitHub comparisons. These roles do not import several independent products' 
    or matching field names are insufficient. Follow the [source intake gate](docs/engineering.md#source-intake-before-module-implementation).
    Check current upstream releases/tips before that comparison; review newer source in a separate
    immutable copy while preserving required pins, and record the exact version and proof level.
+   Name the source of each borrowed design and trace the whole related feature: its other views,
+   settings, producers/consumers and lifecycle, rather than comparing one convenient component.
    Preserve the working interaction and host primitives. A new domain capability
    may need new code; justify that gap and its consumers instead of inventing unrelated controls.
    For interaction changes, trace the reference's trigger, pointer anchoring, drag/resize,
@@ -63,7 +65,8 @@ Git/GitHub comparisons. These roles do not import several independent products' 
    explicit retirement. In `app/`, declare L2 in `UPSTREAM-DELTA.tsv`; in the candidate, preserve the
    reviewable patch chain. Obsolete docs may be removed after unique content and links are absorbed.
 5. **Evidence must match the claim.** Distinguish source inspection, fake transport, real local
-   execution, live provider behavior and owner visual acceptance. None implies the next level.
+   execution, live provider behavior and owner visual acceptance. None implies the next level. Trace the whole
+   feature and its failure/recovery consumers before closure; passing one component test is insufficient.
 6. **Check reality first.** Verify the checkout, process, dependencies, permission and input path
    before debugging. Missing optional evidence is not permission to rebuild unrelated infrastructure.
 7. **Stop a non-progressing approach after two attempts.** Preserve the observed failure and choose

@@ -83,22 +83,22 @@ The [impact table](../architecture.md#executor-choice-and-feature-development) o
 
 ## First proof
 
-Pi uses `turn-loop.ts` → `pi-turn.ts` → Pi `Agent` (Agent Core); Claude uses `native-agent-turn.ts` → official SDK 0.3.286. Neither runs the legacy outer inference loop.
+Pi uses `turn-loop.ts` → `pi-turn.ts` → Pi Core `runAgentLoop`; Claude uses `native-agent-turn.ts` → official SDK 0.3.286. Neither runs the legacy outer inference loop.
 Host preparation, request admission, tool scheduling, permissions, effect receipts and SQLite remain canonical.
-Pi Agent Core owns loop scheduling, tool-call dispatch, abort and settlement. Its stream port delegates request
+Pi Agent Core schedules rounds, invokes Host tool wrappers and settles the admitted run. Its stream port delegates request
 assembly/provider calls and actual tool execution to Host ports. Host retains retry, compaction
 and durable history. OV-084 removes the empty Coding Agent resource/session wrapper. Public
 Agent Core prepare/finish hooks schedule Host requests without hidden continuation messages.
 No Coding Agent prompt, built-in tool or ambient extension autoload is enabled.
 Pi release intake keeps Agent Core and Host Pi AI on one exact version. The 1.0.1 update retains
-the existing prepare/finish hooks, private receipts and Host retry/compaction owners. OAuth changes
+the existing prepare/finish hooks and Host retry/compaction owners. OAuth changes
 must preserve Host-scoped transport, selected-registration/account validation and one listener per
 login; a failed listener rejects before opening a browser. Released Coding Agent features are not
 enabled by updating these libraries, and an SDK update does not resolve live account failures.
-Using Agent Core does not enable the Coding Agent CLI/extensions or prove context efficiency. Pi's private
-scheduling transcript keeps compact assistant receipts and exact tool-call identity/arguments. Full
-text, reasoning, tool results and usage remain in Host history; the provider receives that original
-projection. This reduces duplicate in-process retention, not provider tokens or billed usage. Claude's official safe mode retains OAuth/keychain authentication while disabling ambient customizations; explicit SDK tool/settings/MCP controls keep built-ins/hooks unavailable. Its MCP callbacks return committed Host receipts only after the next durable admission. Bare mode is not used: the bundled 2.1.286 CLI declares that it skips OAuth and keychain.
+Using Agent Core does not enable the Coding Agent CLI/extensions or prove context efficiency. Its
+public loop receives actual schemas and completed text/reasoning/tool outcomes. The redundant Agent
+queue/state wrapper and detached tool fallback are retired; one awaited Host batch closes every call.
+Full media/history and usage remain Host-owned; the provider receives the original admitted projection. Claude's official safe mode retains OAuth/keychain authentication while disabling ambient customizations; explicit SDK tool/settings/MCP controls keep built-ins/hooks unavailable. Its MCP callbacks return committed Host receipts only after the next durable admission. Bare mode is not used: the bundled 2.1.286 CLI declares that it skips OAuth and keychain.
 Native receipt release follows both durable Host admission and successful final request assembly.
 Codex's native adapter uses the official stdio app-server handshake and public account/model
 controls. Bind the returned ChatGPT workspace ID and account label together; a label alone is not
@@ -119,9 +119,9 @@ stays interrupted/failed and returned tools are not newly dispatched. The same o
 live V4, cold usage restoration and the compatible Session counter. Only missing saved text/reasoning
 suffixes enter the original stream-row path; no second output or accounting owner is introduced.
 No-finish failures retain unknown consumption rather than fabricating a report.
-The final handler boundary rechecks the original registry entity/handler and current owner policy
-after input resolution, hooks and permission waits. Removing/replacing a tool or revoking policy
-invalidates its old approval; a captured schema or alias is not an execution grant.
+The final handler boundary reloads project rules and rechecks the original registry entity/handler
+after input resolution, hooks and permission waits. Remembered rule updates compare their observed
+rules inside the existing SQLite write; conflict or revocation cannot be overridden by old approval.
 Guide admission now persists the input before publishing its event or exposing it to Pi. A failed
 write rejects the caller without executing a ghost input. If Stop or turn settlement wins during a
 slow save, the committed input uses the existing ordinary queue with its original model/account

@@ -119,8 +119,8 @@ this Session's recent receipts; `ResumeMediaJob` queries/retrieves a saved reque
 again. A creative Skill orchestrates these tools and result inspection; it never supplies credentials
 or a competing executor. Media-only models stay out of the conversation picker.
 
-`core/src/tool/handlers/{media-generation,generate-video,media-jobs}.ts` stores immutable intent,
-provider acceptance and terminal receipts through `ToolArtifactStorePort`. The intent is durably
+`core/src/tool/handlers/{media-generation,generate-video,media-jobs}.ts` atomically publishes immutable intent,
+provider acceptance and terminal receipts through the existing artifact staging/fsync/link path. The intent is durably
 saved before the paid POST. Its identity includes Session, turn and assistant request, so reused
 upstream tool-call IDs do not collapse different charges. A stopped/crashed request after possible
 dispatch with no known provider ID remains unknown and is never automatically resubmitted. A local
@@ -131,8 +131,10 @@ or disabling that connection prevents retrieval until the original route is rest
 waiting; it does not claim remote cancellation or a refund.
 
 Once output bytes return, local commit continues despite surrounding turn cancellation. Images
-are real PNG/JPEG/WebP artifacts, replacing the earlier text data-URL file; videos are real MP4
-artifacts. Video download publication keeps a stable native artifact URI and refuses conflicting
+are real PNG/JPEG/WebP artifacts and use their existing operation ID for stable binary publication. If completion metadata fails,
+ResumeMediaJob can recover those saved bytes without generating again; missing provider facts stay
+unknown and an existing charge is not replaced. Old partial receipts remain intact and reject reuse.
+Videos are real MP4 artifacts. Video download publication keeps a stable native artifact URI and refuses conflicting
 bytes. Reopen can query a known video or restore its missing local file without another POST.
 Receipt recovery repairs a failed ledger write using the same physical request ID. The existing
 ledger retains reported money and raw provider usage separately from text-token estimates; unreported media cost is unknown,

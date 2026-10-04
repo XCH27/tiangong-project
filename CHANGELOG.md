@@ -1,15 +1,21 @@
 # Changelog
 
-- Correct repeated contextual-menu positioning and exact fixed/sortable provider targets; reuse
-  original region actions and remove the full composer toolbar from page helpers. Move purpose
-  defaults to Model Settings, wire the confirmed image-input default to the existing bridge,
-  and link child-agent model configuration to its original page. Provider persistence, cold reopen,
-  revision conflicts and renderer regressions are checked separately from live inference/owner acceptance.
-
 Releases and major project changes. Normative documents state what is true now; the history of how
 it became true lives here and in Git, not in "corrected on…" notes scattered through the docs.
 
 ## Unreleased
+
+- Corrected permission revocation and stale remembered-rule writes through the existing Host/SQLite owner; failed request receipts now recover from the existing Session journal without repeating inference.
+- Corrected atomic media receipts, recovery of already saved image bytes, explicit pre-dispatch refusals, document-preview retry on reopen and native-browser helper anchoring. Retained compact navigation/status/read actions and initiating-Host GitHub cleanup are preserved; visual acceptance remains pending.
+
+- Correct repeated contextual-menu positioning and exact fixed/sortable provider targets; reuse
+  original region actions and remove the full composer toolbar from page helpers. Move purpose
+  defaults to Model Settings, wire the confirmed image-input default to the existing bridge,
+  while child-agent model configuration stays on its original page. Provider persistence, cold reopen,
+  revision conflicts and renderer regressions are checked separately from live inference/owner acceptance.
+
+- Replace the unused Pi Agent state/queue wrapper with its public loop, real tool schemas and
+  response/result projections; remove global assistant/menu-mode injection from unrelated menus.
 
 - Correct empty composer options layers, verbose model hover hints and fixed-effort labels.
   Separate default policy from its fixed identity, bind contextual defaults to their actual page

@@ -2732,7 +2732,7 @@ correction restricts earlier bounded parallel authorization for the active work.
 
 > 「重点是选出最佳的内核然后落地，而不是过测试」
 
-The implementation choice is Fleet's existing application Host plus Pi Agent Core 0.99.2 for
+The implementation choice is Fleet's existing application Host plus Pi Agent Core (currently pinned at 1.0.1) for
 the default generic model/tool loop, with separately selected official native executors for
 subscription-specific capabilities. Replace the interim Pi Coding Agent AgentSession wrapper,
 empty resource loader and hidden continuation message. Agent Core is already shipped transitively
@@ -2822,3 +2822,15 @@ The existing merged menu remains for advertised adjustable parameters. Model def
 fixed selection are separate controls, and contextual assistance must address their actual surface
 and active policy. Subagents retains its sole original entry. These are reversible corrections,
 not authorization to remove capabilities, create another authority or redesign the entire UI.
+
+### OV-090 — Compare the complete borrowed feature (2026-10-04)
+
+> 「不仅要对照原软件，你哪一处设计参考了哪个软件的，你就要跟它做对比。」
+> 「而且你每次看某个软件的某个设计，你看的都很局部，没有把相关设计都纳入考量范围」
+
+Name the reference for each adopted design and trace its connected views/settings, frontend and
+backend, scope/context, permissions, persistence, recovery and lifetime. Compare those relationships
+with Fleet's complete path, including interactions deliberately retained or rejected. The original
+host establishes regression parity; it does not alone establish a borrowed design's correctness.
+Record the mechanism and evidence level in the existing reference ledger. This broadens source
+coverage without replacing the authorized engineering task with an unlimited survey.

@@ -162,6 +162,11 @@ are distinct events. Cancel means requested until the owning runtime confirms it
 paid submissions before retrying. No optimizer may switch model, effort or acceptance criteria
 inside the comparison or discard capability merely to meet a token cap.
 
+Failed model-usage writes retain their exact receipt in the existing Session journal. Settlement
+and cold resume reconcile the same request ID into the same ledger, without inference/tool replay;
+the duplicate payload is cleared only after acknowledgement. If neither owner can retain the fact,
+execution stops. Turn counts use request-scoped tool identities and existing committed error receipts.
+
 Provider request assembly preserves system/tool/user/media structure and follows each provider's
 contract; local prefix hashes are diagnostics, never proof of a cache hit. API routing may select
 only configured, permitted routes and must explain overrides. A CLI/PTY runtime keeps its selected

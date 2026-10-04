@@ -549,8 +549,8 @@ OV-078 requires this check for every module, including a correction to an existi
 Start with the selected implementation and its pinned original, then the relevant vendor's
 official client/SDK or published contract and a named ecosystem implementation. Trace the actual
 request, credential audience/account, model eligibility, tool dispatch, saved result, usage and
-failure/recovery paths. Inspect only the mechanisms needed for the fixed acceptance; this is not
-an instruction to clone every project or restart a repository-wide survey.
+failure/recovery paths across related screens/settings and every producer/consumer. Compare the
+complete referenced feature; acceptance stays bounded without restarting an unrestricted survey.
 
 Record source revision, inspected symbols, adopted/rejected mechanism and evidence limits in the
 existing reference record; reconcile the owning module contract before editing. Resolve a changed

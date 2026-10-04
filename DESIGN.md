@@ -301,8 +301,8 @@ payments are compatibility data, not a visible cost chart or an inferred invoice
   combines model selection and exact effort rows in one composer entry (OV-074). OV-075 places
   Fast, Effort and Model in compact rows. Context appears only for evidenced executable choices and uses the same submenu/radio treatment;
   fixed capacity is inspectable in the original Token ring before first inference. Effort and Model open
-  submenus; the composer menu has no Model Settings link. Fast uses the existing switch style. Insufficient width uses the original Brain icon and full
-  accessible tooltip, driven by the existing toolbar fit owner. Its hint describes
+  submenus; the composer menu has no Model Settings link. Fast uses the existing switch style. Insufficient width uses the original Brain icon with a short
+  hint and full accessible name, driven by the existing toolbar fit owner. The Fast hint describes
   the selected model/connection's sourced allowance or API-rate impact. Speed never becomes
   a reasoning tier or a universal price multiplier.
 - More than 50 model rows require windowing or an equivalent measured bound. Search remains visible
