@@ -247,7 +247,7 @@ Model Settings retains its scoped Provider operations. Other pages use a bounded
 and only their declared operations. General may correct explicitly allowlisted non-secret preferences through the existing Setting
 writer with expected-value checks inside its write queue; Appearance currently supplies guidance
 only because its renderer preference writer is a distinct existing owner;
-General may set a purpose model default through the existing model-preference writer. Usage reads
+The defaults surface in Model Settings sets policy/model/vision through the existing writer. Usage reads
 retain the existing usage-store tool. Unsupported domain mutations remain unavailable rather than
 granting terminal, arbitrary-file, credential, plugin-install or unrestricted MCP access.
 Page context is a short packaged explanation plus allowlisted owner data, never a DOM scrape or

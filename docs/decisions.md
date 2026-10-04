@@ -2807,3 +2807,18 @@ recent, fixed and automatic ordinary defaults using the Personal writer; reuse t
 recent owner. Projects retain their own recent preference. Existing drafts and admitted/historical
 Sessions are not rewritten by a default change. This corrects the ambiguous automatic label and
 repeat entry; it adds no second preference, Session, credential or child-agent authority.
+
+### OV-089 — Correct interaction regressions and remove redundant control copy (2026-10-04)
+
+> 「而且你总是喜欢乱加小字或者是说明在软件里，把软件作成了说明文档」
+> 「然后再很多设计上，你改了之后比原版差的很多」
+
+Compare complete original and reference interactions before correcting them. Preserve essential
+setting names and the original Help path; controls and hover hints need not repeat full provider,
+model, current state and implementation explanations. When a model has no adjustable parameters,
+open its original provider/model chooser directly. Fixed Off is not a disabled-model status.
+Large catalogs retain search and keyboard access without reintroducing the empty options layer.
+The existing merged menu remains for advertised adjustable parameters. Model default policy and
+fixed selection are separate controls, and contextual assistance must address their actual surface
+and active policy. Subagents retains its sole original entry. These are reversible corrections,
+not authorization to remove capabilities, create another authority or redesign the entire UI.

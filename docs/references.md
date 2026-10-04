@@ -3369,7 +3369,7 @@ authority. This table records verification scope; delivery status remains in the
 | Context prose bypassed readability limits | Oversized historical prose was reflowed; executable contracts and evidence remain in their distinct homes. The 700-line gate remains enforced. |
 | Quotation statistics and history counts | The reported 559 messages and 203 matching quotes are the handoff author’s snapshot. They were not fully recomputed in this source audit; alleged altered/untraceable quotations are not marked resolved. |
 | Remove quotations/reduce references to ten | Those are recommendations, not verified defects. Current owner rules retain exact decision evidence and reference pins. Bounded per-module intake prevents whole-ledger loading; unique evidence is not silently removed. |
-| Page assistant only changed model enablement | Superseded partly: candidate `modelSettingsAssistant.ts` adds capacity operations through original writers. `packages/ui/src/root/RootShell.tsx:12` hosts `PageAssistantHost`; its new invocation at `PageAssistantHost.tsx:141` changes generation, while General preferences/defaults share original writers. Other pages have typed guidance/read scopes. Full domain mutation coverage and visual acceptance remain open. |
+| Page assistant only changed model enablement | Superseded partly: candidate `modelSettingsAssistant.ts` adds capacity operations through original writers. `packages/ui/src/root/RootShell.tsx:12` hosts `PageAssistantHost`; its new invocation at `PageAssistantHost.tsx:141` changes generation. General preferences and Model Settings defaults invoke their matching original writers. Other pages have typed guidance/read scopes. Full domain mutation coverage and visual acceptance remain open. |
 | Plugins cannot add general UI | Confirmed, as the handoff says. Candidate `plugins/index.ts:110` recognizes manifest formats, while `packages/ui/src/lib/workspaceSidePane.ts:516` remains a finite built-in tab union. Format recognition and general registered UI contributions are different capabilities; the latter remains a later delivery gap. |
 | Folderless work needs only renaming the home folder | Insufficient: candidate uses a distinct conversation backing purpose and excludes it from Project grouping. Original home-folder behavior does not provide that isolation or Project suite lifecycle. |
 | NewMax's Claude conversion proxy deserves comparison | Source confirms the reported mechanism, but it does not establish better model behavior or native subscription entitlement. The handoff itself recommends native vendors/Pi for incompatible endpoints, not a universal conversion gateway. Keep that distinction in the executor decision. |
@@ -3386,3 +3386,36 @@ plus Probe, versus 721 for initial Probe/SearchTools. This narrow fixture does n
 ordinary core tool set, so it is not a whole-conversation savings percentage. Loading one matched
 operation preserves the original semantic permission and records three actual model requests
 (search, execution, answer). Small catalogs preserve direct invocation without that extra search.
+
+
+### Contextual defaults and composer regression correction
+
+Source trace uses Craft v0.14.0 `EditPopover.tsx:604,684,770,799,845,1020`: one compact conversation,
+explicit target/rules, mini/default model hints separate from service Fast, normal permission UI,
+pointer-relative entry, bounded movement and processing-aware dismissal. These are mechanisms,
+not permission to copy allow-all or treat read-only guidance as an implemented operation.
+Original ZCode `ModelConfigSelect.tsx:529` and supplier submenus remain the baseline for a model
+with no adjustable parameters. The candidate had inserted an empty options layer, repeated provider/
+model/effort in its tooltip and shown fixed Off as though the model were disabled. It now bypasses
+that empty layer, retains grouping, hides non-adjustable effort and uses a short control-name hint.
+Merged parameter controls remain only when real choices exist. A non-adjustable catalog above
+20 choices keeps the existing search/list directly, without an empty Model row; above 50 matches
+it retains virtualization. Both 500-model paths passed keyboard, pointer and off-screen search checks.
+No new UI design system is introduced.
+Default configuration moved while its Agent writer stayed on General; page-helper fallback also
+ignored ordinary policy and reused an inactive fixed model. `pageAssistantService` now uses the
+versioned preference view, exposes the existing writer on the actual modelDefaults surface and
+retains the older General service path for recorded compatibility. New General toolsets do not
+advertise defaults. Policy/vision writes use the same CAS and capability validation as human controls.
+The form separates policy from fixed identity and keeps long explanation in original Help. No
+contextual-operation claim extends to the still-unimplemented browser/plugin/document mutations.
+The built review instance was personally inspected: a fresh draft selected an available model,
+its real adjustable options appeared together, and right-clicking the defaults surface opened a
+compact assistant titled Default models. No provider message or paid inference was sent. Four
+locale/theme renderer states and narrow controls, original menus for non-adjustable models,
+24 scoped-service/Host cases and the staged Pi local transport passed. Owner visual acceptance
+is pending; these observations do not prove full page mutation coverage or live subscription access.
+The same isolated review profile saved fixed mode through the real form: a newly initialized
+ordinary draft used its saved Grok identity while a project draft retained that project's Claude
+choice. Returning to recent mode hid the inactive fixed control without erasing it. Keyboard focus
+showed the short Model options hint; its accessible name still contained the selected identity.

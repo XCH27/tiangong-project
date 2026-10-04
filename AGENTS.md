@@ -188,3 +188,6 @@ not visual acceptance. Do not create mockup images as substitutes for source-bac
 - Rectify the project, do not pile up documents (「我是要你整改项目而不是堆砌文档」).
 - Fleet is not another pure coding-agent IDE; coding-agent forks are harness and interaction
   references, not the product shape.
+- Keep essential control names visible. Do not repeat selected values, provider paths, implementation
+  details or multi-paragraph rules in routine controls/tooltips. Put occasional detail in the original
+  Help pattern; show diagnosis when an actual failure or unavailable state needs recovery.

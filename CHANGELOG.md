@@ -11,6 +11,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Correct empty composer options layers, verbose model hover hints and fixed-effort labels.
+  Separate default policy from its fixed identity, bind contextual defaults to their actual page
+  and stop inactive fixed preferences leaking into automatic page-assistant initialization.
+  Keep routine explanation in the existing Help pattern and preserve original control tokens.
+
 - Remove the repeated Subagents link and restore ZCode settings card/select styling. Separate
   recent, fixed and automatic new-conversation policies while retaining scoped Project history.
   Add the opt-in classifier purpose and deferred Decide operation through existing Provider,

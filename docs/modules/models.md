@@ -76,14 +76,14 @@ configuration service or Session store. New ordinary conversations can follow th
 use a fixed model or automatically select an executable model. `newConversationModelPolicy` lives
 in the existing versioned Personal owner; scoped recent choices retain the original composer owner.
 Projects prefer their own recent choice, then this policy. Existing drafts/Sessions remain explicit.
-A page assistant uses its own default, then an available Host default. Its edits never write ordinary
+A page assistant honors the active policy; an inactive fixed choice cannot override automatic mode.
+Its own override wins, then an available Host default. Its edits never write ordinary
 or Project recents. Unavailable preferences stay saved; only new initialization may use a fallback.
-Model Settings → Default models uses the original `SettingsGroupCard` and input-select values.
-Child models stay solely in the existing Subagents page; the repeated link has been removed.
+Model Settings → Default models separates startup policy from its fixed model, using ZCode selects.
+Child models retain only their existing entry. Routine copy stays in the original Help pattern.
 Conversation/page/vision choices and the off-by-default classifier share the same original writer.
 Conditional writes validate model/options, confirmed vision capability and preference revision
-inside the original transaction. The primary must inspect the built change before owner review;
-source, renderer and local transport checks do not establish live inference or owner acceptance.
+inside the original transaction. Built inspection precedes review; source/renderer proof is not live/owner acceptance.
 Picker changes are remembered immediately within their own purpose; late receipts cannot undo newer
 choices. Unsupported Fast/context are normalized without rewriting admitted/historical bindings.
 A new composer initialized before account/catalog readiness can acquire its missing default when
@@ -116,8 +116,8 @@ order, and retains valid effort. It never edits already admitted input.
 More than 50 composer models use the already-installed TanStack virtualizer with original menu
 rows, measured heights and a retained focused row. Arrow navigation, Home/End, search and accessible
 full-list positions operate on the whole catalog rather than only mounted items. The search stays
-outside the scrolling window; smaller lists and other selectors retain their existing controls.
-Real renderer regressions include 500 models, exact connection identity, parameter reopen and
+outside the scrolling window; non-adjustable catalogs above 20 choices open search directly, while smaller catalogs retain original menus.
+Real renderer regressions include both 500-model menu paths, exact connection identity, parameter reopen and
 simultaneous capability withdrawal; no live inference is part of these checks.
 Actual desktop switching from Grok 4.7 High to Claude Sonnet Automatic and back restored Grok's
 High effort without sending. Restart and New Task also retained it; the original Automatic setting
@@ -227,7 +227,7 @@ data stays compatible. Valid provider defaults are applied when selecting a mode
 automatic mode omits the effort parameter instead of guessing the highest level. The composer keeps
 effort and Fast as independent request fields, while OV-074 combines their visible entry with the
 existing model picker. Full width shows only model name plus current effort; the existing fit owner
-collapses it to the original Brain icon with a full tooltip. Model groups, exact identity, model/effort
+collapses it to the original Brain icon with a short hint and complete accessible name. Model groups, exact identity, model/effort
 callbacks, Ctrl+M, Ctrl+T and focus restoration remain on their existing owners. The obsolete separate
 composer effort trigger is retired; automation effort fields keep their standalone controls.
 OV-075 replaces the expanded choices with compact Fast/Effort/Model rows. Context appears only
