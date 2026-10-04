@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Distinguish a switched native CLI account from expired authorization in quota diagnostics;
+  preserve the configured binding and require the existing reconnect path for an intended change.
+
 - Reuse provider rename/delete across header/navigation menus and retire duplicate primary Open
   actions from settings, files and message file links. Freeze batch tab-close scope/resources
   across native waits so later tabs and other owners survive.

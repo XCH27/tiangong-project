@@ -3488,5 +3488,7 @@ hidden-window failure is not treated as a provider-writer defect. Primary's fres
 also read real native Claude Pro windows without inference. Built provider inspection verified
 rename from an unselected row enters/focuses that exact original editor; Esc writes no name;
 delete opens the clicked provider's original confirmation and cancel preserves it. Normal ChatGPT
-login remains separate; the current native Codex review reports expired authorization/catalog failure,
-so saved identity/catalog are not live access proof.
+login remains separate. A prompt-free real CLI check returned a Pro identity/catalog; the saved
+review connection is bound to Team and has a different identity. Rejection is correct; the expired-
+authorization wording was not. The reader/view now carries account-changed separately and retains
+the original binding. No account selection, credential copy, inference or automatic rebind is implied.
