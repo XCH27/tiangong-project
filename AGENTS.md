@@ -54,6 +54,8 @@ Git/GitHub comparisons. These roles do not import several independent products' 
    may need new code; justify that gap and its consumers instead of inventing unrelated controls.
    For interaction changes, trace the reference's trigger, pointer anchoring, drag/resize,
    focus/keyboard/close behavior, context/rule delivery and conversation lifetime before coding.
+   Context menus reuse the entity's useful overflow actions. Omit actions identical to its primary
+   click; preserve distinct destinations with clear names and the original confirmation/owner path.
    Record the mechanism being reused or adapted; screenshots, similarly named features and
    per-page substitute controls do not establish an equivalent interaction.
 2. **Keep scope and acceptance fixed.** Later messages steer the active work; they do not erase

@@ -3438,7 +3438,7 @@ remain v1.0.1; AI's per-thinking sampling change supplies no automatic Fleet con
 | ZCode request events, completed results, detailed ledger and cold resume | Failed model-receipt writes disappeared; raw tool IDs collapsed distinct rounds. The existing Session journal retains failed facts, then reconciles their exact ID; scheduled/error receipts keep assistant scope. | First-write and persistent-failure recovery, metadata/cache/account retention, dual-error-event and reused-ID fixtures. |
 | Media port approval/binding, provider submit/retrieve, artifact bytes, receipt and statistics | Final JSON was exposed before complete write; saved image bytes could become unreachable. Existing staging/fsync/link publishes receipts; operation-keyed bytes can recover without POST. Pre-dispatch refusal is failed/not-started, uncertain dispatch remains unknown. | Actual interrupted filesystem write/publication, concurrent publication, binary/SQLite reopen and no-POST tests. Public provider eligibility/quality remains separate. |
 | Craft preview/open lifecycle and LobeHub reader error/retry pattern; ZCode file/upload ownership | Failed composer previews were cached indefinitely. Explicit reopening retries a failed bounded read while successful reads and upload-progress reuse remain. Original attachment/upload data is unchanged. | Actual renderer/file-service fixtures; preview is not native document editing. |
-| Craft regional menu → EditPopover/config → compact conversation → page contract → shared writer; ZCode native guest menu | The shared primitive injected one generic assistant item and non-modal behavior into unrelated menus. Those are removed; supported settings/provider/model regions explicitly own their scoped entries and non-modal mode. Browser helper used another DOM page's old point; saved unavailable helper defaults blocked new initialization. Native menu captures its own screen point in Host coordinates; typed requests without native coordinates use a fresh fallback. Shared directory validation resolves new helper defaults without changing saved choices. | Local source/renderer proof; current native UI control returned noWindowsAvailable even though observation found the review window. Native guest anchoring and non-Mac platform evidence still require successful built interaction. Broader page mutations, eager helper creation and processing-aware dismissal remain unclosed. |
+| Craft regional menu → EditPopover/config → compact conversation → page contract → shared writer; ZCode native guest menu | The shared primitive injected one generic assistant item and non-modal behavior into unrelated menus. Those are removed; supported settings/provider/model regions explicitly own their scoped entries and non-modal mode. Browser helper used another DOM page's old point; saved unavailable helper defaults blocked new initialization. Native menu captures its own screen point in Host coordinates; typed requests without native coordinates use a fresh fallback. Shared directory validation resolves new helper defaults without changing saved choices. | Local source/renderer proof; fresh review binding restored native control; primary verified repeated provider positioning, latest Claude target and real dragging. Native guest anchoring and non-Mac evidence still require successful built interaction. Broader page mutations, eager helper creation and processing-aware dismissal remain unclosed. |
 | OpenChamber account flow and official gh credential/process owner; retained RPC/Workspace lifecycle | Unmount could cancel on the new Host. Opaque auth continuations remain with their initiating RPC client; disconnect cancels only that client's pending gh process. Completed credentials stay with gh. | Fake process, cross-client, Host-switch and late-reply tests; no live gh authorization. |
 | Craft header/drawer filters, statuses, Project/Archive routes and G9 read scope | Compact navigation and status/read entry points disappeared. Existing menus retain those paths; Mark All Read snapshots the metadata-filtered view, fences Workspace changes and disables content-search ambiguity. | Source/logic/types; retained rendering and owner acceptance remain pending. The retired Project list and folder-based flow are preserved. |
 | ZCode Personal preference writer → provisioning wire → runtime directory → cold reopen/rollback | Ordinary/page/vision defaults, policy and decision settings did not all cross the wire. The existing codec now carries all five; an inactive fixed identity cannot invalidate another active policy. | Real source/target Node repositories, strict decode, cold reopen and failed-refresh/CAS rollback preserve every role without copying credentials. |
@@ -3463,3 +3463,30 @@ The ordinary ChatGPT live-registration flow remains unverified, while new subscr
 already default to official Codex. Antigravity/ACP remains absent beyond preflight/types; no executable
 route is claimed. Decision expansion stays off pending kernel/subscription closure. Instructions
 reported from another conversation remain audit evidence, not authority to remove owner history.
+
+### Regional menu and close-lifecycle comparison
+
+Craft v0.14.0 `SessionItem.tsx:140-185`, `entity-row.tsx:262,489-500` and
+`useSessionMenuActions.ts` reuse one entity action set for overflow/context/compact views. Rename
+keeps its captured Session ID and delete retains the original confirmation. Original ZCode
+`29628c9` already shares ordinary Task actions; grouped Tasks use a different action component.
+The candidate's provider header and navigation now share `ProviderActionsMenuItems`; navigation
+rename selects the exact provider and consumes one request in the original editor. Plain Open is
+retired from settings navigation, provider navigation, file-tree rows and message file links. Left
+click/Enter retain those primary paths. Web links retain their distinct in-app/external routes.
+Other task/group, Git, terminal and side-pane actions were traced; useful existing actions stay.
+Sticky-group rename, project overflow/context parity and grouped-task common actions remain gaps,
+not completed by this bounded correction.
+
+`useAppPanels.ts` re-enumerated visible tabs after native closure, so a newly opened/replaced tab or
+another selected owner could be removed. The correction freezes owner and exact resources, fences
+late returns and retains original recovery/release. Twelve actual React-hook cases cover new tabs,
+owner/workspace/remote/away-back transitions, replacement, metadata, early native notifications and
+failure; native close is controlled transport. Real provider renderer cases retain identity/revision
+and cancellation. Name Enter depends on native blur, so its existing runner uses a focused window;
+hidden-window failure is not treated as a provider-writer defect. Primary's fresh built inspection
+also read real native Claude Pro windows without inference. Built provider inspection verified
+rename from an unselected row enters/focuses that exact original editor; Esc writes no name;
+delete opens the clicked provider's original confirmation and cancel preserves it. Normal ChatGPT
+login remains separate; the current native Codex review reports expired authorization/catalog failure,
+so saved identity/catalog are not live access proof.

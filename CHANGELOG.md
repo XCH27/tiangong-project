@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Reuse provider rename/delete across header/navigation menus and retire duplicate primary Open
+  actions from settings, files and message file links. Freeze batch tab-close scope/resources
+  across native waits so later tabs and other owners survive.
+
 - Corrected permission revocation and stale remembered-rule writes through the existing Host/SQLite owner; failed request receipts now recover from the existing Session journal without repeating inference.
 - Corrected atomic media receipts, recovery of already saved image bytes, explicit pre-dispatch refusals, document-preview retry on reopen and native-browser helper anchoring. Retained compact navigation/status/read actions and initiating-Host GitHub cleanup are preserved; visual acceptance remains pending.
 

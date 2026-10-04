@@ -175,3 +175,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0118 | [0118-contextual-defaults-and-model-menu-correction.patch](0118-contextual-defaults-and-model-menu-correction.patch) | `4cb2a9b2e5ebd353298152585286de1a4f1bf5ee` |
 
 | 0119 | [0119-kernel-receipt-and-related-flow-corrections.patch](0119-kernel-receipt-and-related-flow-corrections.patch) | `d24f099ce3f408e3b3d793b355f612e5e8bdec0d` |
+
+| 0120 | [0120-regional-menu-actions-and-close-snapshots.patch](0120-regional-menu-actions-and-close-snapshots.patch) | `ddcc77836f64466d8ef21b60c7bc5eb1ba5c9475` |

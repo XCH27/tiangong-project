@@ -2834,3 +2834,11 @@ with Fleet's complete path, including interactions deliberately retained or reje
 host establishes regression parity; it does not alone establish a borrowed design's correctness.
 Record the mechanism and evidence level in the existing reference ledger. This broadens source
 coverage without replacing the authorized engineering task with an unlimited survey.
+
+### OV-091 — Useful entity actions in contextual menus (2026-10-04)
+
+The owner retires plain Open where primary click already performs exactly that action. Regional
+menus reuse frequent actions already present in the entity's overflow menu: provider rename/delete
+keep the original editor, revision and confirmation. Distinct browser/editor/panel destinations remain
+explicit alternatives. Audit all corresponding regions and lifecycle callbacks, not only the page
+used as the owner's example. This changes no data or permission authority.
