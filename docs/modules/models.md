@@ -281,12 +281,13 @@ Auxiliary probe/caption/summary operations retain their explicit wire budget thr
 invocation context; unknown provider capacity is not permission to drop that control. Other
 provider-specific budgets and actual request validation remain open. New
 discoveredProviderModelRules in the existing personal envelope separate latest observations from
-explicit corrections and refresh same-ID facts atomically; legacy exact values retain their
-ambiguous origin and are not silently migrated. API discovery now retains explicitly advertised
-limits/modalities/tools, and non-text-output rows cannot enter the chat picker. Native default
-effort is retained for new choices through one resolver shared by conversation selection, runtime
-model options and the Agent model catalog; unmappable-only subscription levels fail refresh instead
-of inventing off. Codex/Grok high tiers preserve the selected native value through Pi request
+explicit corrections and refresh same-ID facts atomically; ambiguous legacy exact values remain.
+OpenRouter's key-filtered all-modality catalogue replaces static seeds, retains manual IDs and rejects
+partial malformed lists; default-disabled thinking remains Auto. Its three protocols, DeepSeek Responses and Z.ai Coding Plan
+alternatives share existing controls; saved transports are not silently switched. Google enriches
+compatible IDs from native capacity metadata; Model Studio uses same-region native pagination.
+Mistral/Groq capacity, tools, vision, structured-output and inactive facts remain sparse; non-chat
+rows stay outside the picker. Shared option resolution retains native defaults without inventing Off. Codex/Grok high tiers preserve the selected native value through Pi request
 encoding. Shared input admission treats equivalent video blocks alike and extracted PDFs as text;
 unsupported wire routes fail before inference. Default auto-compaction buffer is bounded to 10% of
 the remaining input window, capped at 13K; explicit overrides and large-window behavior remain,

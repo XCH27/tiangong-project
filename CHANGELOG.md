@@ -5,6 +5,13 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Correct ordinary API completion evidence, scoped OpenRouter/Gemini signature replay and failed
+  response accounting through the existing Host/Pi/SDK owners; interrupted replies cannot authorize
+  tools or automatic resubmission.
+- Correct platform catalogue/auth/metadata contracts and declared OpenRouter, DeepSeek and Z.ai
+  protocols. Preserve key-filtered manual corrections, regions, billing products and saved routes;
+  remove endpoint-wide false GLM vision claims.
+
 - Recover saved video bytes after failed completion publication and provider expiry; retain
   observed charges before receipt commit. Preserve provider errors alongside media receipt/ledger
   failures without resubmission or fabricated usage.

@@ -1,0 +1,1885 @@
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 7eb21ad..cb0d5db 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -40,6 +40,84 @@
+             "region": "global"
+           }
+         },
++        {
++          "templateId": "fleet-zai-coding-chat",
++          "templateNameMap": {
++            "zh-CN": "Z.ai Coding Plan",
++            "en-US": "Z.ai Coding Plan"
++          },
++          "config": {
++            "access": {
++              "type": "zhipu-coding-plan-api-key",
++              "apiKeyManagementUrl": "https://z.ai/manage-apikey/apikey-list"
++            },
++            "api": {
++              "type": "openai-chat-completions",
++              "baseUrl": "https://api.z.ai/api/coding/paas/v4"
++            },
++            "builtinModelIds": [
++              "GLM-5.3",
++              "GLM-5.3-Flash"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "zai"
++            }
++          },
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "zhipu",
++            "vendorNameMap": {
++              "zh-CN": "智谱 / Z.ai",
++              "en-US": "Z.ai / BigModel"
++            },
++            "serviceId": "coding",
++            "serviceNameMap": {
++              "zh-CN": "智谱 / Z.ai Coding Plan",
++              "en-US": "Z.ai / BigModel Coding Plan"
++            },
++            "region": "global"
++          }
++        },
++        {
++          "templateId": "fleet-zai-coding-responses",
++          "templateNameMap": {
++            "zh-CN": "Z.ai Coding Plan",
++            "en-US": "Z.ai Coding Plan"
++          },
++          "config": {
++            "access": {
++              "type": "zhipu-coding-plan-api-key",
++              "apiKeyManagementUrl": "https://z.ai/manage-apikey/apikey-list"
++            },
++            "api": {
++              "type": "openai-responses",
++              "baseUrl": "https://api.z.ai/api/v1"
++            },
++            "builtinModelIds": [
++              "GLM-5.3",
++              "GLM-5.3-Flash"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "zai"
++            }
++          },
++          "category": "subscription-plan",
++          "catalog": {
++            "vendorId": "zhipu",
++            "vendorNameMap": {
++              "zh-CN": "智谱 / Z.ai",
++              "en-US": "Z.ai / BigModel"
++            },
++            "serviceId": "coding",
++            "serviceNameMap": {
++              "zh-CN": "智谱 / Z.ai Coding Plan",
++              "en-US": "Z.ai / BigModel Coding Plan"
++            },
++            "region": "global"
++          }
++        },
+         {
+           "templateId": "zai-standard-api",
+           "templateNameMap": {
+@@ -350,6 +428,43 @@
+             }
+           }
+         },
++        {
++          "templateId": "fleet-deepseek-responses",
++          "templateNameMap": {
++            "zh-CN": "DeepSeek",
++            "en-US": "DeepSeek"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://platform.deepseek.com/api_keys"
++            },
++            "api": {
++              "type": "openai-responses",
++              "baseUrl": "https://api.deepseek.com"
++            },
++            "builtinModelIds": [
++              "deepseek-flash",
++              "deepseek-v4-pro"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "deepseek"
++            }
++          },
++          "catalog": {
++            "vendorId": "deepseek",
++            "vendorNameMap": {
++              "zh-CN": "DeepSeek",
++              "en-US": "DeepSeek"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
++          }
++        },
+         {
+           "templateId": "qwen-alibaba-model-studio-cn",
+           "templateNameMap": {
+@@ -615,7 +730,195 @@
+             },
+             "api": {
+               "type": "anthropic-messages",
+-              "baseUrl": "https://openrouter.ai/api"
++              "baseUrl": "https://openrouter.ai/api/v1"
++            },
++            "builtinModelIds": [
++              "anthropic/claude-fable-5.1",
++              "openai/gpt-6-astra",
++              "openai/gpt-5.6-sol",
++              "anthropic/claude-opus-5",
++              "deepseek/deepseek-v4-pro",
++              "moonshotai/kimi-k3",
++              "z-ai/glm-5.3",
++              "qwen/qwen3.8-max",
++              "minimax/minimax-m3",
++              "xiaomi/mimo-v2.5-pro",
++              "x-ai/grok-4.6",
++              "deepseek/deepseek-v4.1-flash",
++              "qwen/qwen3.8-max-0902",
++              "openai/gpt-5.6-terra",
++              "openai/gpt-5.6-luna",
++              "openai/gpt-5.6",
++              "openai/gpt-5.4",
++              "openai/gpt-5.4-pro",
++              "openai/gpt-5.4-mini",
++              "openai/gpt-5.4-nano",
++              "openai/gpt-5.3-codex",
++              "anthropic/claude-sonnet-5",
++              "anthropic/claude-haiku-4.5",
++              "anthropic/claude-opus-4.8",
++              "anthropic/claude-opus-4.7",
++              "anthropic/claude-opus-4.6",
++              "anthropic/claude-opus-4.5",
++              "anthropic/claude-sonnet-4.6",
++              "anthropic/claude-sonnet-4.5",
++              "deepseek/deepseek-v4-flash",
++              "moonshotai/kimi-k2.7-code",
++              "moonshotai/kimi-k2.6",
++              "moonshotai/kimi-k2.5",
++              "z-ai/glm-5.3-flash",
++              "z-ai/glm-5.2",
++              "z-ai/glm-5.1",
++              "z-ai/glm-5v-turbo",
++              "z-ai/glm-5",
++              "z-ai/glm-5-turbo",
++              "z-ai/glm-4.7",
++              "z-ai/glm-4.7-flash",
++              "z-ai/glm-4.6",
++              "z-ai/glm-4.6v",
++              "z-ai/glm-4.5-air",
++              "z-ai/glm-4.5",
++              "qwen/qwen3.8-flash",
++              "qwen/qwen3.7-max",
++              "qwen/qwen3.7-plus",
++              "qwen/qwen3.7-flash",
++              "qwen/qwen3.6-plus",
++              "qwen/qwen3.6-flash",
++              "qwen/qwen3.5-plus-20260420",
++              "qwen/qwen3-vl-plus",
++              "qwen/qwen3-vl-flash",
++              "minimax/minimax-m2.7",
++              "minimax/minimax-m2.5",
++              "xiaomi/mimo-v2.5",
++              "x-ai/grok-build-0.1",
++              "x-ai/grok-4.3"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "openrouter"
++            }
++          },
++          "catalog": {
++            "vendorId": "openrouter",
++            "vendorNameMap": {
++              "zh-CN": "OpenRouter",
++              "en-US": "OpenRouter"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-openrouter-chat",
++          "templateNameMap": {
++            "zh-CN": "OpenRouter",
++            "en-US": "OpenRouter"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://openrouter.ai/keys"
++            },
++            "api": {
++              "type": "openai-chat-completions",
++              "baseUrl": "https://openrouter.ai/api/v1"
++            },
++            "builtinModelIds": [
++              "anthropic/claude-fable-5.1",
++              "openai/gpt-6-astra",
++              "openai/gpt-5.6-sol",
++              "anthropic/claude-opus-5",
++              "deepseek/deepseek-v4-pro",
++              "moonshotai/kimi-k3",
++              "z-ai/glm-5.3",
++              "qwen/qwen3.8-max",
++              "minimax/minimax-m3",
++              "xiaomi/mimo-v2.5-pro",
++              "x-ai/grok-4.6",
++              "deepseek/deepseek-v4.1-flash",
++              "qwen/qwen3.8-max-0902",
++              "openai/gpt-5.6-terra",
++              "openai/gpt-5.6-luna",
++              "openai/gpt-5.6",
++              "openai/gpt-5.4",
++              "openai/gpt-5.4-pro",
++              "openai/gpt-5.4-mini",
++              "openai/gpt-5.4-nano",
++              "openai/gpt-5.3-codex",
++              "anthropic/claude-sonnet-5",
++              "anthropic/claude-haiku-4.5",
++              "anthropic/claude-opus-4.8",
++              "anthropic/claude-opus-4.7",
++              "anthropic/claude-opus-4.6",
++              "anthropic/claude-opus-4.5",
++              "anthropic/claude-sonnet-4.6",
++              "anthropic/claude-sonnet-4.5",
++              "deepseek/deepseek-v4-flash",
++              "moonshotai/kimi-k2.7-code",
++              "moonshotai/kimi-k2.6",
++              "moonshotai/kimi-k2.5",
++              "z-ai/glm-5.3-flash",
++              "z-ai/glm-5.2",
++              "z-ai/glm-5.1",
++              "z-ai/glm-5v-turbo",
++              "z-ai/glm-5",
++              "z-ai/glm-5-turbo",
++              "z-ai/glm-4.7",
++              "z-ai/glm-4.7-flash",
++              "z-ai/glm-4.6",
++              "z-ai/glm-4.6v",
++              "z-ai/glm-4.5-air",
++              "z-ai/glm-4.5",
++              "qwen/qwen3.8-flash",
++              "qwen/qwen3.7-max",
++              "qwen/qwen3.7-plus",
++              "qwen/qwen3.7-flash",
++              "qwen/qwen3.6-plus",
++              "qwen/qwen3.6-flash",
++              "qwen/qwen3.5-plus-20260420",
++              "qwen/qwen3-vl-plus",
++              "qwen/qwen3-vl-flash",
++              "minimax/minimax-m2.7",
++              "minimax/minimax-m2.5",
++              "xiaomi/mimo-v2.5",
++              "x-ai/grok-build-0.1",
++              "x-ai/grok-4.3"
++            ],
++            "logo": {
++              "type": "builtin",
++              "key": "openrouter"
++            }
++          },
++          "catalog": {
++            "vendorId": "openrouter",
++            "vendorNameMap": {
++              "zh-CN": "OpenRouter",
++              "en-US": "OpenRouter"
++            },
++            "serviceId": "api",
++            "serviceNameMap": {
++              "zh-CN": "API",
++              "en-US": "API"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-openrouter-responses",
++          "templateNameMap": {
++            "zh-CN": "OpenRouter",
++            "en-US": "OpenRouter"
++          },
++          "config": {
++            "access": {
++              "type": "api-key",
++              "apiKeyManagementUrl": "https://openrouter.ai/keys"
++            },
++            "api": {
++              "type": "openai-responses",
++              "baseUrl": "https://openrouter.ai/api/v1"
+             },
+             "builtinModelIds": [
+               "anthropic/claude-fable-5.1",
+@@ -2104,6 +2407,30 @@
+             }
+           }
+         },
++        {
++          "modelMatch": ".*glm-5\\.3-flashx?(?:[.\\-:/\\[].*)?",
++          "config": {
++            "properties": {
++              "contextWindow": 1000000,
++              "inputFormat": {
++                "supportsImage": true,
++                "supportsVideo": true
++              }
++            },
++            "optionSpecs": {
++              "reasoningLevel": {
++                "values": [
++                  "low",
++                  "high",
++                  "max"
++                ]
++              },
++              "maxOutputTokens": {
++                "max": 128000
++              }
++            }
++          }
++        },
+         {
+           "modelMatch": ".*glm-5\\.3-flash(?:[.\\-:/\\[].*)?",
+           "config": {
+@@ -5142,30 +5469,6 @@
+             }
+           }
+         },
+-        {
+-          "modelMatch": ".*",
+-          "baseUrlMatch": "https://api\\.z\\.ai/api/anthropic/?",
+-          "config": {
+-            "properties": {
+-              "inputFormat": {
+-                "supportsImage": true,
+-                "supportsVideo": true
+-              }
+-            }
+-          }
+-        },
+-        {
+-          "modelMatch": ".*",
+-          "baseUrlMatch": "https://open\\.bigmodel\\.cn/api/anthropic/?",
+-          "config": {
+-            "properties": {
+-              "inputFormat": {
+-                "supportsImage": true,
+-                "supportsVideo": true
+-              }
+-            }
+-          }
+-        },
+         {
+           "modelMatch": ".*",
+           "baseUrlMatch": "https://zcode\\.z\\.ai/api/v1/zcode-plan/anthropic/?",
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index d2a079c..ea3cd83 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -23,6 +23,7 @@ import {
+   assertProviderProtocolChange,
+   resolveTemplateProtocolFormats,
+   resolveTemplateProtocolRoutes,
++  usesAccountScopedModelCatalog,
+ } from "./protocol-policy.js";
+ import type { ModelSelection } from "@zcode/shared/model-selection";
+ import type { ProviderConfigSnapshot, ProviderSource } from "./sources.js";
+@@ -428,9 +429,10 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+     return this.#updatePersonal((current) => {
+       assertMembershipCurrent(membership, id, current);
+       let provider = writableProviderOverlay(builtin, current, id);
+-      const access = resolvePersonalProviderBaselines(builtin, current.providers).get(id)?.access;
+-      if (replace && access?.type !== "subscription" && access?.type !== "native-cli")
+-        throw new Error("Only subscription catalogs support replacement");
++      const effective = resolvePersonalProviderBaselines(builtin, current.providers).get(id);
++      const access = effective?.access;
++      if (replace && !usesAccountScopedModelCatalog(effective))
++        throw new Error("Only declared account-scoped catalogs support replacement");
+       if (nativeAccess) {
+         if (
+           !replace ||
+@@ -884,10 +886,11 @@ function resolveProviderBuiltinModelIds(
+   personalProviders: ProviderConfigMap,
+   providerId: ProviderId,
+ ): readonly ModelId[] {
+-  // 订阅的可用成员来自当前账号目录，不能继承静态模板中其他账号的模型。
++  // Key/account-scoped routes cannot inherit other accounts' static template members.
+   if (
+-    resolvePersonalProviderBaselines(builtin, personalProviders).get(providerId)?.access?.type ===
+-    "subscription"
++    usesAccountScopedModelCatalog(
++      resolvePersonalProviderBaselines(builtin, personalProviders).get(providerId),
++    )
+   )
+     return [];
+   return (
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 7660569..5c0df03 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -7,6 +7,7 @@ import type { ProviderModelMembership } from "./config-service.js";
+ import {
+   resolveTemplateProtocolFormats,
+   resolveTemplateProtocolRoutes,
++  usesAccountScopedModelCatalog,
+   type ProviderProtocolRoute,
+ } from "./protocol-policy.js";
+ import type {
+@@ -428,11 +429,8 @@ export class ProviderSettingsFacade {
+         JSON.stringify([config.api, config.access]);
+       if (identity(current.effectiveConfig) !== identity(expectedConnection))
+         throw new Error("Connection changed; reload its model list");
+-      if (
+-        replace &&
+-        !["subscription", "native-cli"].includes(current.effectiveConfig.access?.type ?? "")
+-      )
+-        throw new Error("Only subscription catalogs support replacement");
++      if (replace && !usesAccountScopedModelCatalog(current.effectiveConfig))
++        throw new Error("Only declared account-scoped catalogs support replacement");
+       if (!models.length && !replace) return;
+       await target.mergeDiscoveredModels(
+         providerId,
+diff --git a/packages/provider/src/protocol-policy.ts b/packages/provider/src/protocol-policy.ts
+index 3e8e5c2..5be11f1 100644
+--- a/packages/provider/src/protocol-policy.ts
++++ b/packages/provider/src/protocol-policy.ts
+@@ -1,3 +1,4 @@
++import { isOpenRouterApiBaseUrl, normalizeOpenRouterApiBaseUrl } from "@zcode/shared";
+ import type {
+   ProviderApiType,
+   ProviderConfigObject,
+@@ -22,6 +23,20 @@ export interface ProviderProtocolRoute {
+   readonly baseUrl: string;
+ }
+ 
++/** These routes publish automatic membership from the current key/account, never a template seed. */
++export function usesAccountScopedModelCatalog(
++  config: {
++    access?: { type?: string | null } | null;
++    api?: { baseUrl?: string | null } | null;
++  } | undefined,
++): boolean {
++  return (
++    config?.access?.type === "subscription" ||
++    config?.access?.type === "native-cli" ||
++    (config?.access?.type === "api-key" && isOpenRouterApiBaseUrl(config.api?.baseUrl))
++  );
++}
++
+ /** 只投影同一服务/区域/认证的显式路由，不能从品牌或协议名称推断端点。 */
+ export function resolveTemplateProtocolRoutes(
+   templateId: string | null | undefined,
+@@ -78,7 +93,7 @@ export function selectProviderProtocolRoute(
+ }
+ 
+ function endpoint(value: string | null | undefined): string {
+-  return value?.trim().replace(/\/+$/, "") ?? "";
++  return value ? normalizeOpenRouterApiBaseUrl(value.trim()).replace(/\/+$/, "") : "";
+ }
+ 
+ /** 模板是推荐值的唯一来源；不按域名片段、模型名称或返回文本猜协议。 */
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index 2ee302c..f61b947 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -25,6 +25,7 @@ import {
+ } from "./config/index.js";
+ import { resolveOwnedOrder } from "./owned-order.js";
+ import type { AccountProviderStates } from "./account-provider-state.js";
++import { usesAccountScopedModelCatalog } from "./protocol-policy.js";
+ 
+ export type RegistryZhipuAccountAccessConfig = ZhipuAccountAccessConfig &
+   z.infer<typeof completeZhipuAccountAccessDataSchema>;
+@@ -310,9 +311,9 @@ export class ProviderConfigResolver {
+         });
+       }
+       issues.push(...providerIssues);
+-      // 订阅目录只由当前账号的已发现成员发布，模板静态 ID 不能绕过账号切换清空。
++      // Scoped directories own automatic membership; static templates cannot bypass them.
+       const builtinModelIds =
+-        config.access?.type === "subscription" ? [] : (config.builtinModelIds ?? []);
++        usesAccountScopedModelCatalog(config) ? [] : (config.builtinModelIds ?? []);
+       const personalModelIds = config.personalModelIds ?? [];
+       const builtinIdsInOrder = uniqueInOrder(builtinModelIds);
+       const builtinIds = new Set(builtinIdsInOrder);
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+index c05cd5e..0340791 100644
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -13,6 +13,15 @@ import {
+ } from "@zcode/provider";
+ import { readDiscoveredModelMetadata } from "./modelDiscoveryMetadata.js";
+ import type { SubscriptionConnectionOwner } from "./subscriptionConnections.js";
++import { isOpenRouterApiBaseUrl } from "@zcode/shared";
++import {
++  isModelStudioCatalogBase,
++  discoverModelStudioModels,
++  readModelListPage,
++  MAX_MODEL_LIST_ENTRIES,
++  readGoogleModelMetadata,
++  discoverXaiModels,
++} from "./modelDiscoveryCatalogs.js";
+ 
+ export interface DiscoveredModel {
+   id: string;
+@@ -21,38 +30,12 @@ export interface DiscoveredModel {
+ }
+ export interface ModelDiscoveryResult {
+   source: "provider" | "catalog";
++  /** Authenticated service-level directory, including restrictions of this committed key. */
++  catalogScope?: "account";
+   models: DiscoveredModel[];
+   warnings?: Array<{ kind: "text" | "image" | "video"; status: number }>;
+ }
+ 
+-const MAX_MODEL_LIST_PAGE_BYTES = 8 * 1024 * 1024;
+-const MAX_MODEL_LIST_ENTRIES = 20_000;
+-
+-/** Bound each untrusted catalog page before JSON parsing, including unknown body lengths. */
+-async function readModelListPage(response: Response): Promise<unknown> {
+-  if (Number(response.headers.get("content-length")) > MAX_MODEL_LIST_PAGE_BYTES) {
+-    await response.body?.cancel();
+-    throw new Error("The model list response is too large");
+-  }
+-  const reader = response.body?.getReader();
+-  if (!reader) throw new Error("The model list response is empty");
+-  const chunks: Uint8Array[] = [];
+-  let size = 0;
+-  try {
+-    for (;;) {
+-      const part = await reader.read();
+-      if (part.done) break;
+-      size += part.value.byteLength;
+-      if (size > MAX_MODEL_LIST_PAGE_BYTES) throw new Error("The model list response is too large");
+-      chunks.push(part.value);
+-    }
+-  } finally {
+-    await reader.cancel().catch(() => {});
+-    reader.releaseLock();
+-  }
+-  return JSON.parse(Buffer.concat(chunks, size).toString("utf8"));
+-}
+-
+ export async function discoverConnectionModels(
+   provider: ProviderSettingsProviderView,
+   fetch: typeof globalThis.fetch,
+@@ -79,7 +62,7 @@ export async function discoverConnectionModels(
+   )
+     throw new Error("Enter an API address and an enabled API key first");
+   const base = new URL(config.api.baseUrl);
+-  if (base.protocol !== "https:" && base.protocol !== "http:")
++  if ((base.protocol !== "https:" && base.protocol !== "http:") || base.username || base.password)
+     throw new Error("Invalid API address");
+   const headers = new Headers(config.api.headers ?? {});
+   headers.set("Accept", "application/json");
+@@ -90,6 +73,14 @@ export async function discoverConnectionModels(
+   else headers.delete("Authorization");
+   let path = base.pathname.replace(/\/+$/, "");
+   if (config.api.type === "anthropic-messages" && !path.endsWith("/v1")) path += "/v1";
++  const openRouterCatalog = isOpenRouterApiBaseUrl(config.api.baseUrl);
++  if (openRouterCatalog) {
++    path = "/api/v1";
++    headers.delete("x-api-key");
++    headers.delete("anthropic-version");
++    headers.delete("anthropic-beta");
++    headers.set("Authorization", `Bearer ${apiKey}`);
++  }
+   // DeepSeek's Anthropic-compatible inference uses its normal OpenAI catalog and bearer key.
+   if (base.hostname === "api.deepseek.com" && base.pathname.replace(/\/+$/, "") === "/anthropic") {
+     path = "";
+@@ -97,6 +88,8 @@ export async function discoverConnectionModels(
+     headers.delete("anthropic-version");
+     headers.set("Authorization", `Bearer ${apiKey}`);
+   }
++  if (isModelStudioCatalogBase(base))
++    return discoverModelStudioModels(base.origin, headers, apiKey!, fetch);
+   if (base.hostname === "api.x.ai" && path === "/v1") {
+     return discoverXaiModels(base.origin, headers, fetch);
+   }
+@@ -119,7 +112,21 @@ export async function discoverConnectionModels(
+         },
+       })),
+     };
+-  const url = new URL(`${base.origin}${path}/models`);
++  const deadline = AbortSignal.timeout(20_000);
++  const googleCatalog =
++    base.origin === "https://generativelanguage.googleapis.com" &&
++    /^\/v1(?:beta)?\/openai$/.test(path);
++  const googleMetadata = googleCatalog
++    ? await readGoogleModelMetadata(
++        base.origin + path.replace(/\/openai$/, ""),
++        headers,
++        apiKey!,
++        fetch,
++        deadline,
++      )
++    : undefined;
++  const url = new URL(`${base.origin}${path}/models${openRouterCatalog ? "/user" : ""}`);
++  if (openRouterCatalog) url.searchParams.set("output_modalities", "all");
+   // Go 的统一目录混有 Messages/Chat/Responses 模型；只合并当前协议已声明的路由。
+   const goTemplate =
+     base.hostname === "opencode.ai" && /^\/zen\/go(?:\/v1)?$/.test(path)
+@@ -127,7 +134,6 @@ export async function discoverConnectionModels(
+       : undefined;
+   const goModels = goTemplate ? new Set(goTemplate.config.builtinModelIds ?? []) : undefined;
+   const models = new Map<string, DiscoveredModel>();
+-  const deadline = AbortSignal.timeout(20_000);
+   for (let page = 0; page < 20; page++) {
+     const response = await fetch(url, {
+       headers,
+@@ -148,10 +154,17 @@ export async function discoverConnectionModels(
+     if (!Array.isArray(body.data))
+       throw new Error("The provider returned an unsupported model list; add models manually");
+     for (const item of body.data) {
+-      if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim())
++      if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim()) {
++        if (openRouterCatalog)
++          throw new Error("OpenRouter returned an invalid model ID; saved models were not changed");
+         continue;
+-      if (goModels && !goModels.has(item.id)) continue;
+-      if (models.has(item.id)) {
++      }
++      if (openRouterCatalog && item.id !== item.id.trim())
++        throw new Error("OpenRouter returned an invalid model ID; saved models were not changed");
++      // Google's native resource prefix is not part of its OpenAI model slug.
++      const id = googleCatalog ? item.id.replace(/^models\//, "") : item.id;
++      if (goModels && !goModels.has(id)) continue;
++      if (models.has(id)) {
+         throw new Error("The provider returned duplicate model IDs; saved models were not changed");
+       }
+       const name =
+@@ -161,7 +174,17 @@ export async function discoverConnectionModels(
+             ? item.display_name
+             : item.id;
+       // An ID proves membership only; retain separately reported capability fields as evidence.
+-      let config = readDiscoveredModelMetadata(item);
++      let config = readDiscoveredModelMetadata(
++        item,
++        openRouterCatalog ? (provider.effectiveConfig.api?.type ?? undefined) : undefined,
++      );
++      const native = googleMetadata?.get(id);
++      if (native)
++        config = {
++          ...config,
++          properties: { ...config.properties, ...native.properties },
++          optionSpecs: { ...config.optionSpecs, ...native.optionSpecs },
++        };
+       if (
+         provider.effectiveConfig.api?.type === "typesafe-system-one" ||
+         isPublishedClassifier(provider.effectiveConfig.api?.baseUrl, item.id)
+@@ -192,11 +215,16 @@ export async function discoverConnectionModels(
+           },
+         };
+       }
+-      models.set(item.id, { id: item.id, name, config });
++      models.set(id, { id, name, config });
+       if (models.size > MAX_MODEL_LIST_ENTRIES)
+         throw new Error("The model list exceeds the supported entry limit");
+     }
+-    if (!body.has_more) return { source: "provider", models: [...models.values()] };
++    if (!body.has_more)
++      return {
++        source: "provider",
++        models: [...models.values()],
++        ...(openRouterCatalog ? { catalogScope: "account" as const } : {}),
++      };
+     if (!body.last_id || url.searchParams.get("after_id") === body.last_id)
+       throw new Error("The provider returned an invalid pagination cursor");
+     url.searchParams.set("after_id", body.last_id);
+@@ -205,101 +233,3 @@ export async function discoverConnectionModels(
+     "The model list exceeds the supported page limit; add the required models manually",
+   );
+ }
+-
+-/** xAI's generic /models has no output class; these key-scoped catalogs are the route authority. */
+-async function discoverXaiModels(
+-  origin: string,
+-  headers: Headers,
+-  fetch: typeof globalThis.fetch,
+-): Promise<ModelDiscoveryResult> {
+-  const models = new Map<string, DiscoveredModel>();
+-  const warnings: NonNullable<ModelDiscoveryResult["warnings"]> = [];
+-  const deadline = AbortSignal.timeout(20_000);
+-  for (const [route, output, kind] of [
+-    ["language-models", "text", "text"],
+-    ["image-generation-models", "image", "image"],
+-    ["video-generation-models", "video", "video"],
+-  ] as const) {
+-    const response = await fetch(`${origin}/v1/${route}`, {
+-      headers,
+-      signal: deadline,
+-      redirect: "error",
+-    });
+-    if (!response.ok) {
+-      await response.body?.cancel();
+-      if (response.status === 403 || response.status === 404) {
+-        warnings.push({ kind, status: response.status });
+-        continue;
+-      }
+-      throw new Error(`Model list request failed (${response.status}) for ${route}`);
+-    }
+-    const body = (await readModelListPage(response)) as { models?: unknown };
+-    if (!Array.isArray(body.models)) {
+-      throw new Error(`The provider returned an unsupported ${route} catalog`);
+-    }
+-    const routeIds = new Set<string>();
+-    for (const value of body.models) {
+-      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+-      const item = value as Record<string, unknown>;
+-      const id = typeof item.id === "string" ? item.id.trim() : "";
+-      if (!id) continue;
+-      if (routeIds.has(id)) {
+-        throw new Error(`The provider returned duplicate model IDs in ${route}`);
+-      }
+-      routeIds.add(id);
+-      const reportedOutputs = item.output_modalities;
+-      if (Array.isArray(reportedOutputs) && !reportedOutputs.includes(output)) {
+-        throw new Error(`The provider returned a conflicting ${route} output for ${id}`);
+-      }
+-      const config = readDiscoveredModelMetadata({
+-        ...item,
+-        output_modalities: reportedOutputs ?? [output],
+-      });
+-      const name =
+-        typeof item.name === "string" && item.name.trim()
+-          ? item.name
+-          : typeof item.display_name === "string" && item.display_name.trim()
+-            ? item.display_name
+-            : id;
+-      const existing = models.get(id);
+-      models.set(
+-        id,
+-        existing ? mergeDiscoveredOutput(existing, { id, name, config }) : { id, name, config },
+-      );
+-      if (models.size > MAX_MODEL_LIST_ENTRIES) {
+-        throw new Error("The model list exceeds the supported entry limit");
+-      }
+-    }
+-  }
+-  if (warnings.length === 3) {
+-    throw new Error(
+-      `Model list request failed (${warnings[0]!.status}) for all xAI media catalogs`,
+-    );
+-  }
+-  return {
+-    source: "provider",
+-    models: [...models.values()],
+-    ...(warnings.length ? { warnings } : {}),
+-  };
+-}
+-
+-function mergeDiscoveredOutput(existing: DiscoveredModel, next: DiscoveredModel): DiscoveredModel {
+-  const earlier = existing.config.properties?.outputFormat;
+-  const later = next.config.properties?.outputFormat;
+-  return {
+-    ...existing,
+-    config: {
+-      ...existing.config,
+-      properties: {
+-        ...existing.config.properties,
+-        ...next.config.properties,
+-        outputFormat: {
+-          supportsText: earlier?.supportsText === true || later?.supportsText === true,
+-          supportsImage: earlier?.supportsImage === true || later?.supportsImage === true,
+-          supportsVideo: earlier?.supportsVideo === true || later?.supportsVideo === true,
+-        },
+-      },
+-      optionSpecs: existing.config.optionSpecs ?? next.config.optionSpecs,
+-    },
+-  };
+-}
+diff --git a/packages/services/src/model-provider/modelDiscoveryCatalogs.ts b/packages/services/src/model-provider/modelDiscoveryCatalogs.ts
+new file mode 100644
+index 0000000..ac28f6b
+--- /dev/null
++++ b/packages/services/src/model-provider/modelDiscoveryCatalogs.ts
+@@ -0,0 +1,309 @@
++import type { ModelConfigObject } from "@zcode/provider";
++import type { ModelDiscoveryResult, DiscoveredModel } from "./modelDiscovery.js";
++import { readDiscoveredModelMetadata } from "./modelDiscoveryMetadata.js";
++
++const MAX_MODEL_LIST_PAGE_BYTES = 8 * 1024 * 1024;
++export const MAX_MODEL_LIST_ENTRIES = 20_000;
++
++/** Bound each untrusted catalog page before JSON parsing, including unknown body lengths. */
++export async function readModelListPage(response: Response): Promise<unknown> {
++  if (Number(response.headers.get("content-length")) > MAX_MODEL_LIST_PAGE_BYTES) {
++    await response.body?.cancel();
++    throw new Error("The model list response is too large");
++  }
++  const reader = response.body?.getReader();
++  if (!reader) throw new Error("The model list response is empty");
++  const chunks: Uint8Array[] = [];
++  let size = 0;
++  try {
++    for (;;) {
++      const part = await reader.read();
++      if (part.done) break;
++      size += part.value.byteLength;
++      if (size > MAX_MODEL_LIST_PAGE_BYTES) throw new Error("The model list response is too large");
++      chunks.push(part.value);
++    }
++  } finally {
++    await reader.cancel().catch(() => {});
++    reader.releaseLock();
++  }
++  return JSON.parse(Buffer.concat(chunks, size).toString("utf8"));
++}
++
++/** Native Google metadata enriches only the IDs admitted by its compatibility catalog. */
++export async function readGoogleModelMetadata(
++  baseUrl: string,
++  committedHeaders: Headers,
++  key: string,
++  fetch: typeof globalThis.fetch,
++  deadline: AbortSignal,
++): Promise<Map<string, ModelConfigObject>> {
++  const headers = new Headers(committedHeaders);
++  headers.delete("Authorization");
++  headers.delete("x-api-key");
++  headers.set("x-goog-api-key", key);
++  const url = new URL(`${baseUrl}/models`);
++  const models = new Map<string, ModelConfigObject>();
++  const cursors = new Set<string>();
++  for (let page = 0; page < 20; page++) {
++    const response = await fetch(url, { headers, signal: deadline, redirect: "error" });
++    if (!response.ok) {
++      await response.body?.cancel();
++      throw new Error(`Model metadata request failed (${response.status})`);
++    }
++    const body = (await readModelListPage(response)) as {
++      models?: unknown;
++      nextPageToken?: unknown;
++    };
++    if (!Array.isArray(body.models))
++      throw new Error("Google returned an unsupported model metadata catalog");
++    for (const item of body.models) {
++      if (
++        !item ||
++        typeof item !== "object" ||
++        typeof item.name !== "string" ||
++        !item.name.startsWith("models/")
++      )
++        continue;
++      const id = item.name.slice("models/".length);
++      if (!id.trim() || models.has(id))
++        throw new Error("Google returned duplicate or invalid model resources");
++      let config = readDiscoveredModelMetadata(item);
++      if (
++        Array.isArray(item.supportedGenerationMethods) &&
++        !item.supportedGenerationMethods.includes("generateContent")
++      )
++        config = {
++          ...config,
++          properties: { ...config.properties, outputFormat: { supportsText: false } },
++        };
++      models.set(id, config);
++      if (models.size > MAX_MODEL_LIST_ENTRIES)
++        throw new Error("Google model metadata exceeds its entry limit");
++    }
++    if (!body.nextPageToken) return models;
++    if (typeof body.nextPageToken !== "string" || cursors.has(body.nextPageToken))
++      throw new Error("Google returned an invalid pagination cursor");
++    cursors.add(body.nextPageToken);
++    url.searchParams.set("pageToken", body.nextPageToken);
++  }
++  throw new Error("Google model metadata exceeds its page limit");
++}
++
++/** xAI's generic /models has no output class; these key-scoped catalogs are the route authority. */
++export async function discoverXaiModels(
++  origin: string,
++  headers: Headers,
++  fetch: typeof globalThis.fetch,
++): Promise<ModelDiscoveryResult> {
++  const models = new Map<string, DiscoveredModel>();
++  const warnings: NonNullable<ModelDiscoveryResult["warnings"]> = [];
++  const deadline = AbortSignal.timeout(20_000);
++  for (const [route, output, kind] of [
++    ["language-models", "text", "text"],
++    ["image-generation-models", "image", "image"],
++    ["video-generation-models", "video", "video"],
++  ] as const) {
++    const response = await fetch(`${origin}/v1/${route}`, {
++      headers,
++      signal: deadline,
++      redirect: "error",
++    });
++    if (!response.ok) {
++      await response.body?.cancel();
++      if (response.status === 403 || response.status === 404) {
++        warnings.push({ kind, status: response.status });
++        continue;
++      }
++      throw new Error(`Model list request failed (${response.status}) for ${route}`);
++    }
++    const body = (await readModelListPage(response)) as { models?: unknown };
++    if (!Array.isArray(body.models)) {
++      throw new Error(`The provider returned an unsupported ${route} catalog`);
++    }
++    const routeIds = new Set<string>();
++    for (const value of body.models) {
++      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
++      const item = value as Record<string, unknown>;
++      const id = typeof item.id === "string" ? item.id.trim() : "";
++      if (!id) continue;
++      if (routeIds.has(id)) {
++        throw new Error(`The provider returned duplicate model IDs in ${route}`);
++      }
++      routeIds.add(id);
++      const reportedOutputs = item.output_modalities;
++      if (Array.isArray(reportedOutputs) && !reportedOutputs.includes(output)) {
++        throw new Error(`The provider returned a conflicting ${route} output for ${id}`);
++      }
++      const config = readDiscoveredModelMetadata({
++        ...item,
++        output_modalities: reportedOutputs ?? [output],
++      });
++      const name =
++        typeof item.name === "string" && item.name.trim()
++          ? item.name
++          : typeof item.display_name === "string" && item.display_name.trim()
++            ? item.display_name
++            : id;
++      const existing = models.get(id);
++      models.set(
++        id,
++        existing ? mergeDiscoveredOutput(existing, { id, name, config }) : { id, name, config },
++      );
++      if (models.size > MAX_MODEL_LIST_ENTRIES) {
++        throw new Error("The model list exceeds the supported entry limit");
++      }
++    }
++  }
++  if (warnings.length === 3) {
++    throw new Error(
++      `Model list request failed (${warnings[0]!.status}) for all xAI media catalogs`,
++    );
++  }
++  return {
++    source: "provider",
++    models: [...models.values()],
++    ...(warnings.length ? { warnings } : {}),
++  };
++}
++
++function mergeDiscoveredOutput(existing: DiscoveredModel, next: DiscoveredModel): DiscoveredModel {
++  const earlier = existing.config.properties?.outputFormat;
++  const later = next.config.properties?.outputFormat;
++  return {
++    ...existing,
++    config: {
++      ...existing.config,
++      properties: {
++        ...existing.config.properties,
++        ...next.config.properties,
++        outputFormat: {
++          supportsText: earlier?.supportsText === true || later?.supportsText === true,
++          supportsImage: earlier?.supportsImage === true || later?.supportsImage === true,
++          supportsVideo: earlier?.supportsVideo === true || later?.supportsVideo === true,
++        },
++      },
++      optionSpecs: existing.config.optionSpecs ?? next.config.optionSpecs,
++    },
++  };
++}
++
++/** The regional pay-as-you-go Model Studio catalogue has its own path and page-number schema. */
++export function isModelStudioCatalogBase(base: URL): boolean {
++  const regional = [
++    "dashscope.aliyuncs.com",
++    "dashscope-intl.aliyuncs.com",
++    "dashscope-us.aliyuncs.com",
++    "cn-hongkong.dashscope.aliyuncs.com",
++  ].includes(base.hostname);
++  const workspace =
++    /^[^.]+\.(?:cn-beijing|ap-southeast-1|ap-northeast-1|eu-central-1|us-east-1|cn-hongkong)\.maas\.aliyuncs\.com$/.test(
++      base.hostname,
++    ) && !/^(?:token-plan|trial)\./.test(base.hostname);
++  return (
++    base.protocol === "https:" &&
++    (regional || workspace) &&
++    /^\/(?:compatible-mode\/v1|apps\/anthropic)\/?$/.test(base.pathname) &&
++    !base.username &&
++    !base.password &&
++    !base.search &&
++    !base.hash
++  );
++}
++
++export async function discoverModelStudioModels(
++  origin: string,
++  committedHeaders: Headers,
++  key: string,
++  fetch: typeof globalThis.fetch,
++): Promise<ModelDiscoveryResult> {
++  const headers = new Headers(committedHeaders);
++  for (const name of ["x-api-key", "anthropic-version", "anthropic-beta"]) headers.delete(name);
++  headers.set("Authorization", `Bearer ${key}`);
++  const url = new URL(`${origin}/api/v1/models`);
++  url.searchParams.set("page_size", "100");
++  const models = new Map<string, DiscoveredModel>();
++  const deadline = AbortSignal.timeout(20_000);
++  let total: number | undefined;
++  for (let page = 1; page <= 20; page++) {
++    url.searchParams.set("page_no", String(page));
++    const response = await fetch(url, { headers, signal: deadline, redirect: "error" });
++    if (!response.ok) {
++      await response.body?.cancel();
++      throw new Error(`Model list request failed (${response.status})`);
++    }
++    const body = (await readModelListPage(response)) as {
++      success?: unknown;
++      output?: { total?: unknown; page_no?: unknown; models?: unknown };
++    };
++    const output = body.output;
++    if (
++      body.success === false ||
++      !Array.isArray(output?.models) ||
++      !Number.isSafeInteger(output.total) ||
++      Number(output.total) < 0 ||
++      Number(output.total) > MAX_MODEL_LIST_ENTRIES ||
++      output.page_no !== page
++    )
++      throw new Error("Model Studio returned an invalid model catalogue page");
++    if (total !== undefined && total !== output.total)
++      throw new Error("Model Studio catalogue changed during pagination; retry");
++    total = Number(output.total);
++    for (const item of output.models) {
++      if (
++        !item ||
++        typeof item !== "object" ||
++        typeof item.model !== "string" ||
++        !item.model.trim() ||
++        models.has(item.model)
++      )
++        throw new Error("Model Studio returned duplicate or invalid model IDs");
++      const info = item.model_info ?? {};
++      const io = item.inference_metadata ?? {};
++      const lower = (value: unknown) =>
++        Array.isArray(value) && value.every((v) => typeof v === "string")
++          ? value.map((v) => v.toLowerCase())
++          : undefined;
++      const features =
++        Array.isArray(item.features) &&
++        item.features.every((value: unknown) => typeof value === "string")
++          ? item.features
++          : undefined;
++      let config = readDiscoveredModelMetadata({
++        context_window: info.context_window,
++        max_output_tokens: info.max_output_tokens,
++        input_modalities: lower(io.request_modality),
++        output_modalities: lower(io.response_modality),
++        ...(features
++          ? {
++              supports_tool_calls: features.includes("function-calling"),
++              supports_json_schema_output: features.includes("structured-outputs"),
++            }
++          : {}),
++      });
++      if (
++        Array.isArray(item.capabilities) &&
++        item.capabilities.length &&
++        !item.capabilities.some(
++          (v: unknown) => v === "TG" || v === "Reasoning" || v === "Multimodal-Omni",
++        )
++      )
++        config = {
++          ...config,
++          properties: {
++            ...config.properties,
++            outputFormat: { ...config.properties?.outputFormat, supportsText: false },
++          },
++        };
++      models.set(item.model, {
++        id: item.model,
++        name: typeof item.name === "string" ? item.name : item.model,
++        config,
++      });
++    }
++    if (models.size === total) return { source: "provider", models: [...models.values()] };
++    if (!output.models.length || models.size > total)
++      throw new Error("Model Studio returned an incomplete catalogue page");
++  }
++  throw new Error("Model Studio model list exceeds its page limit");
++}
+diff --git a/packages/services/src/model-provider/modelDiscoveryMetadata.ts b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+index bb90a9b..1452c6c 100644
+--- a/packages/services/src/model-provider/modelDiscoveryMetadata.ts
++++ b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+@@ -1,4 +1,4 @@
+-import type { ModelConfigObject } from "@zcode/provider";
++import type { ModelConfigObject, ProviderApiType } from "@zcode/provider";
+ 
+ const record = (value: unknown): Record<string, unknown> =>
+   value && typeof value === "object" && !Array.isArray(value)
+@@ -12,25 +12,76 @@ const strings = (value: unknown): string[] | undefined =>
+     : undefined;
+ 
+ /** 只接受目录明确返回的元数据；ID/名字不建立上下文、输入、工具或思考能力。 */
+-export function readDiscoveredModelMetadata(value: unknown): ModelConfigObject {
++export function readDiscoveredModelMetadata(
++  value: unknown,
++  openRouterApi?: ProviderApiType,
++): ModelConfigObject {
+   const item = record(value);
+   const architecture = record(item.architecture);
+   const topProvider = record(item.top_provider);
+-  const context = positive(item.context_window ?? item.contextWindow ?? item.context_length);
++  const capabilities = record(item.capabilities);
++  const context = positive(
++    item.context_window ??
++      item.contextWindow ??
++      item.context_length ??
++      item.max_context_length ??
++      item.inputTokenLimit,
++  );
+   const output = positive(
+-    item.max_output_tokens ?? item.maxOutputTokens ?? topProvider.max_completion_tokens,
++    item.max_output_tokens ??
++      item.maxOutputTokens ??
++      item.max_completion_tokens ??
++      item.outputTokenLimit ??
++      topProvider.max_completion_tokens,
+   );
+   const input = strings(item.input_modalities ?? architecture.input_modalities);
+   const outputs = strings(item.output_modalities ?? architecture.output_modalities);
+   const parameters = strings(item.supported_parameters);
++  const reasoning = record(item.reasoning);
++  const advertised =
++    reasoning.supported_efforts === null
++      ? ["max", "xhigh", "high", "medium", "low", "minimal", "none"]
++      : strings(reasoning.supported_efforts);
++  const levels = advertised?.filter((level) => !(reasoning.mandatory === true && level === "none"));
++  const declaredReasoning = Object.keys(reasoning).length > 0 || parameters !== undefined;
++  const values = [...new Set(["auto", ...(levels ?? [])])];
++  const defaultDisabled = reasoning.default_enabled === false && reasoning.mandatory !== true;
++  if (reasoning.mandatory === false && !values.includes("none")) values.push("disabled");
++  const preferred =
++    defaultDisabled
++      ? "auto"
++      : typeof reasoning.default_effort === "string" &&
++          reasoning.default_effort !== "none" &&
++          values.includes(reasoning.default_effort)
++        ? reasoning.default_effort
++        : "auto";
++  const effortMap =
++    openRouterApi === "anthropic-messages"
++      ? 'reasoningLevel == "auto" ? {} : reasoningLevel == "disabled" || reasoningLevel == "none" ? {"thinking":{"type":"disabled"}} : {"output_config":{"effort":reasoningLevel}}'
++      : 'reasoningLevel == "auto" ? {} : reasoningLevel == "disabled" ? {"reasoning":{"enabled":false}} : {"reasoning":{"effort":reasoningLevel}}';
++  const structured =
++    typeof item.supports_json_schema_output === "boolean"
++      ? item.supports_json_schema_output
++      : parameters
++        ? parameters.includes("structured_outputs")
++        : undefined;
+   const tools =
+     typeof item.supports_tool_calls === "boolean"
+       ? item.supports_tool_calls
+-      : parameters
+-        ? parameters.includes("tools")
+-        : undefined;
++      : typeof capabilities.function_calling === "boolean"
++        ? capabilities.function_calling
++        : parameters
++          ? parameters.includes("tools")
++          : undefined;
+   return {
+-    ...(context || input || outputs || tools !== undefined || item.type === "classifier"
++    ...(context ||
++    input ||
++    outputs ||
++    tools !== undefined ||
++    item.type === "classifier" ||
++    typeof capabilities.completion_chat === "boolean" ||
++    typeof capabilities.vision === "boolean" ||
++    structured !== undefined
+       ? {
+           properties: {
+             ...(context ? { contextWindow: context } : {}),
+@@ -41,10 +92,14 @@ export function readDiscoveredModelMetadata(value: unknown): ModelConfigObject {
+                     supportsImage: input.includes("image"),
+                     supportsVideo: input.includes("video"),
+                     supportsAudio: input.includes("audio"),
+-                    supportsPdf: input.includes("pdf"),
++                    supportsPdf:
++                      input.includes("pdf") ||
++                      (openRouterApi !== undefined && input.includes("file")),
+                   },
+                 }
+-              : {}),
++              : typeof capabilities.vision === "boolean"
++                ? { inputFormat: { supportsImage: capabilities.vision } }
++                : {}),
+             ...(item.type === "classifier"
+               ? { outputFormat: { supportsText: false, supportsClassification: true } }
+               : outputs
+@@ -55,11 +110,30 @@ export function readDiscoveredModelMetadata(value: unknown): ModelConfigObject {
+                       supportsVideo: outputs.includes("video"),
+                     },
+                   }
+-                : {}),
++                : typeof capabilities.completion_chat === "boolean"
++                  ? { outputFormat: { supportsText: capabilities.completion_chat } }
++                  : {}),
+             ...(tools !== undefined ? { supportsToolCall: tools } : {}),
++            ...(structured !== undefined ? { supportsJsonSchemaOutput: structured } : {}),
++          },
++        }
++      : {}),
++    ...(item.active === false || item.archived === true ? { enabled: false } : {}),
++    ...(output || (openRouterApi && declaredReasoning)
++      ? {
++          optionSpecs: {
++            ...(output ? { maxOutputTokens: { max: output } } : {}),
++            ...(openRouterApi && declaredReasoning
++              ? {
++                  reasoningLevel: {
++                    values,
++                    defaultValue: preferred,
++                    map: effortMap,
++                  },
++                }
++              : {}),
+           },
+         }
+       : {}),
+-    ...(output ? { optionSpecs: { maxOutputTokens: { max: output } } } : {}),
+   };
+ }
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index b381f55..7b0e775 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -95,7 +95,9 @@ export function createProviderSettingsService(
+             if (subscription && (await subscription.accounts(id)).revision !== accountRevision)
+               throw new Error("Subscription account changed; reload its model list");
+           },
+-          Boolean(subscription) || provider.effectiveConfig.access?.type === "native-cli",
++          Boolean(subscription) ||
++            provider.effectiveConfig.access?.type === "native-cli" ||
++            catalog.catalogScope === "account",
+         );
+         return catalog;
+       })();
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index 60f0e90..2270537 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -15,7 +15,9 @@ import {
+   parseProviderConfig,
+   serializeRegistryProviderConfig,
+   createRegistryProviderConfig,
++  completeNewModelSelection,
+ } from "@zcode/provider";
++import { compileModelOptionMaps } from "../../model-option-map/src/index.js";
+ 
+ test("model-list diagnostics do not call an unexplained 403 an authentication failure", () => {
+   assert.equal(modelCatalogFailureKind("Model list request failed (401)"), "unauthorized");
+@@ -947,3 +949,446 @@ test("manual subscription correction survives restart and empty fresh catalog wi
+     await f.dispose();
+   }
+ });
++
++test("OpenRouter keeps key-scoped slugs, all modalities, manual models and atomic failure across wire formats", async () => {
++  const f = await fixture();
++  try {
++    for (const type of [
++      "anthropic-messages",
++      "openai-chat-completions",
++      "openai-responses",
++    ] as const) {
++      const { providerId } = await f.service.createPersonalProvider({
++        templateId: {
++          "anthropic-messages": "openrouter",
++          "openai-chat-completions": "fleet-openrouter-chat",
++          "openai-responses": "fleet-openrouter-responses",
++        }[type],
++        initialConfig: {
++          api: { type, baseUrl: "https://openrouter.ai/api" },
++          access: { type: "api-key", apiKey: "synthetic-current" },
++        },
++      });
++      let ids = ["vendor/tool-model", "vendor/image-only"];
++      const requests: string[] = [];
++      f.setFetch(async (input, init) => {
++        const url = new URL(String(input));
++        requests.push(String(url));
++        assert.equal(url.pathname, "/api/v1/models/user");
++        assert.equal(url.searchParams.get("output_modalities"), "all");
++        const headers = new Headers(init?.headers);
++        assert.equal(headers.get("Authorization"), "Bearer synthetic-current");
++        assert.equal(headers.get("x-api-key"), null);
++        assert.equal(headers.get("anthropic-version"), null);
++        return Response.json({
++          data: ids.map((id) => ({
++            id,
++            context_length: 128000,
++            architecture: {
++              input_modalities: ["text"],
++              output_modalities: [id.includes("image-only") ? "image" : "text"],
++            },
++            supported_parameters: ["tools", "structured_outputs"],
++            top_provider: { max_completion_tokens: 16384 },
++          })),
++        });
++      });
++      await f.service.discoverModels(providerId);
++      await f.service.addPersonalModel(providerId, "user/private-model", {}, true);
++      ids = ["vendor/new-model"];
++      await f.service.discoverModels(providerId);
++      const read = async () =>
++        (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++      assert.deepEqual((await read()).models.map((m) => m.modelId).sort(), [
++        "user/private-model",
++        "vendor/new-model",
++      ]);
++      assert.equal(
++        (await read()).effectiveConfig.api?.baseUrl,
++        "https://openrouter.ai/api",
++        "Refresh rewrote saved route",
++      );
++      const before = await f.disk();
++      f.setFetch(async () => new Response("denied", { status: 403 }));
++      await assert.rejects(f.service.discoverModels(providerId), /403/);
++      assert.equal(await f.disk(), before, "Denied scoped catalog altered saved configuration");
++      await f.restart();
++      assert.deepEqual((await read()).models.map((m) => m.modelId).sort(), [
++        "user/private-model",
++        "vendor/new-model",
++      ]);
++      ids = [];
++      f.setFetch(async () => Response.json({ data: ids }));
++      await f.service.discoverModels(providerId);
++      await f.restart();
++      assert.deepEqual((await read()).models.map((m) => m.modelId), ["user/private-model"]);
++      assert.ok(
++        !(await f.runtime.modelSelection.getView()).providers
++          .find((p) => p.providerId === providerId)
++          ?.models.some((m) => m.modelId !== "user/private-model"),
++      );
++      assert.equal(requests.length, 2, "Discovery sent extra catalogue/inference requests");
++    }
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("OpenRouter rejects an entire malformed key-scoped catalog and retains manual and observed members after reopen", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "fleet-openrouter-chat",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++    });
++    f.setFetch(async () => Response.json({ data: [{ id: "vendor/allowed" }] }));
++    await f.service.discoverModels(providerId);
++    await f.service.addPersonalModel(providerId, "user/manual", {}, true);
++    const seededId = (await f.service.getView()).providers
++      .find((p) => p.providerId === providerId)!.effectiveConfig.builtinModelIds?.[0];
++    assert.ok(seededId);
++    await f.service.addPersonalModel(providerId, seededId, {}, true);
++    const before = await f.disk();
++    for (const bad of [{ id: "   " }, { id: " vendor/trimmed" }, {}, null, 3]) {
++      f.setFetch(async () => Response.json({ data: [{ id: "vendor/new" }, bad] }));
++      await assert.rejects(f.service.discoverModels(providerId), /invalid model ID/);
++      assert.equal(await f.disk(), before);
++    }
++    await f.restart();
++    const view = (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++    assert.deepEqual(view.models.map((m) => m.modelId).sort(), [
++      seededId, "user/manual", "vendor/allowed",
++    ].sort());
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("OpenRouter's default-disabled reasoning remains unset in new selection and real wire mapping after reopen", async () => {
++  const f = await fixture();
++  try {
++    for (const templateId of ["openrouter", "fleet-openrouter-chat", "fleet-openrouter-responses"]) {
++      const { providerId } = await f.service.createPersonalProvider({
++        templateId,
++        initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++      });
++      f.setFetch(async () => Response.json({
++        data: [{
++          id: "vendor/default-off",
++          reasoning: {
++            supported_efforts: ["high", "low"],
++            default_effort: "high",
++            default_enabled: false,
++            mandatory: false,
++          },
++          supported_parameters: ["tools", "reasoning"],
++        }],
++      }));
++      await f.service.discoverModels(providerId);
++      await f.restart();
++      const view = await f.runtime.modelSelection.getView();
++      const selected = completeNewModelSelection(view, {
++        providerId, modelId: "vendor/default-off",
++      })!;
++      assert.equal(selected.options?.reasoningLevel, "auto");
++      const spec = view.providers.find((p) => p.providerId === providerId)!
++        .models[0]!.config.optionSpecs.reasoningLevel;
++      const wire = compileModelOptionMaps({
++        reasoningLevel: { map: spec.map! },
++        maxOutputTokens: { map: "{}" },
++      }).apply({ model: selected.modelId }, {
++        reasoningLevel: selected.options!.reasoningLevel!, maxOutputTokens: 256,
++      });
++      assert.deepEqual({ ...wire }, { model: selected.modelId }, "An unset default actively enabled thinking");
++    }
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("Mistral and Groq advertised limits, tools, vision and inactive state survive the real writer and restart", async () => {
++  const f = await fixture();
++  try {
++    const samples = [
++      {
++        id: "mistral-fixture-chat",
++        max_context_length: 131072,
++        capabilities: { completion_chat: true, function_calling: true, vision: false },
++        archived: false,
++      },
++      {
++        id: "mistral-fixture-fim",
++        max_context_length: 32768,
++        capabilities: { completion_chat: false, function_calling: false, vision: false },
++      },
++      { id: "groq-inactive", context_window: 8192, max_completion_tokens: 4096, active: false },
++    ];
++    f.setFetch(async () => Response.json({ data: samples }));
++    await f.service.discoverModels(f.providerId);
++    await f.restart();
++    const models = await f.models();
++    const chat = models.find((m) => m.modelId === "mistral-fixture-chat")!;
++    assert.equal(chat.effectiveConfig.properties?.contextWindow, 131072);
++    assert.equal(chat.evidenceConfig.properties?.supportsToolCall, true);
++    assert.equal(chat.evidenceConfig.properties?.inputFormat?.supportsImage, false);
++    assert.equal(chat.selectable, true);
++    assert.equal(models.find((m) => m.modelId === "mistral-fixture-fim")!.selectable, false);
++    const inactive = models.find((m) => m.modelId === "groq-inactive")!;
++    assert.equal(inactive.enabled, false);
++    assert.equal(inactive.effectiveConfig.optionSpecs?.maxOutputTokens?.max, 4096);
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("Google compatibility membership and native capacity use their own same-origin contracts atomically", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "fleet-google",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic-google" } },
++    });
++    const paths: string[] = [];
++    f.setFetch(async (input, init) => {
++      const url = new URL(String(input));
++      const headers = new Headers(init?.headers);
++      paths.push(url.pathname);
++      assert.equal(url.origin, "https://generativelanguage.googleapis.com");
++      if (url.pathname === "/v1beta/models") {
++        assert.equal(headers.get("x-goog-api-key"), "synthetic-google");
++        assert.equal(headers.get("authorization"), null);
++        return Response.json(
++          url.searchParams.has("pageToken")
++            ? {
++                models: [
++                  {
++                    name: "models/embed-future",
++                    inputTokenLimit: 2048,
++                    outputTokenLimit: 1,
++                    supportedGenerationMethods: ["embedContent"],
++                  },
++                ],
++              }
++            : {
++                models: [
++                  {
++                    name: "models/gemini-future",
++                    inputTokenLimit: 1048576,
++                    outputTokenLimit: 8192,
++                    supportedGenerationMethods: ["generateContent"],
++                  },
++                  {
++                    name: "models/native-not-compatible",
++                    inputTokenLimit: 64000,
++                    outputTokenLimit: 2000,
++                    supportedGenerationMethods: ["generateContent"],
++                  },
++                ],
++                nextPageToken: "second",
++              },
++        );
++      }
++      assert.equal(url.pathname, "/v1beta/openai/models");
++      assert.equal(headers.get("authorization"), "Bearer synthetic-google");
++      assert.equal(headers.get("x-goog-api-key"), null);
++      return Response.json({
++        data: [{ id: "models/gemini-future" }, { id: "embed-future" }, { id: "compat-only" }],
++      });
++    });
++    await f.service.discoverModels(providerId);
++    const read = async () =>
++      (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++    let models = (await read()).models;
++    const future = models.find((m) => m.modelId === "gemini-future")!;
++    assert.equal(future.evidenceConfig.properties?.contextWindow, 1048576);
++    assert.equal(future.effectiveConfig.optionSpecs?.maxOutputTokens?.max, 8192);
++    assert.equal(
++      future.evidenceConfig.properties?.inputFormat,
++      undefined,
++      "Native capacity inferred media input",
++    );
++    assert.equal(models.find((m) => m.modelId === "embed-future")?.selectable, false);
++    assert.ok(!models.some((m) => m.modelId === "native-not-compatible"));
++    assert.ok(models.some((m) => m.modelId === "compat-only"));
++    assert.deepEqual(paths, ["/v1beta/models", "/v1beta/models", "/v1beta/openai/models"]);
++    await f.restart();
++    models = (await read()).models;
++    assert.equal(
++      models.find((m) => m.modelId === "gemini-future")?.effectiveConfig.properties?.contextWindow,
++      1048576,
++    );
++    const before = await f.disk();
++    f.setFetch(async () => new Response("unavailable", { status: 503 }));
++    await assert.rejects(f.service.discoverModels(providerId), /503/);
++    assert.equal(await f.disk(), before, "Failed native enrichment committed a partial catalog");
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("OpenRouter live-declared mandatory effort and file capability override stale recommendations without inventing tiers", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      initialConfig: {
++        api: { type: "openai-chat-completions", baseUrl: "https://openrouter.ai/api/v1" },
++        access: { type: "api-key", apiKey: "synthetic" },
++      },
++    });
++    f.setFetch(async () =>
++      Response.json({
++        data: [
++          {
++            id: "vendor/mandatory",
++            reasoning: {
++              mandatory: true,
++              supported_efforts: ["max", "high", "low"],
++              default_effort: "max",
++            },
++            architecture: { input_modalities: ["text", "file"], output_modalities: ["text"] },
++            supported_parameters: ["tools", "structured_outputs", "reasoning"],
++          },
++          {
++            id: "vendor/fixed",
++            reasoning: { mandatory: true, default_enabled: true },
++            supported_parameters: ["reasoning"],
++          },
++          {
++            id: "vendor/all-tiers",
++            reasoning: { supported_efforts: null, mandatory: true, default_effort: "medium" },
++          },
++        ],
++      }),
++    );
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    const models = (await f.service.getView()).providers.find(
++      (p) => p.providerId === providerId,
++    )!.models;
++    const mandatory = models.find((m) => m.modelId === "vendor/mandatory")!;
++    assert.deepEqual(mandatory.effectiveConfig.optionSpecs?.reasoningLevel?.values, [
++      "auto",
++      "max",
++      "high",
++      "low",
++    ]);
++    assert.equal(mandatory.effectiveConfig.optionSpecs?.reasoningLevel?.defaultValue, "max");
++    assert.equal(mandatory.evidenceConfig.properties?.inputFormat?.supportsPdf, true);
++    assert.equal(mandatory.evidenceConfig.properties?.supportsJsonSchemaOutput, true);
++    assert.deepEqual(
++      models.find((m) => m.modelId === "vendor/fixed")?.effectiveConfig.optionSpecs?.reasoningLevel
++        ?.values,
++      ["auto"],
++    );
++    assert.ok(
++      !models
++        .find((m) => m.modelId === "vendor/all-tiers")
++        ?.effectiveConfig.optionSpecs?.reasoningLevel?.values?.includes("none"),
++    );
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("regional Model Studio catalog uses native pages/capabilities without rewriting inference or plan routes", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      initialConfig: {
++        api: {
++          type: "anthropic-messages",
++          baseUrl: "https://llm-fixture.cn-beijing.maas.aliyuncs.com/apps/anthropic",
++        },
++        access: { type: "api-key", apiKey: "synthetic-aliyun" },
++      },
++    });
++    const pages: string[] = [];
++    f.setFetch(async (input, init) => {
++      const url = new URL(String(input));
++      const headers = new Headers(init?.headers);
++      assert.equal(url.origin, "https://llm-fixture.cn-beijing.maas.aliyuncs.com");
++      assert.equal(url.pathname, "/api/v1/models");
++      assert.equal(headers.get("authorization"), "Bearer synthetic-aliyun");
++      assert.equal(headers.get("x-api-key"), null);
++      assert.equal(headers.get("anthropic-version"), null);
++      const page = Number(url.searchParams.get("page_no"));
++      pages.push(String(page));
++      return Response.json({
++        success: true,
++        output: {
++          page_no: page,
++          total: 3,
++          models:
++            page === 1
++              ? [
++                  {
++                    model: "qwen-future",
++                    capabilities: ["TG", "Reasoning"],
++                    features: ["function-calling", "structured-outputs"],
++                    inference_metadata: {
++                      request_modality: ["Text", "Image"],
++                      response_modality: ["Text"],
++                    },
++                    model_info: { context_window: 131072, max_output_tokens: 16384 },
++                  },
++                  {
++                    model: "wan-image",
++                    capabilities: ["IG"],
++                    features: [],
++                    inference_metadata: {
++                      request_modality: ["Text"],
++                      response_modality: ["Image"],
++                    },
++                  },
++                ]
++              : [
++                  {
++                    model: "text-embed",
++                    capabilities: ["TR"],
++                    features: [],
++                    inference_metadata: { request_modality: ["Text"], response_modality: ["Text"] },
++                  },
++                ],
++        },
++      });
++    });
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    const provider = (await f.service.getView()).providers.find(
++      (p) => p.providerId === providerId,
++    )!;
++    assert.equal(
++      provider.effectiveConfig.api?.baseUrl,
++      "https://llm-fixture.cn-beijing.maas.aliyuncs.com/apps/anthropic",
++    );
++    const chat = provider.models.find((m) => m.modelId === "qwen-future")!;
++    assert.equal(chat.evidenceConfig.properties?.contextWindow, 131072);
++    assert.equal(chat.evidenceConfig.properties?.inputFormat?.supportsImage, true);
++    assert.equal(chat.evidenceConfig.properties?.supportsToolCall, true);
++    assert.equal(chat.effectiveConfig.optionSpecs?.maxOutputTokens?.max, 16384);
++    assert.equal(provider.models.find((m) => m.modelId === "text-embed")?.selectable, false);
++    assert.equal(
++      provider.models.find((m) => m.modelId === "wan-image")?.evidenceConfig.properties
++        ?.outputFormat?.supportsImage,
++      true,
++    );
++    assert.deepEqual(pages, ["1", "2"]);
++    const before = await f.disk();
++    f.setFetch(async () =>
++      Response.json({ success: false, message: "Do not interpret as an empty catalog" }),
++    );
++    await assert.rejects(f.service.discoverModels(providerId), /invalid/);
++    assert.equal(await f.disk(), before);
++    const { providerId: plan } = await f.service.createPersonalProvider({
++      templateId: "fleet-qwen-token-plan-cn",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic-plan" } },
++    });
++    f.setFetch(async (input) => {
++      assert.equal(new URL(String(input)).pathname, "/compatible-mode/v1/models");
++      return Response.json({ data: [] });
++    });
++    await f.service.discoverModels(plan);
++  } finally {
++    await f.dispose();
++  }
++});
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index ae235b3..26de6ed 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -7,6 +7,7 @@ import {
+ } from "../../ui/src/settings/model-provider-section/providerSetupDraft.js";
+ import {
+   parseProviderTemplateMap,
++  parseZCodeBuiltinModelConfigRules,
+   parseProviderConfig,
+   ProviderSettingsFacade,
+   type ProviderRegistryFacadeSource,
+@@ -53,12 +54,12 @@ test("stored future native kinds remain readable but cannot claim executable sup
+ });
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 45);
++  assert.equal(templates.length, 50);
+   assert.equal(vendors.length, 21);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    45,
++    50,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+@@ -330,3 +331,46 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   assert.equal(subscriptions.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Go");
+   assert.equal(api.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Zen");
+ });
++
++test("OpenRouter exposes its three official protocols in one vendor and service", () => {
++  const routes = family("openrouter");
++  assert.equal(routes.length, 3);
++  assert.deepEqual(routes.map((t) => t.config.api?.type).sort(), [
++    "anthropic-messages",
++    "openai-chat-completions",
++    "openai-responses",
++  ]);
++  assert.ok(routes.every((t) => t.config.api?.baseUrl === "https://openrouter.ai/api/v1"));
++  const selected = selectProviderTemplate(routes, "openrouter", { api: "openai-chat-completions" });
++  assert.equal(selected?.templateId, "fleet-openrouter-chat");
++  assert.equal(selected?.catalog?.vendorId, "openrouter");
++});
++
++test("GLM flagship and Flash vision facts remain distinct across Z.ai and BigModel routes", () => {
++  const rules = parseZCodeBuiltinModelConfigRules(builtin.config.modelConfigRules);
++  for (const templateId of [
++    "zai-api",
++    "bigmodel-api",
++    "zai-standard-api",
++    "bigmodel-standard-api",
++    "fleet-zai-coding-chat",
++    "fleet-zai-coding-responses",
++  ]) {
++    const template = templates.find((t) => t.templateId === templateId)!;
++    for (const [modelId, vision] of [
++      ["GLM-5.3", false],
++      ["GLM-5.3-Flash", true],
++    ] as const) {
++      const config = rules.resolve({
++        providerId: "fixture",
++        templateId,
++        modelId,
++        apiType: template.config.api?.type ?? undefined,
++        baseUrl: template.config.api?.baseUrl ?? undefined,
++      });
++      assert.equal(config.properties?.inputFormat?.supportsImage, vision, templateId + modelId);
++      assert.equal(config.properties?.inputFormat?.supportsVideo, vision, templateId + modelId);
++      assert.deepEqual(config.optionSpecs?.reasoningLevel?.values, ["low", "high", "max"]);
++    }
++  }
++});
+diff --git a/packages/services/test/provider-protocol-policy.test.ts b/packages/services/test/provider-protocol-policy.test.ts
+index c4ceb86..6fd5326 100644
+--- a/packages/services/test/provider-protocol-policy.test.ts
++++ b/packages/services/test/provider-protocol-policy.test.ts
+@@ -90,6 +90,7 @@ test("format selection binds the declared endpoint and survives saving/reopening
+     assert.deepEqual(routes, [
+       { type: "anthropic-messages", baseUrl: "https://api.deepseek.com/anthropic" },
+       { type: "openai-chat-completions", baseUrl: "https://api.deepseek.com" },
++      { type: "openai-responses", baseUrl: "https://api.deepseek.com" },
+     ]);
+     const { providerId } = await service.createPersonalProvider({
+       templateId: "deepseek",
+@@ -131,7 +132,11 @@ test("format selection binds the declared endpoint and survives saving/reopening
+         routes,
+       );
+       assert.equal(policy.mode, "preset");
+-      assert.deepEqual(policy.formats, ["anthropic-messages", "openai-chat-completions"]);
++      assert.deepEqual(policy.formats, [
++        "anthropic-messages",
++        "openai-chat-completions",
++        "openai-responses",
++      ]);
+       const previous = await readFile(f.personalFilePath, "utf8");
+       await assert.rejects(
+         service.savePersonalProviderOverlay(
+@@ -277,3 +282,42 @@ test("host preserves subscription-owned transport and rejects API credential fal
+     await f.dispose();
+   }
+ });
++
++test("OpenRouter legacy URL aliases retain explicit format selection and custom proxy addresses", async () => {
++  const f = await fixture();
++  try {
++    const service = f.runtime.configService;
++    const templates = (await service.read()).zcodeBuiltinProviderTemplates.toJSON();
++    const routes = resolveTemplateProtocolRoutes("openrouter", templates);
++    assert.equal(routes.length, 3);
++    const { providerId } = await service.createPersonalProvider({ templateId: "openrouter" });
++    await service.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig({
++        api: { type: "anthropic-messages", baseUrl: "https://openrouter.ai/api" },
++        access: { type: "api-key", apiKey: "synthetic" },
++      }),
++    );
++    const next = selectProviderProtocolRoute(
++      "openai-chat-completions",
++      "https://openrouter.ai/api",
++      routes,
++    );
++    assert.equal(next.baseUrl, "https://openrouter.ai/api/v1");
++    const saved = (await service.read()).personalProviders.get(providerId)!.toJSON();
++    await service.savePersonalProviderOverlay(
++      providerId,
++      parseProviderConfig({ ...saved, api: next }),
++    );
++    assert.equal(
++      (await service.read()).personalProviders.get(providerId)?.access?.apiKey,
++      "synthetic",
++    );
++    assert.deepEqual(
++      selectProviderProtocolRoute("openai-responses", "https://my-proxy.invalid/service", routes),
++      { type: "openai-responses", baseUrl: "https://my-proxy.invalid/service" },
++    );
++  } finally {
++    await f.dispose();
++  }
++});

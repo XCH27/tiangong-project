@@ -1660,10 +1660,44 @@ No helper was installed/launched and no user's app was controlled for this revie
 
 ### Model access and catalog source comparison
 
-Read from the retained checkouts on 2026-09-23; these are local source locks, not a claim that
-any private provider endpoint is supported or that a model can run merely because it appears in a
-list. The current Fleet owner is still Craft's `LlmConnection` plus its backend driver and
-`ModelRefreshService`; no reference's account database or provider registry is imported.
+#### Active ordinary-API contract comparison
+
+Source intake preserves ZCode `29628c9`, OpenCode `f66b86ce` and Cindy `a46bb58f`. New immutable
+copies are OpenCode v2.0.22 `527f0b931d1f9b3ebd34e106c51b31ce5db5b075`
+(`software/intake/opencode-2.0.22-api-review`) and Cindy `79450f8f3f676690a4397102807e96c5d7f77a8d`
+(`software/intake/cindy-api-79450f8-review`). OpenCode's complete provider→route/auth→protocol/frame→
+runner/message→replay chain is the comparison; neither its Effect runtime nor its store is imported.
+Cindy's `provider-model-fetch.ts` separates catalogue auth/URL from inference, and its native Google
+metadata path supplies same-origin enrichment. All data remains in the original candidate Provider
+record; explicit API capability corrections, disabled state and order retain their existing writers.
+
+| Platform/contract | Inspected producer and consumers; candidate correction | Proof boundary |
+|---|---|---|
+| OpenRouter | [key-filtered directory](https://openrouter.ai/docs/api/api-reference/models/list-models-filtered-by-user-provider-preferences-privacy-settings-and-guardrails) uses Bearer and `models/user?output_modalities=all`, independent of Messages headers. [Reasoning declarations](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) supply accepted/default efforts and mandatory reasoning; `default_enabled:false` preserves Auto without enabling an effort. Scoped membership excludes static template seeds in the resolver and writer; malformed IDs reject the whole result while explicit manual IDs survive. Factory→parser→Host reasoning part→SQLite→same-origin/model replay preserves signed/encrypted details through public SDK metadata extraction; no opaque content is shown as invented text. Messages, Chat and Responses use the original format selector; legacy `/api` normalizes only at the known wire boundary, with storage/proxies unchanged. | Public unauthenticated catalogue read (466 entries), atomic repository/permission fixtures and actual SDK/Host loopback; key-filtered live inference/entitlement remain separate. |
+| Google Gemini | [Compatibility](https://ai.google.dev/gemini-api/docs/openai) supplies eligible slugs; [native models](https://ai.google.dev/api/models) supply capacity with `x-goog-api-key`, same origin and one shared deadline. [Tool signatures](https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures#signatures-for-openai-compatibility) are linked to their actual tool ID/index and assistant, preserved through the existing reasoning metadata seam, then replayed through SDK's fixed Google namespace. Foreign/proxy/model histories receive no such payload. | Native/compatible catalogue and installed SDK/Host/SQLite scripted transport, cold reopen and route mismatch; no live Google request. |
+| Mistral / Groq | [Mistral models](https://docs.mistral.ai/api/endpoint/models) `max_context_length`, chat/function/vision capability booleans and archived state; [Groq models](https://console.groq.com/docs/api-reference) active state, context and output limits. The generic metadata projection now retains these fields and explicit structured-output support; non-chat rows cannot enter ordinary selection. | Real Provider writer/reopen with documented payload shapes; unknown metadata stays unknown. |
+| Alibaba Model Studio | [Regional/plan endpoints](https://help.aliyun.com/en/model-studio/base-url) do not share keys. [Native models](https://help.aliyun.com/en/model-studio/list-models) use the committed origin's `/api/v1/models`, Bearer, page numbers/total, capability codes and nested modality/capacity fields. Read the whole bounded result before publishing; do not rewrite the inference URL, region, Coding Plan or Token Plan route. | Regional workspace, pagination, failure rollback and plan exclusion fixtures; actual regional key/model access not inferred. |
+| Z.ai / BigModel | [GLM-5.3](https://docs.z.ai/guides/llm/glm-5.3) is text-only, while [Flash/FlashX](https://docs.z.ai/guides/vlm/glm-5.3-flash) adds visual input. Retire endpoint-wide false vision/video claims and retain specific model evidence. [Coding endpoints](https://docs.z.ai/devpack/tool/others) add declared global Chat/Responses variants without changing saved Messages connections or mixing billing products. | Registry/context option fixtures and existing wire cases; capacity/vision recommendations are not subscriber entitlement. |
+| DeepSeek | [Responses contract](https://api-docs.deepseek.com/guides/responses_api/) declares its same-service root, stateless history, functions, output budget and effort; it does not promise store/previous-response IDs, all OpenAI built-ins or summaries. The new protocol variant reuses the existing Responses adapter and full-history owner. | Protocol selection, credential preservation, SDK framing and existing response/history tests; live model access not claimed. |
+| Other declared API presets | Existing Anthropic/OpenAI/xAI, Moonshot/Kimi, MiniMax, Xiaomi, SiliconFlow, OpenCode Go/Zen, Cerebras, NVIDIA and Together retain their exact product/region/auth routes. The common API completion/error/Stop guard applies; variant and specialized native/media support still require their individual published contracts and real-path proof. | Existing scoped route/auth tests are not blanket vendor-feature parity or new protocol support. |
+
+Installed AI SDK 6.0.193 / compatible 2.0.60 was compared with registry releases AI 7.0.127 /
+compatible 3.0.62 in immutable `sdk/api-sdk-7.0.127-review` (source/license/integrity retained).
+The newer compatible `openai-compatible-chat-language-model.ts:730–745` rejects EOF without a
+finish reason; it still does not handle OpenRouter structured reasoning. The candidate adapts that
+completion criterion through public V3 middleware rather than silently applying the V4 major
+migration. Messages require their stop reason; Responses require an actual completed/incomplete
+control and matching terminal status, including JSON replies. Raw debug frames do not enter history.
+Failed decoding retains reported usage through the existing error/usage receipt path and refuses
+an automatic recovery request; no successful finish, context measurement or Host effect is fabricated.
+New packages, credential stores, authority changes and paid calls were not used.
+
+#### Retained model-access source locks
+
+The older source locks below compare retained Craft `LlmConnection`, backend drivers and
+`ModelRefreshService`; they are not the active candidate's code map. The candidate uses ZCode's
+existing Provider writer and Host/Pi request owner under [Models](modules/models.md). Source and
+catalogue inspection establish neither private endpoint entitlement nor successful paid inference.
 
 | Source lock and inspected code | Reusable mechanism; Fleet boundary |
 |---|---|
