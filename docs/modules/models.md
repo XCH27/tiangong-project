@@ -283,13 +283,13 @@ provider-specific budgets and actual request validation remain open. New
 discoveredProviderModelRules in the existing personal envelope separate latest observations from
 explicit corrections and refresh same-ID facts atomically; ambiguous legacy exact values remain.
 OpenRouter's key-filtered all-modality catalogue replaces static seeds, retains manual IDs and rejects
-partial malformed lists; default-disabled thinking remains Auto. Its three protocols, DeepSeek Responses and Z.ai Coding Plan
-alternatives share existing controls; saved transports are not silently switched. Google enriches
-compatible IDs from native capacity metadata; Model Studio uses same-region native pagination.
-Mistral/Groq capacity, tools, vision, structured-output and inactive facts remain sparse; non-chat
-rows stay outside the picker. Shared option resolution retains native defaults without inventing Off. Codex/Grok high tiers preserve the selected native value through Pi request
-encoding. Shared input admission treats equivalent video blocks alike and extracted PDFs as text;
-unsupported wire routes fail before inference. Default auto-compaction buffer is bounded to 10% of
+malformed lists; default-disabled thinking remains Auto. Declared OpenRouter, DeepSeek and Z.ai
+protocols share existing controls without switching saved transports. Google enriches compatible IDs;
+Model Studio uses regional native pagination. Mistral/Groq/Cerebras facts stay sparse. Together's native
+array/type contract and SiliconFlow's full/class directories exclude non-chat routes from ordinary selection.
+Kimi separates catalogue auth/URL and retains image/video flags. Proved SiliconFlow models use native thinking
+switches and output budgets. Codex/Grok selected high tiers survive Pi encoding without invented Off.
+Shared input admission handles equivalent video/PDF forms and refuses unsupported routes before inference. Default auto-compaction buffer is bounded to 10% of
 the remaining input window, capped at 13K; explicit overrides and large-window behavior remain,
 while zero input budget needs further work.
 OV-049 removes model-row deletion controls; the existing enablement switch owns availability and the

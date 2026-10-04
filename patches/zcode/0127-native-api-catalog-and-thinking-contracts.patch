@@ -1,0 +1,1370 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/model/anthropic-stream-compat.ts b/apps/zcode-cli/packages/adapters/src/model/anthropic-stream-compat.ts
+index 3ad8cf3..f7060a4 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/anthropic-stream-compat.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/anthropic-stream-compat.ts
+@@ -5,10 +5,29 @@ const SSE_FRAME_SEPARATOR_PATTERN = /\r\n\r\n|\n\n|\r\r/;
+ export function createAnthropicCompatFetch(baseFetch: ProviderFetch): ProviderFetch {
+   return async (input, init) => {
+     const response = await baseFetch(input, applyAnthropicRequestBodyCompatibility(init));
+-    return rewriteAnthropicJsonThinkingResponse(filterAnthropicStream(response));
++    return rewriteAnthropicJsonThinkingResponse(
++      filterAnthropicStream(response),
++      isOfficialMiMoMessagesRequest(input),
++    );
+   };
+ }
+ 
++function isOfficialMiMoMessagesRequest(input: RequestInfo | URL): boolean {
++  try {
++    const url = new URL(input instanceof Request ? input.url : String(input));
++    return (
++      url.origin === "https://api.xiaomimimo.com" &&
++      url.pathname === "/anthropic/v1/messages" &&
++      !url.username &&
++      !url.password &&
++      !url.search &&
++      !url.hash
++    );
++  } catch {
++    return false;
++  }
++}
++
+ function applyAnthropicRequestBodyCompatibility(
+   init: RequestInit | undefined,
+ ): RequestInit | undefined {
+@@ -80,7 +99,10 @@ function filterAnthropicStream(response: Response): Response {
+   });
+ }
+ 
+-async function rewriteAnthropicJsonThinkingResponse(response: Response): Promise<Response> {
++async function rewriteAnthropicJsonThinkingResponse(
++  response: Response,
++  officialMiMo: boolean,
++): Promise<Response> {
+   if (!shouldRewriteAnthropicJson(response)) {
+     return response;
+   }
+@@ -91,7 +113,10 @@ async function rewriteAnthropicJsonThinkingResponse(response: Response): Promise
+     return response;
+   }
+ 
+-  const sanitized = sanitizeJsonThinkingBlocks(parsed);
++  const sanitized = sanitizeJsonThinkingBlocks(
++    parsed,
++    officialMiMo && response.ok && parsed.type === "message" && parsed.role === "assistant",
++  );
+   if (!sanitized.changed) {
+     return response;
+   }
+@@ -116,7 +141,10 @@ function cloneTextResponse(response: Response, body: string): Response {
+   });
+ }
+ 
+-function sanitizeJsonThinkingBlocks(value: Record<string, unknown>): {
++function sanitizeJsonThinkingBlocks(
++  value: Record<string, unknown>,
++  preserveUnsigned: boolean,
++): {
+   changed: boolean;
+   value: Record<string, unknown>;
+ } {
+@@ -124,8 +152,22 @@ function sanitizeJsonThinkingBlocks(value: Record<string, unknown>): {
+     return { changed: false, value };
+   }
+ 
+-  const content = value.content.filter((block) => !isUnsignedThinkingBlock(block));
+-  if (content.length === value.content.length) {
++  let changed = false;
++  const content = value.content.flatMap((value) => {
++    if (!isUnsignedThinkingBlock(value)) return [value];
++    const block = safeRecord(value)!;
++    if (preserveUnsigned) {
++      // Malformed supplied signatures or text still belong to SDK validation.
++      if (Object.hasOwn(block, "signature") || typeof block.thinking !== "string") return [value];
++      // MiMo returns unsigned thinking. The SDK requires a string: its empty marker
++      // matches existing unsigned SSE replay and is not a cryptographic signature.
++      changed = true;
++      return [{ ...block, signature: "" }];
++    }
++    changed = true;
++    return [];
++  });
++  if (!changed) {
+     return { changed: false, value };
+   }
+ 
+diff --git a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+index f6100a1..76e2865 100644
+--- a/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/provider-routing.test.ts
+@@ -9,6 +9,7 @@ import {
+   ZhipuAccountAccessConfig,
+   createRegistryProviderConfig,
+   parseProviderTemplateMap,
++  parseZCodeBuiltinModelConfigRules,
+   type RegistryProviderConfig,
+ } from "@zcode/provider";
+ import { AiSdkModelExecution } from "../src/model/model-execution.js";
+@@ -24,6 +25,7 @@ const OPTIONS = { reasoningLevel: "default", maxOutputTokens: 256 };
+ const SPECS = { reasoningLevel: { map: "{}" }, maxOutputTokens: { map: "{}" } };
+ const builtin = JSON.parse(await readFile(new URL("../../../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"));
+ const templates = parseProviderTemplateMap(builtin.config.providerConfigRules.templateRules);
++const builtinModels = parseZCodeBuiltinModelConfigRules(builtin.config.modelConfigRules);
+ 
+ test("plan-key classification preserves each route's billing category and authentication", () => {
+   const roundtrip = parseProviderTemplateMap(templates.toJSON());
+@@ -42,6 +44,52 @@ test("plan-key classification preserves each route's billing category and authen
+     assert.match(roundtrip.get(id)?.config.api?.baseUrl ?? "", /^https:\/\/token-plan\./);
+   }
+ });
++
++test("SiliconFlow declared models send native thinking switches and output budget through the installed SDK", async () => {
++  for (const modelId of [
++    "deepseek-ai/DeepSeek-V4-Flash", "Pro/deepseek-ai/DeepSeek-V4", "Pro/zai-org/GLM-5.2",
++  ]) {
++    const baseUrl = "https://api.siliconflow.cn/v1";
++    const identity = { providerId: "siliconflow", modelId, apiType: "openai-chat-completions", baseUrl };
++    const modelConfig = builtinModels.resolve(identity).toJSON();
++    assert.deepEqual(modelConfig.optionSpecs?.reasoningLevel?.values, ["auto", "disabled", "high", "max"]);
++    const reasoningSpec = modelConfig.optionSpecs?.reasoningLevel;
++    const outputSpec = modelConfig.optionSpecs?.maxOutputTokens;
++    assert.ok(reasoningSpec?.map);
++    assert.ok(outputSpec?.map);
++    const validated = createRegistryProviderConfig(new ProviderConfig({
++      group: "standard-personal",
++      access: new ApiKeyAccessConfig({ type: "api-key", apiKey: KEY }),
++      api: new ProviderApiConfig({ type: "openai-chat-completions", baseUrl }),
++    }));
++    assert.ok(validated.ok);
++    for (const reasoningLevel of ["auto", "disabled", "high", "max"]) {
++      const { execution, requests } = fixture();
++      const binding = execution.bindModel({
++        providerId: identity.providerId, modelId, providerConfig: validated.config,
++        supportsJsonSchemaOutput: false,
++        optionSpecs: {
++          reasoningLevel: { map: reasoningSpec.map },
++          maxOutputTokens: { map: outputSpec.map },
++        },
++      });
++      const resolved = binding.resolveRequest({ options: { reasoningLevel, maxOutputTokens: 256 } });
++      const result = await generateText({ model: resolved.model, prompt: "Reply OK", maxRetries: 0 });
++      assert.equal(result.text, "OK");
++      assert.equal(requests.length, 1);
++      const wire = requests[0]!;
++      assert.equal(wire.url, baseUrl + "/chat/completions");
++      assert.equal(wire.headers.get("authorization"), "Bearer " + KEY);
++      assert.equal(wire.body.max_tokens, 256);
++      assert.equal(wire.body.max_completion_tokens, undefined);
++      assert.equal(wire.body.thinking, undefined);
++      assert.equal(wire.body.enable_thinking, reasoningLevel === "auto" ? undefined : reasoningLevel !== "disabled");
++      assert.equal(wire.body.reasoning_effort, ["high", "max"].includes(reasoningLevel) ? reasoningLevel : undefined);
++    }
++    const otherSite = builtinModels.resolve({ ...identity, baseUrl: "https://elsewhere.example/v1" }).toJSON();
++    assert.notEqual(otherSite.optionSpecs?.reasoningLevel?.map, modelConfig.optionSpecs?.reasoningLevel?.map);
++  }
++});
+ type Captured = { url: string; headers: Headers; body: Record<string, unknown> };
+ 
+ function fixture(rejections: number[] = []) {
+diff --git a/apps/zcode-cli/packages/core/test/mimo-thinking-replay.test.ts b/apps/zcode-cli/packages/core/test/mimo-thinking-replay.test.ts
+new file mode 100644
+index 0000000..cd3a5cc
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/mimo-thinking-replay.test.ts
+@@ -0,0 +1,364 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { DatabaseSync } from "node:sqlite";
++import { join } from "node:path";
++import { AiSdkModelAdapter } from "../../adapters/src/model/runner.js";
++import { createAnthropicCompatFetch } from "../../adapters/src/model/anthropic-stream-compat.js";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++
++const baseURL = "https://api.xiaomimimo.com/anthropic";
++const endpoint = `${baseURL}/v1/messages`;
++const thought = "original unsigned MiMo thinking\nwith exact bytes";
++const call = { type: "tool_use", id: "original-call", name: "Probe", input: { value: "once" } };
++const usage = { input_tokens: 11, output_tokens: 3, cache_read_input_tokens: 4 };
++
++function model(transport: typeof fetch) {
++  return new AiSdkModelAdapter({ env: {}, transport, retry: { maxAttempts: 1 } }).createModel({
++    providerId: "fixture",
++    modelId: "model-a",
++    providerConfig: {
++      access: { type: "api-key", apiKey: "synthetic-key" },
++      api: { type: "anthropic-messages", baseUrl: baseURL },
++    } as never,
++    modelConfig: {
++      properties: {
++        contextWindow: 65536,
++        requiresMfjsToolSchema: false,
++        inputFormat: {
++          supportsText: true,
++          supportsImage: false,
++          supportsAudio: false,
++          supportsVideo: false,
++          supportsPdf: false,
++        },
++        outputFormat: { supportsText: true },
++        supportsToolCall: true,
++        supportsJsonSchemaOutput: false,
++        supportsNativeWebSearch: false,
++        supportsMidConversationSystem: true,
++      },
++      optionSpecs: {
++        reasoningLevel: { values: ["off"], default: "off", map: "{}" },
++        maxOutputTokens: { max: 256, default: 256, map: "{'max_tokens': maxOutputTokens}" },
++      },
++    } as never,
++    options: { reasoningLevel: "off", maxOutputTokens: 256 },
++  });
++}
++
++function reply(first: boolean) {
++  return {
++    id: "original-response",
++    type: "message",
++    role: "assistant",
++    model: "model-a",
++    content: first
++      ? [{ type: "thinking", thinking: thought }, call]
++      : [{ type: "text", text: "finished" }],
++    stop_reason: first ? "tool_use" : "end_turn",
++    stop_sequence: null,
++    usage,
++  };
++}
++
++function streamReply(first: boolean) {
++  const events: unknown[] = [
++    {
++      type: "message_start",
++      message: {
++        ...reply(first),
++        content: [],
++        stop_reason: null,
++        usage: { ...usage, output_tokens: 0 },
++      },
++    },
++  ];
++  if (first)
++    events.push(
++      { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } },
++      {
++        type: "content_block_delta",
++        index: 0,
++        delta: { type: "thinking_delta", thinking: thought },
++      },
++      { type: "content_block_stop", index: 0 },
++      { type: "content_block_start", index: 1, content_block: { ...call, input: {} } },
++      {
++        type: "content_block_delta",
++        index: 1,
++        delta: { type: "input_json_delta", partial_json: JSON.stringify(call.input) },
++      },
++      { type: "content_block_stop", index: 1 },
++    );
++  else
++    events.push(
++      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
++      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "finished" } },
++      { type: "content_block_stop", index: 0 },
++    );
++  events.push(
++    {
++      type: "message_delta",
++      delta: { stop_reason: first ? "tool_use" : "end_turn", stop_sequence: null },
++      usage: { output_tokens: 3 },
++    },
++    { type: "message_stop" },
++  );
++  return new Response(
++    events.map((event: any) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""),
++    { headers: { "content-type": "text/event-stream" } },
++  );
++}
++
++test("MiMo JSON and streaming preserve unsigned thinking through Host tools and cold SQLite replay", async () => {
++  const replayBlocks: unknown[] = [];
++  for (const streaming of [false, true]) {
++    const f = await fixture(undefined, streaming);
++    const bodies: any[] = [];
++    const candidate = model(async (raw, init) => {
++      const request = new Request(raw, init);
++      assert.equal(request.url, endpoint);
++      assert.equal(request.headers.get("authorization"), "Bearer synthetic-key");
++      const body = (await request.json()) as any;
++      bodies.push(body);
++      if (bodies.length > 1) {
++        const assistant = body.messages.find((message: any) => message.role === "assistant");
++        const thinking = assistant.content.filter((part: any) => part.type === "thinking");
++        assert.deepEqual(
++          thinking,
++          [{ type: "thinking", thinking: thought, signature: "" }],
++          "Unsigned replay must use the existing empty marker, never an invented signature",
++        );
++        assert.ok(
++          assistant.content.some((part: any) => part.type === "tool_use" && part.id === call.id),
++        );
++        assert.ok(
++          body.messages.some((message: any) =>
++            message.content?.some?.(
++              (part: any) => part.type === "tool_result" && part.tool_use_id === call.id,
++            ),
++          ),
++        );
++        if (bodies.length === 2) replayBlocks.push(thinking);
++      }
++      return body.stream
++        ? streamReply(bodies.length === 1)
++        : Response.json(reply(bodies.length === 1));
++    });
++    try {
++      (f.runtime as any).modelFactory = () => candidate;
++      await f.runtime.executeTurn("One local fixture effect");
++      assert.equal(f.effects, 1);
++      assert.equal(f.permissionCalls, 1);
++      assert.equal(bodies.length, 2);
++      await f.reopen();
++      const stored = await f.store.messages({ sessionID: "session" as never });
++      assert.ok(JSON.stringify(stored).includes(JSON.stringify(thought).slice(1, -1)));
++      const reasoning = stored
++        .flatMap((entry) => entry.parts)
++        .filter((part) => part.type === "reasoning");
++      assert.ok(reasoning.length);
++      for (const part of reasoning) {
++        if (part.type === "reasoning") {
++          const signature = (part.metadata?.anthropic as any)?.signature;
++          assert.ok(signature === undefined || signature === "");
++        }
++      }
++      (f.runtime as any).modelFactory = () =>
++        model(async (raw, init) => {
++          // Reuse the same transport assertions after the execution object itself is recreated.
++          const request = new Request(raw, init);
++          const body = (await request.json()) as any;
++          bodies.push(body);
++          const assistant = body.messages.find((message: any) => message.role === "assistant");
++          assert.deepEqual(
++            assistant.content.filter((part: any) => part.type === "thinking"),
++            [{ type: "thinking", thinking: thought, signature: "" }],
++          );
++          return body.stream ? streamReply(false) : Response.json(reply(false));
++        });
++      await f.runtime.executeTurn("Continue from cold history");
++      assert.equal(bodies.length, 3);
++      assert.equal(f.effects, 1);
++      assert.equal(f.permissionCalls, 1);
++      const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++      try {
++        const rows = db
++          .prepare(
++            "select status,input_tokens,output_tokens,cache_read_input_tokens from model_usage",
++          )
++          .all();
++        assert.equal(rows.length, 3);
++        for (const row of rows) {
++          assert.equal(row.status, "completed");
++          assert.equal(row.input_tokens, 15);
++          assert.equal(row.output_tokens, 3);
++          assert.equal(row.cache_read_input_tokens, 4);
++        }
++      } finally {
++        db.close();
++      }
++    } finally {
++      await f.close();
++    }
++  }
++  assert.equal(replayBlocks.length, 2);
++  assert.deepEqual(replayBlocks[0], replayBlocks[1]);
++});
++
++test("MiMo normalization preserves signed/redacted blocks, completion and usage", async () => {
++  const payload = {
++    ...reply(true),
++    content: [
++      { type: "thinking", thinking: thought },
++      { type: "thinking", thinking: "signed bytes", signature: "original-signature" },
++      { type: "redacted_thinking", data: "original-encrypted" },
++      call,
++    ],
++  };
++  const fetch = createAnthropicCompatFetch(async () =>
++    Response.json(payload, { headers: { "x-request-id": "original" } }),
++  );
++  const response = await fetch(new Request(endpoint));
++  assert.equal(response.status, 200);
++  assert.equal(response.headers.get("x-request-id"), "original");
++  assert.deepEqual(await response.json(), {
++    ...payload,
++    content: [{ ...payload.content[0], signature: "" }, ...payload.content.slice(1)],
++  });
++});
++
++for (const route of [
++  "https://proxy.example/anthropic/v1/messages",
++  "https://sub.api.xiaomimimo.com/anthropic/v1/messages",
++  "http://api.xiaomimimo.com/anthropic/v1/messages",
++  "https://api.xiaomimimo.com:8443/anthropic/v1/messages",
++  `${endpoint}/`,
++  `${endpoint}?custom=1`,
++  `${endpoint}#custom`,
++  "https://user@api.xiaomimimo.com/anthropic/v1/messages",
++  "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages",
++]) {
++  test(`unsigned JSON sanitization remains unchanged at ${route}`, async () => {
++    const payload = reply(true);
++    const response = await createAnthropicCompatFetch(async () => Response.json(payload))(route);
++    assert.deepEqual(await response.json(), { ...payload, content: [call] });
++  });
++}
++
++for (const failure of ["signature", "thinking", "completion", "provider-error"] as const) {
++  test(`MiMo ${failure} failure cannot admit a Host effect or manufacture completion`, async () => {
++    const f = await fixture();
++    let requests = 0;
++    let observed: unknown;
++    const candidate = model(async () => {
++      requests++;
++      if (failure === "provider-error")
++        return Response.json(
++          {
++            type: "error",
++            error: {
++              type: "invalid_request_error",
++              message: "original MiMo denial",
++            },
++          },
++          { status: 400 },
++        );
++      const payload: any = reply(true);
++      if (failure === "signature") payload.content[0].signature = 42;
++      if (failure === "thinking") payload.content[0].thinking = 42;
++      if (failure === "completion") delete payload.stop_reason;
++      return Response.json(payload);
++    });
++    try {
++      (f.runtime as any).modelFactory = () => candidate;
++      await f.runtime.executeTurn("Reject malformed provider content").catch((error) => {
++        observed = error;
++      });
++      assert.ok(observed);
++      assert.equal(requests, 1);
++      assert.equal(f.effects, 0);
++      assert.equal(f.permissionCalls, 0);
++      if (failure === "provider-error")
++        assert.ok(JSON.stringify(observed).includes("original MiMo denial"));
++      const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++      try {
++        assert.notEqual(
++          db.prepare("select status from model_usage limit 1").get()!.status,
++          "completed",
++        );
++      } finally {
++        db.close();
++      }
++      await f.reopen();
++      assert.equal(f.effects, 0);
++      assert.equal(requests, 1);
++    } finally {
++      await f.close();
++    }
++  });
++}
++
++test("Stop still aborts the unfinished MiMo SSE without a tool effect or completed usage", async () => {
++  const f = await fixture(undefined, true);
++  const started = Promise.withResolvers<void>();
++  let requests = 0;
++  let aborted = false;
++  const candidate = model(async (raw, init) => {
++    requests++;
++    const request = new Request(raw, init);
++    const body = new ReadableStream<Uint8Array>({
++      start(controller) {
++        const encoder = new TextEncoder();
++        controller.enqueue(
++          encoder.encode(
++            `event: message_start\ndata: ${JSON.stringify({
++              type: "message_start",
++              message: {
++                ...reply(true),
++                content: [],
++                stop_reason: null,
++                usage: { ...usage, output_tokens: 0 },
++              },
++            })}\n\n`,
++          ),
++        );
++        request.signal.addEventListener(
++          "abort",
++          () => {
++            aborted = true;
++            controller.error(new DOMException("Stopped", "AbortError"));
++          },
++          { once: true },
++        );
++        started.resolve();
++      },
++    });
++    return new Response(body, { headers: { "content-type": "text/event-stream" } });
++  });
++  let running: ReturnType<typeof f.runtime.executeTurn> | undefined;
++  try {
++    (f.runtime as any).modelFactory = () => candidate;
++    running = f.runtime.executeTurn("Stop unfinished MiMo generation");
++    await started.promise;
++    f.runtime.stopActiveForegroundExecution();
++    await running.catch(() => {});
++    assert.equal(aborted, true);
++    assert.equal(requests, 1);
++    assert.equal(f.effects, 0);
++    assert.equal(f.permissionCalls, 0);
++    const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++    try {
++      assert.notEqual(
++        db.prepare("select status from model_usage limit 1").get()!.status,
++        "completed",
++      );
++    } finally {
++      db.close();
++    }
++  } finally {
++    f.runtime.stopActiveForegroundExecution();
++    await running?.catch(() => {});
++    await f.close();
++  }
++});
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index cb0d5db..53e3510 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -1029,7 +1029,12 @@
+               "deepseek-v4-flash",
+               "deepseek-v4-flash-vision-exp",
+               "hy4-preview",
+-              "hy3"
++              "hy3",
++              "longcat-2.0",
++              "longcat-2.5-preview-free",
++              "mimo-v2.6-flash",
++              "mimo-v2.6-pro",
++              "space-bunny-free"
+             ],
+             "logo": {
+               "type": "builtin",
+@@ -1109,7 +1114,14 @@
+               "type": "openai-responses",
+               "baseUrl": "https://opencode.ai/zen/go/v1"
+             },
+-            "builtinModelIds": ["gpt-5.6-luna", "grok-4.6"],
++            "builtinModelIds": [
++              "gpt-5.6-luna",
++              "grok-4.6",
++              "grok-4.7",
++              "gpt-6-luna",
++              "muse-spark-1.3-contributor",
++              "muse-spark-1.2-contributor"
++            ],
+             "logo": {
+               "type": "builtin",
+               "key": "opencode"
+@@ -1158,7 +1170,24 @@
+               "gpt-5.3-codex",
+               "gpt-5.3-codex-spark",
+               "gpt-5.2",
+-              "gpt-5.1"
++              "gpt-5.1",
++              "gpt-6-sol",
++              "gpt-6.1-sol",
++              "gpt-6-luna",
++              "gpt-5.2-codex",
++              "gpt-5.1-codex",
++              "gpt-5.1-codex-max",
++              "gpt-5.1-codex-mini",
++              "gpt-5",
++              "gpt-5-codex",
++              "gpt-5-nano",
++              "grok-4.7",
++              "grok-4.6",
++              "grok-4.5",
++              "grok-build-0.1",
++              "muse-spark-1.3",
++              "muse-spark-1.2",
++              "muse-spark-1.3-contributor-free"
+             ],
+             "logo": {
+               "type": "builtin",
+@@ -1208,7 +1237,9 @@
+               "claude-opus-4-5",
+               "claude-sonnet-4-6",
+               "claude-sonnet-4-5",
+-              "qwen3.7-plus"
++              "qwen3.7-plus",
++              "claude-opus-5-5",
++              "qwen3.8-flash"
+             ],
+             "logo": {
+               "type": "builtin",
+@@ -1257,7 +1288,22 @@
+               "minimax-m2.7",
+               "deepseek-v4-flash",
+               "glm-5.1",
+-              "nemotron-3.5-lightning-free"
++              "nemotron-3.5-lightning-free",
++              "qwen3.8-max",
++              "deepseek-v4.1-flash",
++              "deepseek-v4-flash-vision-exp",
++              "minimax-m2.5",
++              "glm-5.3-flash",
++              "glm-5.3",
++              "glm-5",
++              "kimi-k2.5",
++              "kimi-k2.6",
++              "kimi-k2.7-code",
++              "space-bunny-free",
++              "longcat-2.5-preview-free",
++              "fledge-alpha-free",
++              "mimo-v2.6-flash-free",
++              "ling-3.1-flash-free"
+             ],
+             "logo": {
+               "type": "builtin",
+@@ -5749,6 +5795,37 @@
+               "supportsJsonSchemaOutput": true
+             }
+           }
++        },
++        {
++          "modelMatch": ".*",
++          "apiTypeMatch": "openai-chat-completions",
++          "baseUrlMatch": "https://api\\.siliconflow\\.(?:cn|com)/v1/?",
++          "config": {
++            "optionSpecs": {
++              "maxOutputTokens": {
++                "map": "{\"max_tokens\": maxOutputTokens}"
++              }
++            }
++          }
++        },
++        {
++          "modelMatch": "(?:deepseek-ai/DeepSeek-V4-Flash|Pro/deepseek-ai/DeepSeek-V4|Pro/zai-org/GLM-5\\.2)",
++          "apiTypeMatch": "openai-chat-completions",
++          "baseUrlMatch": "https://api\\.siliconflow\\.cn/v1/?",
++          "config": {
++            "optionSpecs": {
++              "reasoningLevel": {
++                "values": [
++                  "auto",
++                  "disabled",
++                  "high",
++                  "max"
++                ],
++                "defaultValue": "auto",
++                "map": "reasoningLevel == \"auto\" ? {} : reasoningLevel == \"disabled\" ? {\"enable_thinking\":false} : {\"enable_thinking\":true,\"reasoning_effort\":reasoningLevel}"
++              }
++            }
++          }
+         }
+       ],
+       "templateModelRules": [
+diff --git a/package.json b/package.json
+index 00a473b..8dfb3a6 100644
+--- a/package.json
++++ b/package.json
+@@ -17,7 +17,7 @@
+     "dep:graph": "node scripts/dependency-graph.mjs",
+     "dep:refs": "node scripts/dep-refs.mjs",
+     "verify:pre-push": "pnpm run test:git-hooks && pnpm run lint && pnpm run test:pi-executor && pnpm run test:decision-classifier && pnpm run test:decision-host && pnpm run test:page-assistant && pnpm run test:native-executor && pnpm run test:provider-catalog && pnpm run test:provider-routing && pnpm run test:provider-subscriptions && pnpm run test:context-usage && pnpm run test:usage-accounting && pnpm run test:fleet-local && pnpm run test:browser-scope && pnpm run architecture:check -- --changed",
+-    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts apps/zcode-cli/packages/core/test/google-thought-signature-host.test.ts apps/zcode-cli/packages/core/test/openrouter-reasoning-replay.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts",
++    "test:provider-routing": "tsx --test apps/zcode-cli/packages/adapters/test/responses-contract.test.ts apps/zcode-cli/packages/core/test/compact-policy.test.ts apps/zcode-cli/packages/adapters/test/media-input.test.ts apps/zcode-cli/packages/adapters/test/provider-routing.test.ts apps/zcode-cli/packages/adapters/test/credential-failover.test.ts apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts apps/zcode-cli/packages/core/test/google-thought-signature-host.test.ts apps/zcode-cli/packages/core/test/mimo-thinking-replay.test.ts apps/zcode-cli/packages/core/test/openrouter-reasoning-replay.test.ts apps/zcode-cli/packages/core/test/vision-bridge.test.ts apps/zcode-cli/packages/bootstrap/test/vision-bridge-intent.test.ts apps/zcode-cli/packages/core/test/media-generation-tool.test.ts apps/zcode-cli/packages/bootstrap/test/xai-media-generation.test.ts apps/zcode-cli/packages/bootstrap/test/media-provider-routes.test.ts apps/zcode-cli/packages/core/test/media-video-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/tool-output-attachments.test.ts apps/zcode-cli/packages/adapters/test/media-artifact-publication.test.ts",
+     "build": "pnpm -r build",
+     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
+     "build:zcode": "node scripts/build-zcode.mjs",
+diff --git a/packages/provider/src/protocol-policy.ts b/packages/provider/src/protocol-policy.ts
+index 5be11f1..293b799 100644
+--- a/packages/provider/src/protocol-policy.ts
++++ b/packages/provider/src/protocol-policy.ts
+@@ -33,10 +33,26 @@ export function usesAccountScopedModelCatalog(
+   return (
+     config?.access?.type === "subscription" ||
+     config?.access?.type === "native-cli" ||
+-    (config?.access?.type === "api-key" && isOpenRouterApiBaseUrl(config.api?.baseUrl))
++    (config?.access?.type === "api-key" &&
++      (isOpenRouterApiBaseUrl(config.api?.baseUrl) || isOpenCodeCatalogBaseUrl(config.api?.baseUrl)))
+   );
+ }
+ 
++/** Zen/Go model directories are filtered by the committed workspace key. */
++export function isOpenCodeCatalogBaseUrl(value: string | null | undefined): boolean {
++  if (!value) return false;
++  try {
++    const url = new URL(value);
++    return (
++      url.origin === "https://opencode.ai" &&
++      /^\/zen(?:\/go)?(?:\/v1)?\/?$/.test(url.pathname) &&
++      !url.username && !url.password && !url.search && !url.hash
++    );
++  } catch {
++    return false;
++  }
++}
++
+ /** 只投影同一服务/区域/认证的显式路由，不能从品牌或协议名称推断端点。 */
+ export function resolveTemplateProtocolRoutes(
+   templateId: string | null | undefined,
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index f61b947..8250e19 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -420,6 +420,7 @@ export class ProviderConfigResolver {
+           modelEnabled &&
+           modelIssues.length === 0 &&
+           !classifierOnly &&
++          modelConfig.properties?.inputFormat?.supportsText !== false &&
+           modelConfig.properties?.outputFormat?.supportsText !== false;
+         const selectable = executable && config.visibility !== "hidden";
+         return Object.freeze({
+diff --git a/packages/services/src/model-provider/modelDiscovery.ts b/packages/services/src/model-provider/modelDiscovery.ts
+index 0340791..b337e97 100644
+--- a/packages/services/src/model-provider/modelDiscovery.ts
++++ b/packages/services/src/model-provider/modelDiscovery.ts
+@@ -10,6 +10,7 @@ import {
+   type ProviderSettingsTemplateView,
+   matchEndpointTemplate,
+   isOfficialOpenaiImageModel,
++  isOpenCodeCatalogBaseUrl,
+ } from "@zcode/provider";
+ import { readDiscoveredModelMetadata } from "./modelDiscoveryMetadata.js";
+ import type { SubscriptionConnectionOwner } from "./subscriptionConnections.js";
+@@ -21,6 +22,7 @@ import {
+   MAX_MODEL_LIST_ENTRIES,
+   readGoogleModelMetadata,
+   discoverXaiModels,
++  discoverSiliconFlowModels,
+ } from "./modelDiscoveryCatalogs.js";
+ 
+ export interface DiscoveredModel {
+@@ -74,6 +76,7 @@ export async function discoverConnectionModels(
+   let path = base.pathname.replace(/\/+$/, "");
+   if (config.api.type === "anthropic-messages" && !path.endsWith("/v1")) path += "/v1";
+   const openRouterCatalog = isOpenRouterApiBaseUrl(config.api.baseUrl);
++  const openCodeCatalog = isOpenCodeCatalogBaseUrl(config.api.baseUrl);
+   if (openRouterCatalog) {
+     path = "/api/v1";
+     headers.delete("x-api-key");
+@@ -81,6 +84,10 @@ export async function discoverConnectionModels(
+     headers.delete("anthropic-beta");
+     headers.set("Authorization", `Bearer ${apiKey}`);
+   }
++  if (openCodeCatalog) {
++    for (const name of ["x-api-key", "anthropic-version", "anthropic-beta"]) headers.delete(name);
++    headers.set("Authorization", "Bearer " + apiKey);
++  }
+   // DeepSeek's Anthropic-compatible inference uses its normal OpenAI catalog and bearer key.
+   if (base.hostname === "api.deepseek.com" && base.pathname.replace(/\/+$/, "") === "/anthropic") {
+     path = "";
+@@ -88,11 +95,37 @@ export async function discoverConnectionModels(
+     headers.delete("anthropic-version");
+     headers.set("Authorization", `Bearer ${apiKey}`);
+   }
++  // Kimi's Messages inference root does not publish the platform's model directory.
++  if (
++    base.protocol === "https:" &&
++    ["api.moonshot.cn", "api.moonshot.ai"].includes(base.hostname) &&
++    /^\/anthropic(?:\/v1)?\/?$/.test(base.pathname)
++  ) {
++    path = "/v1";
++    for (const name of ["x-api-key", "anthropic-version", "anthropic-beta"]) headers.delete(name);
++    headers.set("Authorization", `Bearer ${apiKey}`);
++  }
++  if (
++    base.origin === "https://api.xiaomimimo.com" &&
++    /^\/anthropic(?:\/v1)?\/?$/.test(base.pathname)
++  ) {
++    path = "/v1";
++    for (const name of ["x-api-key", "anthropic-version", "anthropic-beta"]) headers.delete(name);
++    headers.set("Authorization", "Bearer " + apiKey);
++  }
+   if (isModelStudioCatalogBase(base))
+     return discoverModelStudioModels(base.origin, headers, apiKey!, fetch);
+   if (base.hostname === "api.x.ai" && path === "/v1") {
+     return discoverXaiModels(base.origin, headers, fetch);
+   }
++  if (
++    base.protocol === "https:" &&
++    base.hostname === "api.siliconflow.cn" && path === "/v1"
++  ) {
++    for (const name of ["x-api-key", "anthropic-version", "anthropic-beta"]) headers.delete(name);
++    headers.set("Authorization", `Bearer ${apiKey}`);
++    return discoverSiliconFlowModels(base.origin, headers, fetch);
++  }
+   // Laya publishes accepted checkpoints, not an OpenAI /models endpoint.
+   if (
+     config.api.type === "typesafe-system-one" &&
+@@ -116,6 +149,9 @@ export async function discoverConnectionModels(
+   const googleCatalog =
+     base.origin === "https://generativelanguage.googleapis.com" &&
+     /^\/v1(?:beta)?\/openai$/.test(path);
++  const togetherCatalog =
++    base.protocol === "https:" &&
++    ["api.together.ai", "api.together.xyz"].includes(base.hostname) && path === "/v1";
+   const googleMetadata = googleCatalog
+     ? await readGoogleModelMetadata(
+         base.origin + path.replace(/\/openai$/, ""),
+@@ -127,12 +163,12 @@ export async function discoverConnectionModels(
+     : undefined;
+   const url = new URL(`${base.origin}${path}/models${openRouterCatalog ? "/user" : ""}`);
+   if (openRouterCatalog) url.searchParams.set("output_modalities", "all");
+-  // Go 的统一目录混有 Messages/Chat/Responses 模型；只合并当前协议已声明的路由。
+-  const goTemplate =
+-    base.hostname === "opencode.ai" && /^\/zen\/go(?:\/v1)?$/.test(path)
++  // Zen/Go directories span wire formats; only the published current route is automatic.
++  const routeTemplate =
++    openCodeCatalog
+       ? matchEndpointTemplate(config.api.baseUrl, templates, config.api.type)
+       : undefined;
+-  const goModels = goTemplate ? new Set(goTemplate.config.builtinModelIds ?? []) : undefined;
++  const routeModels = routeTemplate ? new Set(routeTemplate.config.builtinModelIds ?? []) : undefined;
+   const models = new Map<string, DiscoveredModel>();
+   for (let page = 0; page < 20; page++) {
+     const response = await fetch(url, {
+@@ -146,24 +182,25 @@ export async function discoverConnectionModels(
+         `Model list request failed (${response.status}); you can still add a model manually`,
+       );
+     }
+-    const body = (await readModelListPage(response)) as {
++    const raw = await readModelListPage(response);
++    const body = (togetherCatalog && Array.isArray(raw) ? { data: raw } : raw) as {
+       data?: unknown;
+       has_more?: boolean;
+       last_id?: string;
+     };
+-    if (!Array.isArray(body.data))
++    if (!body || !Array.isArray(body.data))
+       throw new Error("The provider returned an unsupported model list; add models manually");
+     for (const item of body.data) {
+       if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim()) {
+-        if (openRouterCatalog)
+-          throw new Error("OpenRouter returned an invalid model ID; saved models were not changed");
++        if (openRouterCatalog || openCodeCatalog || togetherCatalog)
++          throw new Error("The provider returned an invalid model ID; saved models were not changed");
+         continue;
+       }
+-      if (openRouterCatalog && item.id !== item.id.trim())
+-        throw new Error("OpenRouter returned an invalid model ID; saved models were not changed");
++      if ((openRouterCatalog || openCodeCatalog || togetherCatalog) && item.id !== item.id.trim())
++        throw new Error("The provider returned an invalid model ID; saved models were not changed");
+       // Google's native resource prefix is not part of its OpenAI model slug.
+       const id = googleCatalog ? item.id.replace(/^models\//, "") : item.id;
+-      if (goModels && !goModels.has(id)) continue;
++      if (routeModels && !routeModels.has(id)) continue;
+       if (models.has(id)) {
+         throw new Error("The provider returned duplicate model IDs; saved models were not changed");
+       }
+@@ -177,6 +214,7 @@ export async function discoverConnectionModels(
+       let config = readDiscoveredModelMetadata(
+         item,
+         openRouterCatalog ? (provider.effectiveConfig.api?.type ?? undefined) : undefined,
++        togetherCatalog ? "together" : undefined,
+       );
+       const native = googleMetadata?.get(id);
+       if (native)
+@@ -185,6 +223,35 @@ export async function discoverConnectionModels(
+           properties: { ...config.properties, ...native.properties },
+           optionSpecs: { ...config.optionSpecs, ...native.optionSpecs },
+         };
++      if (
++        base.origin === "https://integrate.api.nvidia.com" && path === "/v1" &&
++        ["nvidia/nemotron-3-embed-1b", "nvidia/llama-nemotron-embed-vl-1b-v2"].includes(id)
++      ) {
++        config = {
++          ...config,
++          properties: {
++            ...config.properties, outputFormat: { supportsText: false }, supportsToolCall: false,
++          },
++        };
++      }
++      if (base.origin === "https://api.xiaomimimo.com") {
++        if (id === "mimo-v2.5-asr") {
++          config = {
++            ...config,
++            properties: {
++              ...config.properties, inputFormat: { supportsText: false, supportsAudio: true },
++              outputFormat: { supportsText: true }, supportsToolCall: false,
++            },
++          };
++        } else if ([
++          "mimo-v2.5-tts", "mimo-v2.5-tts-voiceclone", "mimo-v2.5-tts-voicedesign",
++        ].includes(id)) {
++          config = {
++            ...config,
++            properties: { ...config.properties, outputFormat: { supportsText: false } },
++          };
++        }
++      }
+       if (
+         provider.effectiveConfig.api?.type === "typesafe-system-one" ||
+         isPublishedClassifier(provider.effectiveConfig.api?.baseUrl, item.id)
+@@ -223,7 +290,7 @@ export async function discoverConnectionModels(
+       return {
+         source: "provider",
+         models: [...models.values()],
+-        ...(openRouterCatalog ? { catalogScope: "account" as const } : {}),
++        ...(openRouterCatalog || openCodeCatalog ? { catalogScope: "account" as const } : {}),
+       };
+     if (!body.last_id || url.searchParams.get("after_id") === body.last_id)
+       throw new Error("The provider returned an invalid pagination cursor");
+diff --git a/packages/services/src/model-provider/modelDiscoveryCatalogs.ts b/packages/services/src/model-provider/modelDiscoveryCatalogs.ts
+index ac28f6b..378199a 100644
+--- a/packages/services/src/model-provider/modelDiscoveryCatalogs.ts
++++ b/packages/services/src/model-provider/modelDiscoveryCatalogs.ts
+@@ -90,6 +90,65 @@ export async function readGoogleModelMetadata(
+   throw new Error("Google model metadata exceeds its page limit");
+ }
+ 
++/** SiliconFlow's ID-only directory needs authenticated class queries; names are not capability evidence. */
++export async function discoverSiliconFlowModels(
++  origin: string,
++  headers: Headers,
++  fetch: typeof globalThis.fetch,
++): Promise<ModelDiscoveryResult> {
++  const deadline = AbortSignal.timeout(20_000);
++  const groups: Map<string, DiscoveredModel>[] = [];
++  for (const query of ["", "sub_type=chat", "type=image", "type=video"]) {
++    const url = new URL(`${origin}/v1/models`);
++    url.search = query;
++    const response = await fetch(url, { headers, signal: deadline, redirect: "error" });
++    if (!response.ok) {
++      await response.body?.cancel();
++      throw new Error(`Model list request failed (${response.status})`);
++    }
++    const body = (await readModelListPage(response)) as { data?: unknown; has_more?: unknown };
++    if (!body || !Array.isArray(body.data) || body.has_more)
++      throw new Error("SiliconFlow returned an incomplete or unsupported model directory");
++    const models = new Map<string, DiscoveredModel>();
++    for (const item of body.data) {
++      if (!item || typeof item !== "object" || typeof item.id !== "string" ||
++          !item.id.trim() || item.id !== item.id.trim() || models.has(item.id))
++        throw new Error("SiliconFlow returned duplicate or invalid model IDs");
++      models.set(item.id, {
++        id: item.id,
++        name: typeof item.name === "string" ? item.name : item.id,
++        config: readDiscoveredModelMetadata(item),
++      });
++      if (models.size > MAX_MODEL_LIST_ENTRIES)
++        throw new Error("SiliconFlow model directory exceeds its entry limit");
++    }
++    groups.push(models);
++  }
++  const [all, chat, image, video] = groups;
++  for (const group of groups.slice(1)) {
++    for (const id of group.keys()) {
++      if (!all!.has(id)) throw new Error("SiliconFlow returned conflicting model directories");
++    }
++  }
++  return {
++    source: "provider",
++    models: [...all!.values()].map((model) => ({
++      ...model,
++      config: {
++        ...model.config,
++        properties: {
++          ...model.config.properties,
++          outputFormat: {
++            supportsText: chat!.has(model.id),
++            supportsImage: image!.has(model.id),
++            supportsVideo: video!.has(model.id),
++          },
++        },
++      },
++    })),
++  };
++}
++
+ /** xAI's generic /models has no output class; these key-scoped catalogs are the route authority. */
+ export async function discoverXaiModels(
+   origin: string,
+diff --git a/packages/services/src/model-provider/modelDiscoveryMetadata.ts b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+index 1452c6c..48e787c 100644
+--- a/packages/services/src/model-provider/modelDiscoveryMetadata.ts
++++ b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+@@ -15,24 +15,36 @@ const strings = (value: unknown): string[] | undefined =>
+ export function readDiscoveredModelMetadata(
+   value: unknown,
+   openRouterApi?: ProviderApiType,
++  catalogType?: "together",
+ ): ModelConfigObject {
+   const item = record(value);
+   const architecture = record(item.architecture);
+   const topProvider = record(item.top_provider);
+   const capabilities = record(item.capabilities);
++  const limits = record(item.limits);
++  const outputType =
++    catalogType === "together" && typeof item.type === "string" ? item.type : undefined;
++  const imageInput =
++    typeof item.supports_image_in === "boolean"
++      ? item.supports_image_in
++      : typeof capabilities.vision === "boolean" ? capabilities.vision : undefined;
++  const videoInput = typeof item.supports_video_in === "boolean" ? item.supports_video_in : undefined;
+   const context = positive(
+     item.context_window ??
+       item.contextWindow ??
+       item.context_length ??
+       item.max_context_length ??
+-      item.inputTokenLimit,
++      item.inputTokenLimit ??
++      limits.max_context_length,
+   );
+   const output = positive(
+     item.max_output_tokens ??
+       item.maxOutputTokens ??
+       item.max_completion_tokens ??
+       item.outputTokenLimit ??
+-      topProvider.max_completion_tokens,
++      item.max_output_length ??
++      topProvider.max_completion_tokens ??
++      limits.max_completion_tokens,
+   );
+   const input = strings(item.input_modalities ?? architecture.input_modalities);
+   const outputs = strings(item.output_modalities ?? architecture.output_modalities);
+@@ -62,6 +74,8 @@ export function readDiscoveredModelMetadata(
+   const structured =
+     typeof item.supports_json_schema_output === "boolean"
+       ? item.supports_json_schema_output
++      : typeof capabilities.structured_outputs === "boolean"
++        ? capabilities.structured_outputs
+       : parameters
+         ? parameters.includes("structured_outputs")
+         : undefined;
+@@ -77,10 +91,12 @@ export function readDiscoveredModelMetadata(
+     ...(context ||
+     input ||
+     outputs ||
++    outputType ||
+     tools !== undefined ||
+     item.type === "classifier" ||
+     typeof capabilities.completion_chat === "boolean" ||
+-    typeof capabilities.vision === "boolean" ||
++    imageInput !== undefined ||
++    videoInput !== undefined ||
+     structured !== undefined
+       ? {
+           properties: {
+@@ -97,8 +113,15 @@ export function readDiscoveredModelMetadata(
+                       (openRouterApi !== undefined && input.includes("file")),
+                   },
+                 }
+-              : typeof capabilities.vision === "boolean"
+-                ? { inputFormat: { supportsImage: capabilities.vision } }
++              : outputType === "transcribe"
++                ? { inputFormat: { supportsText: false, supportsAudio: true } }
++              : imageInput !== undefined || videoInput !== undefined
++                ? {
++                    inputFormat: {
++                      ...(imageInput !== undefined ? { supportsImage: imageInput } : {}),
++                      ...(videoInput !== undefined ? { supportsVideo: videoInput } : {}),
++                    },
++                  }
+                 : {}),
+             ...(item.type === "classifier"
+               ? { outputFormat: { supportsText: false, supportsClassification: true } }
+@@ -110,6 +133,14 @@ export function readDiscoveredModelMetadata(
+                       supportsVideo: outputs.includes("video"),
+                     },
+                   }
++                : outputType
++                  ? {
++                      outputFormat: {
++                        supportsText: ["chat", "language", "code", "transcribe"].includes(outputType),
++                        supportsImage: outputType === "image",
++                        supportsVideo: outputType === "video",
++                      },
++                    }
+                 : typeof capabilities.completion_chat === "boolean"
+                   ? { outputFormat: { supportsText: capabilities.completion_chat } }
+                   : {}),
+@@ -118,7 +149,7 @@ export function readDiscoveredModelMetadata(
+           },
+         }
+       : {}),
+-    ...(item.active === false || item.archived === true ? { enabled: false } : {}),
++    ...(item.active === false || item.archived === true || item.deprecated === true ? { enabled: false } : {}),
+     ...(output || (openRouterApi && declaredReasoning)
+       ? {
+           optionSpecs: {
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index 2270537..c0d27c8 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -1392,3 +1392,268 @@ test("regional Model Studio catalog uses native pages/capabilities without rewri
+     await f.dispose();
+   }
+ });
++
++test("Together native array catalogs retain declared classes and reject malformed replacement without guessing from names", async () => {
++  const f = await fixture();
++  try {
++    for (const host of ["api.together.ai", "api.together.xyz"]) {
++      const baseUrl = "https://" + host + "/v1";
++      const { providerId } = await f.service.createPersonalProvider({
++        templateId: "fleet-together",
++        initialConfig: {
++          api: { type: "openai-chat-completions", baseUrl },
++          access: { type: "api-key", apiKey: "synthetic" },
++        },
++      });
++      const rows = ["chat", "image", "video", "embedding", "rerank", "audio", "transcribe", "language", "code"].map((type) => ({
++        id: type === "image" ? "chat-looking-image" : type,
++        type, context_length: type === "chat" ? 131072 : undefined,
++      }));
++      f.setFetch(async (input, init) => {
++        assert.equal(String(input), baseUrl + "/models");
++        assert.equal(new Headers(init?.headers).get("authorization"), "Bearer synthetic");
++        return Response.json(rows);
++      });
++      await f.service.discoverModels(providerId);
++      await f.restart();
++      const view = (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++      assert.equal(view.models.length, rows.length);
++      assert.deepEqual(view.models.filter((m) => m.selectable).map((m) => m.modelId), ["chat", "language", "code"]);
++      const transcript = view.models.find((m) => m.modelId === "transcribe")!;
++      assert.equal(transcript.evidenceConfig.properties?.outputFormat?.supportsText, true);
++      assert.equal(transcript.evidenceConfig.properties?.inputFormat?.supportsText, false);
++      assert.equal(view.models.find((m) => m.modelId === "chat")?.effectiveConfig.properties?.contextWindow, 131072);
++      assert.equal(view.models.find((m) => m.modelId === "chat-looking-image")?.evidenceConfig.properties?.outputFormat?.supportsImage, true);
++      assert.equal(view.models.find((m) => m.modelId === "video")?.evidenceConfig.properties?.outputFormat?.supportsVideo, true);
++      const before = await f.disk();
++      f.setFetch(async () => Response.json([{ id: "new", type: "chat" }, { id: "" }]));
++      await assert.rejects(f.service.discoverModels(providerId), /invalid model ID/);
++      assert.equal(await f.disk(), before);
++    }
++    f.setFetch(async () => Response.json([{ id: "array-on-unknown-server", type: "chat" }]));
++    const before = await f.disk();
++    await assert.rejects(f.service.discoverModels(f.providerId), /unsupported model list/);
++    assert.equal(await f.disk(), before);
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("Kimi platform catalogs separate Messages route/auth and retain exact advertised image/video limits", async () => {
++  const f = await fixture();
++  try {
++    for (const host of ["api.moonshot.cn", "api.moonshot.ai"]) {
++      const baseUrl = "https://" + host + "/anthropic";
++      const { providerId } = await f.service.createPersonalProvider({
++        templateId: "moonshot-kimi",
++        initialConfig: {
++          api: { type: "anthropic-messages", baseUrl },
++          access: { type: "api-key", apiKey: "synthetic" },
++        },
++      });
++      f.setFetch(async (input, init) => {
++        assert.equal(String(input), "https://" + host + "/v1/models");
++        const headers = new Headers(init?.headers);
++        assert.equal(headers.get("authorization"), "Bearer synthetic");
++        assert.equal(headers.get("x-api-key"), null);
++        assert.equal(headers.get("anthropic-version"), null);
++        return Response.json({ data: [
++          { id: "kimi-new-visual", context_length: 1048576, supports_image_in: true, supports_video_in: true, supports_reasoning: true },
++          { id: "kimi-new-text", supports_image_in: false, supports_video_in: false },
++        ] });
++      });
++      await f.service.discoverModels(providerId);
++      await f.restart();
++      const view = (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++      assert.equal(view.effectiveConfig.api?.baseUrl, baseUrl);
++      const visual = view.models.find((m) => m.modelId === "kimi-new-visual")!;
++      assert.equal(visual.effectiveConfig.properties?.contextWindow, 1048576);
++      assert.equal(visual.evidenceConfig.properties?.inputFormat?.supportsImage, true);
++      assert.equal(visual.evidenceConfig.properties?.inputFormat?.supportsVideo, true);
++      assert.equal(visual.evidenceConfig.optionSpecs?.reasoningLevel, undefined, "A boolean invented effort tiers");
++      const text = view.models.find((m) => m.modelId === "kimi-new-text")!;
++      assert.equal(text.evidenceConfig.properties?.inputFormat?.supportsImage, false);
++      assert.equal(text.evidenceConfig.properties?.inputFormat?.supportsVideo, false);
++    }
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("SiliconFlow keeps all IDs and classifies from authenticated query membership before atomic publication", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "fleet-siliconflow",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++    });
++    const groups = new Map([
++      ["", ["chat", "chat-looking-embedding", "speech", "image", "video", "hybrid"]],
++      ["?sub_type=chat", ["chat", "hybrid"]],
++      ["?type=image", ["image", "hybrid"]],
++      ["?type=video", ["video"]],
++    ]);
++    const visited: string[] = [];
++    f.setFetch(async (input, init) => {
++      const url = new URL(String(input));
++      assert.equal(url.origin, "https://api.siliconflow.cn");
++      assert.equal(url.pathname, "/v1/models");
++      assert.equal(new Headers(init?.headers).get("authorization"), "Bearer synthetic");
++      visited.push(url.search);
++      assert.ok(groups.has(url.search));
++      return Response.json({ data: groups.get(url.search)!.map((id) => ({ id })) });
++    });
++    await f.service.discoverModels(providerId);
++    assert.deepEqual(visited, [...groups.keys()]);
++    await f.restart();
++    const view = (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++    assert.equal(view.models.length, 6);
++    assert.deepEqual(view.models.filter((m) => m.selectable).map((m) => m.modelId), ["chat", "hybrid"]);
++    assert.equal(view.models.find((m) => m.modelId === "image")?.evidenceConfig.properties?.outputFormat?.supportsImage, true);
++    assert.equal(view.models.find((m) => m.modelId === "video")?.evidenceConfig.properties?.outputFormat?.supportsVideo, true);
++    const before = await f.disk();
++    f.setFetch(async (input) => {
++      const url = new URL(String(input));
++      if (url.search === "?type=video") return new Response("unavailable", { status: 503 });
++      return Response.json({ data: groups.get(url.search)!.map((id) => ({ id })) });
++    });
++    await assert.rejects(f.service.discoverModels(providerId), /503/);
++    assert.equal(await f.disk(), before, "A failed class directory published partial data");
++    f.setFetch(async (input) => {
++      const url = new URL(String(input));
++      const ids = url.search === "?type=video" ? ["not-in-full-directory"] : groups.get(url.search)!;
++      return Response.json({ data: ids.map((id) => ({ id })) });
++    });
++    await assert.rejects(f.service.discoverModels(providerId), /conflicting/);
++    assert.equal(await f.disk(), before);
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("Cerebras SDK-declared native limits and schema/retirement facts stay sparse through writer and reopen", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "fleet-cerebras",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++    });
++    let requests = 0;
++    f.setFetch(async (input, init) => {
++      requests++;
++      assert.equal(String(input), "https://api.cerebras.ai/v1/models");
++      assert.equal(new Headers(init?.headers).get("authorization"), "Bearer synthetic");
++      return Response.json({ data: [
++        {
++          id: "native-model", limits: { max_context_length: 131072, max_completion_tokens: 40960 },
++          capabilities: { function_calling: true, structured_outputs: true, vision: false },
++        },
++        { id: "retired-model", deprecated: true },
++        { id: "id-only-model" },
++      ] });
++    });
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    const view = (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++    const native = view.models.find((m) => m.modelId === "native-model")!;
++    assert.equal(native.effectiveConfig.properties?.contextWindow, 131072);
++    assert.equal(native.effectiveConfig.optionSpecs?.maxOutputTokens?.max, 40960);
++    assert.equal(native.evidenceConfig.properties?.supportsJsonSchemaOutput, true);
++    assert.equal(native.evidenceConfig.properties?.inputFormat?.supportsImage, false);
++    assert.equal(view.models.find((m) => m.modelId === "retired-model")?.enabled, false);
++    assert.equal(view.models.find((m) => m.modelId === "id-only-model")?.evidenceConfig.properties?.contextWindow, undefined);
++    assert.equal(requests, 1, "Sparse metadata triggered an unproved public enrichment call");
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("MiMo directory auth/root preserve inference configuration and audio-only models stay outside ordinary dialogue", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "xiaomi-mimo",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++    });
++    f.setFetch(async (input, init) => {
++      assert.equal(String(input), "https://api.xiaomimimo.com/v1/models");
++      const headers = new Headers(init?.headers);
++      assert.equal(headers.get("authorization"), "Bearer synthetic");
++      assert.equal(headers.get("x-api-key"), null);
++      return Response.json({ data: [
++        { id: "mimo-v2.6-pro" }, { id: "mimo-v2.5-asr" }, { id: "mimo-v2.5-tts" },
++        { id: "mimo-v2.5-tts-voiceclone" }, { id: "mimo-v2.5-tts-voicedesign" },
++      ] });
++    });
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    const view = (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++    assert.equal(view.effectiveConfig.api?.baseUrl, "https://api.xiaomimimo.com/anthropic");
++    const asr = view.models.find((m) => m.modelId === "mimo-v2.5-asr")!;
++    assert.equal(asr.evidenceConfig.properties?.outputFormat?.supportsText, true);
++    assert.equal(asr.evidenceConfig.properties?.inputFormat?.supportsText, false);
++    assert.equal(asr.evidenceConfig.properties?.inputFormat?.supportsAudio, true);
++    for (const id of ["mimo-v2.5-asr", "mimo-v2.5-tts", "mimo-v2.5-tts-voiceclone", "mimo-v2.5-tts-voicedesign"])
++      assert.equal(view.models.find((m) => m.modelId === id)?.selectable, false);
++    assert.equal(view.models.find((m) => m.modelId === "mimo-v2.6-pro")?.selectable, true);
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("NVIDIA hosted directory retains exact documented embeddings without advertising ordinary dialogue", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "fleet-nvidia",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++    });
++    f.setFetch(async () => Response.json({ data: [
++      { id: "nvidia/nemotron-3-embed-1b" }, { id: "nvidia/llama-nemotron-embed-vl-1b-v2" },
++      { id: "chat-looking-embedding-name-with-no-evidence" },
++    ] }));
++    await f.service.discoverModels(providerId);
++    await f.restart();
++    const view = (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++    for (const id of ["nvidia/nemotron-3-embed-1b", "nvidia/llama-nemotron-embed-vl-1b-v2"]) {
++      assert.equal(view.models.find((m) => m.modelId === id)?.selectable, false);
++      assert.equal(view.models.find((m) => m.modelId === id)?.evidenceConfig.properties?.supportsToolCall, false);
++    }
++    const unknown = view.models.find((m) => m.modelId === "chat-looking-embedding-name-with-no-evidence")!;
++    assert.equal(unknown.evidenceConfig.properties?.outputFormat, undefined, "Name invented a class");
++  } finally {
++    await f.dispose();
++  }
++});
++
++test("OpenCode workspace directories use Bearer and declared protocol members while manual corrections survive empty refresh", async () => {
++  const f = await fixture();
++  try {
++    for (const [templateId, allowed] of [
++      ["opencode-zen-messages", "claude-fable-5-1"],
++      ["opencode-go-chat", "mimo-v2.6-pro"],
++    ]) {
++      const { providerId } = await f.service.createPersonalProvider({
++        templateId, initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++      });
++      let ids = [allowed!, "gpt-6-astra", "kimi-k3"];
++      f.setFetch(async (_input, init) => {
++        const headers = new Headers(init?.headers);
++        assert.equal(headers.get("authorization"), "Bearer synthetic");
++        assert.equal(headers.get("x-api-key"), null);
++        return Response.json({ data: ids.map((id) => ({ id })) });
++      });
++      await f.service.discoverModels(providerId);
++      const read = async () => (await f.service.getView()).providers.find((p) => p.providerId === providerId)!;
++      const expected = templateId === "opencode-go-chat" ? [allowed, "kimi-k3"] : [allowed];
++      assert.deepEqual((await read()).models.map((m) => m.modelId).sort(), expected.sort());
++      await f.service.addPersonalModel(providerId, "owner/new-published-model", {}, true);
++      ids = [];
++      await f.service.discoverModels(providerId);
++      await f.restart();
++      assert.deepEqual((await read()).models.map((m) => m.modelId), ["owner/new-published-model"]);
++    }
++  } finally {
++    await f.dispose();
++  }
++});

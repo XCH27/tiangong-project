@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Correct Together native array/classes, Kimi catalogue auth/media facts and SiliconFlow full/class
+  membership plus declared native thinking/output fields; retain sparse Cerebras metadata without
+  adding an unproved public-enrichment request.
+- Correct MiMo catalogue and unsigned JSON-thinking continuation, isolate known audio/embedding
+  models from ordinary dialogue, and refresh key/protocol-scoped OpenCode Go/Zen declarations.
+
 - Correct ordinary API completion evidence, scoped OpenRouter/Gemini signature replay and failed
   response accounting through the existing Host/Pi/SDK owners; interrupted replies cannot authorize
   tools or automatic resubmission.
