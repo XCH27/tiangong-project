@@ -179,3 +179,9 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0120 | [0120-regional-menu-actions-and-close-snapshots.patch](0120-regional-menu-actions-and-close-snapshots.patch) | `ddcc77836f64466d8ef21b60c7bc5eb1ba5c9475` |
 
 | 0121 | [0121-native-account-mismatch-diagnosis.patch](0121-native-account-mismatch-diagnosis.patch) | `e22e0422ad9cce82fdb00dbf91819bb3164ecfd0` |
+
+| 0122 | [0122-manual-model-correction-and-native-discovery.patch](0122-manual-model-correction-and-native-discovery.patch) | `e84b029720f19da74cbcdd7b0ad9483a7f40b996` |
+
+| 0123 | [0123-media-failure-and-saved-video-recovery.patch](0123-media-failure-and-saved-video-recovery.patch) | `418154b30d09d3636bfc4a8435c0da26e673d8f6` |
+
+| 0124 | [0124-manual-native-model-route-completion.patch](0124-manual-native-model-route-completion.patch) | `eca771aa8c6ffc2b80be40775a3e564e2c6c9b68` |

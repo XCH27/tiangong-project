@@ -126,7 +126,7 @@ upstream tool-call IDs do not collapse different charges. A stopped/crashed requ
 dispatch with no known provider ID remains unknown and is never automatically resubmitted. A local
 refusal before dispatch is retained as failed with its specific reason, rather than reported as
 an uncertain paid submission. Unconfirmed remote errors retain their receipt and safe HTTP status
-where available. A known video retains its original credential reference, including configured project/organization headers. Unrelated Provider edits and a new default key do not invalidate that confirmation or replace its original enabled key. Removing
+where available. Failure-receipt and accounting writes are each attempted once; a combined diagnostic retains the original provider failure plus storage failures instead of replacing it. A known video retains its original credential reference, including configured project/organization headers. Unrelated Provider edits and a new default key do not invalidate that confirmation or replace its original enabled key. Removing
 or disabling that connection prevents retrieval until the original route is restored. Stop ends
 waiting; it does not claim remote cancellation or a refund.
 
@@ -135,7 +135,7 @@ are real PNG/JPEG/WebP artifacts and use their existing operation ID for stable 
 ResumeMediaJob can recover those saved bytes without generating again; missing provider facts stay
 unknown and an existing charge is not replaced. Old partial receipts remain intact and reject reuse.
 Videos are real MP4 artifacts. Video download publication keeps a stable native artifact URI and refuses conflicting
-bytes. Reopen can query a known video or restore its missing local file without another POST.
+bytes. Reopen first recovers an already saved MP4 if completion publication failed, even after provider expiry; otherwise it queries the original request without another POST. Known consumption is recorded before completion publication; byte-only recovery cannot overwrite it.
 Receipt recovery repairs a failed ledger write using the same physical request ID. The existing
 ledger retains reported money and raw provider usage separately from text-token estimates; unreported media cost is unknown,
 never zero or a text-token invoice. Requested and actually reported models remain separate.

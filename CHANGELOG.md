@@ -5,6 +5,14 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Recover saved video bytes after failed completion publication and provider expiry; retain
+  observed charges before receipt commit. Preserve provider errors alongside media receipt/ledger
+  failures without resubmission or fabricated usage.
+
+- Restore manual model correction for native/subscription connections and retain explicit IDs
+  across refreshed catalogues and restart. Scoped Codex discovery now awaits online refresh
+  through its native owner and propagates failure instead of reporting cached results as fresh.
+
 - Distinguish a switched native CLI account from expired authorization in quota diagnostics;
   preserve the configured binding and require the existing reconnect path for an intended change.
 

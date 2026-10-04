@@ -1,0 +1,235 @@
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 8eb030d..7660569 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -36,6 +36,7 @@ import {
+   serializeRegistryProviderConfig,
+   type ProviderConfigResolution,
+   type RegistryModelConfigObject,
++  resolveNativeModelRouteOptions,
+ } from "./resolver.js";
+ import { resolveInitialModelSelection } from "./model-selection-config.js";
+ import {
+@@ -275,79 +276,47 @@ export class ProviderSettingsFacade {
+   resolveModelConfig(input: ResolveModelConfigInput): ModelConfigResolution {
+     const snapshot = requireSnapshot(this.#source);
+     const provider = requireEffectiveProvider(snapshot, input.providerId);
+-    if (!("personalConfig" in input)) {
+-      const modelRules = ModelConfigRules.composeEffective(
+-        snapshot.config.zcodeBuiltinModelRules,
+-        snapshot.config.personalModels,
+-      );
+-      const config = modelRules.resolve({
+-        providerId: input.providerId,
+-        templateId: provider.templateId,
+-        modelId: input.modelId,
+-        apiType: provider.config.api?.type,
+-        baseUrl: provider.config.api?.baseUrl,
+-      });
+-      return Object.freeze({
+-        inheritedConfig: config.toJSON(),
+-        effectiveConfig: config.toJSON(),
+-        evidenceConfig: modelRules
+-          .resolveEvidence({
+-            providerId: input.providerId,
+-            templateId: provider.templateId,
+-            modelId: input.modelId,
+-            apiType: provider.config.api?.type,
+-            baseUrl: provider.config.api?.baseUrl,
+-          })
+-          .toJSON(),
+-        issues: Object.freeze([
+-          ...config.validateComplete(["providers", input.providerId, "models", input.modelId]),
+-        ]),
+-      });
+-    }
+-
+-    const personalConfig = parseModelConfig(input.personalConfig);
+-    const inheritedConfig = snapshot.config.zcodeBuiltinModelRules.resolve({
++    const identity = {
+       providerId: input.providerId,
+       templateId: provider.templateId,
+       modelId: input.modelId,
+       apiType: provider.config.api?.type,
+       baseUrl: provider.config.api?.baseUrl,
+-    });
++    };
++    const routeConfig = (rules: ModelConfigRules) => {
++      const config = rules.resolve(identity);
++      return provider.config.access?.type === "native-cli"
++        ? resolveNativeModelRouteOptions(config, rules.resolveEvidence(identity))
++        : config;
++    };
+     let personalRules = snapshot.config.personalModels;
+-    if (input.originalModelId !== input.modelId) {
+-      personalRules = personalRules.renameExactModel(
++    if ("personalConfig" in input) {
++      if (input.originalModelId !== input.modelId)
++        personalRules = personalRules.renameExactModel(
++          input.providerId,
++          input.originalModelId,
++          input.modelId,
++        );
++      // 草稿预览推荐配置；固定标记不阻止重新启用推荐模式。
++      personalRules = personalRules.setExact(
+         input.providerId,
+-        input.originalModelId,
+         input.modelId,
++        parseModelConfig(input.personalConfig),
++        true,
+       );
+     }
+-    // 此入口预览智能配置草稿；固定模式不请求推荐，重新开启时不能沿用旧固定标记。
+-    personalRules = personalRules.setExact(input.providerId, input.modelId, personalConfig, true);
+-    const config = ModelConfigRules.composeEffective(
++    const rules = ModelConfigRules.composeEffective(
+       snapshot.config.zcodeBuiltinModelRules,
+       personalRules,
+-    ).resolve({
+-      providerId: input.providerId,
+-      templateId: provider.templateId,
+-      modelId: input.modelId,
+-      apiType: provider.config.api?.type,
+-      baseUrl: provider.config.api?.baseUrl,
+-    });
++    );
++    const config = routeConfig(rules);
+     return Object.freeze({
+-      inheritedConfig: inheritedConfig.toJSON(),
++      inheritedConfig: ("personalConfig" in input
++        ? routeConfig(snapshot.config.zcodeBuiltinModelRules)
++        : config
++      ).toJSON(),
+       effectiveConfig: config.toJSON(),
+-      evidenceConfig: ModelConfigRules.composeEffective(
+-        snapshot.config.zcodeBuiltinModelRules,
+-        personalRules,
+-      )
+-        .resolveEvidence({
+-          providerId: input.providerId,
+-          templateId: provider.templateId,
+-          modelId: input.modelId,
+-          apiType: provider.config.api?.type,
+-          baseUrl: provider.config.api?.baseUrl,
+-        })
+-        .toJSON(),
++      evidenceConfig: rules.resolveEvidence(identity).toJSON(),
+       issues: Object.freeze([
+         ...config.validateComplete(["providers", input.providerId, "models", input.modelId]),
+       ]),
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index 316a767..2ee302c 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -174,6 +174,26 @@ export function createRegistryModelConfig(
+     : { ok: true, config: config as RegistryModelConfig };
+ }
+ 
++/** Native executors own their wire options; an undiscovered ID has no API parameter map. */
++export function resolveNativeModelRouteOptions(
++  config: ModelConfig,
++  evidence: ModelConfig,
++): ModelConfig {
++  return config.overlay(
++    ModelConfig.fromData({
++      optionSpecs: {
++        ...(config.optionSpecs?.maxOutputTokens?.map === undefined
++          ? { maxOutputTokens: { map: "{}" } }
++          : {}),
++        ...(!evidence.optionSpecs?.reasoningLevel?.values?.length
++          ? { reasoningLevel: { values: ["auto"], defaultValue: "auto", map: "{}" } }
++          : {}),
++        ...(evidence.optionSpecs?.speedMode === undefined ? { speedMode: null } : {}),
++      },
++    }),
++  );
++}
++
+ export interface ProviderConfigResolverInput {
+   readonly zcodeBuiltinProviders: ProviderConfigMap;
+   readonly zcodeBuiltinProviderTemplates?: ProviderTemplateMap;
+@@ -322,6 +342,8 @@ export class ProviderConfigResolver {
+         let modelConfig = effectiveModelRules.resolve(modelIdentity);
+         const evidenceConfig = effectiveModelRules.resolveEvidence(modelIdentity);
+         const effectiveBuiltinConfig = recommendedModelRules.resolve(modelIdentity);
++        if (config.access?.type === "native-cli")
++          modelConfig = resolveNativeModelRouteOptions(modelConfig, evidenceConfig);
+         const exact = input.personalModels.getExact(providerId, modelId);
+         const exactRule = input.personalModels.getExactRule(providerId, modelId);
+         const discovered = input.personalModels
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index ac9ab18..fd75df0 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -424,3 +424,71 @@ test(
+     }
+   },
+ );
++
++for (const kind of ["codex", "claude"] as const) {
++  test(`manual ${kind} model is selectable without fabricated API maps/capabilities after refresh and reopen`, async () => {
++    const directory = await mkdtemp(join(tmpdir(), "fleet-native-manual-"));
++    const open = () =>
++      new ProviderRuntime({
++        configRuntime: createProviderConfigRuntime({
++          personalFilePath: join(directory, "provider.json"),
++          zcodeBuiltinFilePath: fileURLToPath(
++            new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++          ),
++          watch: false,
++          personalPollingIntervalMs: false,
++        }),
++        nativeCli: {
++          inspect: async () => ({
++            accountId: "same-account",
++            accountName: "Fixture",
++            planType: "pro",
++            catalog: { source: "provider", models: [] },
++          }),
++          login: async () => {
++            throw new Error("No new login in this fixture");
++          },
++        },
++      });
++    let runtime = open();
++    try {
++      await runtime.start();
++      const { providerId } = await runtime.providerSettings.createPersonalProvider({
++        templateId: kind === "codex" ? "fleet-chatgpt-native" : "fleet-claude-native",
++      });
++      await runtime.providerSettings.connectNativeCli(providerId);
++      await runtime.providerSettings.addPersonalModel(providerId, "future-native-model", {}, true);
++      const verify = async () => {
++        const model = (await runtime.providerSettings.getView()).providers.find(
++          (p) => p.providerId === providerId,
++        )!.models[0]!;
++        assert.equal(model.modelId, "future-native-model");
++        assert.equal(model.selectable, true);
++        assert.deepEqual(model.issues, []);
++        assert.deepEqual(model.effectiveConfig.optionSpecs?.reasoningLevel?.values, ["auto"]);
++        assert.equal(model.effectiveConfig.optionSpecs?.reasoningLevel?.defaultValue, "auto");
++        assert.equal(model.evidenceConfig.properties?.contextWindow, undefined);
++        assert.equal(model.evidenceConfig.properties?.inputFormat?.supportsImage, undefined);
++        assert.equal(model.effectiveConfig.optionSpecs?.speedMode, null);
++        const preview = await runtime.providerSettings.resolveModelConfig({
++          providerId,
++          originalModelId: model.modelId,
++          modelId: model.modelId,
++          personalConfig: {},
++        });
++        assert.deepEqual(preview.issues, []);
++        assert.equal(preview.effectiveConfig.optionSpecs?.maxOutputTokens?.map, "{}");
++      };
++      await verify();
++      await runtime.providerSettings.discoverModels(providerId);
++      await verify();
++      runtime.dispose();
++      runtime = open();
++      await runtime.start();
++      await verify();
++    } finally {
++      runtime.dispose();
++      await rm(directory, { recursive: true, force: true });
++    }
++  });
++}

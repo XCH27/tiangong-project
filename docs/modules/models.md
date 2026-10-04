@@ -154,7 +154,7 @@ The built desktop visibly toggled between the two native IDs and retained Fast t
 The original ordinary-model preference was restored after self-check; actual paid inference was
 not requested. Owner visual acceptance remains pending.
 
-New ChatGPT connections use the scoped native Codex CLI: its official login/refresh owner supplies the public account and model controls. Fleet binds workspace, account label and backend together, publishes the catalog through the existing Provider writer and shares native allowance between Settings and the conversation. This Mac candidate's account/catalog/allowance read was verified; live inference, other platforms and owner acceptance remain separate. Saved public-grant registrations retain patched Pi AI 1.0.1’s Sign in with ChatGPT flow. One random host UUID is created
+New ChatGPT connections use the scoped native Codex CLI: its official login/refresh owner supplies the public account and model controls. Fleet binds workspace, account label and backend together, publishes the catalog through the existing Provider writer and shares native allowance between Settings and the conversation. Explicit scoped model reads await online discovery, propagate failures and preserve saved catalogs; CLI auth/cache ownership remains. This Mac candidate's account/catalog/allowance read was verified; live inference, other platforms and owner acceptance remain separate. Saved public-grant registrations retain patched Pi AI 1.0.1’s Sign in with ChatGPT flow. One random host UUID is created
 under the existing credential lock; Pi owns PKCE/listener/exchange, and Fleet validates RS256/JWKS,
 issuer, issued-client audience, expiry, nonce and returning subject. Reauthorization reuses the
 selected registration; refresh rotates under the same owner/lock. A verified login that declines
@@ -292,10 +292,10 @@ unsupported wire routes fail before inference. Default auto-compaction buffer is
 the remaining input window, capped at 13K; explicit overrides and large-window behavior remain,
 while zero input budget needs further work.
 OV-049 removes model-row deletion controls; the existing enablement switch owns availability and the
-editor corrects manual IDs. No saved model is deleted. Native subscription catalogs own their model
-membership, so manual Add is hidden there; API connections retain one inline model-ID draft at a
-time with duplicate blocking, Enter/explicit confirmation, Escape/cancel and localized failed-save
-preservation; repeated Add focuses the existing draft rather than stacking rows. Model setup retains
+editor corrects manual IDs. API, subscription and native CLI connections reuse one inline Add draft;
+managed Zhipu account products keep their original flow. Explicit additions/ID corrections carry
+`manualModelIds` in the same Provider owner; refresh replaces observations while retaining those IDs
+and overrides across account changes/reopen. Native models use shared route-option completion in registry and editor preview; unknown effort stays Auto, capability facts stay unknown. Duplicate, Enter, Escape and failed-save behavior remains. Model setup retains
 the introductory description and reuses upstream ModelConfigHelp and PlanStatusCardSurface for field
 help and provider-specific authorization cards. Essential account scope and Copilot model-policy
 activation stay visible; Responses help describes the existing adapter without promising all

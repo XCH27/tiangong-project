@@ -1390,7 +1390,7 @@ index eb2b76d..86d4109 100644
  pub use protocol::v1::GetAuthStatusResponse;
  pub use protocol::v1::GetConversationSummaryParams;
 diff --git a/codex-rs/app-server-protocol/src/protocol/v1.rs b/codex-rs/app-server-protocol/src/protocol/v1.rs
-index 17013b5..28d1f05 100644
+index 17013b5..e9cec8c 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v1.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v1.rs
 @@ -1,3 +1,4 @@
@@ -1398,7 +1398,7 @@ index 17013b5..28d1f05 100644
  use std::collections::HashMap;
  use std::path::PathBuf;
  
-@@ -65,9 +66,20 @@ pub struct InitializeCapabilities {
+@@ -65,9 +66,21 @@ pub struct InitializeCapabilities {
      pub extensions: Option<HashMap<String, serde_json::Value>>,
  }
  
@@ -1407,6 +1407,7 @@ index 17013b5..28d1f05 100644
 +pub struct FleetHostToolScope {
 +    pub version: u32,
 +    pub tools: Vec<String>,
++    pub model_catalog_refresh: bool,
 +}
 +
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -1592,8 +1593,42 @@ index fc11b83..af16351 100644
  mod image_url;
  pub mod in_process;
  mod mcp_refresh;
+diff --git a/codex-rs/app-server/src/model_catalog.rs b/codex-rs/app-server/src/model_catalog.rs
+index 54d7ff8..aaa4f91 100644
+--- a/codex-rs/app-server/src/model_catalog.rs
++++ b/codex-rs/app-server/src/model_catalog.rs
+@@ -38,6 +38,12 @@ impl ModelCatalog {
+         self.config_manager
+             .check_thread_model_provider(&self.config)
+             .await?;
++        if crate::host_tools::enabled() && refresh_strategy == RefreshStrategy::Online {
++            return self
++                .models_manager
++                .list_models_fresh(self.config.http_client_factory())
++                .await;
++        }
+         Ok(self
+             .models_manager
+             .list_models(refresh_strategy, self.config.http_client_factory())
+diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+index cc11ef8..3b20427 100644
+--- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
++++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+@@ -255,7 +255,11 @@ impl CatalogRequestProcessor {
+         } = params;
+         let presets = self
+             .model_catalog
+-            .list_models(codex_models_manager::manager::RefreshStrategy::OnlineIfUncached)
++            .list_models(if crate::host_tools::enabled() {
++                codex_models_manager::manager::RefreshStrategy::Online
++            } else {
++                codex_models_manager::manager::RefreshStrategy::OnlineIfUncached
++            })
+             .await
+             .map_err(|err| config_load_error(&err))?;
+         let models = supported_models(presets, include_hidden.unwrap_or(false));
 diff --git a/codex-rs/app-server/src/request_processors/initialize_processor.rs b/codex-rs/app-server/src/request_processors/initialize_processor.rs
-index 493867c..df7ddd6 100644
+index 493867c..43aa0d4 100644
 --- a/codex-rs/app-server/src/request_processors/initialize_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/initialize_processor.rs
 @@ -1,3 +1,4 @@
@@ -1601,12 +1636,17 @@ index 493867c..df7ddd6 100644
  use std::sync::atomic::AtomicBool;
  use std::sync::atomic::Ordering;
  
-@@ -192,6 +193,8 @@ impl InitializeRequestProcessor {
+@@ -192,6 +193,13 @@ impl InitializeRequestProcessor {
  
          let user_agent = get_codex_user_agent();
          let response = InitializeResponse {
-+            fleet_host_tool_scope: crate::host_tools::handshake()
-+                .map(|tools| codex_app_server_protocol::FleetHostToolScope { version: 1, tools }),
++            fleet_host_tool_scope: crate::host_tools::handshake().map(|tools| {
++                codex_app_server_protocol::FleetHostToolScope {
++                    version: 1,
++                    tools,
++                    model_catalog_refresh: true,
++                }
++            }),
              user_agent,
              codex_home,
              platform_family: std::env::consts::FAMILY.to_string(),
@@ -1809,3 +1849,48 @@ index a0d7a8c..79e5cac 100644
              ..StartThreadOptions::new(config)
          };
          Box::pin(self.state.spawn_thread(ThreadSpawnRequest::new(
+diff --git a/codex-rs/models-manager/src/manager.rs b/codex-rs/models-manager/src/manager.rs
+index 7b4d613..14a34cd 100644
+--- a/codex-rs/models-manager/src/manager.rs
++++ b/codex-rs/models-manager/src/manager.rs
+@@ -111,6 +111,16 @@ type SharedModelsEndpointClient = Arc<dyn ModelsEndpointClient>;
+ 
+ /// Coordinates model discovery plus cached metadata on disk.
+ pub trait ModelsManager: fmt::Debug + Send + Sync {
++    /// Explicit Host discovery must not report a cached fallback as a successful refresh.
++    fn list_models_fresh(
++        &self,
++        _http_client_factory: HttpClientFactory,
++    ) -> ModelsManagerFuture<'_, std::io::Result<Vec<ModelPreset>>> {
++        Box::pin(std::future::ready(Err(std::io::Error::other(
++            "This model catalog cannot perform an online refresh",
++        ))))
++    }
++
+     /// Supply startup API-key discovery policy; live changes require a new session.
+     /// Static catalogs ignore this setting.
+     fn set_api_key_model_discovery_enabled(&self, _enabled: bool) {}
+@@ -343,6 +353,23 @@ impl StaticModelsManager {
+ }
+ 
+ impl ModelsManager for OpenAiModelsManager {
++    fn list_models_fresh(
++        &self,
++        http_client_factory: HttpClientFactory,
++    ) -> ModelsManagerFuture<'_, std::io::Result<Vec<ModelPreset>>> {
++        Box::pin(async move {
++            if !self.should_refresh_models().await {
++                return Err(std::io::Error::other(
++                    "Online model discovery is unavailable",
++                ));
++            }
++            self.refresh_available_models(RefreshStrategy::Online, &http_client_factory)
++                .await
++                .map_err(std::io::Error::other)?;
++            Ok(self.build_available_models(self.get_remote_models().await))
++        })
++    }
++
+     fn set_api_key_model_discovery_enabled(&self, enabled: bool) {
+         self.api_key_model_discovery_enabled
+             .store(enabled, Ordering::SeqCst);
