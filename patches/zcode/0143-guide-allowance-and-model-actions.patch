@@ -1,0 +1,48 @@
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index a1960b2..382810e 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -32,6 +32,9 @@ unfinished edits remain untouched. Empty or duplicate models cannot be saved. Su
+ models are discovered from the selected account's catalog; a manual entry does not grant account
+ access. A failed connection test stays inline and
+ never opens the model editor automatically. Listing a model does not prove successful use.
++Right-click a model row to test it, copy its model ID, edit its settings, disable it or hand it to the
++page assistant. Models whose catalog reports output types show image, video, speech recognition or
++speech synthesis tags; large lists can be filtered by those types.
+ 
+ Use the provider's documented URL and supported protocol. Retrieved model IDs are request IDs;
+ a display name is not a replacement ID. Check discovered models and manually correct missing
+@@ -48,6 +51,10 @@ provider's reported cost impact. Model and speed changes apply to the next submi
+ those choices. An active turn keeps the account established by its first request. Do not assume
+ that changing the default before a queued turn starts leaves that turn on its former account.
+ 
++Subscription allowance appears in the account card. API plans such as OpenCode Go and MiniMax Token
++Plan read their allowance with the same saved key and show it in the connection card. Values come
++from the provider; an unread or missing value stays unknown and is never shown as zero or full.
++
+ ## Default models and page assistance
+ 
+ Open **Settings → Model settings → Default models**. For new ordinary conversations, choose
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index 7fdd9d6..858e3df 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -24,6 +24,8 @@ documentation:true，读取相应章节；这不会增加通用文件访问或
+ API 密钥按回车或离开输入框自动保存，没有额外确认按钮。Esc 还原当前值或移除新增行，
+ 不会提交其他草稿。空值或重复模型不能保存。订阅模型从选中账号的目录发现；手动添加不提供账号权限。
+ 连接测试失败时在页面内显示原因，不自动打开模型编辑器。列表有模型不等于测试成功。
++右键模型行可测试模型、复制模型 ID、编辑配置、停用，或交给页面助手配置。目录报告了输出类型的模型
++会显示生图、生视频、语音识别、语音合成等标签；模型较多时可按这些类型筛选。
+ 
+ 使用供应商文档明确支持的地址与协议。拉取到的模型 ID 用于请求，展示名称不能替代 ID。
+ 检查模型列表，手动纠正缺失的元数据。上下文大小表示容量，不是已使用 token 数量。
+@@ -37,6 +39,9 @@ API 密钥按回车或离开输入框自动保存，没有额外确认按钮。E
+ 下一次提交，已开始或已进入队列的工作保留这两项选择。执行中的一轮保留首次请求确定的
+ 账号；排队期间修改默认账号，尚不能保证排队中的任务继续使用原来的账号。
+ 
++订阅账号的额度显示在账号卡片中；OpenCode Go、MiniMax Token Plan 等 API 套餐用已保存的同一把密钥读取额度，
++显示在连接卡片中。额度由供应商接口返回，读取失败或未返回时保持未知，不显示为 0 或满额。
++
+ ## 默认模型与页面助手
+ 
+ 打开 **设置 → 模型设置 → 默认模型**，为普通新对话选择 **沿用上次选择**、**固定模型**

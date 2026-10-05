@@ -216,3 +216,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0141 | [0141-api-key-plan-allowance.patch](0141-api-key-plan-allowance.patch) | `af139ff176692257d832623c8d478c90ce233f4a` |
 
 | 0142 | [0142-catalog-reasoning-and-audio-capabilities.patch](0142-catalog-reasoning-and-audio-capabilities.patch) | `d7ae120023552ad54a1d928fa33498224bed4e92` |
+
+| 0143 | [0143-guide-allowance-and-model-actions.patch](0143-guide-allowance-and-model-actions.patch) | `84d60025b3f8607b081e4815f46e4fd13e8ec414` |
