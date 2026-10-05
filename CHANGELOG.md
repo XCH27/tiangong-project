@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Read Grok allowance per Grok Build `billing.rs` (credits, deprecated monthly fallback, proto3-omitted
+  zero on a confirmed weekly period), fixing the live SuperGrok account's empty quota; add the
+  Orca/Paseo `oauth/usage` fallback for Claude when the SDK control returns no windows; display the
+  ChatGPT native connection as ChatGPT; add Test model and Copy model ID to the model row menu.
+
 - Add owner-requested OpenStock and Octop source references with frozen main/release locks,
   concrete market/plugin/ACP/payload comparisons and explicit license/recovery boundaries;
   preserve prior references, product owners and kernel-first implementation order.
