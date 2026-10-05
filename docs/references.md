@@ -37,7 +37,7 @@ DeepAgents publish separate components. OpenCode v2.0.23 and Flowgram v1.0.15 cu
 without matching GitHub releases; both source snapshots are retained with that narrower label.
 Additional matched component copies include DeepAgents 1.14.1, Context7 MCP 4.1.1 and React Flow
 12.12.0. Actual feature comparisons and installed Fleet dependencies keep their own source locks.
-Public code submodules are checked out at their parent pins. Private BrowserOS internal docs,
+All 70 public code-submodule occurrences are checked out at their parent pins and verified. Private BrowserOS internal docs,
 Blender binary toolchain caches and large Git LFS payloads are excluded from source-only intake. No dependency installation, hook execution or product
 cutover is implied by source availability. Historical reviewed file/line records below retain
 that evidence level until their complete feature chains are rechecked.
