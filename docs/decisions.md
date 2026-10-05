@@ -2711,9 +2711,9 @@ Search and type filters compose; filtering must not reorder only part of the sto
 
 ### Rules for this file
 
-Add a signal here only when the owner actually said it (with date) and it is not already carried
-verbatim in an active document. When a signal's substance is promoted into a decision, note the
-decision ID rather than rewriting the quote.
+Add a signal here only when the owner actually said it (with date). State its meaning; quote only
+where exact wording matters (OV-093). When a signal's substance is promoted into a decision, note
+the decision ID rather than restating it.
 
 ### OV-083 — Kernel rectification remains first; primary owns this audit (2026-10-03)
 
@@ -2849,3 +2849,11 @@ used as the owner's example. This changes no data or permission authority.
 
 Use the ChatGPT account mark for this subscription connection, including its native Codex backend.
 The visual choice changes neither executor identity, authentication nor stored connection data.
+
+### OV-093 — Record the owner's meaning, not a verbatim transcript (2026-10-02)
+
+The owner said exact wording need not be preserved; what matters is understanding the request
+correctly. New entries state the decision and its intent in plain language. Quote the owner only
+where a specific word or UI literal matters. Existing quotations stay as history; no ledger rewrite
+is required, but they never outrank a later decision's stated meaning.
+

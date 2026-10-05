@@ -12,12 +12,12 @@ software.** Native documents, design, canvas, browser evidence and media are fir
 ## Baseline reassessment
 
 OV-027 selects ZCode as the reconstruction direction. The active candidate is `.fleet/zcode`,
-using ZCode `AgentRuntime` as Host with Pi Agent Core (OV-084). `app/` preserves the Craft branch
+using ZCode `AgentRuntime` as Host; Pi Agent Core only sequences the default turn's rounds (OV-084). `app/` preserves the Craft branch
 and its uncommitted work. Neither has completed all Fleet requirements; choosing the product base
 does not approve replacing runtime, credentials or user data.
 
-OV-066 selects one Fleet Host evolved from the existing ZCode owners. OV-084 selects Pi Agent Core
-as its default loop executor, replacing OV-069’s interim Coding Agent wrapper; supported native vendor routes remain separate adapters. Pi durable/Chord is
+OV-066 selects one Fleet Host evolved from the existing ZCode owners. OV-084 uses Pi Agent Core
+to sequence the default turn (Host keeps requests, tools and context), replacing OV-069’s interim Coding Agent wrapper; supported native vendor routes remain separate adapters. Pi durable/Chord is
 retained mechanism evidence, not a planned whole-runtime replacement. Shared page operations,
 native editing and plugin lifecycle drive requirements; OV-067 first verifies their kernel
 boundaries, then acceptance tests prove those operations

@@ -11,8 +11,10 @@ should not preload unrelated modules.
   only part of this product. Contextual Agent operation of feature pages is required baseline
   behavior under OV-024/026/062, not an optional future assistant.
 - **Active candidate:** `.fleet/zcode`, reconstructed from ZCode `29628c9` and the ordered patches.
-  It uses ZCode `AgentRuntime` as Host with Pi Agent Core as the default loop (OV-084). Host owns requests,
-  tools, permissions and durable state; Pi defaults and extension autoload are not enabled. See
+  ZCode `AgentRuntime` is the Host: it builds requests, calls models, executes tools, applies
+  permissions and owns durable state. Pi Agent Core only sequences rounds of the default turn
+  (OV-084); its private messages carry placeholder tool receipts, not the real context. Pi
+  defaults and extension autoload are not enabled; native Claude/Codex run as whole executors. See
   [candidate setup and verification](docs/engineering.md#zcode-candidate).
 - **Retained implementation:** `app/`, Craft v0.13.4 plus declared changes. Preserve its dirty work
   and data. Its old R0/R1 restrictions and code maps describe that branch; they do not cancel later
@@ -80,7 +82,8 @@ Git/GitHub comparisons. These roles do not import several independent products' 
    `not implemented`. These describe capability delivery, not research quality or document completeness.
 9. **Keep documentation singular.** Product meaning, execution order, capability status, module
    contracts, engineering, evidence and history have separate homes. English-first; Chinese remains
-   for exact owner quotations and UI literals. No dated progress reports or in-tree archives.
+   for UI literals and the rare owner quotation whose exact wording matters (OV-093: record meaning,
+   not transcripts). No dated progress reports or in-tree archives.
 10. **Primary owns integration.** Follow the owner's no-casual-delegation direction. OV-043 account
     correction and the current NewMax frontend/backend/model-configuration study are primary-only.
     The owner has stopped delegation for that study; its earlier worker authorization does not
