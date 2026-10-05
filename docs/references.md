@@ -24,7 +24,7 @@ Raw research notes live in [`research/`](research/) and have these consumers:
 ## Latest upstream source snapshots
 
 The complete public-reference inventory was refreshed from official refs on 2026-10-05:
-152 requested repository URLs resolve to 150 canonical upstreams. Default-branch source and 114
+154 requested repository URLs resolve to 152 canonical upstreams. Default-branch source and 115
 GitHub-marked published-tag sources are available as frozen, complete worktrees. Original
 checkouts, required Craft/ZCode pins and local source changes are preserved. `源码参考/latest/`
 provides the current entry, including `software/`, `plugins/` and `github/<owner>/<repo>` links.
@@ -44,6 +44,8 @@ that evidence level until their complete feature chains are rechecked.
 
 | Upstream | Default source SHA (branch) | Current source | Published tag source | Canonical origin / archived |
 |---|---|---|---|---|
+| [Open-Dev-Society/OpenStock](https://github.com/Open-Dev-Society/OpenStock) | `e109f188480b7e5f4a8349dde582aeea45875071` (`main`) | [source](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/Open-Dev-Society--OpenStock--e109f188480b>) | No GitHub latest release | [origin](https://github.com/Open-Dev-Society/OpenStock) / no |
+| [TencentCloud/Octop](https://github.com/TencentCloud/Octop) | `eb28011249c02cafd389b2d424294c6c1b9cf422` (`main`) | [source](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/TencentCloud--Octop--eb28011249c0>) | [v1.0.2b6](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/TencentCloud--Octop--eb28011249c0>) · `eb28011249c02cafd389b2d424294c6c1b9cf422` | [origin](https://github.com/TencentCloud/Octop) / no |
 | [0xsline/OpenChatCut](https://github.com/0xsline/OpenChatCut) | `f6f6fefc4f3b586259f8f1ea5b2e5643ebb6e062` (`main`) | [source](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/0xsline--OpenChatCut--f6f6fefc4f3b>) | [v0.2.15](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/0xsline--OpenChatCut--bb2a4f7e1bb5>) · `bb2a4f7e1bb587aa55f3816583ec180d58eb1432` | [origin](https://github.com/0xsline/OpenChatCut) / no |
 | [aaif-goose/goose](https://github.com/aaif-goose/goose) | `fb7d185b0581e8a64d2ea3404dcfdd32a0aea782` (`main`) | [source](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/aaif-goose--goose--fb7d185b0581>) | [v1.53.0](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/aaif-goose--goose--76da81cb964b>) · `76da81cb964b21cd096db739302329b40c2998b8` | [origin](https://github.com/aaif-goose/goose) / no |
 | [agentclientprotocol/agent-client-protocol](https://github.com/agentclientprotocol/agent-client-protocol) | `302e6f7cd6131bf28d006f32a4aabdfa18c86da7` (`main`) | [source](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/agentclientprotocol--agent-client-protocol--302e6f7cd613>) | [schema-v1.24.1](</Volumes/AIGC/天工参考/源码参考/software/intake/upstream/agentclientprotocol--agent-client-protocol--1761180eeddf>) · `1761180eeddf0828d4ecc367106a632c61be06d9` | [origin](https://github.com/agentclientprotocol/agent-client-protocol) / no |
@@ -1614,6 +1616,9 @@ implementation contract, and these source observations do not establish Fleet im
 | Penpot `common/src/app/common/files/changes.cljc` (refresh diff); MarkItDown `packages/markitdown/pyproject.toml` (refresh diff) | Token status changes from path sets to UUID theme/set IDs and adds token-source changes. MarkItDown now bounds Python below 3.15 and changes YouTube optional dependency constraints. | CREATE-06 needs versioned native-change migration; ingestion dependency closure must be rechecked. Historical file/line references remain at their original SHA. |
 | Codex `codex-rs/core/src/agent/control.rs` (refresh diff) | Config snapshot now calls inspection and distinguishes Loaded versus Unloaded agents; CLI exec-server code moved into `codex-rs/cli/src/exec_server_command.rs`. | ORCH-07 must re-trace callers before adopting old line references. No claim of full review of the moved CLI or new inspection implementation. |
 
+| `software/openstock` | `e109f188480b7e5f4a8349dde582aeea45875071` (detached; owner-requested intake 2026-10-05) | `README.md`; `MARKET_SUPPORT.md`; `LICENSE` | Market-observation plugin comparison only: external chart/data services, per-user watchlist, alert claim/delivery gap. Root AGPL limits direct code combination; no order/backtest engine or runtime acceptance inferred. |
+| `software/octop` | `eb28011249c02cafd389b2d424294c6c1b9cf422` (detached; v1.0.2b6 intake 2026-10-05) | `docs/architecture.md`; `docs/acp.md`; `docs/octop-ui-payload-offload.md`; `LICENSE` | Host composition, shared runner settings, tool-result UI and model-payload separation. Actual Harness/Gateway/Memory/Browser internals live in separate packages; default trusted npx runners and same-realm UI are not Fleet security defaults. |
+
 ## Bounded source review — 2026-09-21
 
 All **67 Git checkouts at the listed pre-refresh source locks** below were inspected for repository identity, current revision,
@@ -2580,7 +2585,7 @@ implementation/proof order and acceptance. A route means **where to evaluate the
 that every named source must be copied or added as a dependency.
 
 Each formal reference checkout receives an owner-requested, generated `FLEET-ADAPTATION.md` at its
-root (76 current guides; four evidence-only checkouts are listed separately above). It projects this route, the separate source revisions and documentation intake, linking upstream files and
+root (87 current guides; four evidence-only checkouts are listed separately above). It projects this route, the separate source revisions and documentation intake, linking upstream files and
 Fleet contract, and is not an independently maintained plan. Regenerate with
 `python3 scripts/reference-guides.py --write`; verify with `python3 scripts/reference-guides.py --check`.
 The generator refuses unrecorded HEADs, missing/escaping documentation, occupied non-generated paths
@@ -2681,6 +2686,9 @@ the linked owner; a requested independent product fork needs its own explicit sc
 | `plugins/planning-with-files` | [EXEC-14](modules/context.md#execution-exec-14) |
 | `plugins/playwright-mcp` | [INFO-03](modules/browser.md#execution-info-03), [ORCH-04](modules/marketplace.md#execution-orch-04) |
 | `plugins/repomix` | [INFO-06](modules/browser.md#execution-info-06), [INTEL-02](modules/memory.md#execution-intel-02), [ORCH-10](modules/marketplace.md#execution-orch-10) |
+
+| `software/openstock` | [ORCH-03](modules/components.md#execution-orch-03), [ORCH-01](modules/workflow.md#execution-orch-01) |
+| `software/octop` | [ORCH-03](modules/components.md#execution-orch-03), [ORCH-11](modules/marketplace.md#execution-orch-11), [EXEC-05](modules/agent-core.md#execution-exec-05), [EXEC-14](modules/context.md#execution-exec-14) |
 
 ## Required promotion record
 
@@ -4020,3 +4028,43 @@ Background after-commit acknowledgement loss, cold Stop-plan reconstruction, gen
 termination, paid/provider effects, plugin withdrawal, request budgets, scheduler/Goal and other
 receipt failures remain separate indexed work. Source, real local execution, staged executable,
 live service behavior and owner visual acceptance remain separate proof levels.
+
+
+## OpenStock and Octop — bounded reference admission
+
+Inspection evidence is retained at `/Volumes/AIGC/天工参考/meta/openstock-octop-intake/manifest.json`.
+Both owner-named repositories are cloned with full Git history, detached at the current official
+main ref, with separate frozen source worktrees and `源码参考/latest/software/` aliases. Octop's
+published `v1.0.2b6`, main SHA and `pyproject.toml` version match. OpenStock has no GitHub latest
+release; its `package.json` version is not labelled as a published product release. The source
+inventory above and `meta/current-upstream.json` include both without moving prior references.
+
+| Checkout / reviewed SHA / license | Source path or symbol read | Reuse boundary |
+|---|---|---|
+| [software/openstock](https://github.com/Open-Dev-Society/OpenStock.git) · `e109f188480b` · AGPL-3.0 | `lib/actions/finnhub.actions.ts:67-148,298-350`; `lib/actions/watchlist.actions.ts:10-71`; `database/models/watchlist.model.ts:10-24`; `lib/inngest/functions.ts:207-330`; `lib/nodemailer/index.ts:102`; `components/TradingViewWidget.tsx:16-66`; `app/(root)/stocks/[symbol]/page.tsx:28` | **M** — Optional trading/market-observation Component reference: bounded/deduplicated quote requests, watchlist uniqueness, chart retention/fullscreen and rule/job flow. TradingView supplies external charts; no brokerage/order/backtest/position engine found. AGPL code combination requires specific license-compatibility review; no MongoDB/Inngest/SMTP/market service or dependency selected. |
+| [software/octop](https://github.com/TencentCloud/Octop.git) · `eb28011249c0` · MIT | `src/octop/infra/agents/settings/acp.py:40-92`; `src/octop/cli/commands/acp.py:12-51`; `src/octop/infra/agents/manager.py:1294-1345,3253-3268,3359-3382`; `src/octop/infra/agents/plugins/manager.py:135-161,487-555`; `src/octop/api/routers/plugins.py:278-330,401-428`; `dashboard/src/plugins/toolRenderers/{loader,host}.ts`; `src/octop/infra/agents/middleware/octop_ui_offload.py:38-94`; `dashboard/src/pages/Chat/components/MessageBubble.tsx:381`; bundled `market-quotes/{main.py,plugin.yaml,ui/manifest.json}` | **M** — Shared execution/settings ownership, ACP adapter configuration, removable tool-result renderers and UI payload separate from model content. Compare the actual finance card/tool package for later application plugins. Do not import Python/LangGraph/control-plane storage, global registry or new permissions into the selected Host; separate dependency implementations need their own proof before any extraction. |
+
+OpenStock's alert pipeline atomically marks `triggered=true, active=false` before SMTP. Caught
+failures or disabled email release the claim, but a crash between claim and send can lose the
+notification without a durable delivery receipt; missing recipients deliberately close it.
+Its quote cache may serve stale values through repeated failures. A live label must not become a
+freshness guarantee. Reuse domain/data flow and interaction lessons under Fleet's existing
+Artifact/Job/permission owners, not those recovery or stale-data assumptions. Only source inspection
+was performed; no real market request, database, notification, installed package or visual claim.
+
+Octop's ACP runner definitions live once per user; each Agent separately opts into the tool.
+This is useful against duplicated configuration, but its legacy migration removes per-Agent runner
+settings before saving the chosen global value and is not a Fleet migration template. Inbound ACP
+boots a separate server process; outbound execution and approvals come from `octop-harness`, not
+this main repo. Commands such as `npx -y` and `trusted=true` are not adopted defaults.
+
+Octop plugin UI loads authenticated JavaScript as Blob ESM in the dashboard's own realm; its host
+exposes authenticated requests and patches frontend chat data. This is not a third-party sandbox
+or proof of native document editing/save/undo. Global enablement is saved before load/reload and
+needs failure reconciliation; per-Agent switches use the same existing config owner. Its
+`octop_ui` middleware moves large card data to ToolMessage artifacts while keeping compact content;
+the dashboard resolves those artifacts. Existing file:// guards preserve media consumers, but model
+conversion, complete checkpoint/fork recovery and all dependency versions were not executed or
+fully inspected. Fleet should compare this with its current result projection and on-demand reads
+before adding another mechanism. These admissions supply references; kernel-first order and
+capability statuses remain unchanged.

@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Add owner-requested OpenStock and Octop source references with frozen main/release locks,
+  concrete market/plugin/ACP/payload comparisons and explicit license/recovery boundaries;
+  preserve prior references, product owners and kernel-first implementation order.
+
 - Correct file-publication data loss and stale revisions, background cancellation before fallible
   receipts, unknown opaque workflow replay, API body/pool-stop/accounting propagation, and catalogue
   fact ownership. Preserve original completed-verifier invalidation after a changed workspace;
