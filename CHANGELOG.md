@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Use the owner-selected ChatGPT account mark for native Codex-backed subscriptions; retain the
+  previous stored icon key as an alias without changing connection or executor identity.
+
 - Correct Model Studio, BigModel and native Codex brand projection; restore admitted OpenRouter
   theme colors and shared asset-load fallback. OAuth surfaces use the same renderer and original slots.
 

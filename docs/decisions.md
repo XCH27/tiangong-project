@@ -2842,3 +2842,10 @@ menus reuse frequent actions already present in the entity's overflow menu: prov
 keep the original editor, revision and confirmation. Distinct browser/editor/panel destinations remain
 explicit alternatives. Audit all corresponding regions and lifecycle callbacks, not only the page
 used as the owner's example. This changes no data or permission authority.
+
+### OV-092 — ChatGPT account mark independent of executor (2026-10-04)
+
+> 「你应该用 ChatGPT 的图标，而不是用 Codex」
+
+Use the ChatGPT account mark for this subscription connection, including its native Codex backend.
+The visual choice changes neither executor identity, authentication nor stored connection data.
