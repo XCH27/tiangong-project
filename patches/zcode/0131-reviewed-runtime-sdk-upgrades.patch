@@ -1,0 +1,1167 @@
+diff --git a/apps/zcode-cli/packages/adapters/package.json b/apps/zcode-cli/packages/adapters/package.json
+index c527d6d960642ce260a6aeb6d5fc018f50049757..3d6c05aab44f78f9227fcd4f4d10cdf7918140b1 100644
+--- a/apps/zcode-cli/packages/adapters/package.json
++++ b/apps/zcode-cli/packages/adapters/package.json
+@@ -103,11 +103,11 @@
+     "lint:fix": "oxlint --write src"
+   },
+   "dependencies": {
+-    "@ai-sdk/anthropic": "3.0.81",
+-    "@ai-sdk/openai": "^3.0.58",
+-    "@ai-sdk/openai-compatible": "^2.0.58",
+-    "@anthropic-ai/claude-agent-sdk": "0.3.286",
+-    "@earendil-works/pi-ai": "1.0.1",
++    "@ai-sdk/anthropic": "4.0.71",
++    "@ai-sdk/openai": "4.0.83",
++    "@ai-sdk/openai-compatible": "3.0.62",
++    "@anthropic-ai/claude-agent-sdk": "0.3.289",
++    "@earendil-works/pi-ai": "1.0.2",
+     "@modelcontextprotocol/client": "2.0.0",
+     "@zcode/contracts": "workspace:*",
+     "@zcode/dynamic-workflow": "workspace:*",
+@@ -115,7 +115,7 @@
+     "@zcode/provider": "workspace:*",
+     "@zcode/shared": "workspace:*",
+     "@zcode/zcode-cua": "workspace:*",
+-    "ai": "6.0.193",
++    "ai": "7.0.127",
+     "cheerio": "^1.0.0",
+     "iconv-lite": "0.7.2",
+     "jimp": "^1.6.1",
+diff --git a/apps/zcode-cli/packages/adapters/src/model/api-completion-evidence.ts b/apps/zcode-cli/packages/adapters/src/model/api-completion-evidence.ts
+index b3c668aa8ef627f337e6933d981b3b1695ecc565..9081a9ed3f1d326eec8da3b6fffdaf61afd56b11 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/api-completion-evidence.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/api-completion-evidence.ts
+@@ -1,4 +1,4 @@
+-import { wrapLanguageModel, type LanguageModel } from "ai";
++import { InvalidResponseDataError, wrapLanguageModel, type LanguageModel } from "ai";
+ import { ModelErrorCode, ModelProtocolError } from "@zcode/contracts";
+ import {
+   scopedOpenRouterMetadata,
+@@ -12,7 +12,7 @@ import {
+   type UsageObservationScope,
+ } from "./provider-usage-observation.js";
+ 
+-type ApiModel = Extract<LanguageModel, { specificationVersion: "v3" }>;
++type ApiModel = Extract<LanguageModel, { specificationVersion: "v4" }>;
+ type FinishReason = Awaited<ReturnType<ApiModel["doGenerate"]>>["finishReason"];
+ export type CompletionProtocol = "chat-completions" | "responses" | "messages";
+ 
+@@ -28,10 +28,10 @@ export function withApiCompletionEvidence(
+     modelId: model.modelId,
+     protocol,
+   };
+-  const rejectIncomplete = (): never => {
++  const rejectIncomplete = (cause?: unknown): never => {
+     // SDK 的自然 EOF 会合成 finish。只有对应协议的上游完成事实才能授权 Host 后续工具；
+-    // 保留 public V3 元数据/usage，不把 raw 调试帧传到 Session 或再解析一次 SSE。
+-    throw new ModelProtocolError(
++    // 保留 public V4 元数据/usage，不把 raw 调试帧传到 Session 或再解析一次 SSE。
++    const error = new ModelProtocolError(
+       ModelErrorCode.InvalidModelResponse,
+       `${protocol} ended without valid provider completion evidence`,
+       {
+@@ -42,6 +42,8 @@ export function withApiCompletionEvidence(
+         retryable: false,
+       },
+     );
++    if (cause !== undefined) Object.defineProperty(error, "cause", { value: cause });
++    throw error;
+   };
+   const assertFinishReason = (reason: FinishReason | undefined) => {
+     if (
+@@ -55,7 +57,7 @@ export function withApiCompletionEvidence(
+   return wrapLanguageModel({
+     model,
+     middleware: {
+-      specificationVersion: "v3",
++      specificationVersion: "v4",
+       async transformParams({ type, params }) {
+         return type === "stream" && protocol === "responses"
+           ? { ...params, includeRawChunks: true }
+@@ -105,6 +107,7 @@ export function withApiCompletionEvidence(
+         const result = await doStream();
+         let finished = false;
+         let failed = false;
++        let providerError: unknown;
+         let responsesTerminal = false;
+         let responseId: string | undefined;
+         let responseUsage: unknown;
+@@ -135,8 +138,24 @@ export function withApiCompletionEvidence(
+                     }
+                     return; // Only control state is retained; raw payloads remain SDK-private.
+                   }
+-                  if (part.type === "error") failed = true;
++                  if (part.type === "error") {
++                    failed = true;
++                    // SDK 7 synthesizes this EOF error immediately before final usage.
++                    // Other errors stay immediate, including malformed streams that hang.
++                    if (
++                      InvalidResponseDataError.isInstance(part.error) &&
++                      part.error.message === "Response stream ended without a finish reason."
++                    )
++                      providerError ??= part.error;
++                    else controller.enqueue(part);
++                    return;
++                  }
+                   if (part.type === "finish") {
++                    finished = true;
++                    if (failed) {
++                      if (providerError !== undefined) rejectIncomplete(providerError);
++                      return;
++                    }
+                     // 原始 error part 仍由既有错误链处理，不能被完成校验替换。
+                     if (!failed) {
+                       if (protocol === "responses") {
+@@ -144,7 +163,6 @@ export function withApiCompletionEvidence(
+                           rejectIncomplete();
+                       } else assertFinishReason(part.finishReason);
+                     }
+-                    finished = true;
+                     if (scope && !failed) {
+                       const details = takeOpenRouterDetails(part.providerMetadata);
+                       if (details) {
+@@ -167,6 +185,7 @@ export function withApiCompletionEvidence(
+                       return;
+                     }
+                   }
++                  if (failed) return;
+                   if (
+                     scope &&
+                     (part.type === "reasoning-start" ||
+@@ -194,6 +213,7 @@ export function withApiCompletionEvidence(
+                 }
+               },
+               flush() {
++                if (!finished && providerError !== undefined) throw providerError;
+                 if (!finished && !failed) rejectIncomplete();
+               },
+             }),
+diff --git a/apps/zcode-cli/packages/adapters/src/model/google-thought-signatures.ts b/apps/zcode-cli/packages/adapters/src/model/google-thought-signatures.ts
+index cc10af406c1ca520d25f069b0cc48cddc61aee33..93cc025e9f3b518644627df7093d82840795361f 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/google-thought-signatures.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/google-thought-signatures.ts
+@@ -9,7 +9,7 @@ export interface GoogleToolSignatureScope {
+ }
+ const NAMESPACE = "fleetGoogle";
+ const OFFICIAL_CHAT_BASE = "https://generativelanguage.googleapis.com/v1beta/openai";
+-type ApiModel = Extract<LanguageModel, { specificationVersion: "v3" }>;
++type ApiModel = Extract<LanguageModel, { specificationVersion: "v4" }>;
+ type Metadata = NonNullable<Awaited<ReturnType<ApiModel["doGenerate"]>>["providerMetadata"]>;
+ interface ToolSignature {
+   id: string;
+@@ -241,7 +241,7 @@ export function withGoogleToolSignatureCarrier(
+   return wrapLanguageModel({
+     model,
+     middleware: {
+-      specificationVersion: "v3",
++      specificationVersion: "v4",
+       async wrapGenerate({ doGenerate }) {
+         const result = await doGenerate();
+         assertCompleted(result.finishReason);
+diff --git a/apps/zcode-cli/packages/adapters/src/model/message-content-transforms.ts b/apps/zcode-cli/packages/adapters/src/model/message-content-transforms.ts
+index e0be5d4032b8079c1962b874eead3bd045507cc5..f3623a523e9ad67dc72a2fff707ea01d2cb82227 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/message-content-transforms.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/message-content-transforms.ts
+@@ -132,7 +132,7 @@ function contentBlockToAiSdkUserParts(
+           },
+         ];
+       }
+-      return [{ type: "image", image: data.data, mediaType: block.mediaType }];
++      return [{ type: "file", data: data.data, mediaType: block.mediaType }];
+     }
+ 
+     case "video": {
+diff --git a/apps/zcode-cli/packages/adapters/src/model/openrouter-reasoning.ts b/apps/zcode-cli/packages/adapters/src/model/openrouter-reasoning.ts
+index 7f0da0b56048c38a4d346ffad467af4b9d01026c..61a6cdf12db7f3281824ec6f57038c1dc52aea62 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/openrouter-reasoning.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/openrouter-reasoning.ts
+@@ -7,7 +7,7 @@ export interface OpenRouterReasoningScope {
+   modelId: string;
+ }
+ const NAMESPACE = "fleetOpenRouter";
+-type SdkModel = Extract<LanguageModel, { specificationVersion: "v3" }>;
++type SdkModel = Extract<LanguageModel, { specificationVersion: "v4" }>;
+ type SdkMetadata = NonNullable<Awaited<ReturnType<SdkModel["doGenerate"]>>["providerMetadata"]>;
+ type Detail = SdkMetadata[string] & { type: string };
+ 
+diff --git a/apps/zcode-cli/packages/adapters/src/model/provider-usage-observation.ts b/apps/zcode-cli/packages/adapters/src/model/provider-usage-observation.ts
+index ce7816b83cbf87ddd055020c5e31b572f1960292..4b501b38eca40cac332c4455195a97a68bf5b6a9 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/provider-usage-observation.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/provider-usage-observation.ts
+@@ -2,7 +2,7 @@ import type { MetadataExtractor } from "@ai-sdk/openai-compatible";
+ import type { LanguageModel } from "ai";
+ import type { ModelUsage } from "@zcode/contracts";
+ 
+-type ApiModel = Extract<LanguageModel, { specificationVersion: "v3" }>;
++type ApiModel = Extract<LanguageModel, { specificationVersion: "v4" }>;
+ type SdkUsage = Awaited<ReturnType<ApiModel["doGenerate"]>>["usage"];
+ type Metadata = NonNullable<Awaited<ReturnType<ApiModel["doGenerate"]>>["providerMetadata"]>;
+ export interface UsageObservationScope {
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner-debug.ts b/apps/zcode-cli/packages/adapters/src/model/runner-debug.ts
+index 00ba813a3d26d2ab90c417d66e242567d39e1b54..9b526ba280f4cbb559e8b9a48ab2cef0d7e767e1 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner-debug.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner-debug.ts
+@@ -167,7 +167,7 @@ export function recordGenerateTextDebug(input: {
+  * 每个 turn（`streamText`）即便 ZCODE_RUNTIME_ENV=development 也从不落盘。流式路径同样要记录。
+  *
+  * 与 generate 路径的关键差异：StreamTextResult 的 text/toolResults/sources/response 等聚合字段是 **promise**，
+- * 必须等 fullStream 读完后再 await；toolResults/sources 的归一化期望数组，
++ * 必须等 stream 读完后再 await；toolResults/sources 的归一化期望数组，
+  * 所以先解析聚合 promise，再用合成对象处理。toolCalls 则直接复用 assembler 的归一化快照。
+  * 任何失败都不得影响模型请求路径。
+  */
+@@ -281,7 +281,7 @@ function buildFallbackRequestBodyFromOptions(input: {
+     // 失败路径经常拿不到 AI SDK 暴露的 raw request.body。此处记录送入
+     // AI SDK 的完整 payload 快照，方便排查 provider 400 的 messages/tools 结构。
+     bodySource: "ai_sdk_options",
+-    experimental_include: options.experimental_include,
++    include: options.include,
+     frequencyPenalty: options.frequencyPenalty,
+     maxOutputTokens: options.maxOutputTokens,
+     messages: options.messages,
+@@ -434,7 +434,7 @@ async function settleModelIOValue<T>(value: Promise<T> | T | undefined): Promise
+ 
+ // 用户 stop / v4 sendQueuedNow 抢占会 abort 当前流式请求；此时
+ // AI SDK StreamTextResult 的 request/response 聚合 promise 永不 settle——流被中途放弃，
+-// 聚合要等 fullStream 关闭才 resolve，而关闭 iterator 的 finally（runner-stream.ts）
++// 聚合要等 stream 关闭才 resolve，而关闭 iterator 的 finally（runner-stream.ts）
+ // 又排在本 await 之后，形成循环等待。settleModelIOValue 只兜 reject 不兜「不 settle」，
+ // 导致 runStreamText 的 catch 永远不结束：TurnCancelled 无法上抛、turn 永不收口、
+ // record.activeAbortController 不释放、UI 的 stop（canStop）永久失效
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner-options.ts b/apps/zcode-cli/packages/adapters/src/model/runner-options.ts
+index b1aa73be01e9e3c2b8eb8d9160a882f8433897ed..000899e4efe8e33816333af4788ca3198ac71291 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner-options.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner-options.ts
+@@ -11,7 +11,7 @@ import type {
+ } from "./runner-runtime.js";
+ import { createModelRequestAttributionHeaders, type ModelStatusContext } from "./runner-status.js";
+ 
+-type ExperimentalIncludeWithResponseBody = {
++type IncludeWithResponseBody = {
+   requestBody?: boolean;
+   responseBody?: boolean;
+ };
+@@ -90,7 +90,7 @@ export function createGenerateTextOptions(input: {
+     // printing its generic system-message warning to process stderr.
+     allowSystemInMessages: true,
+     maxRetries: 0,
+-    experimental_include: input.includeModelIO
++    include: input.includeModelIO
+       ? {
+           requestBody: true,
+           responseBody: true,
+@@ -150,16 +150,18 @@ export function createStreamTextOptions(input: {
+     maxRetries: 0,
+     // AI SDK 会吞掉 Anthropic message_start 等 metadata 事件；compact 需要
+     // 在 adapter 内观察 raw event 才能精确结束 SSE retry，raw chunk 不会上送 Core/UI。
+-    includeRawChunks: input.request.preserveProviderStreamBoundaries ? true : undefined,
+     // zcode-plan 的业务码可能只在流式响应尾部 body 里，需保留 responseBody 供错误分类读取。
+-    experimental_include: createStreamExperimentalInclude(input),
++    include: {
++      ...createStreamInclude(input),
++      ...(input.request.preserveProviderStreamBoundaries ? { rawChunks: true } : {}),
++    },
+   }) as AiSdkStreamTextOptions;
+ }
+ 
+-function createStreamExperimentalInclude(input: {
++function createStreamInclude(input: {
+   includeModelIO: boolean;
+   resolved: ResolvedAiSdkModel;
+-}): ExperimentalIncludeWithResponseBody | undefined {
++}): IncludeWithResponseBody | undefined {
+   if (input.includeModelIO) {
+     return {
+       requestBody: true,
+diff --git a/apps/zcode-cli/packages/adapters/src/model/runner-stream.ts b/apps/zcode-cli/packages/adapters/src/model/runner-stream.ts
+index 7516fe0948672cd97aeefde243e7cd716b7f26e9..44b6f707afab3b5fe545f8405418188f2d3925ad 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/runner-stream.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/runner-stream.ts
+@@ -309,7 +309,7 @@ export async function* runStreamText(input: {
+       );
+       const streamResult = input.runtime.streamText(options);
+       result = streamResult;
+-      streamIterator = streamResult.fullStream[Symbol.asyncIterator]();
++      streamIterator = streamResult.stream[Symbol.asyncIterator]();
+ 
+       while (true) {
+         const next = await readNextWithStreamIdleTimeout(streamIterator, {
+@@ -635,6 +635,10 @@ export async function* runStreamText(input: {
+       return;
+     } catch (error) {
+       attemptFailed = true;
++      // Stop the physical request before awaiting SDK diagnostics. A parser error
++      // can arrive while the response stays open; its aggregate promises need EOF.
++      if (!streamReachedNaturalEnd && !attemptAbortController.signal.aborted)
++        attemptAbortController.controller.abort(error);
+       if (recordModelIO && options) {
+         await recordStreamTextDebug({
+           modelIoFullRetentionEnabled: input.modelIoFullRetentionEnabled,
+@@ -864,7 +868,7 @@ export async function* runStreamText(input: {
+         (attemptFailed || input.request.preserveProviderStreamBoundaries === true)
+       ) {
+         // 普通 stream 的 429 retry 失败若不进入本清理分支，
+-        // AI SDK fullStream tee 会持有旧 provider 请求，连续重试会让后续物理请求卡在发送前。
++        // AI SDK stream tee 会持有旧 provider 请求，连续重试会让后续物理请求卡在发送前。
+         // 失败 attempt 必须无条件中止并释放；普通 consumer 主动提前结束仍保持原语义。
+         if (!attemptAbortController.signal.aborted) {
+           attemptAbortController.controller.abort(
+@@ -935,7 +939,7 @@ async function closeStreamIteratorBestEffort(
+   if (options.result?.consumeStream) {
+     cleanupOperations.push({
+       name: "result.consumeStream",
+-      // AI SDK fullStream getter 会 tee 并把另一支保存在 baseStream；
++      // AI SDK stream getter 会 tee 并把另一支保存在 baseStream；
+       // 只等待外层 iterator.return() 仍可能让底层 reader/连接槽继续被保留。
+       promise: Promise.resolve().then(() => options.result?.consumeStream()),
+     });
+diff --git a/apps/zcode-cli/packages/adapters/src/model/tool-transform.ts b/apps/zcode-cli/packages/adapters/src/model/tool-transform.ts
+index a075677f155a739b584ff94377c8cef39de93d90..cd04d69885862f8d0a80dec0b224dcd494ad7bb4 100644
+--- a/apps/zcode-cli/packages/adapters/src/model/tool-transform.ts
++++ b/apps/zcode-cli/packages/adapters/src/model/tool-transform.ts
+@@ -47,13 +47,13 @@ export function toAiSdkTools(
+     };
+ 
+     if (!contract.execute) {
+-      return [[contract.name, tool<unknown, never>(baseTool)]];
++      return [[contract.name, tool<unknown, never, Record<string, unknown>>(baseTool)]];
+     }
+ 
+     return [
+       [
+         contract.name,
+-        tool<unknown, unknown>({
++        tool<unknown, unknown, Record<string, unknown>>({
+           ...baseTool,
+           execute: async (input, options) =>
+             contract.execute?.(input, {
+@@ -67,7 +67,7 @@ export function toAiSdkTools(
+                 sideEffectScope: contract.sideEffectScope,
+                 maxOutputBytes: contract.maxOutputBytes,
+                 timeoutMs: contract.timeoutMs,
+-                experimentalContext: options.experimental_context,
++                experimentalContext: options.context,
+               },
+             }),
+         }),
+diff --git a/apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts b/apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts
+index de2e8f4458d94427e32d1e3ae768df6ecb5e39f9..61c167b20ad6dc0e56f25f9ba5a4b3d8d5db8990 100644
+--- a/apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts
++++ b/apps/zcode-cli/packages/adapters/test/google-thought-signatures.test.ts
+@@ -229,7 +229,7 @@ for (const [streaming, late] of [
+   [true, false],
+   [true, true],
+ ]) {
+-  test(`installed SDK + public V3 carrier: ${streaming ? (late ? "late streaming" : "first streaming") : "nonstream"}`, async () => {
++  test(`installed SDK + public V4 carrier: ${streaming ? (late ? "late streaming" : "first streaming") : "nonstream"}`, async () => {
+     const f = sdkFixture(late!, streaming!);
+     let opaque: any;
+     let metadata: any;
+diff --git a/apps/zcode-cli/packages/core/package.json b/apps/zcode-cli/packages/core/package.json
+index 1809d51603b2b4c017c82c904f49067e190f226d..3c4749f520e7b4329cdee48f9a771c0174d54bcb 100644
+--- a/apps/zcode-cli/packages/core/package.json
++++ b/apps/zcode-cli/packages/core/package.json
+@@ -31,8 +31,8 @@
+     "lint:fix": "oxlint --fix src --no-ignore"
+   },
+   "dependencies": {
+-    "@earendil-works/pi-agent-core": "1.0.1",
+-    "@earendil-works/pi-ai": "1.0.1",
++    "@earendil-works/pi-agent-core": "1.0.2",
++    "@earendil-works/pi-ai": "1.0.2",
+     "@zcode/contracts": "workspace:*",
+     "@zcode/dynamic-workflow": "workspace:*",
+     "@zcode/shared": "workspace:*",
+diff --git a/apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts b/apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts
+index 3023098f208e912c618befb05fa2751065b49f5a..8fc6bd83fd055455b14ce21c6f7f5f516ed95efb 100644
+--- a/apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts
++++ b/apps/zcode-cli/packages/core/test/chat-completions-evidence.test.ts
+@@ -18,8 +18,8 @@ const sse = (frames: unknown[], done = true) => new Response(
+   (done ? "data: [DONE]\n\n" : ""), { headers: { "content-type": "text/event-stream" } },
+ );
+ 
+-function model(transport: typeof fetch, api = "openai-chat-completions", baseUrl = "https://synthetic.example/v1") {
+-  const adapter = new AiSdkModelAdapter({ env: {}, transport, retry: { maxAttempts: 1 } });
++function model(transport: typeof fetch, api = "openai-chat-completions", baseUrl = "https://synthetic.example/v1", streamIdleTimeoutMs?: number) {
++  const adapter = new AiSdkModelAdapter({ env: {}, transport, retry: { maxAttempts: 1 }, streamIdleTimeoutMs });
+   return adapter.createModel({
+     providerId: "fixture", modelId: "model-a",
+     providerConfig: { access: { type: "api-key", apiKey: "synthetic-key" },
+@@ -38,6 +38,43 @@ function model(transport: typeof fetch, api = "openai-chat-completions", baseUrl
+   });
+ }
+ 
++test("malformed SSE on an open socket preserves the parser error and closes without effects", async () => {
++  const { createServer } = await import("node:http");
++  let requests = 0;
++  const closed = Promise.withResolvers<void>();
++  const server = createServer((_request, response) => {
++    requests++;
++    response.on("close", () => closed.resolve());
++    response.writeHead(200, { "content-type": "text/event-stream" });
++    response.write('data: {"choices":"invalid-shape"}\n\n');
++  });
++  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++  const address = server.address() as { port: number };
++  const f = await fixture(undefined, true);
++  try {
++    const candidate = model(fetch, "openai-chat-completions", `http://127.0.0.1:${address.port}/v1`, 250);
++    (f.runtime as any).modelFactory = () => candidate;
++    await assert.rejects(f.runtime.executeTurn("Retain the original parser diagnosis"), (error) => {
++      const names: string[] = [];
++      for (let cause: any = error; cause; cause = cause.cause) names.push(cause.name);
++      assert.ok(names.includes("AI_TypeValidationError"), names.join(" → "));
++      assert.ok(!names.includes("ModelStreamIdleTimeoutError"));
++      return true;
++    });
++    await closed.promise;
++    assert.equal(requests, 1);
++    assert.equal(f.effects, 0);
++    assert.equal(f.permissionCalls, 0);
++    const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++    try { assert.equal(db.prepare("select status from model_usage limit 1").get()!.status, "error"); }
++    finally { db.close(); }
++  } finally {
++    await f.close();
++    server.closeAllConnections();
++    await new Promise<void>((resolve) => server.close(() => resolve()));
++  }
++});
++
+ for (const streaming of [false, true]) {
+   for (const failure of ["missing", "empty", "malformed", "error"] as const) {
+     test(`Chat Completions ${streaming ? "stream" : "JSON"} ${failure} completion cannot admit a Host effect`, async () => {
+diff --git a/packages/services/package.json b/packages/services/package.json
+index 7766310a7b191171b2d04f9a6996178864243dcc..10a94b31c1e233e5690a2ffa6ba382f710cca326 100644
+--- a/packages/services/package.json
++++ b/packages/services/package.json
+@@ -18,7 +18,7 @@
+   },
+   "dependencies": {
+     "@zcode/adapters": "workspace:*",
+-    "@earendil-works/pi-ai": "1.0.1",
++    "@earendil-works/pi-ai": "1.0.2",
+     "@larksuiteoapi/node-sdk": "1.64.0",
+     "@zcode/provider": "workspace:*",
+     "@zcode/provider-node": "workspace:*",
+diff --git a/patches/@ai-sdk__anthropic@3.0.81.patch b/patches/@ai-sdk__anthropic@3.0.81.patch
+deleted file mode 100644
+index 223e676f24ef7f15a0f3a6716ffa53c4ea83ce95..0000000000000000000000000000000000000000
+--- a/patches/@ai-sdk__anthropic@3.0.81.patch
++++ /dev/null
+@@ -1,48 +0,0 @@
+-diff --git a/dist/index.js b/dist/index.js
+-index f01709ca8909a5724fab4e74a82286af262fbf76..84a19080d0326421e39e2f40df11e69c9fc043ef 100644
+---- a/dist/index.js
+-+++ b/dist/index.js
+-@@ -2265,6 +2265,19 @@ async function convertToAnthropicMessagesPrompt({
+-                         },
+-                         cache_control: cacheControl
+-                       });
+-+                    } else if (part.mediaType.startsWith("video/")) {
+-+                      // zcode patch: video/* file part -> video content block (image-block-isomorphic
+-+                      // shape used by Anthropic-style compatible gateways; official Anthropic API has
+-+                      // no video block yet). Video bytes are serialized as base64.
+-+                      anthropicContent.push({
+-+                        type: "video",
+-+                        source: {
+-+                          type: "base64",
+-+                          media_type: part.mediaType,
+-+                          data: (0, import_provider_utils14.convertToBase64)(part.data)
+-+                        },
+-+                        cache_control: cacheControl
+-+                      });
+-                     } else if (part.mediaType === "application/pdf") {
+-                       betas.add("pdfs-2024-09-25");
+-                       const enableCitations = await shouldEnableCitations(
+-diff --git a/dist/index.mjs b/dist/index.mjs
+-index 06a5c9546bc32c59b5aaa4222e7a756a6d22f6d1..fe575cd4100a1b7c2f9ed0769a707633b4a88f10 100644
+---- a/dist/index.mjs
+-+++ b/dist/index.mjs
+-@@ -2314,6 +2314,19 @@ async function convertToAnthropicMessagesPrompt({
+-                         },
+-                         cache_control: cacheControl
+-                       });
+-+                    } else if (part.mediaType.startsWith("video/")) {
+-+                      // zcode patch: video/* file part -> video content block (image-block-isomorphic
+-+                      // shape used by Anthropic-style compatible gateways; official Anthropic API has
+-+                      // no video block yet). Video bytes are serialized as base64.
+-+                      anthropicContent.push({
+-+                        type: "video",
+-+                        source: {
+-+                          type: "base64",
+-+                          media_type: part.mediaType,
+-+                          data: convertToBase64(part.data)
+-+                        },
+-+                        cache_control: cacheControl
+-+                      });
+-                     } else if (part.mediaType === "application/pdf") {
+-                       betas.add("pdfs-2024-09-25");
+-                       const enableCitations = await shouldEnableCitations(
+diff --git a/patches/@ai-sdk__anthropic@4.0.71.patch b/patches/@ai-sdk__anthropic@4.0.71.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..d34d6554c7bb47a58c6f181713d0453f463cef43
+--- /dev/null
++++ b/patches/@ai-sdk__anthropic@4.0.71.patch
+@@ -0,0 +1,19 @@
++diff --git a/dist/index.js b/dist/index.js
++--- a/dist/index.js
+++++ b/dist/index.js
++@@ -2425,6 +2425,15 @@
++ 												},
++ 												cache_control: cacheControl
++ 											});
+++											else if (topLevel === "video") {
+++												// Fleet compatibility patch: retain declared gateway video input; this is not Anthropic API video support.
+++												if (part.data.type !== "data") throw new UnsupportedFunctionalityError({ functionality: "video URL file parts" });
+++												anthropicContent.push({
+++													type: "video",
+++													source: { type: "base64", media_type: resolveFullMediaType({ part }), data: convertToBase64(part.data.data) },
+++													cache_control: cacheControl
+++												});
+++											}
++ 											else if (topLevel === "application" && (part.data.type === "url" ? part.mediaType === "application/pdf" : resolveFullMediaType({ part }) === "application/pdf")) {
++ 												betas.add("pdfs-2024-09-25");
++ 												const enableCitations = await shouldEnableCitations(part.providerOptions);
+diff --git a/patches/@ai-sdk__openai-compatible@2.0.60.patch b/patches/@ai-sdk__openai-compatible@2.0.60.patch
+deleted file mode 100644
+index d4675a7faca277bda220fa0bd99bc68316d2da9e..0000000000000000000000000000000000000000
+--- a/patches/@ai-sdk__openai-compatible@2.0.60.patch
++++ /dev/null
+@@ -1,44 +0,0 @@
+-diff --git a/dist/index.js b/dist/index.js
+-index 6d3fc0792a237a90ab5f1d0a7a4bc20434ee1981..ef4f93163d649848ea1ca58f7f623f8dddabfbc7 100644
+---- a/dist/index.js
+-+++ b/dist/index.js
+-@@ -181,6 +181,17 @@ function convertToOpenAICompatibleChatMessages(prompt) {
+-                     ...partMetadata
+-                   };
+-                 }
+-+                if (part.mediaType.startsWith("video/")) {
+-+                  // zcode patch: video/* file part -> OpenAI-compatible video_url content part.
+-+                  // Video bytes are serialized as a base64 data URL.
+-+                  return {
+-+                    type: "video_url",
+-+                    video_url: {
+-+                      url: `data:${part.mediaType};base64,${(0, import_provider_utils.convertToBase64)(part.data)}`
+-+                    },
+-+                    ...partMetadata
+-+                  };
+-+                }
+-                 if (part.mediaType === "application/pdf") {
+-                   if (part.data instanceof URL) {
+-                     throw new import_provider.UnsupportedFunctionalityError({
+-diff --git a/dist/index.mjs b/dist/index.mjs
+-index 499fd17e4c9ac77352789c1f1f69ed32809218a4..759273c1a5035dfb699753164dd79b0dcba3cb4e 100644
+---- a/dist/index.mjs
+-+++ b/dist/index.mjs
+-@@ -165,6 +165,17 @@ function convertToOpenAICompatibleChatMessages(prompt) {
+-                     ...partMetadata
+-                   };
+-                 }
+-+                if (part.mediaType.startsWith("video/")) {
+-+                  // zcode patch: video/* file part -> OpenAI-compatible video_url content part.
+-+                  // Video bytes are serialized as a base64 data URL.
+-+                  return {
+-+                    type: "video_url",
+-+                    video_url: {
+-+                      url: `data:${part.mediaType};base64,${convertToBase64(part.data)}`
+-+                    },
+-+                    ...partMetadata
+-+                  };
+-+                }
+-                 if (part.mediaType === "application/pdf") {
+-                   if (part.data instanceof URL) {
+-                     throw new UnsupportedFunctionalityError({
+diff --git a/patches/@earendil-works__pi-ai@1.0.1.patch b/patches/@earendil-works__pi-ai@1.0.2.patch
+similarity index 100%
+rename from patches/@earendil-works__pi-ai@1.0.1.patch
+rename to patches/@earendil-works__pi-ai@1.0.2.patch
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index f256336eadf50ff8ed8afbea401b8e923ed8a92a..bed46b0a217a529703889ad50f374c0e71dd5bfc 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -9,18 +9,15 @@ overrides:
+   react-dom: 19.2.7
+ 
+ patchedDependencies:
+-  '@ai-sdk/anthropic@3.0.81':
+-    hash: d3a7c381eba7f5157f765a0528003af17cf84544911dfb7412c7800168e01c18
+-    path: patches/@ai-sdk__anthropic@3.0.81.patch
+-  '@ai-sdk/openai-compatible@2.0.60':
+-    hash: 9632fe9d821b3dc20939ae509cc35b968d90d018bbd1d812390718898182a38b
+-    path: patches/@ai-sdk__openai-compatible@2.0.60.patch
++  '@ai-sdk/anthropic@4.0.71':
++    hash: 0f286b48336a3ac771c628f0e7d1e7cf548a621edf42cb52eb15fcd91ec20ed4
++    path: patches/@ai-sdk__anthropic@4.0.71.patch
+   '@arms/rum-electron@0.0.3':
+     hash: 36855354851ea495bc47a03340b0484ff62836b739cad56904b8a69f18e2ae97
+     path: patches/@arms__rum-electron@0.0.3.patch
+-  '@earendil-works/pi-ai@1.0.1':
++  '@earendil-works/pi-ai@1.0.2':
+     hash: eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a
+-    path: patches/@earendil-works__pi-ai@1.0.1.patch
++    path: patches/@earendil-works__pi-ai@1.0.2.patch
+ 
+ importers:
+ 
+@@ -137,20 +134,20 @@ importers:
+   apps/zcode-cli/packages/adapters:
+     dependencies:
+       '@ai-sdk/anthropic':
+-        specifier: 3.0.81
+-        version: 3.0.81(patch_hash=d3a7c381eba7f5157f765a0528003af17cf84544911dfb7412c7800168e01c18)(zod@4.6.5)
++        specifier: 4.0.71
++        version: 4.0.71(patch_hash=0f286b48336a3ac771c628f0e7d1e7cf548a621edf42cb52eb15fcd91ec20ed4)(zod@4.6.5)
+       '@ai-sdk/openai':
+-        specifier: ^3.0.58
+-        version: 3.0.65(zod@4.6.5)
++        specifier: 4.0.83
++        version: 4.0.83(zod@4.6.5)
+       '@ai-sdk/openai-compatible':
+-        specifier: ^2.0.58
+-        version: 2.0.60(patch_hash=9632fe9d821b3dc20939ae509cc35b968d90d018bbd1d812390718898182a38b)(zod@4.6.5)
++        specifier: 3.0.62
++        version: 3.0.62(zod@4.6.5)
+       '@anthropic-ai/claude-agent-sdk':
+-        specifier: 0.3.286
+-        version: 0.3.286(@anthropic-ai/sdk@0.129.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(zod@4.6.5)
++        specifier: 0.3.289
++        version: 0.3.289(@anthropic-ai/sdk@0.129.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(zod@4.6.5)
+       '@earendil-works/pi-ai':
+-        specifier: 1.0.1
+-        version: 1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++        specifier: 1.0.2
++        version: 1.0.2(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@modelcontextprotocol/client':
+         specifier: 2.0.0
+         version: 2.0.0
+@@ -173,8 +170,8 @@ importers:
+         specifier: workspace:*
+         version: link:../../../../packages/zcode-cua
+       ai:
+-        specifier: 6.0.193
+-        version: 6.0.193(zod@4.6.5)
++        specifier: 7.0.127
++        version: 7.0.127(zod@4.6.5)
+       cheerio:
+         specifier: ^1.0.0
+         version: 1.2.0
+@@ -369,11 +366,11 @@ importers:
+   apps/zcode-cli/packages/core:
+     dependencies:
+       '@earendil-works/pi-agent-core':
+-        specifier: 1.0.1
+-        version: 1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++        specifier: 1.0.2
++        version: 1.0.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@earendil-works/pi-ai':
+-        specifier: 1.0.1
+-        version: 1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++        specifier: 1.0.2
++        version: 1.0.2(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       '@zcode/contracts':
+         specifier: workspace:*
+         version: link:../contracts
+@@ -969,8 +966,8 @@ importers:
+   packages/services:
+     dependencies:
+       '@earendil-works/pi-ai':
+-        specifier: 1.0.1
+-        version: 1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)
++        specifier: 1.0.2
++        version: 1.0.2(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)
+       '@larksuiteoapi/node-sdk':
+         specifier: 1.64.0
+         version: 1.64.0
+@@ -1368,15 +1365,9 @@ packages:
+   7zip-bin@5.2.0:
+     resolution: {integrity: sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A==}
+ 
+-  '@ai-sdk/anthropic@3.0.81':
+-    resolution: {integrity: sha512-B1JDd9Ugq9R5AgIaW3674lhGCMMYJcPUxnrZh8fzbGojgg4QvHFRv6eZahGQAUsmGHbcf74G9bdSBDLWQGY2GA==}
+-    engines: {node: '>=18'}
+-    peerDependencies:
+-      zod: ^3.25.76 || ^4.1.8
+-
+-  '@ai-sdk/gateway@3.0.121':
+-    resolution: {integrity: sha512-uY248djJRxa5W68MHiyqO8WLdOeKQoRClGg7PVX/VPhVW8SJNM7/l5DcrA5WAM3YfQrLyNkgZa2VOu8T0t8LUw==}
+-    engines: {node: '>=18'}
++  '@ai-sdk/anthropic@4.0.71':
++    resolution: {integrity: sha512-wiv3jhUH0RrvGzSolJMZfZ2cI9As45LhwYmcAoWvNivXjC7wzJ4W/Udq9/u7EGnGsT8lpmFKEKBrMXVeUO97Dg==}
++    engines: {node: '>=22'}
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+@@ -1386,48 +1377,44 @@ packages:
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+-  '@ai-sdk/openai-compatible@2.0.60':
+-    resolution: {integrity: sha512-803At7y2fQ/FT6vSedCFbcWlW9JsP2AZHUPZsAYUO9idiIePIgiqcLonhbIm/kMp6wRbVzPtmb8TeXOF/4bTdA==}
+-    engines: {node: '>=18'}
++  '@ai-sdk/gateway@4.0.103':
++    resolution: {integrity: sha512-nnGTUHzPRQ14jhv9CL4OQrzcRBIFTBMIPKGIi9Z9u/4GtwSRxa/nxUX6np2Iwp5phOzO0a0njj/j9Jolf5AEaA==}
++    engines: {node: '>=22'}
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+-  '@ai-sdk/openai@3.0.65':
+-    resolution: {integrity: sha512-ZlVoWH+zrdiYDiUt6n/xvfCsk33mzsB81TUQkBRVx79rxU1FKZqVH9J/QCtEpSLqx0cUzjvtIw9l9p7EbUv+dw==}
+-    engines: {node: '>=18'}
++  '@ai-sdk/openai-compatible@3.0.62':
++    resolution: {integrity: sha512-IAz1xv8zot4KLGa8kN7UfAA6H5+ARzAgAKLsoKxHPBzZuOc2E3ohaELg0x/JR9HVTbMbiftb0dPyCb8cT2KBRg==}
++    engines: {node: '>=22'}
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+-  '@ai-sdk/provider-utils@4.0.23':
+-    resolution: {integrity: sha512-z8GlDaCmRSDlqkMF2f4/RFgWxdarvIbyuk+m6WXT1LYgsnGiXRJGTD2Z1+SDl3LqtFuRtGX1aghYvQLoHL/9pg==}
+-    engines: {node: '>=18'}
++  '@ai-sdk/openai@4.0.83':
++    resolution: {integrity: sha512-NgqZVWoya7hfmtLkWyIjX9THbyYMLfxFqpShdAmvMnkoT+R9AZbdULGan8+4BiBWIZ1aHiAsc90l3SL8QU/0+Q==}
++    engines: {node: '>=22'}
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+-  '@ai-sdk/provider-utils@4.0.27':
+-    resolution: {integrity: sha512-ubkAJ+xODouwtmN1tYlvTPphH1hPOBfZaEQe8U7skGvFAnIRs9PPpsq57bC2+Ky/MB4yzhd6YOsxTAx9sGpazw==}
++  '@ai-sdk/provider-utils@4.0.23':
++    resolution: {integrity: sha512-z8GlDaCmRSDlqkMF2f4/RFgWxdarvIbyuk+m6WXT1LYgsnGiXRJGTD2Z1+SDl3LqtFuRtGX1aghYvQLoHL/9pg==}
+     engines: {node: '>=18'}
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+-  '@ai-sdk/provider-utils@4.0.39':
+-    resolution: {integrity: sha512-XPR6o7561RYUkfYlLYouWsvm6Gv2tYIQy5pttGRkvML98u138ClPThn5yiQg5rMQutTtZLB+GUC8qFFCzDKQQQ==}
+-    engines: {node: '>=18'}
++  '@ai-sdk/provider-utils@5.0.53':
++    resolution: {integrity: sha512-VVe6UDd0y0/B4TfauuKKzcppqvhTmSluwwUVT4WG2/8h7gFbyFm7PM4UGM+ZXe3/RI6bv+Vl1cw/7aiBoQqdxg==}
++    engines: {node: '>=22'}
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+-  '@ai-sdk/provider@3.0.10':
+-    resolution: {integrity: sha512-Q3BZ27qfpYqnCYGvE3vt+Qi6LGOF9R5Nmzn+9JoM1lCRsD9mYaIhfJLkSunN48nfGXJ6n+XNV0J/XVpqGQl7Dw==}
+-    engines: {node: '>=18'}
+-
+-  '@ai-sdk/provider@3.0.14':
+-    resolution: {integrity: sha512-5X1k57JBJ4H7H1QjX7CnJYAB1I19r/trVZTMcSms7/kLNZ8RaU4Nt2agcwZzv82Hfx6Q7/TOLU7agAKeFfc8cA==}
+-    engines: {node: '>=18'}
+-
+   '@ai-sdk/provider@3.0.8':
+     resolution: {integrity: sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ==}
+     engines: {node: '>=18'}
+ 
++  '@ai-sdk/provider@4.0.21':
++    resolution: {integrity: sha512-UpbC9C1oht8dhfKPbVXSLRZS3DI8uk8n5v2uMjBPNIYGsC2kL045ywq7D8Hh9KgnH9rP5W/GxQdYtWScRouqlA==}
++    engines: {node: '>=22'}
++
+   '@aiden0z/pptx-renderer@1.2.4':
+     resolution: {integrity: sha512-/4X/BApiknc/JM4nAWQRp5zrnA2GKSMv5r1u3XLsMvySw9DTQjyXIKRtltRsmIYfoN32tHGFnrSlGok7nFS60w==}
+     peerDependencies:
+@@ -1439,52 +1426,52 @@ packages:
+   '@antfu/install-pkg@1.1.0':
+     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
+ 
+-  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.286':
+-    resolution: {integrity: sha512-gkxWcJ+Z23UxwghI1V3dL09PkELIZmB2vPelR8XsdfhS+yP1KvoW7FThvRLojcxXb3fj0ddYawjQSQYIkXFbxw==}
++  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.289':
++    resolution: {integrity: sha512-A1iK70JJgj6GhSkGnaVC02B1hX0aPvWTbn3a1Fp9iKhXt1a6eZwAhkqdP+F/rzAVUcQG24ehG/LBF2Ec8tBL0Q==}
+     cpu: [arm64]
+     os: [darwin]
+ 
+-  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.286':
+-    resolution: {integrity: sha512-eMdni7sy1ud2IISI4QSsfVBCxotzSe62zCGdXISejL9MxDIwcRgEGZpO5OV+j7t8mNGMTe6Opl1t/3Z/1RUJaQ==}
++  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.289':
++    resolution: {integrity: sha512-8kCv04+eOm26zPta8hym7eNHT/nn44a94Y/XwiR9ExWGGDcBJpNOZkVUxt+ciiKNQN7ujuYqAjdRedIRyD1izw==}
+     cpu: [x64]
+     os: [darwin]
+ 
+-  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.286':
+-    resolution: {integrity: sha512-fG8Cqx53jkFyEL86ETA0tdLH3p06yFQKHcoxnMpiU+VmJ5g6uGFhsUZbJ6gFvuT3EgyMcNI2kZwhCCDF/DTnpQ==}
++  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.289':
++    resolution: {integrity: sha512-nA1iLmY9R1Da042RWEJbJxz2S+jMVk1KcACeAuW2A9vVBqAUZwHXwWG1tvs9OZOBzxtayOxvKfG1pGIjoyStww==}
+     cpu: [arm64]
+     os: [linux]
+     libc: [musl]
+ 
+-  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.286':
+-    resolution: {integrity: sha512-3h+WWGek9beZ6i1qbIjjwYEFbs46D6qumjSBc6cLsEvnufcoi7mc0iBwbFSh9yRb3upxoi4ZTJdl53T3gLTdUQ==}
++  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.289':
++    resolution: {integrity: sha512-u5GKtkDU5ho9g8fveN4PgInHyWOBQ12wSlZAcssrQJx8WmoYTUYQTz5kH4e6VNYfIJv1K5DXOSxPGuqbcSMr6Q==}
+     cpu: [arm64]
+     os: [linux]
+     libc: [glibc]
+ 
+-  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.286':
+-    resolution: {integrity: sha512-WeO/wG2uPh95BhOQi1IsIECdW5gJgC1Q9xtGw4RjV04it1fBMAbUe7aVwP4DQgH8PHnmduA7dRnLtbnZnrGsjg==}
++  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.289':
++    resolution: {integrity: sha512-/XpyF/cyWNABbgxvtR+v8xz8bjv1lCZKZfBKdm5b/ROlfmyr27Q37JqNUUY6HR9dGvSYf4tCzkqLstk2tQZ6UQ==}
+     cpu: [x64]
+     os: [linux]
+     libc: [musl]
+ 
+-  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.286':
+-    resolution: {integrity: sha512-kNczbWhWJ1G8sPRZd4Nsx/Ozr/kx16lT2NGp/EEmTV4Hn732xfLkUOlg+tFcS78i6lOPBknjDB/cz/J5Ha4wDQ==}
++  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.289':
++    resolution: {integrity: sha512-d/2f7T/DpnEat78nun+mE26HZ0rO9BGEmoGja1i8iIW62IZX1K3T2IXd1h0Wjgtx1JSGDUK3pxMhQJxMyJdycQ==}
+     cpu: [x64]
+     os: [linux]
+     libc: [glibc]
+ 
+-  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.286':
+-    resolution: {integrity: sha512-N4p7Gw5Qg3q9+Y5sEht1cIHHZkmBAUfWXJnqfmDD7N8twqF3XNVK3w65hDLqli4i0ttuZu79bGmRGkgNGm9Imw==}
++  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.289':
++    resolution: {integrity: sha512-/99s03mf1X3YB8pqcAsF+yDBo/O6kzZG2A6UU8zAf5Xa0iM/aBgd6kCx5Qz2KozrCkrlnbsWjp3HKEKs0Ls7MA==}
+     cpu: [arm64]
+     os: [win32]
+ 
+-  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.286':
+-    resolution: {integrity: sha512-pg35GRPBKyviod0i8Z3EVMzDnTiiiucuWUbyH1bVIFFN0UWCQQ+PRUJ15qrPKjL6+vlFxOX2ei9FfsWYjGYZwA==}
++  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.289':
++    resolution: {integrity: sha512-HBoziJqI6LkEkqZuumOXxXLMZEvnZOQirc3OyZTDJIa7UJcV/pn9EsBXLruMlNztrOWfEqBeYArXSl00H91rjA==}
+     cpu: [x64]
+     os: [win32]
+ 
+-  '@anthropic-ai/claude-agent-sdk@0.3.286':
+-    resolution: {integrity: sha512-InL/UNmRGSwBM/81PME0J0TZDsDBBlweWqRZgq2XSViSIg2hBi8nIL8j9Hm6MHRH85wgDJQE5n6Vo/r9hIO0NQ==}
++  '@anthropic-ai/claude-agent-sdk@0.3.289':
++    resolution: {integrity: sha512-fQRvZPhf6zxyzj7gwyItbhixmu5+Oy0HMQOyzYz3Phjhxuhj3TnpGPPy0VBnbSqWqYxT67TAFOiF5OzOFMYPLQ==}
+     engines: {node: '>=18.0.0'}
+     peerDependencies:
+       '@anthropic-ai/sdk': '>=0.93.0'
+@@ -1851,17 +1838,17 @@ packages:
+   '@dukelib/sheets-wasm@0.1.21':
+     resolution: {integrity: sha512-YJpLUo/K7N9iGZv+A74D8o6XlT1VjMdlq9i/pIj/DwAO9/7jqppaV60VdL0TgJ0UzUlbhChWR+qQGNTmESINlw==}
+ 
+-  '@earendil-works/pi-agent-core@1.0.1':
+-    resolution: {integrity: sha512-os85rJM2hgCOOLdtcQ5WxRRhAbQiTNq9+48/pj6dOUU7czJhU8NTdHmDs41hBfAXR/ZQgstIgrjowEICEXimbQ==}
++  '@earendil-works/pi-agent-core@1.0.2':
++    resolution: {integrity: sha512-VRfewY1R5mbedJzlm01PxdCmqU8QrSXjXXhV50bp6rvVuT8YYQv1inTXRY4YzssmGAYpkC2rXipJKP5BpBFXew==}
+     engines: {node: '>=22.19.0'}
+ 
+-  '@earendil-works/pi-ai@1.0.1':
+-    resolution: {integrity: sha512-eSA53pdfDLuQTTJn3yz1VC8BBmcX33OKkk8WihOXdVBvbgqqC4zuR6Sf+TeeWuAmh8LuqARoK14R1s2HZqVcsw==}
++  '@earendil-works/pi-ai@1.0.2':
++    resolution: {integrity: sha512-JP59xGlSAQ/HhQ6EHN5qmneBlWfDyu6FPPryAvAaSo8A38ubAsEpS9YisCM5Jbbns0srrDffLZonE0OXorHI5A==}
+     engines: {node: '>=22.19.0'}
+     hasBin: true
+ 
+-  '@earendil-works/pi-telemetry@1.0.1':
+-    resolution: {integrity: sha512-SuJ/4KyqZ6j6Whlau710DmusWDKMWCxKXpWqZclY/Cl3tGUuX8IFmbTbW2VRoVuoJpZYVMg6DJmt1mwHMUt9uw==}
++  '@earendil-works/pi-telemetry@1.0.2':
++    resolution: {integrity: sha512-Ev5h9TE8nEXHCfRKhWj0qpUFhQgVqNteS95vsM2KNGRGm533vOO2ruDPaEwImBKPMBKXy4omz3D6V2cm41gLOQ==}
+     engines: {node: '>=22.19.0'}
+ 
+   '@ecies/ciphers@0.2.6':
+@@ -5580,6 +5567,9 @@ packages:
+     resolution: {integrity: sha512-zxN7K8W+qWGc2ejWksd92xwAyCZ0faHvnk3c7jUoWkkk5e5iQf3/4mOLheFvYLoUWR5a36571VJ1DdyxmAWJZA==}
+     engines: {node: '>=20', pnpm: '>=9'}
+ 
++  '@workflow/serde@4.1.0':
++    resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
++
+   '@xmldom/xmldom@0.8.12':
+     resolution: {integrity: sha512-9k/gHF6n/pAi/9tqr3m3aqkuiNosYTurLLUtc7xQ9sxB/wm7WPygCv8GYa6mS0fLJEHhqMC1ATYhz++U/lRHqg==}
+     engines: {node: '>=10.0.0'}
+@@ -5644,9 +5634,9 @@ packages:
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+-  ai@6.0.193:
+-    resolution: {integrity: sha512-VQOTOse8+X8kMtg61DNSXlYJzwOW4NjMLDJNk/qxClWsFe4oiyFJDHGGG1oezfGcFzuYuQe/8Z7r4kwiZWh2YQ==}
+-    engines: {node: '>=18'}
++  ai@7.0.127:
++    resolution: {integrity: sha512-JNsNPk4ZvRGEJuqdVo2lYFkm7uAuf3p/RwKFWn1Wh/+IK3U1RyFWw2GXoFnhzqNfxEuj7XJB4WpIUhl1sHToWg==}
++    engines: {node: '>=22'}
+     peerDependencies:
+       zod: ^3.25.76 || ^4.1.8
+ 
+@@ -9873,6 +9863,10 @@ packages:
+     resolution: {integrity: sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ==}
+     engines: {node: '>=20.18.1'}
+ 
++  undici@7.30.0:
++    resolution: {integrity: sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==}
++    engines: {node: '>=20.18.1'}
++
+   undici@8.10.2:
+     resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
+     engines: {node: '>=22.19.0'}
+@@ -10449,17 +10443,10 @@ snapshots:
+ 
+   7zip-bin@5.2.0: {}
+ 
+-  '@ai-sdk/anthropic@3.0.81(patch_hash=d3a7c381eba7f5157f765a0528003af17cf84544911dfb7412c7800168e01c18)(zod@4.6.5)':
+-    dependencies:
+-      '@ai-sdk/provider': 3.0.10
+-      '@ai-sdk/provider-utils': 4.0.27(zod@4.6.5)
+-      zod: 4.6.5
+-
+-  '@ai-sdk/gateway@3.0.121(zod@4.6.5)':
++  '@ai-sdk/anthropic@4.0.71(patch_hash=0f286b48336a3ac771c628f0e7d1e7cf548a621edf42cb52eb15fcd91ec20ed4)(zod@4.6.5)':
+     dependencies:
+-      '@ai-sdk/provider': 3.0.10
+-      '@ai-sdk/provider-utils': 4.0.27(zod@4.6.5)
+-      '@vercel/oidc': 3.2.0
++      '@ai-sdk/provider': 4.0.21
++      '@ai-sdk/provider-utils': 5.0.53(zod@4.6.5)
+       zod: 4.6.5
+ 
+   '@ai-sdk/gateway@3.0.96(zod@4.6.5)':
+@@ -10469,48 +10456,46 @@ snapshots:
+       '@vercel/oidc': 3.1.0
+       zod: 4.6.5
+ 
+-  '@ai-sdk/openai-compatible@2.0.60(patch_hash=9632fe9d821b3dc20939ae509cc35b968d90d018bbd1d812390718898182a38b)(zod@4.6.5)':
++  '@ai-sdk/gateway@4.0.103(zod@4.6.5)':
+     dependencies:
+-      '@ai-sdk/provider': 3.0.14
+-      '@ai-sdk/provider-utils': 4.0.39(zod@4.6.5)
++      '@ai-sdk/provider': 4.0.21
++      '@ai-sdk/provider-utils': 5.0.53(zod@4.6.5)
++      '@vercel/oidc': 3.2.0
+       zod: 4.6.5
+ 
+-  '@ai-sdk/openai@3.0.65(zod@4.6.5)':
++  '@ai-sdk/openai-compatible@3.0.62(zod@4.6.5)':
+     dependencies:
+-      '@ai-sdk/provider': 3.0.10
+-      '@ai-sdk/provider-utils': 4.0.27(zod@4.6.5)
++      '@ai-sdk/provider': 4.0.21
++      '@ai-sdk/provider-utils': 5.0.53(zod@4.6.5)
+       zod: 4.6.5
+ 
+-  '@ai-sdk/provider-utils@4.0.23(zod@4.6.5)':
++  '@ai-sdk/openai@4.0.83(zod@4.6.5)':
+     dependencies:
+-      '@ai-sdk/provider': 3.0.8
+-      '@standard-schema/spec': 1.1.0
+-      eventsource-parser: 3.1.0
++      '@ai-sdk/provider': 4.0.21
++      '@ai-sdk/provider-utils': 5.0.53(zod@4.6.5)
+       zod: 4.6.5
+ 
+-  '@ai-sdk/provider-utils@4.0.27(zod@4.6.5)':
++  '@ai-sdk/provider-utils@4.0.23(zod@4.6.5)':
+     dependencies:
+-      '@ai-sdk/provider': 3.0.10
++      '@ai-sdk/provider': 3.0.8
+       '@standard-schema/spec': 1.1.0
+       eventsource-parser: 3.1.0
+       zod: 4.6.5
+ 
+-  '@ai-sdk/provider-utils@4.0.39(zod@4.6.5)':
++  '@ai-sdk/provider-utils@5.0.53(zod@4.6.5)':
+     dependencies:
+-      '@ai-sdk/provider': 3.0.14
++      '@ai-sdk/provider': 4.0.21
+       '@standard-schema/spec': 1.1.0
++      '@workflow/serde': 4.1.0
+       eventsource-parser: 3.1.0
++      undici: 7.30.0
+       zod: 4.6.5
+ 
+-  '@ai-sdk/provider@3.0.10':
+-    dependencies:
+-      json-schema: 0.4.0
+-
+-  '@ai-sdk/provider@3.0.14':
++  '@ai-sdk/provider@3.0.8':
+     dependencies:
+       json-schema: 0.4.0
+ 
+-  '@ai-sdk/provider@3.0.8':
++  '@ai-sdk/provider@4.0.21':
+     dependencies:
+       json-schema: 0.4.0
+ 
+@@ -10526,44 +10511,44 @@ snapshots:
+       package-manager-detector: 1.6.0
+       tinyexec: 1.1.1
+ 
+-  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.286':
++  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.289':
+     optional: true
+ 
+-  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.286':
++  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.289':
+     optional: true
+ 
+-  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.286':
++  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.289':
+     optional: true
+ 
+-  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.286':
++  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.289':
+     optional: true
+ 
+-  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.286':
++  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.289':
+     optional: true
+ 
+-  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.286':
++  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.289':
+     optional: true
+ 
+-  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.286':
++  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.289':
+     optional: true
+ 
+-  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.286':
++  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.289':
+     optional: true
+ 
+-  '@anthropic-ai/claude-agent-sdk@0.3.286(@anthropic-ai/sdk@0.129.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(zod@4.6.5)':
++  '@anthropic-ai/claude-agent-sdk@0.3.289(@anthropic-ai/sdk@0.129.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.129.0(zod@4.6.5)
+       '@modelcontextprotocol/sdk': 1.29.0(zod@4.6.5)
+       zod: 4.6.5
+     optionalDependencies:
+-      '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.286
+-      '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.286
+-      '@anthropic-ai/claude-agent-sdk-linux-arm64': 0.3.286
+-      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl': 0.3.286
+-      '@anthropic-ai/claude-agent-sdk-linux-x64': 0.3.286
+-      '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.286
+-      '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.286
+-      '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.286
++      '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.289
++      '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.289
++      '@anthropic-ai/claude-agent-sdk-linux-arm64': 0.3.289
++      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl': 0.3.289
++      '@anthropic-ai/claude-agent-sdk-linux-x64': 0.3.289
++      '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.289
++      '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.289
++      '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.289
+ 
+   '@anthropic-ai/sdk@0.129.0(zod@4.6.5)':
+     dependencies:
+@@ -11099,9 +11084,9 @@ snapshots:
+ 
+   '@dukelib/sheets-wasm@0.1.21': {}
+ 
+-  '@earendil-works/pi-agent-core@1.0.1(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
++  '@earendil-works/pi-agent-core@1.0.2(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
+     dependencies:
+-      '@earendil-works/pi-ai': 1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
++      '@earendil-works/pi-ai': 1.0.2(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)
+       typebox: 1.3.27
+     transitivePeerDependencies:
+       - '@aws-sdk/credential-provider-node'
+@@ -11116,11 +11101,11 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-ai@1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)':
++  '@earendil-works/pi-ai@1.0.2(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@6.24.1)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.129.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+-      '@earendil-works/pi-telemetry': 1.0.1
++      '@earendil-works/pi-telemetry': 1.0.2
+       '@google/genai': 2.21.0(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))
+       '@smithy/node-http-handler': 4.12.1
+       http-proxy-agent: 9.1.0
+@@ -11141,11 +11126,11 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-ai@1.0.1(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
++  '@earendil-works/pi-ai@1.0.2(patch_hash=eb3fc82373b0be2c52f93108b0f7f6fc3ef139b91c2b79f8f8fc05102bd21c7a)(@aws-sdk/credential-provider-node@3.972.84)(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))(@smithy/signature-v4@5.7.4)(undici@8.10.2)(zod@4.6.5)':
+     dependencies:
+       '@anthropic-ai/sdk': 0.129.0(zod@4.6.5)
+       '@aws-sdk/client-bedrock-runtime': 3.1127.0
+-      '@earendil-works/pi-telemetry': 1.0.1
++      '@earendil-works/pi-telemetry': 1.0.2
+       '@google/genai': 2.21.0(@modelcontextprotocol/sdk@1.29.0(zod@4.6.5))
+       '@smithy/node-http-handler': 4.12.1
+       http-proxy-agent: 9.1.0
+@@ -11166,7 +11151,7 @@ snapshots:
+       - ws
+       - zod
+ 
+-  '@earendil-works/pi-telemetry@1.0.1': {}
++  '@earendil-works/pi-telemetry@1.0.2': {}
+ 
+   '@ecies/ciphers@0.2.6(@noble/ciphers@1.3.0)':
+     dependencies:
+@@ -14626,6 +14611,8 @@ snapshots:
+       strip-json-comments: 5.0.3
+       yaml: 2.9.0
+ 
++  '@workflow/serde@4.1.0': {}
++
+   '@xmldom/xmldom@0.8.12': {}
+ 
+   '@xstate/fsm@1.6.5': {}
+@@ -14692,12 +14679,11 @@ snapshots:
+       '@opentelemetry/api': 1.9.0
+       zod: 4.6.5
+ 
+-  ai@6.0.193(zod@4.6.5):
++  ai@7.0.127(zod@4.6.5):
+     dependencies:
+-      '@ai-sdk/gateway': 3.0.121(zod@4.6.5)
+-      '@ai-sdk/provider': 3.0.10
+-      '@ai-sdk/provider-utils': 4.0.27(zod@4.6.5)
+-      '@opentelemetry/api': 1.9.0
++      '@ai-sdk/gateway': 4.0.103(zod@4.6.5)
++      '@ai-sdk/provider': 4.0.21
++      '@ai-sdk/provider-utils': 5.0.53(zod@4.6.5)
+       zod: 4.6.5
+ 
+   ajv-formats@3.0.1(ajv@8.18.0):
+@@ -19884,6 +19870,8 @@ snapshots:
+ 
+   undici@7.25.0: {}
+ 
++  undici@7.30.0: {}
++
+   undici@8.10.2:
+     optional: true
+ 
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 0102d7518c3df18f24344c2e7f66e1f6cd16012b..b6c0967dfd5cf965071df8c2991ca1ca59dc77c2 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -36,6 +36,5 @@ overrides:
+ 
+ patchedDependencies:
+   "@arms/rum-electron@0.0.3": "patches/@arms__rum-electron@0.0.3.patch"
+-  "@ai-sdk/openai-compatible@2.0.60": "patches/@ai-sdk__openai-compatible@2.0.60.patch"
+-  "@ai-sdk/anthropic@3.0.81": "patches/@ai-sdk__anthropic@3.0.81.patch"
+-  "@earendil-works/pi-ai@1.0.1": "patches/@earendil-works__pi-ai@1.0.1.patch"
++  "@ai-sdk/anthropic@4.0.71": "patches/@ai-sdk__anthropic@4.0.71.patch"
++  "@earendil-works/pi-ai@1.0.2": "patches/@earendil-works__pi-ai@1.0.2.patch"
+diff --git a/third-party/npm-overrides.json b/third-party/npm-overrides.json
+index 0bc86bced9076cac857b75d22beda0506c4a1572..7ef2eba67e1b20903389441db8083fa20300dd51 100644
+--- a/third-party/npm-overrides.json
++++ b/third-party/npm-overrides.json
+@@ -803,5 +803,23 @@
+     "file": "third-party/upstream/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+     "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+     "source": "https://raw.githubusercontent.com/standard-webhooks/standard-webhooks/b4d2c14fc5b4ccff3ff271e3b087dff812254c59/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-ai@1.0.2",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/cd32f7725fdbddbaecdff5b1e68491563394e0ca/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-agent-core@1.0.2",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/cd32f7725fdbddbaecdff5b1e68491563394e0ca/LICENSE"
++  },
++  {
++    "package": "@earendil-works/pi-telemetry@1.0.2",
++    "file": "third-party/upstream/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
++    "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
++    "source": "https://raw.githubusercontent.com/earendil-works/pi/cd32f7725fdbddbaecdff5b1e68491563394e0ca/LICENSE"
+   }
+ ]

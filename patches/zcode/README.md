@@ -192,3 +192,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0129 | [0129-chatgpt-account-icon.patch](0129-chatgpt-account-icon.patch) | `61331b8059cdc26ddf8c9e5d45297c2c66bc4c3a` |
 
 | 0130 | [0130-model-evidence-capacity-and-tool-contract.patch](0130-model-evidence-capacity-and-tool-contract.patch) | `dd77c87acc53806eeb2d3fbb49abdedb6fcabe5e` |
+
+| 0131 | [0131-reviewed-runtime-sdk-upgrades.patch](0131-reviewed-runtime-sdk-upgrades.patch) | `61573bef1dacbfb887da615ed595f73b4a0d209f` |

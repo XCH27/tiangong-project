@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Upgrade matched Codex to 0.160.0, Pi libraries to 1.0.2, Claude SDK to 0.3.289 and ordinary
+  API SDK/providers to the reviewed current releases. Preserve Host permissions, continuation and
+  account ownership; discover GPT-6.1 through the current native catalog rather than an invented seed.
+- Require actual native catalog publication after refresh and preserve SDK 7 EOF usage, original
+  parser errors and socket cancellation; retire the compatible-video patch now supplied upstream.
+
 - Preserve native executor context capacity through discovery, Registry, frozen requests and V4;
   unknown capacity explicitly clears an old same-model denominator without altering historical usage.
 - Fence model facts to published exact IDs while preserving protocol maps, manual corrections and

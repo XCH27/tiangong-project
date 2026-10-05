@@ -83,7 +83,7 @@ The [impact table](../architecture.md#executor-choice-and-feature-development) o
 
 ## First proof
 
-Pi uses `turn-loop.ts` → `pi-turn.ts` → Pi Core `runAgentLoop`; Claude uses `native-agent-turn.ts` → official SDK 0.3.286. Neither runs the legacy outer inference loop.
+Pi uses `turn-loop.ts` → `pi-turn.ts` → Pi Core `runAgentLoop`; Claude uses `native-agent-turn.ts` → official SDK 0.3.289. Neither runs the legacy outer inference loop.
 Host preparation, request admission, tool scheduling, permissions, effect receipts and SQLite remain canonical.
 Pi Agent Core schedules rounds, invokes Host tool wrappers and settles the admitted run. Its stream port delegates request
 assembly/provider calls and actual tool execution to Host ports. Host retains retry, compaction

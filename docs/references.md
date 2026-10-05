@@ -441,7 +441,7 @@ multi-account recovery. A template, OAuth login or meter alone proves none of th
 
 | Provider family / source | Evidence and landing boundary |
 |---|---|
-| ChatGPT; GitHub Copilot | The candidate uses patched Pi AI 1.0.1 public ChatGPT and Copilot OAuth, registered through `bun-oauth` for the desktop bundle. Public ChatGPT uses Fleet registration, OIDC/JWKS account validation and public model/Responses routing; isolated minified/unminified tests use signed local identity fixtures. Earlier private Codex credentials retain refresh/read compatibility only. Prior region-policy HTTP 403 and OS-proxy investigation are historical transport evidence, not current public entitlement proof. |
+| ChatGPT; GitHub Copilot | The candidate uses patched Pi AI 1.0.2 public ChatGPT and Copilot OAuth, registered through `bun-oauth` for the desktop bundle. Public ChatGPT uses Fleet registration, OIDC/JWKS account validation and public model/Responses routing; isolated minified/unminified tests use signed local identity fixtures. Earlier private Codex credentials retain refresh/read compatibility only. Prior region-policy HTTP 403 and OS-proxy investigation are historical transport evidence, not current public entitlement proof. |
 | GLM, Kimi, MiniMax, Alibaba, MiMo, OpenCode Go | CC Switch `src/config/codingPlanProviders.ts` separates plan credentials from ordinary API credentials. Its substring-based host classification is not copied. Existing Fleet template metadata groups plan keys separately from OAuth accounts. Five additional regional routes cover MiniMax China/global, Kimi global and Alibaba Coding Plan China/global; saved provider instances remain untouched. Existing plan keys, API formats and same-model recovery keep their original owners. |
 | Kimi Code | [Official integration guide](https://www.kimi.com/code/docs/en/) documents third-party membership keys and China/global coding endpoints. Native-client OAuth identities and user-agent spoofing are not required for that key route. The current `kimi-code` source also has a distinct managed OAuth account, native catalog and `/usages` allowance path; Fleet has not implemented it. An ordinary Moonshot API key is not evidence of Kimi membership access. |
 | MiniMax; Alibaba | [MiniMax Token Plan](https://platform.minimax.io/subscribe/token-plan), [Alibaba regional Base URLs](https://help.aliyun.com/zh/model-studio/base-url) and [international Coding Plan](https://www.alibabacloud.com/help/tc/model-studio/coding-plan) distinguish plan/region routes. Hermes `plugins/model-providers/alibaba-coding-plan/__init__.py` confirms Coding Plan endpoints. Region and plan must survive retries; do not rewrite ordinary API connections or treat a key as an allowance response. |
@@ -716,7 +716,7 @@ receipt stays `needs-reconciliation`, also without another effect. This proof re
 adapter's explicit local fake receipt lookup; Pi cannot confer exactly-once semantics on an
 arbitrary remote API. No real model, subscription or paid media request was sent.
 
-The installed native binaries report Codex `0.156.1` and Claude Code `2.1.281`; AionCore's
+Earlier inspected native binaries reported Codex `0.156.1` and Claude Code `2.1.281`; AionCore's
 verified descriptors name `0.151.0` and `2.1.274`. The installed Codex binary successfully exported
 its current experimental JSON schema without inference. `node scripts/probes/native-protocol-surface.mjs`
 checks provider/thread scope, subsequent-turn model/policy changes, steering with `expectedTurnId`,
@@ -1691,16 +1691,18 @@ record; explicit API capability corrections, disabled state and order retain the
 | NVIDIA hosted API | [Hosted Chat](https://docs.api.nvidia.com/nim/reference/llm-apis) and published embedding endpoints for [Nemotron](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-embed-1b-infer) and [VLM Embed](https://docs.api.nvidia.com/nim/reference/nvidia-llama-nemotron-embed-vl-1b-v2-infer) are distinct. Exclude only those exactly proved non-chat IDs, never model-name guesses. The unauthenticated hosted directory returned 81 IDs and only identity/owner fields; local NIM's additional protocols are not hosted endpoint evidence. | Public directory read and exact-ID writer/reopen fixtures. Remaining sparse rows and API-key model entitlement are unconfirmed; no blanket Chat capability or local-NIM protocol import. |
 | Other declared API presets | Existing Anthropic/OpenAI/xAI retain their exact product/region/auth routes. The common API completion/error/Stop guard applies; variant and specialized native/media support still require their individual published contracts and real-path proof. | Existing scoped route/auth tests are not blanket vendor-feature parity or new protocol support. |
 
-Installed AI SDK 6.0.193 / compatible 2.0.60 was compared with registry releases AI 7.0.127 /
-compatible 3.0.62 in immutable `sdk/api-sdk-7.0.127-review` (source/license/integrity retained).
-The newer compatible `openai-compatible-chat-language-model.ts:730–745` rejects EOF without a
-finish reason; it still does not handle OpenRouter structured reasoning. The candidate adapts that
-completion criterion through public V3 middleware rather than silently applying the V4 major
-migration. Messages require their stop reason; Responses require an actual completed/incomplete
-control and matching terminal status, including JSON replies. Raw debug frames do not enter history.
-Failed decoding retains reported usage through the existing error/usage receipt path and refuses
-an automatic recovery request; no successful finish, context measurement or Host effect is fabricated.
-New packages, credential stores, authority changes and paid calls were not used.
+Installed ordinary API adapters now use AI SDK 7.0.127, OpenAI 4.0.83, Anthropic 4.0.71 and
+compatible 3.0.62; published sources are retained in immutable `sdk/api-sdk-7.0.127-review`.
+The official v6→v7 migration and actual providers were traced through request construction, V4
+middleware, metadata, tools, failure, Stop and replay. Stable include/stream/context and image-file
+projection retain Host ownership. Compatible now supplies video serialization, retiring that patch;
+the Messages gateway video patch is ported to V4 bytes without claiming Anthropic API video support.
+Only the SDK synthetic missing-finish EOF error waits for final usage. Other parser errors remain
+immediate, abort the physical request before diagnostic awaits and retain their cause; malformed
+SSE on a still-open real socket has no effect, retry or completed receipt. Messages require stop
+reason; Responses require matching terminal status. Scoped reasoning/signatures and reported failed
+usage survive actual SDK/Host/SQLite replay checks. The 204-case routing suite, staged CJS CLI and desktop
+were exercised; no new runtime owner, credential store, telemetry integration or paid call was used.
 
 #### Retained model-access source locks
 
@@ -3078,7 +3080,7 @@ proofs; they establish no live-provider savings percentage or accepted-task qual
 
 ### Public ChatGPT and bundled Claude correction
 
-For Claude allowance, the installed official SDK 0.3.286 `sdk.d.ts:3040,4219` and `sdk.mjs`
+For Claude allowance, the previously inspected official SDK 0.3.286 `sdk.d.ts:3040,4219` and `sdk.mjs`
 define `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({skipBehaviors:true})` as a
 `get_usage` control request. Its query percentages are explicitly 0–100; nullable resets, model
 windows and extra-usage money are separate fields. The native reader sends no prompt, keeps SDK
@@ -3086,17 +3088,49 @@ authentication, and skips transcript analysis. A real SDK/fake executable protoc
 initialize→get_usage only and refuses another account before the usage call. The method remains
 experimental; its [official pinned release](https://github.com/anthropics/claude-agent-sdk-typescript/releases/tag/v0.3.286)
 also changes omitted permission-mode behavior, so this control process explicitly uses `default`,
-empty tools/settings sources and disabled hooks. No CLI credential import or paid inference is used.
+empty tools/settings sources and disabled hooks. The matched SDK is now 0.3.289; thirteen actual
+local native Host cases and the staged CLI prove preserved permission, Stop, media and continuation.
+No CLI credential import or paid inference is used.
 
 Pi 0.99.2 `dist/auth/oauth/openai-chatgpt.js` provides PKCE, a loopback listener, public-client exchange and refresh; `providers/openai.js` provides Responses execution. Fleet reuses these flows through the Host transport, retaining issued-registration callbacks for reauthorization and validating ID tokens with Node’s standard RS256/JWK verifier. The [official sign-in contract](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [profile/refresh contract](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions) and [preview limits](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) define client/host/subject binding, public endpoints, required history and supported tools. The new token’s authentication metadata is opaque; private WHAM quotas/reset cards and hosted image/video generation are not inferred from this grant.
 
-Craft v0.14.0 `73bd9c2a3573158bea880984eb8d5fdb41e0cac2`, `packages/shared/src/agent/options.ts` resolves its SDK-matched optional native binary and retains overrides; `claude-agent.ts` passes native resume IDs. Candidate SDK 0.3.286 now uses the same dependency/executable principle and public `query({resume})`, while its existing Session journal fences interrupted/changed state and owns all Host receipts. SDK graceful stdin close was observed to trigger one extra loopback request with pending Host callbacks; immediate termination of the owned process before channel close fixes the verified Stop/admission race. This is local execution evidence; it does not establish live subscription entitlement, native Guide governance or other-platform behavior.
+Craft v0.14.0 `73bd9c2a3573158bea880984eb8d5fdb41e0cac2`, `packages/shared/src/agent/options.ts` resolves its SDK-matched optional native binary and retains overrides; `claude-agent.ts` passes native resume IDs. Candidate SDK 0.3.289 now uses the same dependency/executable principle and public `query({resume})`, while its existing Session journal fences interrupted/changed state and owns all Host receipts. SDK graceful stdin close was observed to trigger one extra loopback request with pending Host callbacks; immediate termination of the owned process before channel close fixes the verified Stop/admission race. This is local execution evidence; it does not establish live subscription entitlement, native Guide governance or other-platform behavior.
 
-Codex `rust-v0.156.1` (`b412ff32c417f855c2b2d1581b77058eed87c84b`, Apache-2.0) uses its native stdio app-server, CLI-owned authentication and continuation. Its published dynamic-tool RPC adds tools to the native loadout; it does not restrict built-ins. The separate [scoped SDK recipe](../patches/codex-host/README.md) installs the existing Rust ToolPolicy at startup and echoes the exact ceiling, including cold resume. The candidate validates callback thread/turn/call/input, returns committed Host receipts only after the next admission, records each completed response's usage, and terminates its owned process on Stop. Seven real built-executor cases against isolated synthetic loopback transport cover allow, deny, Stop, failed next admission, cold resume, arbitrary manual model IDs and warm-cache refresh/fetch failure without repeating effects; these are not live entitlement/quality tests. The primary separately connected the current real ChatGPT CLI account and read its model catalog/native allowance with no inference. Scoped model/list now also projects the same native manager's resolved context window. Eight real built-executor cases include known/unknown capacity without inference. A prompt-free live account read returned seven visible models with 272K default executor windows; native maximum/override capacity is distinct. Unknown budget fallback is not ModelComplete evidence. Native image/video, signed releases, other platforms and owner acceptance are not established by these observations. Pi Agent Core remains the generic default; the original reference and user CLI are retained.
+Matched Codex `rust-v0.160.0` (`a956835d020762cb2b570053af06f643a11c0ecc`, Apache-2.0)
+uses native stdio app-server, CLI-owned authentication and continuation. The separate
+[scoped SDK recipe](../patches/codex-host/README.md) preserves its Rust ToolPolicy ceiling,
+customization isolation, handshake, callbacks, committed Host receipts, usage and Stop/resume.
+Upstream dynamic tools alone still cannot restrict built-ins. The 0.156.1 adapter was ported in a
+new adaptation directory; the old source, rolling reference `94d642d8` and user CLI are retained.
+A native refresh must report an actual publication and retain its request/catalog identity.
+The source-level injected identity test first reproduced a discarded response becoming apparent
+success; the correction changes only checked scoped discovery, retaining unscoped cache behavior.
+Protocol 313, manager 58, Host parser 2 and core isolation 3 tests passed; stable/experimental
+schemas and the matched binary were regenerated. All 1313 external Rust packages remained fixed.
+Eight real Host/executor loopback cases verify allow/deny, Stop, failed admission, continuation,
+manual IDs, fresh failures and actual capacity. Initial cold copied-binary controls timed out;
+a second run passed all eight and the real catalog read without increasing timeout or weakening
+scope. A prompt-free same-account read now returns eight visible IDs including `gpt-6.1-sol`,
+its default selection, text/image input, six effort grades and 272000 resolved executor capacity.
+The built single-instance desktop was restarted and opening the existing connection automatically
+replaced the unknown capacity with 272K/vision; its advanced editor contained all six grades plus
+Auto while output capacity stayed empty. Inspection was cancelled without saving preference edits.
+The preceding 0.156.1 read, including hidden rows, omitted that exact model. Native discovery sends
+client_version; the official 0.160.0 binary separately returned it under the same identity.
+This proves version-dependent directory discovery, not subscription inference entitlement.
+Maximum/override capacity is distinct; unknown fallback is not ModelComplete evidence. Native
+image/video, signed releases, other platforms and owner acceptance remain unproved. Pi Agent Core
+remains the generic default; no native credential is copied into public SIWC routing.
 
-The latest stable Codex tag was checked as `rust-v0.160.0`, tag object `79b1b666f2e8551f8abbbca34957227f67f3f553`, commit `a956835d020762cb2b570053af06f643a11c0ecc`, in separate immutable intake `源码参考/software/intake/codex-0.160.0-review`; rolling reference `94d642d8` and the matched executor pin remain unchanged. Its `catalog_processor.rs:282–293` still uses OnlineIfUncached, and `models-manager/src/manager.rs:495–503,569–575` logs refresh errors while retaining fallback. [OpenAI’s model-discovery contract](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference) likewise distinguishes public plan `/v1/models` from cached/bundled app-server lists. Fleet's matched Host-scoped `model/list` now awaits checked Online through the same native manager; the ordinary unscoped CLI behavior is preserved. The cold process/account fences remain, errors retain the saved Fleet directory, and no native token is copied into the public SIWC route. Warm-cache/new-ID/503 tests use the actual Rust executable with isolated credentials and loopback transport, no paid inference.
+The latest stable tag object `79b1b666f2e8551f8abbbca34957227f67f3f553` is retained in separate
+immutable intake `源码参考/software/intake/codex-0.160.0-review`. [OpenAI’s model-discovery
+contract](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)
+distinguishes public plan `/v1/models` from cached/bundled app-server lists. Fleet's scoped
+model/list awaits checked Online through that same native manager; failed reads retain Fleet's
+saved directory. Warm-cache/new-ID/503/identity-discard evidence uses actual Rust or its injected
+endpoint boundary, with no paid inference.
 
-Original ZCode `29628c9` Provider model commands/editor remain the UI/data path. OpenCode `f66b86ce` `dialog-custom-provider.tsx:117–155` writes explicit model IDs through its existing provider configuration, and `context/models.tsx:11–42,112–135` separates user visibility/recent intent from discovered metadata. Fleet adapts that intent separation within its existing Provider record: `manualModelIds` is optional and never inferred from legacy automatic lists or exact capability rules. Subscription/native Add reuses the existing single draft/editor; refresh, overlap, account changes, rename, deletion and real repository restart preserve manual corrections. Built-window Add then exposed a second defect: native manual IDs inherited API-only required parameter maps and were absent from selectable models. Registry and editor preview now share native route completion: a no-op API map and Auto when no effort declaration exists; no model capability or Fast claim is added. Real Codex/Claude Provider tests verify selection, metadata preview, refresh and restart. The primary added `gpt-6.1-sol` through the built Settings UI, closed the original metadata dialog, reopened the same review profile, observed it after completed refresh and selected it in New Conversation. Its metadata dialog no longer reports a missing API map. The current native read still returned the original seven IDs; the eighth remains explicitly manual, with context/vision facts unknown. No inference or account rebind was performed. Catalogue/renderer/native transport proof does not assert unknown capabilities or account entitlement.
+Original ZCode `29628c9` Provider model commands/editor remain the UI/data path. OpenCode `f66b86ce` `dialog-custom-provider.tsx:117–155` writes explicit model IDs through its existing provider configuration, and `context/models.tsx:11–42,112–135` separates user visibility/recent intent from discovered metadata. Fleet adapts that intent separation within its existing Provider record: `manualModelIds` is optional and never inferred from legacy automatic lists or exact capability rules. Subscription/native Add reuses the existing single draft/editor; refresh, overlap, account changes, rename, deletion and real repository restart preserve manual corrections. Built-window Add then exposed a second defect: native manual IDs inherited API-only required parameter maps and were absent from selectable models. Registry and editor preview now share native route completion: a no-op API map and Auto when no effort declaration exists; no model capability or Fast claim is added. Real Codex/Claude Provider tests verify selection, metadata preview, refresh and restart. The primary added `gpt-6.1-sol` through the built Settings UI, closed the original metadata dialog, reopened the same review profile, observed it after completed refresh and selected it in New Conversation. Its metadata dialog no longer reports a missing API map. The earlier 0.156.1 read omitted that eighth ID, preserving it as a manual unknown. The matched 0.160.0 read now supplies its actual directory/capacity/vision metadata without deleting the manual correction path. No inference or account rebind was performed. Catalogue/renderer/native transport proof does not assert unknown capabilities or account entitlement.
 
 Claude HUD `33b51db6ceb5d0c91dc9c22404abcabacc8603b0` (`src/stdin.ts:171`, `external-usage.ts:134,164`) consumes native status-line rate limits and optional dated local snapshots; it does not manufacture allowance from transcript cost. CodexBar's [Claude source notes](https://github.com/steipete/CodexBar/blob/main/docs/claude.md) compare OAuth, browser and CLI `/usage` probes, but those credential readers/PTy parsers are unnecessary where the installed SDK exposes a structured control. The primary reproduced `get_usage` returning null under `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`; allowing only the explicit query while separately disabling telemetry, error reports, feedback, surveys, updates and marketplace auto-install returned real Pro windows. [Anthropic's data-usage contract](https://code.claude.com/docs/en/data-usage) distinguishes those opt-outs. The same production reader verifies account identity with a fresh Query afterward because `accountInfo()` is cached per Query; synthetic control-process tests reject a switched account. No token copying, paid inference, browser cookie read or snapshot store was added.
 
@@ -3352,7 +3386,7 @@ Fleet selects the generic Agent Core loop mechanism for a general workbench and 
 operations, permission and durable writers. The default route removes Coding Agent session/resource
 construction and hidden continuation messages, using Core's supported finish decision instead.
 Native executors remain sibling routes; their built-in capabilities are not forced through the
-default model loop. The currently pinned Agent Core 1.0.1 remains the declared direct dependency; no dependency,
+default model loop. The currently pinned Agent Core 1.0.2 remains the declared direct dependency; no dependency,
 remote service or storage owner is added by the public-loop correction. Compatibility checks
 verify implementation after this requirements-based decision; they are not the selection criterion.
 The adapter imports Core directly rather than Coding Agent. The staged CLI checks real file-tool
@@ -3374,7 +3408,15 @@ accepted-task quality still require their own measurement.
 
 ### Selected Pi library release intake
 
-The candidate's declared Agent Core and Pi AI dependencies are both 1.0.1; Coding Agent is a
+The matched v1.0.2 published release (`cd32f7725fdbddbaecdff5b1e68491563394e0ca`) is retained
+in `源码参考/sdk/pi-earendil-1.0.2-review`, including package hashes and the exact commit MIT license.
+Agent Core loop/hooks and every original Host-patched AI file are byte-identical across 1.0.1→1.0.2.
+The OAuth/registration, classifier, cache, admission and SQLite paths retain their existing owners.
+AI changes include per-thinking sampling and catalog facts, not new Fleet routing authority.
+`@mariozechner` 0.73.1 is a different publication family lacking these consumed APIs; changing
+namespace is not a patch upgrade. Coding Agent remains source-only; its extension autoload is off.
+
+The candidate's declared Agent Core and Pi AI dependencies are both 1.0.2; Coding Agent is a
 reference package, not a production executor. The official [release](https://github.com/earendil-works/pi/releases/tag/v1.0.1)
 and published package sources are preserved under `源码参考/sdk/pi-1.0.1` without moving a pinned
 Git checkout. `provenance.json` records archive hashes: Agent Core `eb7b19bc…b8a0a`, Pi AI
@@ -3480,7 +3522,7 @@ reference comparison under OV-090. Current source intake includes Pi tip
 `cd32f7725fdbddbaecdff5b1e68491563394e0ca`. All six Agent Core source files are byte-identical to
 the retained v1.0.1 source. Historical tag-object comparison in the shallow intake failed on missing
 objects twice; filesystem comparison supplies that narrower proof. Existing runtime dependencies
-remain v1.0.1; AI's per-thinking sampling change supplies no automatic Fleet consumer or entitlement.
+now use v1.0.2; AI's per-thinking sampling change supplies no automatic Fleet consumer or entitlement.
 
 | Related chain and reference | Candidate/retained defect and correction | Proof boundary |
 |---|---|---|

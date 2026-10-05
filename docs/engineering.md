@@ -37,10 +37,10 @@ fresh candidate only with the [ordered patch recipe](../patches/zcode/README.md)
 that recipe twice or reset an existing checkout. Intermediate designs and test counts are not
 current capability status; the register and owning module describe the surviving behavior.
 
-The candidate embeds `pi-agent-core@1.0.1` as the default loop inside the existing supervised CLI.
-Host models and subscription services use patched `pi-ai@1.0.1` for transport/OAuth. OV-084 retired
+The candidate embeds `pi-agent-core@1.0.2` as the default loop inside the existing supervised CLI.
+Host models and subscription services use patched `pi-ai@1.0.2` for transport/OAuth. OV-084 retired
 the Coding Agent session/resource wrapper; the retired legacy selector no longer changes the loop.
-Native vendor routes use their admitted adapters; [the optional Codex SDK recipe](../patches/codex-host/README.md) builds the scoped executable for `pnpm test:codex-native`. No credential store or migration was added.
+Native vendor routes use their admitted adapters; [the optional Codex SDK recipe](../patches/codex-host/README.md) builds matched Codex 0.160.0 and checks its version before staging for `pnpm test:codex-native`. No credential store or migration was added.
 Resources are explicitly Host-owned; this does not enable arbitrary community extensions or pages.
 `pnpm exec tsx scripts/measure-context-projection.mts` measures fixed scripted fixtures without
 reading user history or calling a provider. It reports model-facing character lengths separately

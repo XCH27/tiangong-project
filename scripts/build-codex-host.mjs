@@ -64,6 +64,10 @@ const target = join(candidate, 'packages/desktop/bundled-agents', `${process.pla
 await mkdir(target, { recursive: true });
 const name = process.platform === 'win32' ? 'codex.exe' : 'codex';
 const binary = join(source, 'codex-rs/target/debug', name);
+const expectedVersion = /^rust-v(\d+\.\d+\.\d+)$/.exec(recipe.tag)?.[1];
+if (!expectedVersion || await run(binary, ['--version'], source, true) !== `codex-cli ${expectedVersion}`) {
+  throw new Error('The built Codex executor version does not match the reviewed source recipe');
+}
 const staging = join(target, `${name}.tmp`);
 await copyFile(binary, staging); await chmod(staging, 0o755); await rename(staging, join(target, name));
 await copyFile(join(source, 'LICENSE'), join(target, 'LICENSE.codex.txt'));
