@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Refresh all retained and ledger-cited public source references into verified immutable default
+  and published/component-tag snapshots. Preserve original pins/local work and route generated
+  guides through the current source entry; keep tag lineages, source availability and feature
+  acceptance distinct.
+
 - Upgrade matched Codex to 0.160.0, Pi libraries to 1.0.2, Claude SDK to 0.3.289 and ordinary
   API SDK/providers to the reviewed current releases. Preserve Host permissions, continuation and
   account ownership; discover GPT-6.1 through the current native catalog rather than an invented seed.

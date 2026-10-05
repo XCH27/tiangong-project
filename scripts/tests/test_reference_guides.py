@@ -103,6 +103,41 @@ class ReferenceGuides(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'missing execution contract'):
             MODULE.planned_guides(self.root, self.refs)
 
+    def add_latest(self, origin='https://github.com/example/repo'):
+        latest = self.refs / 'latest/example'
+        (latest / '.git').mkdir(parents=True)
+        row = (f'| [example/repo]({origin}) | `{CURRENT}` (`main`) | '
+               f'[source](<{latest}>) | No published release | '
+               '[origin](https://github.com/example/repo) / no |\n')
+        path = self.root / 'docs/references.md'
+        path.write_text(row + path.read_text())
+        return latest, row
+
+    def test_latest_link_preserves_historical_review_and_validates_source(self):
+        latest, _ = self.add_latest()
+        text = next(iter(MODULE.planned_guides(self.root, self.refs).values()))
+        self.assertIn(f'[{"main"} source snapshot](<{latest}>)', text)
+        self.assertIn('Historical mechanism review: `123456abcdef`', text)
+        self.assertIn('No published release', text)
+        self.assertFalse((latest / MODULE.FILENAME).exists())
+        with patch.object(MODULE, 'git', side_effect=lambda p, *a:
+                          'changed' if p == latest and a[0] == 'rev-parse' else
+                          CURRENT if a[0] == 'rev-parse' else 'https://github.com/example/repo'):
+            with self.assertRaisesRegex(ValueError, 'latest source revision mismatch'):
+                MODULE.planned_guides(self.root, self.refs)
+
+    def test_incomplete_or_duplicate_latest_inventory_refuses_generation(self):
+        self.add_latest('https://github.com/other/repo')
+        with self.assertRaisesRegex(ValueError, 'missing latest upstream'):
+            MODULE.read_catalog(self.root)
+        path = self.root / 'docs/references.md'
+        path.write_text(path.read_text().replace('https://github.com/other/repo',
+                                                'https://github.com/example/repo'))
+        first = path.read_text().splitlines()[0]
+        path.write_text(first + '\n' + path.read_text())
+        with self.assertRaisesRegex(ValueError, 'duplicate latest upstream'):
+            MODULE.read_catalog(self.root)
+
 
 if __name__ == '__main__':
     unittest.main()

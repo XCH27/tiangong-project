@@ -48,6 +48,9 @@ Git/GitHub comparisons. These roles do not import several independent products' 
    or matching field names are insufficient. Follow the [source intake gate](docs/engineering.md#source-intake-before-module-implementation).
    Check current upstream releases/tips before that comparison; review newer source in a separate
    immutable copy while preserving required pins, and record the exact version and proof level.
+   Use the latest source entry in `docs/references.md` and `源码参考/latest/` alongside the preserved
+   baseline. Verify component, commit and release lineage when tags use different namespaces or
+   reset version numbers; a numeric maximum or GitHub's latest label alone does not select a product.
    Name the source of each borrowed design and trace the whole related feature: its other views,
    settings, producers/consumers and lifecycle, rather than comparing one convenient component.
    Preserve the working interaction and host primitives. A new domain capability

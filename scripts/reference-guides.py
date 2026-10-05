@@ -23,7 +23,16 @@ ROUTE_ROW = re.compile(r'^\| `((?:software|plugins)/[^`]+)` \| (.*?) \|$', re.M)
 INTAKE_ROW = re.compile(
     r'^\| `((?:software|plugins)/[^`]+)` \| `([0-9a-f]{40})` \(([^)]+)\) \| (.*?) \| (.*?) \|$', re.M,
 )
+LATEST_ROW = re.compile(
+    r'^\| \[[^\]]+\]\((https://github\.com/[^)]+)\) \| `([0-9a-f]{40})` \(`([^`]+)`\) '
+    r'\| \[source\]\(<([^>]+)>\) \| (.*?) \| \[origin\]\((https://github\.com/[^)]+)\) / (yes|no) \|$',
+    re.M,
+)
 EXECUTION = re.compile(r'^### Execution ([A-Z]+-\d{2})\n(.*?)(?=^### Execution |\Z)', re.M | re.S)
+
+
+def normalize_origin(value: str) -> str:
+    return value.rstrip('/').removesuffix('.git').lower()
 
 
 def read_catalog(root: Path) -> tuple[dict, dict, dict]:
@@ -48,6 +57,19 @@ def read_catalog(root: Path) -> tuple[dict, dict, dict]:
         raise ValueError(f'current checkout mismatch: {sorted(sources.keys() ^ intake.keys())}')
     for name, observation in intake.items():
         sources[name].update(observation)
+    latest = {}
+    for origin, sha, branch, checkout, tags, canonical, archived in LATEST_ROW.findall(text):
+        key = normalize_origin(origin)
+        if key in latest:
+            raise ValueError(f'duplicate latest upstream: {origin}')
+        latest[key] = dict(sha=sha, branch=branch, checkout=checkout, tags=tags,
+                           origin=canonical, archived=archived == 'yes')
+    for source in sources.values():
+        if latest:
+            key = normalize_origin(source['origin'])
+            if key not in latest:
+                raise ValueError(f'missing latest upstream: {source["origin"]}')
+            source['latest'] = latest[key]
     route_text = text.split('## Per-project adaptation routes\n', 1)[1].split('\n## ', 1)[0]
     routes = {}
     for name, links in ROUTE_ROW.findall(route_text):
@@ -117,8 +139,18 @@ def render(root: Path, checkout: Path, name: str, entry: dict, ids: list[str], c
               '6. On failure preserve original data and current checkout changes; revert only the bounded Fleet extraction. Do not reset or move this reference.', '',
               f'[Canonical source and admission record]({canonical}#bounded-source-review--2026-09-21) · '
               f'[Per-project routing]({canonical}#per-project-adaptation-routes)', '',
-              'Generated metadata only. Update the Fleet registry/contract and rerun the generator;',
+             'Generated metadata only. Update the Fleet registry/contract and rerun the generator;',
               'do not maintain a separate plan here or commit this file to upstream as a source modification.', '']
+    if latest := entry.get('latest'):
+        position = lines.index('## Upstream development documentation')
+        lines[position:position] = [
+            '## Latest upstream source', '',
+            f'[{latest["branch"]} source snapshot](<{latest["checkout"]}>) — `{latest["sha"]}`.',
+            f'Published/component tag source: {latest["tags"]}.',
+            'Use this source with the preserved comparison above before implementing a module.',
+            'Tags can name different components or historical version lines; no dependency upgrade',
+            'or feature acceptance is inferred from their number or presence.', '',
+        ]
     return '\n'.join(lines)
 
 
@@ -133,9 +165,16 @@ def planned_guides(root: Path, references: Path) -> dict[Path, str]:
         if head != entry['current_sha']:
             raise ValueError(f'unrecorded HEAD: {name}: expected {entry["current_sha"]}, found {head}')
         origin = git(checkout, 'remote', 'get-url', 'origin')
-        normalize = lambda value: value.rstrip('/').removesuffix('.git').lower()
-        if normalize(origin) != normalize(entry['origin']):
+        if normalize_origin(origin) != normalize_origin(entry['origin']):
             raise ValueError(f'unreviewed origin: {name}: {origin}')
+        if latest := entry.get('latest'):
+            current = Path(latest['checkout'])
+            if not current.is_dir() or not (current / '.git').exists():
+                raise ValueError(f'latest source unavailable: {name}')
+            if git(current, 'rev-parse', 'HEAD') != latest['sha']:
+                raise ValueError(f'latest source revision mismatch: {name}')
+            if normalize_origin(git(current, 'remote', 'get-url', 'origin')) != normalize_origin(latest['origin']):
+                raise ValueError(f'latest source origin mismatch: {name}')
         for document in entry['documents']:
             path = checkout / document
             if not path.is_file() or not path.resolve().is_relative_to(checkout.resolve()):
