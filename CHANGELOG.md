@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Audit every registered capability and the candidate/retained change inventories against their
+  actual producers, consumers and recovery paths. Record reproduced data-loss, repeated-effect,
+  cancellation, plugin-withdrawal, API-body, catalogue and accounting failures separately from
+  missing capabilities and pending live/platform proof; correct stale candidate descriptions
+  without promoting delivery status or changing production authorities.
+
 - Preserve discovered capacity and capabilities when restoring recommended model configuration;
   reserve removal of observations for actual model deletion, retaining other corrections and order.
 

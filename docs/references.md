@@ -3829,3 +3829,155 @@ enabled/account binding and immutable admitted models. Antigravity native config
 by schema/Registry today; its executor remains absent. Generic PDF serialization suspicion was
 withdrawn after reading the installed AI7 serializer. Unknown metadata is not itself a defect or
 proof of provider permission. Kernel, real login/inference, platform and owner acceptance remain open.
+
+### Repository-wide audit coverage and defect index
+
+The review locks candidate `e19924b15788e66a787dd6aa99c2dddd28ff791f` (134 patches) against ZCode `29628c9`, the retained Craft branch and refreshed reference snapshots. The input inventory contains 734 changed candidate paths and 79 retained dirty paths. All 63 register IDs have a source disposition; this is **not** a claim that every source body, real provider, OS or owner experience has been verified. Final changed hunks, coupled callers and failure consumers are inspected separately from scan-only or partial paths. The evidence reports preserve those exact boundaries.
+
+Auditing and implementation are separate here: this pass records failures and priorities without changing the execution, credential, storage or UI authority. The [current evidence manifest](../源码参考/meta/fleet-audit-current/manifest.json) preserves checked source reports, disposable reproducers and logs outside the project tree. Each report states its source versions and actual read ranges. Model accounts/NewMax and running inspection remain primary-owned; bounded independent source audits are cross-reviewed. The supplemental plugin proof distinguishes first input/cold materialization from merely opening a folder, and disabled resident hooks from unproved blanket continuation after uninstall.
+
+All changed production `src` paths now have a recorded disposition across the reports; a disposition
+can be full source, final changed hunks, partial, retirement or an explicit exclusion. Candidate UI
+has 220 such paths, including 13 retired original bodies and two translation prose bodies whose
+complete bodies remain partial. The retained branch has 51 UI source dispositions, with five large
+files retaining partial baseline/net-pin depth; its 13 non-UI changes and seven locale key sets are
+separately reviewed. The primary additionally read 146 contract/protocol/native/service final-change
+paths; the API report grades110 paths. Its local captures cover45 configured API templates,
+428 model routes and1596 option combinations, not vendor entitlement. Test bodies, licences,
+generated data, packaging and unchanged baseline bodies do not inherit production-source acceptance.
+
+#### Operational defects and recovery gaps
+
+These are not equivalent to the product capabilities still absent. Source-only findings require their listed execution proof before closure; a synthetic model or transport is never live entitlement.
+
+| Finding | Priority | Trigger / failure | Evidence level and consumer boundary |
+|---|---|---|---|
+| API-01 | P1 | Standard Host enabled-key guard consumes every automatic-switch POST before transport | installed SDK + actual local HTTP loopback; standard production injection source traced; actual SDK ModelAdapter generate/stream all three formats; full trigger, exact paths, recovery and source lineage in `api` evidence. |
+| API-03 | P1 | Credential-pool stop marker is lost between runner normalization and workflow recovery | actual installed ModelAdapter failure + executed policy inspection for all3formats; driver redrive code inspected, full long-running workflow not launched; full trigger, exact paths, recovery and source lineage in `api` evidence. |
+| API-04 | P1 | Changing a discovered model ID forges provider facts for the new ID | real ProviderRuntime/Facade/Node repository/Registry and cold reopen with synthetic directory transport; no provider HTTP/inference; full trigger, exact paths, recovery and source lineage in `api` evidence. |
+| API-05 | P1 | Deleting and recreating an API connection can resurrect old provider observations | real ProviderRuntime persistence/Registry, delete/recreate/manual add with synthetic keys; full trigger, exact paths, recovery and source lineage in `api` evidence. |
+| DOM-01 | P1 | Unadmitted Project inline plugin hooks run on first input/cold materialization outside direct-hook trust | Actual bootstrap/Host/Pi/SQLite and reviewed local Node marker: plugin hooks2, direct hooks0, ordinary tool denied; `plugin-proof` narrows opening-only claim. |
+| DOM-02 | P1 | Resident future turns retain disabled plugin hooks | Actual owner disable succeeded/UI flagfalse; next input added marker3, cold recreation added0. Skill/MCP/uninstall branches remain resource-specific source evidence; removed files may fail. |
+| DOM-12 | P1 | Expected revision is not held through native atomic publication | actual native NodeFileSystemAdapter fixture plus caller source trace; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
+| DOM-20 | P1 | atomic:true file save silently degrades to destructive direct rewrite after publication failure | actual native adapter with narrowly scoped fault injection; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
+| K-01 | P1 | Background Agent Stop waits for artifact/notification publication before requesting cancellation | real_runner_and_registry_with_scripted_child; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| K-02 | P1 | Resuming an interrupted running world.run executes the effect a second time | real_local_process_effect_and_sqlite_cold_reopen; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| K-03 | P1 | Automatic memory extraction physically calls the model but drops returned usage | real_Host_Pi_sqlite_with_scripted_model; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| K-04 | P1 | Main/title completion publication failure drops already received known usage | real_Host_sqlite_with_scripted_model_and_event_write_fault; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| K-05 | P1 | Malformed/failed Goal verifier is persisted as complete | real_Host_goal_consumer_sqlite_with_scripted_model; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| K-07 | P1 | Final discovered tool declaration is excluded from the current request-budget heuristic | real_Host_Pi_sqlite_with_scripted_model_and_existing_heuristic; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| PRI-01 | P1 | Cancelling post-login native inspection still commits the connection | real Provider runtime/facade/repository and cold reopen; injected native login/inspect; full trigger, exact paths, recovery and source lineage in `primary` evidence. |
+| PRI-02 | P1 | Default credential encryption key is derived from non-secret machine/user identifiers | actual cipher with forced empty-env synthetic fixture, independently decrypted using platform/home/username; full trigger, exact paths, recovery and source lineage in `primary` evidence. |
+| PRI-03 | P1 | SSH connection has no server host-key verification | complete config/constructor/ensureConnected source and installed ssh2 contract; full trigger, exact paths, recovery and source lineage in `primary` evidence. |
+| SHELL-ATTACHMENT-TARGET | P1 | Attachment preview drops the saved resource identity before helper creation | Source reconfirmed at e19924b; native viewer excluded.; full trigger, exact paths, recovery and source lineage in `shell` evidence. |
+| SHELL-HELP-DRAFT | P1 | Help leaves Settings and discards unsubmitted local form state | Primary desktop/AX proof: temporary new Subagent name and description were present, Help left Settings, and reopening the form cleared both; installed count stayed0. Other local forms have source evidence only. Full lifecycle and lineage are in `shell`. |
+| SHELL-SHORTCUT-SCOPE | P1 | Helper input model/effort shortcuts target the underlying composer | Reran actual hook isolation at e19924b: targetReads0; helper CtrlT->main-thought, CtrlM->main-model-menu. Scheduler/matcher stubs; no physical keypress.; full trigger, exact paths, recovery and source lineage in `shell` evidence. |
+| SHELL-SUBAGENT-SCOPE | P1 | Late Subagent save refresh replaces the newly selected scope view | Original loadAgents/handleSave isolated execution: selectedScope B, old save completion replaces agents with A and closes form. No production write.; full trigger, exact paths, recovery and source lineage in `shell` evidence. |
+| API-02 | P2 | New model discovery selects a different effective auth key from retained inference header overrides | installed SDK + actual loopback synthetic credentials, all three formats; key-restriction consequences source-inspected only; full trigger, exact paths, recovery and source lineage in `api` evidence. |
+| API-06 | P2 | Normal API result wrapper overwrites retained provider-reported cost facts | actual installed ModelAdapter + HTTP loopback using origin-mapped synthetic OpenRouter response; ledger source inspected; full trigger, exact paths, recovery and source lineage in `api` evidence. |
+| PRI-08 | P2 | Native Codex login/catalog/usage resolves an OS/PAC route using Claude's OAuth URL | Actual production environment closure, real resolver and synthetic site-specific PAC select Claude proxy for both executors. Manual/uniform proxy is unaffected; no CLI/login/HTTP or real account failure claim. |
+| DOM-03 | P2 | Same plugin name from different marketplaces silently collides in MCP routing | actual source-function synthetic fixture; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
+| DOM-04 | P2 | A cache-removal failure leaves uninstall configuration and retry state incomplete | source inspection; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
+| DOM-10 | P2 | Rich document attachment previews stop at the sent-message boundary | source inspection; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
+| DOM-11 | P2 | Preview byte limits inspect one file state and read a later unbounded state | source inspection; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
+| K-06 | P2 | Scheduler recovery can overwrite a known dispatched/completed occurrence as skipped | real_sqlite_repository_with_scripted_settlement_fault; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| K-08 | P2 | Unsupported semantic Skill frontmatter is advertised and loaded without model-facing diagnosis | real_local_skill_parser_context_and_handler; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| SHELL-FILEMANAGER-RECOVERY | P2 | File Manager entry catches failure without actionable recovery | Source trace; no OS action.; full trigger, exact paths, recovery and source lineage in `shell` evidence. |
+| SHELL-HELP-DUPLICATE-TABS | P2 | Repeated Help appends the same guide as new anonymous tabs | Full Help source/identity/append trace and primary live repeated-tab proof. Preserve generic anonymous text; give Help stable identity. |
+| SHELL-PROVIDER-NAME-DRAFT | P2 | Old provider-name save acknowledgement clears a newer unsubmitted draft | Actual blur/sync function isolation with deferred transport and original comparison; no production save. New candidate acknowledgement clears dirty unconditionally, unlike original retained value check. |
+| SHELL-PROFILE-CLOSE-LOCALE | P3 | Local-profile dialog retains an English accessibility Close label in Chinese | Current shared Dialog default plus missing localized argument; screen-reader/owner acceptance unverified. |
+| DESKTOP-01 | P3 | Development shell native menu loses picked-element Inspect on an empty text context | Current/original native-event branch source only; DOM event routing untested. Help DevTools and browser-guest Inspect remain; packaged runtime is excluded. |
+
+The highest data/effect risks are DOM-20 (atomic save destroys original after failure), DOM-12 (concurrent stale revisions both write), K-01 (failed artifact write prevents Stop), K-02 (unknown world-run replay), and DOM-01/02 (Project executable origin/resident withdrawal). API-01/03 and PRI-01 affect normal request/cancellation paths; API-04/05 forge or revive stale catalog facts. K-03/04 and API-06 are distinct lost-accounting consumers. K-05 is the inherited explicit Goal fail-open policy, not automatic Goal creation or a Pi regression.
+
+Retained-only `RETAINED-PINNED-COLLAPSE` (P2) is a separate dirty-overlay source finding:
+`app/.../AppShell.tsx:2472–2473` enables Project grouping/Pinned, `useSessionSearch.ts:175–198`
+removes collapsed Project rows, then `SessionList.tsx:530–538` extracts Pinned from those already
+filtered rows. Collapsing the Project therefore removes its flagged conversations from Pinned until
+expanded. This is not a candidate defect, Session deletion, or running retained-app proof; its
+source versions, working blobs and original lineage are preserved in `shell.retained_findings`.
+
+#### Missing capability, compatibility and remaining proof
+
+Native editing/undo/save/reopen, registered plugin views and Project suites, cross-domain artifact/ingestion/citation, durable canvas/design/media production, browser evidence/extensions and human media recovery remain the owning modules' unclosed targets. Their basic readers, players, generation receipts, MCP/install and browser guest paths remain real and are not removed merely because the complete target is absent. PRI-04 records native multiple-profile/account management; PRI-05 is only an unproved same-email organization binding concern; PRI-06 records the bounded OpenCode static route intersection; PRI-07 keeps standalone paid-probe accounting unresolved without fabricating a Session. Live login/inference, all OS packages and signed distribution remain separately unverified.
+
+The final local process snapshot found no candidate Electron executable and several adopted
+`zcode-cli` children whose titles did not reveal their executable/profile origin. Their ownership,
+active work and parent-disconnect cleanup are not established; no process was killed or labelled a
+proved duplicate-launch defect. A controlled owned startup/quit fixture remains required. Native
+usage before a failed terminal receipt and a generic output option versus an enforced native
+generation ceiling also remain named proof questions in the primary final-change report.
+
+Correct or stale allegations are retained explicitly: matched native GPT-6.1 discovery, restored recommendations, current resize containment, committed page operations, denial/CAS and receipt-aware media retrieval were confirmed; earlier full-Pi/placeholder/untracked-source and universally empty-Claude claims are stale. Unknown model metadata is not itself proof of broken inference. Generic PDF rejection was withdrawn after reading the installed AI7 serializer. A direct-store Goal retarget fixture bypassed the public busy gate and is not presented as a current App blocker.
+
+#### Capability coverage
+
+Delivery status remains solely in [the capability register](capabilities.md#capability-register). This table records source responsibility and related finding IDs, not status promotion. `kernel`/`shell`/`domains`/`primary`/`api` identify the corresponding evidence reports; `desktop` is the supplemental desktop-boundary report. An ID with no operational defect can still have a missing target or pending live/visual proof described in its report/module.
+
+| Capability | Source disposition owners | Related defects / gaps |
+|---|---|---|
+| [CORE-01](modules/agent-core.md) | kernel, shell | See module and source disposition; no new reproduced defect |
+| [CORE-02](modules/agent-core.md) | kernel, shell | SHELL-FILEMANAGER-RECOVERY |
+| [CORE-03](modules/agent-core.md) | kernel, shell | K-04, SHELL-SHORTCUT-SCOPE |
+| [CORE-04](modules/agent-core.md) | kernel | K-02, K-05 |
+| [CORE-05](modules/agent-core.md) | kernel, shell | SHELL-HELP-DRAFT, SHELL-SUBAGENT-SCOPE, SHELL-PROFILE-CLOSE-LOCALE, SHELL-PROVIDER-NAME-DRAFT, PRI-01, API-04, API-05 |
+| [CORE-06](modules/agent-core.md) | kernel, shell | See module and source disposition; no new reproduced defect |
+| [CORE-07](modules/agent-core.md) | kernel, shell, primary | See module and source disposition; no new reproduced defect |
+| [CORE-08](modules/agent-core.md) | kernel, shell, primary | SHELL-HELP-DRAFT, SHELL-HELP-DUPLICATE-TABS |
+| [CORE-09](modules/agent-core.md) | kernel, shell, primary, desktop | DESKTOP-01 (development native branch; source only) |
+| [CORE-10](modules/agent-core.md) | kernel, shell, primary | SHELL-PROFILE-CLOSE-LOCALE |
+| [CORE-11](modules/components.md) | shell, domains | SHELL-HELP-DUPLICATE-TABS, DOM-06 |
+| [INFO-01](modules/browser.md) | shell, domains | SHELL-FILEMANAGER-RECOVERY, DOM-11, DOM-12, DOM-20 |
+| [INFO-02](modules/browser.md) | domains | DOM-17, DOM-19 |
+| [INFO-03](modules/browser.md) | domains | DOM-08, DOM-17, DOM-18 |
+| [INFO-04](modules/browser.md) | domains | DOM-10, DOM-19 |
+| [INFO-05](modules/canvas.md) | shell, domains | SHELL-ATTACHMENT-TARGET, DOM-08, DOM-09, DOM-10, DOM-11, DOM-20 |
+| [INFO-06](modules/browser.md) | shell, domains | DOM-19 |
+| [INFO-07](modules/browser.md) | domains | DOM-17, DOM-19 |
+| [INFO-08](modules/browser.md) | shell, domains | DOM-19 |
+| [EXEC-01](modules/agent-core.md) | kernel | K-01, PRI-02, PRI-03 |
+| [EXEC-02](modules/agent-core.md) | kernel, shell | SHELL-SHORTCUT-SCOPE, SHELL-ATTACHMENT-TARGET |
+| [EXEC-03](modules/agent-core.md) | kernel | See module and source disposition; no new reproduced defect |
+| [EXEC-04](modules/agent-core.md) | kernel, shell | K-01, SHELL-SUBAGENT-SCOPE |
+| [EXEC-05](modules/agent-core.md) | kernel, primary, api | PRI-01, PRI-04, PRI-05, PRI-08, API-01, API-03 |
+| [EXEC-07](modules/remote.md) | primary | See module and source disposition; no new reproduced defect |
+| [EXEC-08](modules/agent-core.md) | kernel | K-02, PRI-02, PRI-03 |
+| [EXEC-09](modules/remote.md) | shell, primary | SHELL-FILEMANAGER-RECOVERY, PRI-03 |
+| [EXEC-10](modules/agent-core.md) | kernel | K-06 |
+| [EXEC-11](modules/remote.md) | primary | See module and source disposition; no new reproduced defect |
+| [EXEC-13](modules/remote.md) | primary | See module and source disposition; no new reproduced defect |
+| [EXEC-14](modules/context.md) | kernel, shell | K-07, K-08, SHELL-SUBAGENT-SCOPE |
+| [EXEC-15](modules/remote.md) | primary | See module and source disposition; no new reproduced defect |
+| [INTEL-01](modules/memory.md) | kernel | K-07 |
+| [INTEL-02](modules/memory.md) | kernel | K-03, K-07 |
+| [INTEL-03](modules/models.md) | shell, primary, api | SHELL-PROVIDER-NAME-DRAFT, PRI-01, PRI-02, PRI-04, PRI-05, PRI-06, PRI-07, PRI-08, API-01, API-02, API-04, API-05 |
+| [INTEL-04](modules/context.md) | kernel, primary | K-03, K-04, PRI-07, API-06 |
+| [INTEL-05](modules/memory.md) | kernel, shell | K-03 |
+| [INTEL-06](modules/memory.md) | kernel, shell | K-08 |
+| [INTEL-07](modules/context.md) | kernel | K-05 |
+| [CREATE-01](modules/canvas.md) | domains | DOM-13, DOM-14 |
+| [CREATE-02](modules/media.md) | domains | DOM-16 |
+| [CREATE-03](modules/media.md) | domains | DOM-15 |
+| [CREATE-04](modules/media.md) | domains | DOM-16 |
+| [CREATE-05](modules/media.md) | domains | DOM-16 |
+| [CREATE-06](modules/canvas.md) | domains | DOM-13, DOM-14 |
+| [CREATE-07](modules/canvas.md) | domains | DOM-14 |
+| [CREATE-08](modules/media.md) | domains | DOM-09, DOM-16 |
+| [CREATE-09](modules/media.md) | domains | DOM-16 |
+| [CREATE-10](modules/media.md) | domains | DOM-16 |
+| [CREATE-11](modules/canvas.md) | domains | DOM-14, DOM-19 |
+| [CREATE-12](modules/media.md) | domains | DOM-16 |
+| [CREATE-16](modules/canvas.md) | domains | DOM-09 |
+| [ORCH-01](modules/workflow.md) | kernel | See module and source disposition; no new reproduced defect |
+| [ORCH-02](modules/workflow.md) | kernel | K-02, API-03 |
+| [ORCH-03](modules/components.md) | shell, domains | DOM-01, DOM-02, DOM-05, DOM-06, DOM-08 |
+| [ORCH-04](modules/marketplace.md) | shell, domains | DOM-01, DOM-02, DOM-03, DOM-08 |
+| [ORCH-05](modules/media.md) | domains | DOM-15, DOM-16 |
+| [ORCH-06](modules/orchestration.md) | kernel | K-04, K-05, K-06 |
+| [ORCH-07](modules/orchestration.md) | kernel | K-01 |
+| [ORCH-08](modules/agent-core.md) | kernel, shell, primary | K-06, SHELL-FILEMANAGER-RECOVERY, API-03 |
+| [ORCH-10](modules/marketplace.md) | shell, domains | DOM-02, DOM-07, DOM-08 |
+| [ORCH-11](modules/marketplace.md) | shell, domains | DOM-01, DOM-02, DOM-03, DOM-04, DOM-05, DOM-06, DOM-07, DOM-08, DOM-18 |
+| [ORCH-12](modules/marketplace.md) | shell, domains | DOM-02, DOM-03, DOM-08 |
+
+The previous handoff was read as evidence, not instructions. Candidate Git/patch/recovery protection and Pi Core selection now differ from its snapshot; plugin UI absence and broad page-operation/native-production gaps remain true. Mixed retained/candidate register descriptions and older execution-source pointers require reconciliation without transferring authorities. Most importantly, passing the earlier suites did not cover combined SDK/header/body behavior, post-result observer failure, partial scheduler settlement, interrupted effects, pending scope changes or file-publication faults; those gaps must be tested at the actual producer and consumer.

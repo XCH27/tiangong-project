@@ -28,18 +28,38 @@ kernel proofs are incomplete.
 
 ### Source-comparison repair order
 
-The [current comparison](docs/references.md#active-design-chain-comparison) verifies these priorities:
+The [whole-project defect index](docs/references.md#repository-wide-audit-coverage-and-defect-index)
+and [design-chain comparison](docs/references.md#active-design-chain-comparison) set these priorities.
+The 63 capability dispositions cover breadth; remaining per-path partial/unread, platform and live
+proof are explicit in the external evidence. Source coverage is not implementation completion.
 
-1. Include final tool declarations and output reserve in the Host request-budget path, including
+1. Preserve original files on failed atomic publication and serialize same-revision Fleet file writes
+   through the existing owner (DOM-20/12). Stop must request cancellation independently of output or
+   notification I/O (K-01). Reconcile interrupted effects before workflow re-execution (K-02), and
+   prove Project executable trust plus future-turn plugin/Skill/MCP withdrawal (DOM-01/02).
+2. Repair the actual API switching Request-body guard and propagate exhausted-pool stop to workflow
+   recovery (API-01/03). Keep discovery/inference auth and native executor network targets aligned
+   (PRI-08); retire observations on model-ID and
+   connection identity changes without clearing them on recommendation restore (API-02/04/05).
+   Cancelled native login inspection must not admit a later binding (PRI-01).
+3. Include final tool declarations and output reserve in the Host request-budget path, including
    dynamic discovery and reported usage deltas. Preserve sparse capacity and distinguish estimates
    from vendor counters; avoid treating a heuristic as a proven provider limit.
-2. Complete native request admission/Guide and per-binding parked continuation under the existing
+4. Complete native request admission/Guide and per-binding parked continuation under the existing
    Session journal. Keep unsupported strategies refused and prove cancellation/version/account scope.
-3. Bind page helpers to actual resource identity and current owner facts; isolate composer keyboard
+   Prepare account/profile/organization and credential/SSH trust corrections under their existing
+   explicit security-boundary checkpoints; do not copy foreign tokens or rebind automatically.
+5. Retain every observed physical-call receipt before fallible publication, including memory,
+   main/title/workspace/verifier calls and reported API costs (K-03/04, API-06). Reconcile scheduler
+   partial settlement (K-06); unknown/failed explicit Goal verification is not accepted completion
+   (K-05). Preserve existing compact/result/error recovery that already records before publication.
+6. Bind page helpers to actual resource identity and current owner facts; isolate composer keyboard
    ownership. Preserve the corrected same-owner drag/resize containment, shared on-demand Guide
    topic read and existing controls. Reconcile the original specialized configuration diagnostics
-   and human topic reader without duplicating the Guide or granting arbitrary file access.
-4. After kernel closure, expose media query/recovery to human and Agent callers, then prove one
+   and human topic reader without duplicating the Guide or granting arbitrary file access. Help must
+   retain unsubmitted Settings drafts and reuse its identity; old save acknowledgements must not
+   replace a newly selected Subagent scope or clear a newer provider-name draft.
+7. After kernel closure, expose media query/recovery to human and Agent callers, then prove one
    native DOCX plugin view/operation/save/undo/reopen slice. Add browser evidence promotion through
    existing artifact owners. Complete other domains against these shared seams.
 
