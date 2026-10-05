@@ -4068,3 +4068,12 @@ conversion, complete checkpoint/fork recovery and all dependency versions were n
 fully inspected. Fleet should compare this with its current result projection and on-demand reads
 before adding another mechanism. These admissions supply references; kernel-first order and
 capability statuses remain unchanged.
+
+### OpenRouter live catalog check (2026-10-05)
+
+Fleet's `readDiscoveredModelMetadata` was run over the public `GET openrouter.ai/api/v1/models?output_modalities=all`
+(648 models). Context window, image input and tool flags matched the source rows. Two defects were fixed in candidate
+patch 0142: reasoning levels were offered to every model because OpenRouter always sends `supported_parameters`
+(336 declare `reasoning`/`include_reasoning`; offered now equals declared), and `transcription`/`speech` outputs
+(24/23 models) produced no output capability. Embeddings (37) and rerank (9) remain non-chat, untagged rows.
+

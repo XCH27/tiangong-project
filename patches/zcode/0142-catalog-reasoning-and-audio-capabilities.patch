@@ -1,0 +1,266 @@
+diff --git a/package.json b/package.json
+index a390a2b..ec9a4d1 100644
+--- a/package.json
++++ b/package.json
+@@ -49,7 +49,7 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/api-key-plan-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/openrouter-catalog-metadata.test.ts packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index db8e211..940cc17 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -159,6 +159,8 @@ export class ModelOutputFormatConfig extends ConfigOverlay<ModelOutputFormatConf
+   readonly supportsImage?: ModelOutputFormatConfigInput["supportsImage"];
+   readonly supportsVideo?: ModelOutputFormatConfigInput["supportsVideo"];
+   readonly supportsClassification?: ModelOutputFormatConfigInput["supportsClassification"];
++  readonly supportsTranscription?: ModelOutputFormatConfigInput["supportsTranscription"];
++  readonly supportsSpeech?: ModelOutputFormatConfigInput["supportsSpeech"];
+ 
+   constructor(input: ModelOutputFormatConfigInput = {}) {
+     super();
+@@ -175,6 +177,8 @@ export class ModelOutputFormatConfig extends ConfigOverlay<ModelOutputFormatConf
+         this.supportsClassification,
+         next.supportsClassification,
+       ),
++      supportsTranscription: this.overlayValue(this.supportsTranscription, next.supportsTranscription),
++      supportsSpeech: this.overlayValue(this.supportsSpeech, next.supportsSpeech),
+     });
+   }
+ 
+@@ -188,6 +192,8 @@ export class ModelOutputFormatConfig extends ConfigOverlay<ModelOutputFormatConf
+       supportsImage: this.supportsImage,
+       supportsVideo: this.supportsVideo,
+       supportsClassification: this.supportsClassification,
++      supportsTranscription: this.supportsTranscription,
++      supportsSpeech: this.supportsSpeech,
+     });
+   }
+ }
+diff --git a/packages/services/src/model-provider/modelDiscoveryMetadata.ts b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+index 9bc2b21..5055b4b 100644
+--- a/packages/services/src/model-provider/modelDiscoveryMetadata.ts
++++ b/packages/services/src/model-provider/modelDiscoveryMetadata.ts
+@@ -70,7 +70,12 @@ export function readDiscoveredModelMetadata(
+       ? ["max", "xhigh", "high", "medium", "low", "minimal", "none"]
+       : strings(reasoning.supported_efforts);
+   const levels = advertised?.filter((level) => !(reasoning.mandatory === true && level === "none"));
+-  const declaredReasoning = Object.keys(reasoning).length > 0 || parameters !== undefined;
++  // 修复：OpenRouter 总会返回 supported_parameters（可能为空），旧判断让 648 个模型里不支持推理的 315 个
++  // 也出现思考等级。只有 reasoning 描述或参数里明确声明 reasoning 才提供该选项。
++  const declaredReasoning =
++    Object.keys(reasoning).length > 0 ||
++    (parameters?.includes("reasoning") ?? false) ||
++    (parameters?.includes("include_reasoning") ?? false);
+   const values = [...new Set(["auto", ...(levels ?? [])])];
+   const defaultDisabled = reasoning.default_enabled === false && reasoning.mandatory !== true;
+   if (reasoning.mandatory === false && !values.includes("none")) values.push("disabled");
+@@ -154,6 +159,9 @@ export function readDiscoveredModelMetadata(
+                       supportsText: outputs.includes("text"),
+                       supportsImage: outputs.includes("image"),
+                       supportsVideo: outputs.includes("video"),
++                      // 目录明确报告的语音识别/语音合成输出；此前被当成"无输出"，无法打"语音识别"标签。
++                      ...(outputs.includes("transcription") ? { supportsTranscription: true } : {}),
++                      ...(outputs.includes("speech") ? { supportsSpeech: true } : {}),
+                     },
+                   }
+                 : outputType
+@@ -164,6 +172,7 @@ export function readDiscoveredModelMetadata(
+                         ),
+                         supportsImage: outputType === "image",
+                         supportsVideo: outputType === "video",
++                        ...(outputType === "transcribe" ? { supportsTranscription: true } : {}),
+                       },
+                     }
+                   : typeof capabilities.completion_chat === "boolean"
+diff --git a/packages/services/test/openrouter-catalog-metadata.test.ts b/packages/services/test/openrouter-catalog-metadata.test.ts
+new file mode 100644
+index 0000000..beba496
+--- /dev/null
++++ b/packages/services/test/openrouter-catalog-metadata.test.ts
+@@ -0,0 +1,33 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { readDiscoveredModelMetadata } from "../src/model-provider/modelDiscoveryMetadata.js";
++
++// 形态取自 OpenRouter /api/v1/models 实际返回（2026-10-05，648 个模型）。
++const model = (id: string, outputs: string[], parameters: string[], inputs = ["text"]) => ({
++  id,
++  context_length: 128000,
++  architecture: { input_modalities: inputs, output_modalities: outputs },
++  supported_parameters: parameters,
++});
++
++test("OpenRouter reasoning level is offered only when the model declares reasoning", () => {
++  const reasons = readDiscoveredModelMetadata(model("a/r", ["text"], ["tools", "reasoning"]), "openai-chat-completions", undefined);
++  const plain = readDiscoveredModelMetadata(model("a/p", ["text"], ["tools"]), "openai-chat-completions", undefined);
++  const empty = readDiscoveredModelMetadata(model("a/i", ["image"], [], ["text", "image"]), "openai-chat-completions", undefined);
++  assert.ok(reasons.optionSpecs?.reasoningLevel);
++  assert.equal(plain.optionSpecs?.reasoningLevel, undefined);
++  assert.equal(empty.optionSpecs?.reasoningLevel, undefined);
++});
++
++test("OpenRouter transcription and speech outputs become explicit audio capabilities", () => {
++  const asr = readDiscoveredModelMetadata(model("g/transcribe", ["transcription"], [], ["audio"]), "openai-chat-completions", undefined);
++  const tts = readDiscoveredModelMetadata(model("o/tts", ["speech"], [], ["text"]), "openai-chat-completions", undefined);
++  assert.deepEqual(asr.properties?.outputFormat, {
++    supportsText: false,
++    supportsImage: false,
++    supportsVideo: false,
++    supportsTranscription: true,
++  });
++  assert.equal(tts.properties?.outputFormat?.supportsSpeech, true);
++  assert.equal(tts.properties?.outputFormat?.supportsText, false);
++});
+diff --git a/packages/shared/src/model-config.ts b/packages/shared/src/model-config.ts
+index 11ed222..ecb03b0 100644
+--- a/packages/shared/src/model-config.ts
++++ b/packages/shared/src/model-config.ts
+@@ -79,6 +79,10 @@ export const completeModelOutputFormatDataSchema = z
+     supportsImage: z.boolean().optional(),
+     supportsVideo: z.boolean().optional(),
+     supportsClassification: z.boolean().optional(),
++    /** Speech-to-text output reported by the catalog (OpenRouter "transcription"). */
++    supportsTranscription: z.boolean().optional(),
++    /** Text-to-speech output reported by the catalog (OpenRouter "speech"). */
++    supportsSpeech: z.boolean().optional(),
+   })
+   .strict();
+ export const modelInputFormatDataSchema = z
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 086d01c..91410c3 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7,6 +7,8 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.discovery.kind.video": "Video generation",
+   "model.capability.imageOutput": "Image generation",
+   "model.capability.videoOutput": "Video generation",
++  "model.capability.transcriptionOutput": "Speech recognition",
++  "model.capability.speechOutput": "Speech synthesis",
+   "model.capability.imageOutputHint":
+     "The provider reports image output; use still depends on the connection and generation endpoint.",
+   "model.capability.videoOutputHint":
+@@ -7421,6 +7423,8 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.catalogFilter.text": "Text generation",
+   "settings.modelProvider.catalogFilter.image": "Image generation",
+   "settings.modelProvider.catalogFilter.video": "Video generation",
++  "settings.modelProvider.catalogFilter.transcription": "Speech recognition",
++  "settings.modelProvider.catalogFilter.speech": "Speech synthesis",
+   "settings.modelProvider.assistant.open": "Ask Agent",
+   "settings.modelProvider.assistant.failed":
+     "Could not open the settings assistant. Your settings are unchanged. Close and try again.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index f113768..0d52e87 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6,6 +6,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.discovery.kind.video": "生视频",
+   "model.capability.imageOutput": "生图",
+   "model.capability.videoOutput": "生视频",
++  "model.capability.transcriptionOutput": "语音识别",
++  "model.capability.speechOutput": "语音合成",
+   "model.capability.imageOutputHint": "上游目录声明此模型输出图片；使用仍取决于连接和生成端点。",
+   "model.capability.videoOutputHint": "上游目录声明此模型输出视频；使用仍取决于连接和生成端点。",
+   "chat.visionBridge.title": "图片识别",
+@@ -7016,6 +7018,8 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.catalogFilter.text": "文本生成",
+   "settings.modelProvider.catalogFilter.image": "图像生成",
+   "settings.modelProvider.catalogFilter.video": "视频生成",
++  "settings.modelProvider.catalogFilter.transcription": "语音识别",
++  "settings.modelProvider.catalogFilter.speech": "语音合成",
+   "settings.modelProvider.assistant.open": "让 Agent 帮忙",
+   "settings.modelProvider.assistant.failed": "暂时无法打开设置助手，配置未改变。请关闭后重试。",
+   "settings.modelProvider.assistant.changeModel": "修改模型可选状态",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+index 3f81fc7..30f3538 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderFormControls.tsx
+@@ -193,7 +193,10 @@ export function ModelRowInput({
+     model.evidenceConfig?.properties?.outputFormat ?? model.config.properties?.outputFormat;
+   const mediaOnly =
+     reportedOutput?.supportsText === false &&
+-    (reportedOutput.supportsImage === true || reportedOutput.supportsVideo === true);
++    (reportedOutput.supportsImage === true ||
++      reportedOutput.supportsVideo === true ||
++      reportedOutput.supportsTranscription === true ||
++      reportedOutput.supportsSpeech === true);
+   // 文本连通性探针会让纯生图/视频端点必然报错；这不是账号认证失败。
+   const shouldShowTestButton = Boolean(onTest) && !mediaOnly && !classifier;
+   const testDisabled = !providerEnabled || isTesting || !draft.idValue.trim() || !onTest;
+@@ -263,6 +266,22 @@ export function ModelRowInput({
+                   {intl.formatMessage({ id: "model.capability.imageOutput" })}
+                 </span>
+               ) : null}
++              {reportedOutput?.supportsTranscription === true ? (
++                <span
++                  className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
++                  data-model-output-capability="transcription"
++                >
++                  {intl.formatMessage({ id: "model.capability.transcriptionOutput" })}
++                </span>
++              ) : null}
++              {reportedOutput?.supportsSpeech === true ? (
++                <span
++                  className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
++                  data-model-output-capability="speech"
++                >
++                  {intl.formatMessage({ id: "model.capability.speechOutput" })}
++                </span>
++              ) : null}
+               {reportedOutput?.supportsVideo === true ? (
+                 <span
+                   className={MODEL_INPUT_CAPABILITY_BADGE_CLASS_NAME}
+diff --git a/packages/ui/src/settings/model-provider-section/providerCatalogFilters.ts b/packages/ui/src/settings/model-provider-section/providerCatalogFilters.ts
+index ea1d67e..50216bf 100644
+--- a/packages/ui/src/settings/model-provider-section/providerCatalogFilters.ts
++++ b/packages/ui/src/settings/model-provider-section/providerCatalogFilters.ts
+@@ -1,12 +1,21 @@
+ import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.js";
+ 
+-export type ProviderCatalogFilter = "all" | "text" | "image" | "video" | "decision";
++export type ProviderCatalogFilter =
++  | "all"
++  | "text"
++  | "image"
++  | "video"
++  | "transcription"
++  | "speech"
++  | "decision";
+ type CatalogModel = Pick<ProviderSettingsFormModel, "modelId" | "evidenceConfig">;
+-const outputTypes = ["text", "image", "video", "decision"] as const;
++const outputTypes = ["text", "image", "video", "transcription", "speech", "decision"] as const;
+ const outputFields = {
+   text: "supportsText",
+   image: "supportsImage",
+   video: "supportsVideo",
++  transcription: "supportsTranscription",
++  speech: "supportsSpeech",
+   decision: "supportsClassification",
+ } as const;
+ 
+diff --git a/packages/ui/test/providerCatalogFilters.test.ts b/packages/ui/test/providerCatalogFilters.test.ts
+index 78fb7dc..259fd25 100644
+--- a/packages/ui/test/providerCatalogFilters.test.ts
++++ b/packages/ui/test/providerCatalogFilters.test.ts
+@@ -75,3 +75,16 @@ test("search composes with type filtering without mutating the catalog or changi
+   assert.deepEqual(providerCatalogFilterOptions(catalog), ["all", "text", "image"]);
+   assert.deepEqual(catalog, before);
+ });
++
++test("speech recognition and synthesis filters appear only from reported audio outputs", () => {
++  const catalog = [
++    ...Array.from({ length: 10 }, (_, index) => model(`text-${index}`, { supportsText: true })),
++    model("asr", { supportsText: false, supportsTranscription: true }),
++    model("tts", { supportsText: false, supportsSpeech: true }),
++  ];
++  assert.deepEqual(providerCatalogFilterOptions(catalog), ["all", "text", "transcription", "speech"]);
++  assert.deepEqual(
++    filterProviderCatalogModels(catalog, "", "transcription").map((entry) => entry.modelId),
++    ["asr"],
++  );
++});

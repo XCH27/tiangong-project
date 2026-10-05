@@ -214,3 +214,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0140 | [0140-official-allowance-readers-and-chatgpt-name.patch](0140-official-allowance-readers-and-chatgpt-name.patch) | `1edd9dc4a2cbce581620a89650fd97e37bfc8c71` |
 
 | 0141 | [0141-api-key-plan-allowance.patch](0141-api-key-plan-allowance.patch) | `af139ff176692257d832623c8d478c90ce233f4a` |
+
+| 0142 | [0142-catalog-reasoning-and-audio-capabilities.patch](0142-catalog-reasoning-and-audio-capabilities.patch) | `d7ae120023552ad54a1d928fa33498224bed4e92` |

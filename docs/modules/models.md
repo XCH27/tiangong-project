@@ -387,8 +387,8 @@ connection at the official endpoint, the same authenticated `/v1/models` respons
 membership and a separate read-only media projection. That API normally provides IDs rather than
 a modality schema, so only OpenAI-documented image, video and audio families are classified;
 explicit response modalities take precedence when supplied. Unknown IDs remain unclassified.
-Audio rows distinguish speech, live transcription, generic audio and realtime conversation. Live
-sessions cannot enter Pi chat; generic audio chat retains its proven route. Account visibility proves
+Audio rows distinguish speech, live transcription, generic audio and realtime conversation; reported OpenRouter
+`transcription`/`speech` outputs set `supportsTranscription`/`supportsSpeech` (tags, filters). Live sessions cannot enter Pi chat; generic audio chat retains its proven route. Account visibility proves
 no executor or entitlement ([media](media.md#live-voice-conversation-boundary)); custom endpoints
 and Codex OAuth do not borrow this catalog.
 The composer renders model effort beside selection through the existing Session callback.
