@@ -26,6 +26,26 @@ projection before claiming lightness. Existing page/default/filter changes are i
 progress, not an exit from this gate. Do not expand feature pages, media UI or plugins while these
 kernel proofs are incomplete.
 
+### Source-comparison repair order
+
+The [current comparison](docs/references.md#active-design-chain-comparison) verifies these priorities:
+
+1. Include final tool declarations and output reserve in the Host request-budget path, including
+   dynamic discovery and reported usage deltas. Preserve sparse capacity and distinguish estimates
+   from vendor counters; avoid treating a heuristic as a proven provider limit.
+2. Complete native request admission/Guide and per-binding parked continuation under the existing
+   Session journal. Keep unsupported strategies refused and prove cancellation/version/account scope.
+3. Bind page helpers to actual resource identity and current owner facts; isolate composer keyboard
+   ownership. Preserve the corrected same-owner drag/resize containment, shared on-demand Guide
+   topic read and existing controls. Reconcile the original specialized configuration diagnostics
+   and human topic reader without duplicating the Guide or granting arbitrary file access.
+4. After kernel closure, expose media query/recovery to human and Agent callers, then prove one
+   native DOCX plugin view/operation/save/undo/reopen slice. Add browser evidence promotion through
+   existing artifact owners. Complete other domains against these shared seams.
+
+This refines the current order; source inspection and local fixtures are not full delivery or
+permission to replace authorities, add dependencies or migrate user data.
+
 ### Delivery order
 
 | Order | Complete deliverable | Exit before moving on |

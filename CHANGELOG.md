@@ -5,6 +5,16 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Preserve discovered capacity and capabilities when restoring recommended model configuration;
+  reserve removal of observations for actual model deletion, retaining other corrections and order.
+
+- Reconcile contextual-helper placement after resize, preserving the same popover owner and controls.
+  Share packaged Help topics with restricted page/model assistants through their existing on-demand
+  reads; retain ordinary Guide enablement and no additional filesystem or execution permission.
+- Compare current kernel, catalogs, helper/document identity and native artifact/plugin lifecycles
+  against their originals and refreshed references; keep local proof separate from live access and
+  visual acceptance, and prioritize confirmed kernel/model regressions over feature breadth.
+
 - Refresh all retained and ledger-cited public source references into verified immutable default
   and published/component-tag snapshots. Preserve original pins/local work and route generated
   guides through the current source entry; keep tag lineages, source availability and feature

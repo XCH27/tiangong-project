@@ -3766,3 +3766,66 @@ login remains separate. A prompt-free real CLI check returned a Pro identity/cat
 review connection is bound to Team and has a different identity. Rejection is correct; the expired-
 authorization wording was not. The reader/view now carries account-changed separately and retains
 the original binding. No account selection, credential copy, inference or automatic rebind is implied.
+
+### Active design-chain comparison
+
+Comparison starts from candidate `64ec9b0bce6bbef24c648961f522387ddb5e0664`, original ZCode
+`29628c9`, and the refreshed immutable sources below. The installed Pi Core/AI packages are both
+1.0.2; inspecting published 1.0.3 does not upgrade them. Source availability is not inspection of
+every feature. Primary owns account/product decisions and running integration; bounded workers
+inspected context, shell and native artifacts, then catalog persistence, with primary cross-review.
+
+| Source | Exact observed source | Related chain inspected |
+|---|---|---|
+| Craft v0.14.0 | `73bd9c2a3573158bea880984eb8d5fdb41e0cac2` | regional actions → EditPopover → normal create/send → mini prompt/local guides → file target → validate/refresh; drag/resize/focus/close and formatted reader |
+| Pi current / published 1.0.3 | `b9ab918c626ad3dd5edb58de037540f9467def88` / `d78dc83d633229d12f8b79631384c4c2717c399f` | Core prepare/stream/tool loop versus full harness declaration accounting; exact directory IDs |
+| Cindy current / published 0.1.97 | `cd3921a43c8877c2513f8750538e6747b42ef04b` / `88e224475a6183f7b31218a7499be956a4bf2667` | parked executor state/delta handoff, input ownership, layered model facts and approved view activation/crash/stop |
+| OpenCode current / marked published product | `907b3bc518fa48e90e8ec24dd327d13eee71c36c` / `aec0b9a6d8898f68f923aaf08b7306d931fd9d76` | provider catalog versus overrides, limits/modalities and current protocol contracts; release lineage remains separately recorded |
+| GenOffice | `e4be545a881eed5b700d5da997aae26e8e24fc82` | live DOCX operations/context → undo → native serializer → save queue/atomic write → close |
+| LobeHub | `026e7afc519eb568850474a1060f33be7f83e5ba` | file reader versus document JSON/Markdown edit, autosave and conflict recovery |
+| OpenChamber | `e302062e3be0686986594fddabdafd8a97c129e5` | conversation-bound controls and selected browser capabilities/control lease/reset |
+| BrowserOS | `0152e0a829b36921787196b66a13d1025bc850be` | actual Chromium extension-import patches and screenshot consumer; not an Electron drop-in |
+
+All current source paths resolve under `源码参考/latest/`; original pins are preserved. Official
+Codex 0.160 app-server turn/steer and extension model-request contracts, Claude SDK 0.3.289 controls
+and hooks, and the original `plugins/zcode-bundled-3.14.3/zcode-guide-plugin` were also read. A
+synchronous Codex request contributor and Claude prompt hooks do not establish an asynchronous
+Host gate for every physical inference attempt. A permission observer is not enforced admission.
+
+| Finding and disposition | Producer → consumer / original comparison | Proof and limit |
+|---|---|---|
+| P1: restoring recommended model configuration erased directory facts; corrected | `provider/config-service.ts` restore → `config/model-config.ts:deleteExact` removed the added discovered layer → Registry/frozen factory fell back → failed refresh/reopen retained loss. Original deleteExact removed only personal exact rules; the correction restores that meaning and uses separate deleteModel for actual removal. | Real Provider/Facade/Node repository/Registry with synthetic OpenRouter catalog: provider65536/4096 → personal32768 → restore originally lost observations; red/green now retains them through503/reopen and clears them only on deletion. Other corrections/disabled/order remain. Normal catalog154 cases pass; no live access claim. |
+| P1: final request budget misses newly projected declarations; unresolved | `core/runtime/methods/turn-step-prepare.ts:88,129` compacts before tools; `compact.ts:202,325` counts messages plus old reported usage, without changed declarations/prefix. Pi Core provides no corrective budget gate. | Real Host/Pi/SQLite fixture: messages2312 + tool estimate53637 + reserve4096 = heuristic60045 against capacity32768, still dispatched. The estimate is not an actual vendor tokenizer/limit; no unconditional rejection is justified from it alone. |
+| Native enforced admission/Guide and parked A→B→A resume remain unfinished | `native-agent-turn.ts:18`, native model auxiliary wrapper and `turn.ts:280` correctly refuse unsupported admission/Guide. `native-continuation.ts:35,43` retains one journal pointer and overwrites the other binding. Cindy switch handler preserves parked engine pointers and explicit history delta. | Source refusal verified. Actual leaf helper with Map store retained1 pointer and did not resume A; not live provider/full Host switching proof. Preserve current account/history hash/inflight fences; use existing journal rather than a second Session store. |
+| P1: underlying composer captures helper-input model/effort keys; unresolved | `ui/v4/composer/toolbarShortcuts.ts:86,198` window capture → ordinary composer callbacks; helper pane does not revoke underlying ownership. Cindy checks editor/send-button ownership/top surface. | Actual hook execution with standard-key stubs dispatched main actions for helper targets; no physical-keypress claim. Fix shared event/focus ownership, not another shortcut table. |
+| P1: attachment preview loses persisted document target; unresolved | composer/saved attachment producers retain ID/ref/row identity → `ChatMediaAttachmentPreviewDialog.tsx:24,109` drops it → createSession/history retain generic document-preview. Existing resource schema already represents saved documents. | Source proof; unsent Blob IDs are not cold-readable saved refs. Carry actual owner identity without inventing a path or grant. |
+| P2: edge drag followed by resize overflow; corrected | placement clamps old rect, resize changed size only. Craft also lacks resize containment. Existing same-owner position is now reconciled after layout. | Red then green installed renderer in zh/en light/dark plus regional menu cases; primary built-window inspection moved to right edge and enlarged repeatedly with full containment. Owner appearance acceptance remains separate. |
+| P2: restricted loadout still waits for unrelated MCP; unresolved | context/MCP initialization connects configured servers before tool filtering, inherited from original ZCode. Pool leases can be reused. | Injected connection gate delayed first model request; Stop settled promptly with zero calls/effects. No cancellation or permission-leak claim. |
+| Native Office edit, human media recovery, plugin-contributed views and browser evidence are still missing | Actual DOCX/XLSX readers and plugin enumerator are byte-identical to original; ResumeMediaJob has a durable owner but no human status/recovery consumer; browser handles/files are not artifact provenance. | Source and pure output tests, not native-edit/live-provider proof. Retain readers, receipts, bytes and browser owner. GenOffice's create path ignores false save result; do not copy that premature success. |
+
+#### Guide, page rules and conversation lifetime
+
+The owner's “ordinary conversation plus context” hypothesis is partly confirmed, not taken as a
+requirement or a complete implementation description. Craft EditPopover `721,767,965–979` calls
+ordinary create/send, uses `workingDirectory='none'` (its Session folder), mini prompt and hidden
+Session. Candidate `PageAssistantConversation.tsx:24–38` calls normal createSession; Node uses
+`getConversationWorkspaceDir()` for the fixed outside-Project folder. Candidate bootstrap additionally
+selects focused prompt/tool allowlist and disables unrelated MCP/hooks/memory/delegation. Closing
+hides presentation; a fresh invocation and explicit history resume have different Session lifetimes.
+
+Candidate Help `ui/lib/productDocs.ts` imports the English/Chinese Markdown in the same packaged
+Guide content plugin. Ordinary enabled Skill discovery → Skill body/baseDirectory → relative Read
+exposes that package; its suppression remains effective. Restricted helpers previously had neither
+Skill nor general Read, so “the package exists” did not prove they could use it. The corrected
+ReadPageContext/ReadModelSettings `documentation:true` path requests only the matching packaged topic,
+with version/locale and explicit unavailable state; no hosted fetch, second manual, auto-injected
+whole guide or extra execution/file grant. Default reads retain short operation contracts/current
+facts. Staged exact bytes, real serialized RPC and actual Host/Pi input forwarding are separate
+local checks; no paid model behavior is implied. Original six specialized configuration/diagnostic
+Skills versus the current general Skill, and the rejected single-article human reader, remain gaps.
+
+Retain exact sparse observed/personal facts, manual ID correction, atomic full-catalog publication,
+enabled/account binding and immutable admitted models. Antigravity native config is correctly refused
+by schema/Registry today; its executor remains absent. Generic PDF serialization suspicion was
+withdrawn after reading the installed AI7 serializer. Unknown metadata is not itself a defect or
+proof of provider permission. Kernel, real login/inference, platform and owner acceptance remain open.

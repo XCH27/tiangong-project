@@ -73,6 +73,17 @@ reading and the packaged reference skill. Its current guide now follows actual k
 permissions or authorize an edit. Plugin Creator and Skill Creator retain their existing lifecycle;
 this correction does not add native UI-extension APIs or declare those packages fully delivered.
 
+The packaged guide now also supplies on-demand topic excerpts through the existing ReadPageContext
+and ReadModelSettings operations (`documentation:true`). `services/src/documentation/localGuide.ts`
+reads only fixed Markdown paths beside the selected staged Agent bundle, reports its content-package
+version/locale, and returns unavailable for missing, oversized or uncovered topics. The default read
+and model prompt do not contain the manual. Help, ordinary enabled Guide Skill and these restricted
+readers share the same source files; they do not share or grant execution permissions. Disabling the
+Skill still suppresses its executable discovery, while packaged Help reference text remains readable.
+The original bundled ZCode Guide's six specialized diagnostic Skills are not equivalent to the
+current single general Skill. Their valid scope/schema/recovery instructions and the rejected
+single-article human reading experience remain unfinished; topic extraction does not close either.
+
 ## Selective-intake evidence
 
 Earlier fixes remain inspectable in Git: updater `445e11b92` (harness fix `09c59e7f7`), sharing

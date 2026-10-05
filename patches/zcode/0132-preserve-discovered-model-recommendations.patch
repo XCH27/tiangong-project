@@ -1,0 +1,186 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 6188bc66ccaf21cb9edc73541ed7da6c994c528f..421f4ee7287b924021bbb3a2717736e225f253c6 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -27,6 +27,15 @@ bindings therefore cannot change one another when an ID is reused or config chan
+ User headers, option maps, cancellation and errors retain their existing semantics.
+ No inference, retry, account rotation, thinking promotion or caching policy is added.
+ 
++The existing Provider writer stores catalog observations separately from personal exact
++overrides. Restoring recommended configuration clears only the personal override; the
++observed context, output limit and capabilities remain available through Registry and
++cold reopen, including after a failed refresh. Deleting a personal model clears both
++its override and observation in the same membership/order transaction. Neither action
++changes another model's corrections or adds a storage owner. The existing
++`model-discovery-persistence.test.ts` exercises these distinct operations with synthetic
++catalog transport and the real personal repository.
++
+ ## Media input admission and wire projection
+ 
+ The existing executable Model validates inputs with the shared contracts media policy
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index ea3cd83e0ba98f751c5cfba749a567d47bad27b4..37670f175f714301530b353d011fb8adc59bf9c0 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -691,7 +691,7 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+               ),
+             ),
+         ),
+-        models: current.models.deleteExact(normalizedProviderId, normalizedModelId),
++        models: current.models.deleteModel(normalizedProviderId, normalizedModelId),
+         providerOrder: current.providerOrder,
+       };
+     });
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index ebd56419b9c5a62d996a5c565b302d948a35948d..14793eb0dc5690d4a59fc472561f3399de5d189b 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -575,6 +575,17 @@ export class ModelConfigRules {
+   }
+ 
+   deleteExact(providerId: string, modelId: string): ModelConfigRules {
++    // 恢复推荐只清个人覆盖；目录观察是独立事实，不能随草稿恢复一起丢失。
++    return new ModelConfigRules(
++      this.#rules.filter(
++        (rule) =>
++          !isExactModelRule(rule) || rule.providerId !== providerId || rule.modelId !== modelId,
++      ),
++    );
++  }
++
++  deleteModel(providerId: string, modelId: string): ModelConfigRules {
++    // 真正删除成员时才同时清除个人覆盖和目录观察，避免重开留下孤立模型元数据。
+     return new ModelConfigRules(
+       this.#rules.filter(
+         (rule) =>
+diff --git a/packages/services/test/model-discovery-persistence.test.ts b/packages/services/test/model-discovery-persistence.test.ts
+index f6745702f9083d19b74e861c9f3122da4f069b18..319fe8e4d98f120b909b94539dc3deaf660d2729 100644
+--- a/packages/services/test/model-discovery-persistence.test.ts
++++ b/packages/services/test/model-discovery-persistence.test.ts
+@@ -399,6 +399,126 @@ test("duplicate API model IDs reject the entire refresh without changing the sav
+   }
+ });
+ 
++test("restoring recommendations retains catalog facts through failed refresh and reopen while deletion clears them", async () => {
++  const f = await fixture();
++  try {
++    const { providerId } = await f.service.createPersonalProvider({
++      templateId: "openrouter",
++      initialConfig: {
++        api: { type: "openai-chat-completions", baseUrl: "https://openrouter.ai/api/v1" },
++        access: { type: "api-key", apiKey: "synthetic" },
++      },
++    });
++    const targetId = "fixture/catalog-restore";
++    const otherId = "fixture/other-correction";
++    const manualId = "fixture/manual-private";
++    f.setFetch(async () =>
++      Response.json({
++        data: [targetId, otherId].map((id) => ({
++          id,
++          context_length: 65_536,
++          top_provider: { max_completion_tokens: 4096 },
++          architecture: { input_modalities: ["text", "image"], output_modalities: ["text"] },
++          supported_parameters: ["tools", "structured_outputs", "reasoning"],
++          reasoning: { mandatory: true, supported_efforts: ["high", "low"], default_effort: "low" },
++        })),
++      }),
++    );
++    await f.service.discoverModels(providerId);
++    await f.service.addPersonalModel(providerId, manualId, {
++      properties: { contextWindow: 98_304 },
++    });
++    await f.service.savePersonalModelDraft({
++      providerId,
++      originalModelId: otherId,
++      nextModelId: otherId,
++      personalConfig: { enabled: false, properties: { contextWindow: 131_072 } },
++      useRecommendedConfig: true,
++      basedOnRevision: (await f.service.getView()).revision,
++    });
++    await f.service.reorderPersonalModels(providerId, [manualId, otherId, targetId]);
++    const models = async () =>
++      (await f.service.getView()).providers.find((p) => p.providerId === providerId)!.models;
++    const unaffected = (await models()).filter((m) => m.modelId !== targetId);
++    const observed = (await models()).find((m) => m.modelId === targetId)!.evidenceConfig;
++    await f.service.savePersonalModelDraft({
++      providerId,
++      originalModelId: targetId,
++      nextModelId: targetId,
++      personalConfig: { properties: { contextWindow: 32_768 } },
++      useRecommendedConfig: true,
++      basedOnRevision: (await f.service.getView()).revision,
++    });
++    assert.equal(
++      (await models()).find((m) => m.modelId === targetId)!.effectiveConfig.properties
++        ?.contextWindow,
++      32_768,
++    );
++    await f.service.savePersonalModelDraft({
++      providerId,
++      originalModelId: targetId,
++      nextModelId: targetId,
++      personalConfig: {},
++      useRecommendedConfig: true,
++      basedOnRevision: (await f.service.getView()).revision,
++    });
++    const assertRestored = async () => {
++      const current = await models();
++      const restored = current.find((m) => m.modelId === targetId)!;
++      assert.equal(restored.personalExactConfig, undefined);
++      assert.equal(restored.contextEvidenceSource, "provider");
++      assert.deepEqual(restored.evidenceConfig, observed);
++      assert.equal(restored.effectiveConfig.properties?.contextWindow, 65_536);
++      assert.equal(restored.effectiveConfig.optionSpecs?.maxOutputTokens?.max, 4096);
++      assert.deepEqual(restored.effectiveConfig.optionSpecs?.reasoningLevel?.values, [
++        "auto",
++        "high",
++        "low",
++      ]);
++      const admitted = f.runtime.registryService.getModel(providerId, targetId)!;
++      assert.equal(admitted.config.properties.contextWindow, 65_536);
++      assert.equal(admitted.config.optionSpecs.maxOutputTokens.max, 4096);
++      assert.deepEqual(admitted.evidenceConfig?.toJSON(), observed);
++      assert.deepEqual(
++        current.filter((m) => m.modelId !== targetId),
++        unaffected,
++      );
++      assert.deepEqual(
++        current.map((m) => m.modelId),
++        [manualId, otherId, targetId],
++      );
++    };
++    await assertRestored();
++    const restoredDisk = await f.disk();
++    f.setFetch(async () => new Response(null, { status: 503 }));
++    await assert.rejects(f.service.discoverModels(providerId), /503/);
++    assert.equal(await f.disk(), restoredDisk);
++    await f.restart();
++    await assertRestored();
++    await f.service.deletePersonalModel(providerId, targetId);
++    assert.equal(
++      (await models()).some((m) => m.modelId === targetId),
++      false,
++    );
++    assert.equal(f.runtime.registryService.getModel(providerId, targetId), undefined);
++    const rules = JSON.parse(await f.disk()).config.modelConfigRules;
++    for (const key of [
++      "providerModelRules",
++      "manualProviderModelRules",
++      "discoveredProviderModelRules",
++    ])
++      assert.equal(
++        (rules[key] ?? []).some((rule: { modelId: string }) => rule.modelId === targetId),
++        false,
++      );
++    await f.restart();
++    assert.deepEqual(await models(), unaffected);
++    assert.equal(f.runtime.registryService.getModel(providerId, targetId), undefined);
++  } finally {
++    await f.dispose();
++  }
++});
++
+ test("unreported capability fields never become provider facts through the runtime fallback", async () => {
+   const f = await fixture();
+   try {

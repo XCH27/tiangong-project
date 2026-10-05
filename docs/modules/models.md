@@ -532,18 +532,18 @@ connection header. The existing Test action remains available without changing c
 
 ## Candidate implementation and verification
 
-The candidate uses pinned Pi model transport/OAuth for ChatGPT/Codex, GitHub Copilot and Grok
-beneath ZCode Host coordination and Pi Agent Core (OV-084). Forty-nine offline cases cover
-lifecycle, committed-connection gating, stale results, account selection/recovery, real Pi
-request/stream encoding, replay, allowance and isolated OAuth bundles. The single Codex account
-entry starts browser PKCE; device flow remains an adapter-level recovery mechanism, not a parallel
-settings choice; manual callbacks must match the active state. OAuth login/refresh and inference use
-the host network transport through a scoped SDK patch, including both bundled artifacts. Codex and
-Grok discover the selected account's native catalog; new Responses model IDs do not depend on Pi's
-static list. Only reported input/effort/limit metadata is projected; unsupported
-PDFs/media/structured output still fail explicitly. Settings discovery atomically adds new models
+The candidate defaults new ChatGPT connections to matched scoped Codex, with native CLI-owned
+identity, login, catalog, continuation and allowance. Claude uses its matched official SDK/binary.
+Pi Agent Core remains the ordinary Host loop; saved public ChatGPT grants and Copilot/Grok use
+patched Pi transport/OAuth. These are distinct credential and execution contracts, not one PKCE
+entry. Native control reads do not infer paid model entitlement; unavailable admission/Guide
+capabilities remain explicit. Public-grant PKCE/manual callbacks retain registration/state checks,
+Host-scoped transport, account validation and isolated OAuth bundles. Both ordinary and native
+routes use frozen Registry selections and the existing Provider writer. Native discovery can
+admit newly returned exact IDs independently of a Pi static list. Sparse input/effort/capacity
+facts stay independent of internal budgets; unsupported routes fail. Discovery atomically adds models
 through the existing Provider configuration owner, publishes that same persisted list to settings
-and conversation selection, and preserves existing disabled models, custom metadata and order.
+and conversation selection, and preserves existing disabled models, custom metadata and order. Restoring recommended configuration clears personal overrides only; actual model deletion also clears its directory observations.
 Search only filters existing models and never adds on Enter. The search field contains an explicit
 search action; it filters locally and never triggers discovery or addition. Following the owner’s
 consistency correction, Add Model stays below all model draft rows. Model and API-key drafts share

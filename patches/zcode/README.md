@@ -194,3 +194,9 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0130 | [0130-model-evidence-capacity-and-tool-contract.patch](0130-model-evidence-capacity-and-tool-contract.patch) | `dd77c87acc53806eeb2d3fbb49abdedb6fcabe5e` |
 
 | 0131 | [0131-reviewed-runtime-sdk-upgrades.patch](0131-reviewed-runtime-sdk-upgrades.patch) | `61573bef1dacbfb887da615ed595f73b4a0d209f` |
+
+| 0132 | [0132-preserve-discovered-model-recommendations.patch](0132-preserve-discovered-model-recommendations.patch) | `2726e667b826a64d8f123b83c332cbaac462257e` |
+
+| 0133 | [0133-contain-contextual-assistant-resize.patch](0133-contain-contextual-assistant-resize.patch) | `0efe00738ffcd6935c13b244056631a658871417` |
+
+| 0134 | [0134-shared-on-demand-guide-topics.patch](0134-shared-on-demand-guide-topics.patch) | `5791dcc138695154e75443839f83c3a43d58a099` |

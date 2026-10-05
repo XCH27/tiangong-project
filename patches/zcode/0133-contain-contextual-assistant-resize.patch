@@ -1,0 +1,60 @@
+diff --git a/packages/ui/src/page-assistant/usePageAssistantPlacement.ts b/packages/ui/src/page-assistant/usePageAssistantPlacement.ts
+index 2a0e5e844ba5389ea8b3c0a7ae33a62c74672ce5..972f448b7fc313cd46c7c442edcc02ad078da4f5 100644
+--- a/packages/ui/src/page-assistant/usePageAssistantPlacement.ts
++++ b/packages/ui/src/page-assistant/usePageAssistantPlacement.ts
+@@ -1,5 +1,6 @@
+ import {
+   useEffect,
++  useLayoutEffect,
+   useRef,
+   useState,
+   type PointerEvent,
+@@ -39,6 +40,12 @@ export function usePageAssistantPlacement(invocationId?: string, preservePlaceme
+     };
+     setPosition(offset.current);
+   };
++  // Reconcile the translated panel after both its new size and the Popover's
++  // anchor layout are applied. Size bounds alone cannot constrain an old offset.
++  useLayoutEffect(() => {
++    const rect = panel.current?.getBoundingClientRect();
++    if (rect) move(rect.left, rect.top);
++  }, [size.width, size.height]);
+   useEffect(() => {
+     if (preservePlacement) return;
+     gesture.current = undefined;
+diff --git a/packages/ui/test/pageAssistant.browser.test.tsx b/packages/ui/test/pageAssistant.browser.test.tsx
+index 2f6755f93c80bcf58d67b3fbe47af806cebe2649..a4ce0a3e7e17c7ba58ebde21065a1c48260fc484 100644
+--- a/packages/ui/test/pageAssistant.browser.test.tsx
++++ b/packages/ui/test/pageAssistant.browser.test.tsx
+@@ -587,6 +587,31 @@ async function run() {
+           "Focused resize control did not resize the popup",
+         );
+         check(f.requests.length === 7, "Moving/resizing created another conversation");
++        const edgeStart = f.windowPanel()!.getBoundingClientRect();
++        await act(async () => {
++          move.dispatchEvent(new MouseEvent("mousedown", {
++            button: 0, clientX: edgeStart.left + 16, clientY: edgeStart.top + 16,
++            bubbles: true, cancelable: true,
++          }));
++        });
++        await f.tick();
++        await act(async () => {
++          document.dispatchEvent(new MouseEvent("mousemove", {
++            clientX: window.innerWidth + 64, clientY: edgeStart.top + 16, bubbles: true,
++          }));
++          document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
++        });
++        await f.tick();
++        for (let count = 0; count < 2; count++) {
++          await act(async () => resize.dispatchEvent(new KeyboardEvent("keydown", {
++            key: "ArrowRight", bubbles: true, cancelable: true,
++          })));
++          await f.tick();
++        }
++        const edgeResize = f.windowPanel()!.getBoundingClientRect();
++        check(edgeResize.left >= 15 && edgeResize.right <= window.innerWidth - 15,
++          "Resize after moving to the viewport edge stranded part of the assistant outside it");
++        check(f.requests.length === 7, "Edge resize created another conversation");
+         const beforeDrag = f.windowPanel()!.getBoundingClientRect();
+         await act(async () =>
+           move.dispatchEvent(
