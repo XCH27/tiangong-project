@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- List Grok Build's fast variant once in model pickers; the Fast switch selects it. Update the
+  packaged guide for plan allowance, model-row actions and capability tags.
+
 - OpenRouter: offer reasoning levels only to models that declare reasoning; map reported
   transcription/speech outputs to speech recognition/synthesis tags and filters.
 
