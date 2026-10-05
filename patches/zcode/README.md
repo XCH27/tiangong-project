@@ -190,3 +190,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0127 | [0127-native-api-catalog-and-thinking-contracts.patch](0127-native-api-catalog-and-thinking-contracts.patch) | `3d8231773a401646d893b801312e82e026a857e2` |
 | 0128 | [0128-provider-brand-svg-corrections.patch](0128-provider-brand-svg-corrections.patch) | `19f591d07afd9b33ff6568ef67f4083136b9fc88` |
 | 0129 | [0129-chatgpt-account-icon.patch](0129-chatgpt-account-icon.patch) | `61331b8059cdc26ddf8c9e5d45297c2c66bc4c3a` |
+
+| 0130 | [0130-model-evidence-capacity-and-tool-contract.patch](0130-model-evidence-capacity-and-tool-contract.patch) | `dd77c87acc53806eeb2d3fbb49abdedb6fcabe5e` |

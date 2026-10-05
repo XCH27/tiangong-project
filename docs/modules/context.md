@@ -69,8 +69,8 @@ language/style settings into active input. Existing loaded bodies and ordinary p
 invocation remain. Loaded-Skill success pairs a result with its declaring assistant batch; a failed
 call cannot borrow a later reused ID. The current registry and policy remain the execution owners.
 Next preserve logical cache scope through compact but isolate forks/accounts/routes, retain native replay
-and explicit option overrides. Logical cache-scope preservation across compact and forks
-is not yet added. Do not copy forced `max` thinking or insert duplicate cache markers.
+and explicit option overrides. Pi cache identity already binds Session/account, and forks receive a new Session ID; actual
+compact/fork cache-hit and quality proof remains open. Do not copy forced `max` or duplicate markers.
 Before adapter promotion, compare unchanged ZCode, a bounded Pi adapter and one justified native policy.
 Keep model/account/protocol, effort/budget, tools, task files and acceptance fixed. Start with DeepSeek/GLM,
 one code and one document task, three paired repetitions; separate cold/warm prefixes and official-only tools.

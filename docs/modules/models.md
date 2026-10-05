@@ -13,7 +13,7 @@ this contract does not create a credential or model authority.
 
 | ID | Capability | Status | Release / acceptance | Surfaces |
 |---|---|---|---|---|
-| INTEL-03 | Model routing and capability negotiation | Craft thinking mapping and isolated ZCode endpoint/credential binding wired but not visually checked; optional Host classifier wired but not visually checked; full automatic routing not implemented | R17 / INTEL-03-A | P-30 |
+| INTEL-03 | Model routing and capability negotiation | candidate API/native model evidence and endpoint/credential binding wired but not visually checked; optional Host classifier wired but not visually checked; full automatic routing not implemented | R17 / INTEL-03-A | P-30 |
 <!-- /module-card -->
 
 ## Source entry points
@@ -27,21 +27,21 @@ this contract does not create a credential or model authority.
 | Media catalog classification | `packages/services/src/model-provider/{modelDiscovery,modelDiscoveryMetadata}.ts`; `packages/provider/src/media-models.ts`; execution belongs to [Media](media.md#candidate-generation-and-recovery-contract) |
 | Original Settings and composer controls | `packages/ui/src/settings/model-provider-section`; `packages/ui/src/v4` |
 
-Claude catalog projection retains the SDK-returned `supportsFastMode`: true maps to native Fast,
-false explicitly disables it, and absence stays unknown. This is capability evidence, not a plan
-price or quota multiplier. Native requests retain the independently selected effort and Fast flag.
-The native catalog supplies the shared registry's empty output-parameter transform; it does not
-invent a provider output limit. A real Provider/registry/reopen regression verifies connected native
-models are selectable, rather than merely present in Settings. Native CLI readiness uses the same
-unfilled configured dot as other untested connections, with CLI-specific explanation.
-The composer consumes these registry-admitted native routes without requiring an HTTP address;
-its former API-only filter is retired. The API endpoint check still applies to ordinary API routes.
-Non-composer provider leaf menus keep the existing dropdown portal. The combined composer uses
-the direct searchable model list below. Actual renderer checks cover both API/native groups in both
-languages/themes and exact selection callbacks; original controls and styling remain.
-The right provider-catalog category is Usage-based / 用量计费; API Key and wire-format terms remain.
-The composer offers an effort submenu only for multiple advertised levels. A missing legacy value
-on a fixed-level model creates neither a false selection prompt nor a presentation-time write.
+Claude native projection preserves SDK-declared Fast/effort and an empty output transform. Scoped Codex discovery carries resolved executor capacity;
+Unknown stays unknown through Registry/Host; main receipts publish null to clear an old same-ID denominator without changing usage. Explicit corrections retain priority. Neither membership nor output limit is inferred
+from capacity. Account reads preserve the original native credential owner and identity fence.
+Anthropic API discovery reads independent `max_input_tokens`/`max_tokens` and nested image/PDF/
+structured support, including false. Effort follows advertised grades; support for thinking does
+not establish a disabled option. Only declared adaptive support enables that wire type. Cerebras
+retains tools, feature lists and explicit text+vision; JSON mode is not Schema and multimodal
+alone establishes no specific input flags. Model Studio ASR preserves Audio→Text; ordinary chat
+eligibility checks both input and output. The [source comparison](../references.md#active-ordinary-api-contract-comparison)
+records producer/request/reopen proofs and live-provider limits. The composer consumes Registry-admitted native routes without an HTTP address; ordinary API
+endpoint checks remain. Non-composer leaf menus keep the portal; the combined composer uses the direct searchable list. Renderer tests cover groups, locales/themes
+and selection callbacks, with original controls/tokens. Native readiness retains the configured,
+unfilled dot and its CLI explanation. The catalog category is Usage-based / 用量计费; wire-format
+and API-key terms remain. Effort submenus require multiple advertised choices; fixed-level legacy
+choices cause no false selection prompt or presentation-time write.
 
 Official OpenAI `/models` membership can be combined with the exact published GPT Image IDs to
 classify image output before first inference. This evidence applies only to the official global

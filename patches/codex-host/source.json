@@ -3,7 +3,7 @@
   "tag": "rust-v0.156.1",
   "commit": "b412ff32c417f855c2b2d1581b77058eed87c84b",
   "patch": "0001-scoped-host-tools-and-receipts.patch",
-  "patchSha256": "cd3ef99fc43f4b774076f155e1c8ec70304e4a5c1ec17bf1d105bb26ee548a74",
-  "tree": "b8315588582a84dd5c56d251daac5d85770132b0",
+  "patchSha256": "97e6108bce6e2070a2ed22bb765c0996d0f0d04a09cc28475e702f89e6a94a23",
+  "tree": "31d9773f1ae064e7743f398555a94e865247fbb5",
   "license": "Apache-2.0"
 }

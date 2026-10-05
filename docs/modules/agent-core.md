@@ -29,7 +29,7 @@ R4 Action/R11 Job contracts are extracted from real callers, without parallel Se
 | EXEC-02 | Actions and caller-aware action seam | Model Settings and General operations wired but not visually checked; broader domain operations not implemented | R4 / EXEC-02-A | P-05,P-18,P-50 |
 | EXEC-03 | Terminal and local execution | wired but not visually checked | R0,R4,R18 / EXEC-03-A | P-19 |
 | EXEC-04 | Multi-agent delegation | Craft child Sessions/TaskRunner wired but not visually checked; Fleet delegation gates not implemented | R6 / EXEC-04-A | P-20 |
-| EXEC-05 | Runtime/provider adapters | candidate Pi, Claude native and retained Craft lanes wired but not visually checked; native governed execution and general CLI adapters not implemented | R0,R6 / EXEC-05-A | P-21 |
+| EXEC-05 | Runtime/provider adapters | candidate Pi, Claude/Codex native and retained Craft lanes wired but not visually checked; native governed execution and general CLI adapters not implemented | R0,R6 / EXEC-05-A | P-21 |
 | EXEC-08 | Inherited execution isolation | wired but not visually checked | R0,R2 inherited-boundary verification; second sandbox excluded / EXEC-08-A | P-18,P-24 |
 | EXEC-10 | Automations and scheduler | wired but not visually checked | R4 / EXEC-10-A | P-26 |
 | ORCH-08 | Diagnostics, health and recovery | not implemented | R0,R2,R18 / ORCH-08-A | P-52 |

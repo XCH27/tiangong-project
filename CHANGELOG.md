@@ -5,6 +5,13 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Preserve native executor context capacity through discovery, Registry, frozen requests and V4;
+  unknown capacity explicitly clears an old same-model denominator without altering historical usage.
+- Fence model facts to published exact IDs while preserving protocol maps, manual corrections and
+  refreshed observations; recognize current Anthropic/Cerebras directory fields and ASR output.
+- Project explicit negative tool capability through existing API/native Host paths, allowing plain
+  text without tool declarations and denying invented effects.
+
 - Use the owner-selected ChatGPT account mark for native Codex-backed subscriptions; retain the
   previous stored icon key as an alias without changing connection or executor identity.
 
