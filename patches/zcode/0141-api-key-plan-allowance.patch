@@ -1,0 +1,586 @@
+diff --git a/package.json b/package.json
+index 365fe4a..a390a2b 100644
+--- a/package.json
++++ b/package.json
+@@ -47,7 +47,7 @@
+     "architecture:report": "node scripts/architecture/architecture-check.mjs report",
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+-    "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
++    "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/api-key-plan-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+diff --git a/packages/services/src/model-provider/apiKeyPlanUsage.ts b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+new file mode 100644
+index 0000000..a1694dc
+--- /dev/null
++++ b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+@@ -0,0 +1,218 @@
++import { createHash } from "node:crypto";
++import { getEnabledApiKeys, type ProviderSettingsFacade } from "@zcode/provider";
++import { apiKeyPlanRoute, type ApiKeyPlanRoute } from "@zcode/shared";
++import type { SubscriptionAccountsView } from "./subscriptionConnectionTypes.js";
++import type { SubscriptionUsageResult, SubscriptionUsageWindow } from "./subscriptionUsage.js";
++
++/**
++ * 用 API Key 购买的套餐（OpenCode Go、MiniMax Token Plan）此前没有额度读取，设置页只能看到密钥。
++ * 读取方式与 Paseo plugins/{opencode-go,minimax}-usage-source、Orca rate-limits/opencode-go-*
++ * 一致：用连接里已保存的同一把密钥，请求厂商的只读额度接口。不另存密钥、不推断套餐档位。
++ */
++export { apiKeyPlanRoute, type ApiKeyPlanRoute };
++
++const READ_TIMEOUT_MS = 15_000;
++const CACHE_MS = 60_000;
++
++function record(value: unknown): Record<string, unknown> | undefined {
++  return value !== null && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : undefined;
++}
++function finite(value: unknown): number | undefined {
++  const parsed = typeof value === "string" && value.trim() ? Number(value) : value;
++  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
++}
++function clampPercent(value: number): number {
++  return Math.min(100, Math.max(0, value));
++}
++
++const OPENCODE_GO_WINDOWS = [
++  ["rolling", 300],
++  ["weekly", 10_080],
++  ["monthly", 43_200],
++] as const;
++
++/** OpenCode Go `/zen/go/v1/usage`：usage.{rolling,weekly,monthly}.{percent,resetsAt}。 */
++export function parseOpenCodeGoUsage(payload: unknown, observedAt: number): SubscriptionUsageResult {
++  const usage = record(record(payload)?.usage);
++  const windows: SubscriptionUsageWindow[] = [];
++  for (const [key, windowMinutes] of OPENCODE_GO_WINDOWS) {
++    const row = record(usage?.[key]);
++    const percent = finite(row?.percent);
++    if (percent === undefined || percent < 0 || percent > 100) continue;
++    const reset = typeof row?.resetsAt === "string" ? Date.parse(row.resetsAt) : NaN;
++    windows.push({
++      id: `default:${key}`,
++      usedPercent: percent,
++      windowMinutes,
++      ...(Number.isFinite(reset) ? { resetAt: reset } : {}),
++    });
++  }
++  return windows.length
++    ? { status: "available", source: "OpenCode Go", observedAt, windows, plan: "Go" }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++}
++
++/** MiniMax `/v1/token_plan/remains`：每个模型的 5 小时与每周窗口，优先使用剩余百分比。 */
++export function parseMiniMaxTokenPlanUsage(
++  payload: unknown,
++  observedAt: number,
++): SubscriptionUsageResult {
++  const body = record(payload);
++  const status = finite(record(body?.base_resp)?.status_code);
++  // 非 0 表示该密钥没有有效 Token Plan；这是"不支持"，不是额度为 0。
++  if (status !== undefined && status !== 0) return { status: "unsupported" };
++  const rows = Array.isArray(body?.model_remains) ? body.model_remains.slice(0, 32) : [];
++  const windows: SubscriptionUsageWindow[] = [];
++  const used = (remainingPercent: unknown, total: unknown, usedCount: unknown) => {
++    const remaining = finite(remainingPercent);
++    if (remaining !== undefined) return clampPercent(100 - remaining);
++    const all = finite(total);
++    const spent = finite(usedCount);
++    return all !== undefined && all > 0 && spent !== undefined ? clampPercent((spent / all) * 100) : undefined;
++  };
++  for (const raw of rows) {
++    const row = record(raw);
++    if (!row) continue;
++    const name = typeof row.model_name === "string" && row.model_name.trim() ? row.model_name.trim().slice(0, 64) : "Token Plan";
++    const interval = used(
++      row.current_interval_remaining_percent,
++      row.current_interval_total_count,
++      row.current_interval_usage_count,
++    );
++    const intervalEnd = finite(row.end_time);
++    if (interval !== undefined)
++      windows.push({
++        id: `${name}:interval`,
++        usedPercent: interval,
++        windowMinutes: 300,
++        ...(intervalEnd && intervalEnd > 0 ? { resetAt: intervalEnd } : {}),
++      });
++    const weekly = used(
++      row.current_weekly_remaining_percent,
++      row.current_weekly_total_count,
++      row.current_weekly_usage_count,
++    );
++    const weeklyEnd = finite(row.weekly_end_time);
++    if (weekly !== undefined)
++      windows.push({
++        id: `${name}:weekly`,
++        usedPercent: weekly,
++        windowMinutes: 10_080,
++        ...(weeklyEnd && weeklyEnd > 0 ? { resetAt: weeklyEnd } : {}),
++      });
++  }
++  return windows.length
++    ? { status: "available", source: "MiniMax Token Plan", observedAt, windows }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++}
++
++export async function readApiKeyPlanUsage(
++  route: ApiKeyPlanRoute,
++  apiKey: string,
++  baseUrl: string,
++  fetcher: typeof fetch,
++  now = Date.now,
++): Promise<SubscriptionUsageResult> {
++  const url =
++    route === "opencode-go"
++      ? "https://opencode.ai/zen/go/v1/usage"
++      : `${new URL(baseUrl).origin}/v1/token_plan/remains`;
++  try {
++    const response = await fetcher(url, {
++      method: "GET",
++      redirect: "error",
++      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
++      headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
++    });
++    if (!response.ok) {
++      await response.body?.cancel();
++      return {
++        status:
++          response.status === 401
++            ? "auth-required"
++            : response.status === 403
++              ? "access-denied"
++              : response.status === 429
++                ? "rate-limited"
++                : "unavailable",
++      };
++    }
++    const payload: unknown = await response.json();
++    return route === "opencode-go"
++      ? parseOpenCodeGoUsage(payload, now())
++      : parseMiniMaxTokenPlanUsage(payload, now());
++  } catch {
++    return { status: "unavailable" };
++  }
++}
++
++/** 同一连接共享读数；密钥只以哈希参与缓存身份，修改或删除密钥会让旧读数失效。 */
++export function createApiKeyPlanUsageReader(
++  facade: ProviderSettingsFacade,
++  fetcher: typeof fetch,
++  now = Date.now,
++) {
++  const cache = new Map<
++    string,
++    { revision: string; value?: SubscriptionUsageResult; pending?: Promise<SubscriptionUsageResult> }
++  >();
++  const scope = (id: string) => {
++    const provider = facade.getView().providers.find((entry) => entry.providerId === id);
++    const config = provider?.effectiveConfig;
++    if (config?.access?.type !== "api-key") return undefined;
++    const route = apiKeyPlanRoute({ templateId: provider?.templateId, baseUrl: config.api?.baseUrl });
++    const apiKey = getEnabledApiKeys(config.access)[0];
++    if (!route || !apiKey || !config.api?.baseUrl) return undefined;
++    const fingerprint = createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
++    return {
++      route,
++      apiKey,
++      baseUrl: config.api.baseUrl,
++      revision: JSON.stringify([route, config.api.baseUrl, fingerprint]),
++    };
++  };
++  return {
++    accounts(id: string): SubscriptionAccountsView | undefined {
++      const current = scope(id);
++      return current
++        ? { accounts: [{ id: "api-key", label: "API Key", active: true }], autoSwitch: false, revision: current.revision }
++        : undefined;
++    },
++    async read(id: string, refresh = false): Promise<SubscriptionUsageResult> {
++      const current = scope(id);
++      if (!current) {
++        cache.delete(id);
++        return { status: "unsupported" };
++      }
++      const scoped = { accountId: "api-key", connectionRevision: current.revision };
++      let entry = cache.get(id);
++      if (entry?.revision !== current.revision) {
++        entry = { revision: current.revision };
++        cache.set(id, entry);
++      }
++      if (entry.pending) return entry.pending;
++      if (!refresh && entry.value && (entry.value.refreshAfter ?? 0) > now()) return entry.value;
++      const active = entry;
++      const request = (async () => {
++        const value = await readApiKeyPlanUsage(current.route, current.apiKey, current.baseUrl, fetcher, now);
++        // 读取期间密钥被修改：迟到的结果不能发布到新密钥上。
++        if (scope(id)?.revision !== active.revision || cache.get(id) !== active)
++          return { status: "unavailable" as const, ...scoped };
++        const result: SubscriptionUsageResult =
++          value.status === "unavailable" && active.value?.status === "available"
++            ? { ...active.value, refreshError: "unavailable", refreshAfter: now() + CACHE_MS }
++            : { ...value, ...scoped, refreshAfter: now() + CACHE_MS };
++        active.value = result;
++        return result;
++      })();
++      active.pending = request;
++      try {
++        return await request;
++      } finally {
++        if (active.pending === request) active.pending = undefined;
++      }
++    },
++  };
++}
+diff --git a/packages/services/src/model-provider/nativeCliUsage.ts b/packages/services/src/model-provider/nativeCliUsage.ts
+index b8a235b..bb4e64e 100644
+--- a/packages/services/src/model-provider/nativeCliUsage.ts
++++ b/packages/services/src/model-provider/nativeCliUsage.ts
+@@ -1,3 +1,4 @@
++import { createApiKeyPlanUsageReader } from "./apiKeyPlanUsage.js";
+ import type { NativeCliAccessConfigObject, ProviderSettingsFacade } from "@zcode/provider";
+ import type { NativeCliConnectionAdapter } from "./nativeCliConnection.js";
+ import type {
+@@ -63,8 +64,10 @@ export function createConnectionUsageOperations(
+   ensureReady: () => Promise<void>,
+   native?: NativeCliConnectionAdapter,
+   subscriptions?: SubscriptionConnectionOwner,
++  fetcher?: typeof fetch,
+ ) {
+   const nativeUsage = createNativeCliUsageReader(facade, native);
++  const apiKeyPlans = fetcher ? createApiKeyPlanUsageReader(facade, fetcher) : undefined;
+   return {
+     async getSubscriptionUsage(
+       id: string,
+@@ -73,13 +76,14 @@ export function createConnectionUsageOperations(
+     ): Promise<SubscriptionUsageResult> {
+       await ensureReady();
+       if (nativeUsage.accounts(id)) return nativeUsage.read(id, refresh, accountId);
++      if (apiKeyPlans?.accounts(id)) return apiKeyPlans.read(id, refresh);
+       return subscriptions
+         ? subscriptions.usage(id, refresh, accountId)
+         : { status: "unsupported" };
+     },
+     async getSubscriptionAccounts(id: string): Promise<SubscriptionAccountsView> {
+       await ensureReady();
+-      const accounts = nativeUsage.accounts(id);
++      const accounts = nativeUsage.accounts(id) ?? apiKeyPlans?.accounts(id);
+       if (accounts) return accounts;
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+       return subscriptions.accounts(id);
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 7b0e775..00bc113 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -44,7 +44,7 @@ export function createProviderSettingsService(
+     { identity: string; request: Promise<ModelDiscoveryResult> }
+   >();
+   return {
+-    ...createConnectionUsageOperations(facade, ensureReady, nativeCli, subscriptions),
++    ...createConnectionUsageOperations(facade, ensureReady, nativeCli, subscriptions, fetch),
+     ...createModelSettingsAssistantService(facade, ensureReady, assistantWorkspacePath),
+     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
+     async previewCcSwitchImport(path) {
+diff --git a/packages/services/src/model-provider/subscriptionUsage.ts b/packages/services/src/model-provider/subscriptionUsage.ts
+index 40e60fe..c37f16d 100644
+--- a/packages/services/src/model-provider/subscriptionUsage.ts
++++ b/packages/services/src/model-provider/subscriptionUsage.ts
+@@ -135,7 +135,7 @@ export function parseSubscriptionUsage(
+       const start = startText ? Date.parse(startText) : NaN;
+       const end = endText ? Date.parse(endText) : NaN;
+       windows.push({
+-        id: "credits",
++        id: "default:credits",
+         usedPercent,
+         ...(Number.isFinite(end) ? { resetAt: end } : {}),
+         ...(Number.isFinite(start) && Number.isFinite(end) && end > start
+diff --git a/packages/services/test/api-key-plan-usage.test.ts b/packages/services/test/api-key-plan-usage.test.ts
+new file mode 100644
+index 0000000..20c56e7
+--- /dev/null
++++ b/packages/services/test/api-key-plan-usage.test.ts
+@@ -0,0 +1,92 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import {
++  apiKeyPlanRoute,
++  parseMiniMaxTokenPlanUsage,
++  parseOpenCodeGoUsage,
++  readApiKeyPlanUsage,
++} from "../src/model-provider/apiKeyPlanUsage.js";
++
++test("only OpenCode Go and MiniMax Token Plan templates route to plan allowance", () => {
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://opencode.ai/zen/go/v1" }), "opencode-go");
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://opencode.ai/zen/v1" }), undefined);
++  assert.equal(
++    apiKeyPlanRoute({ templateId: "fleet-minimax-token-plan-cn", baseUrl: "https://api.minimaxi.com/anthropic" }),
++    "minimax-token-plan",
++  );
++  // 同域名的普通按量 MiniMax API 不读取套餐额度。
++  assert.equal(apiKeyPlanRoute({ templateId: "minimax", baseUrl: "https://api.minimaxi.com/v1" }), undefined);
++  assert.equal(apiKeyPlanRoute({ baseUrl: "not a url" }), undefined);
++});
++
++test("OpenCode Go maps rolling/weekly/monthly windows and keeps invalid rows unknown", () => {
++  const parsed = parseOpenCodeGoUsage(
++    {
++      usage: {
++        rolling: { status: "ok", percent: 12.5, resetsAt: "2026-10-05T20:00:00Z" },
++        weekly: { status: "ok", percent: 40, resetsAt: "2026-10-12T00:00:00Z" },
++        monthly: { status: "rate-limited", percent: 101, resetsAt: "2026-11-01T00:00:00Z" },
++      },
++    },
++    7,
++  );
++  assert.equal(parsed.status, "available");
++  if (parsed.status === "available")
++    assert.deepEqual(parsed.windows, [
++      { id: "default:rolling", usedPercent: 12.5, windowMinutes: 300, resetAt: Date.parse("2026-10-05T20:00:00Z") },
++      { id: "default:weekly", usedPercent: 40, windowMinutes: 10_080, resetAt: Date.parse("2026-10-12T00:00:00Z") },
++    ]);
++  assert.deepEqual(parseOpenCodeGoUsage({}, 7), { status: "unavailable", unavailableReason: "no-provider-data" });
++});
++
++test("MiniMax Token Plan prefers remaining percent, falls back to counts, and treats missing plan as unsupported", () => {
++  const parsed = parseMiniMaxTokenPlanUsage(
++    {
++      base_resp: { status_code: 0 },
++      model_remains: [
++        {
++          model_name: "MiniMax-M2",
++          current_interval_remaining_percent: 75,
++          end_time: 1_790_000_000_000,
++          current_weekly_total_count: "200",
++          current_weekly_usage_count: "50",
++          weekly_end_time: 1_790_500_000_000,
++        },
++      ],
++    },
++    7,
++  );
++  assert.equal(parsed.status, "available");
++  if (parsed.status === "available")
++    assert.deepEqual(parsed.windows, [
++      { id: "MiniMax-M2:interval", usedPercent: 25, windowMinutes: 300, resetAt: 1_790_000_000_000 },
++      { id: "MiniMax-M2:weekly", usedPercent: 25, windowMinutes: 10_080, resetAt: 1_790_500_000_000 },
++    ]);
++  assert.deepEqual(parseMiniMaxTokenPlanUsage({ base_resp: { status_code: 1004 }, model_remains: null }, 7), {
++    status: "unsupported",
++  });
++});
++
++test("plan reads use the saved key, fixed endpoints and distinct failure states", async () => {
++  const seen: { url: string; auth: string | null }[] = [];
++  const fetcher: typeof fetch = async (url, init) => {
++    seen.push({ url: String(url), auth: new Headers(init?.headers).get("authorization") });
++    return String(url).includes("opencode")
++      ? Response.json({ usage: { weekly: { percent: 1, resetsAt: "2026-10-12T00:00:00Z" } } })
++      : new Response(null, { status: 401 });
++  };
++  const go = await readApiKeyPlanUsage("opencode-go", "fixture-go", "https://opencode.ai/zen/go/v1", fetcher, () => 1);
++  assert.equal(go.status, "available");
++  const mm = await readApiKeyPlanUsage(
++    "minimax-token-plan",
++    "fixture-mm",
++    "https://api.minimaxi.com/anthropic",
++    fetcher,
++    () => 1,
++  );
++  assert.equal(mm.status, "auth-required");
++  assert.deepEqual(seen, [
++    { url: "https://opencode.ai/zen/go/v1/usage", auth: "Bearer fixture-go" },
++    { url: "https://api.minimaxi.com/v1/token_plan/remains", auth: "Bearer fixture-mm" },
++  ]);
++});
+diff --git a/packages/services/test/subscription-usage.test.ts b/packages/services/test/subscription-usage.test.ts
+index b08c196..c6e60e8 100644
+--- a/packages/services/test/subscription-usage.test.ts
++++ b/packages/services/test/subscription-usage.test.ts
+@@ -270,7 +270,7 @@ test("Grok credits prefer the official percentage and current period", async ()
+   if (result.status === "available")
+     assert.deepEqual(result.windows, [
+       {
+-        id: "credits",
++        id: "default:credits",
+         usedPercent: 37,
+         windowMinutes: 10080,
+         resetAt: Date.parse("2026-09-27T00:00:00Z"),
+@@ -306,7 +306,7 @@ test("Grok legacy billing falls back to monthly limit/used as Grok Build billing
+   if (legacy.status === "available")
+     assert.deepEqual(legacy.windows, [
+       {
+-        id: "credits",
++        id: "default:credits",
+         usedPercent: 25,
+         resetAt: Date.parse("2026-10-31T00:00:00Z"),
+         windowMinutes: 30 * 24 * 60,
+diff --git a/packages/shared/src/api-key-plan-usage.ts b/packages/shared/src/api-key-plan-usage.ts
+new file mode 100644
+index 0000000..3fa330a
+--- /dev/null
++++ b/packages/shared/src/api-key-plan-usage.ts
+@@ -0,0 +1,26 @@
++/**
++ * API Key 套餐的额度读取路由（OpenCode Go、MiniMax Token Plan）。
++ * 设置页与宿主服务共用同一判定，避免界面显示额度区块而服务不支持，或反之。
++ */
++export type ApiKeyPlanRoute = "opencode-go" | "minimax-token-plan";
++
++const MINIMAX_TOKEN_PLAN_TEMPLATES = new Set(["fleet-minimax-token-plan", "fleet-minimax-token-plan-cn"]);
++
++export function apiKeyPlanRoute(provider: {
++  templateId?: string | null;
++  baseUrl?: string | null;
++}): ApiKeyPlanRoute | undefined {
++  let url: URL | undefined;
++  try {
++    url = provider.baseUrl ? new URL(provider.baseUrl) : undefined;
++  } catch {
++    url = undefined;
++  }
++  if (url?.hostname === "opencode.ai" && url.pathname.startsWith("/zen/go")) return "opencode-go";
++  // 普通 MiniMax 按量 API 与 Token Plan 共用域名；只对 Token Plan 模板读取，避免把余额当成套餐额度。
++  if (provider.templateId && MINIMAX_TOKEN_PLAN_TEMPLATES.has(provider.templateId)) {
++    if (url?.hostname === "api.minimax.io" || url?.hostname === "api.minimaxi.com")
++      return "minimax-token-plan";
++  }
++  return undefined;
++}
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index e1e31aa..79f3695 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -286,6 +286,7 @@ export * from "./intranetProbe.js";
+ export * from "./intranetDefaults.js";
+ export * from "./hooks.js";
+ export * from "./openrouter-attribution.js";
++export * from "./api-key-plan-usage.js";
+ export * from "./workspaceSessionRestore.js";
+ export * from "./skill-scan-policy.js";
+ export * from "./browser-use/index.js";
+diff --git a/packages/ui/src/lib/subscriptionPlanPresentation.ts b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+index d1367cc..5d9ecbb 100644
+--- a/packages/ui/src/lib/subscriptionPlanPresentation.ts
++++ b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+@@ -1,4 +1,10 @@
+-type SubscriptionKind = "openai-codex" | "github-copilot" | "xai" | "claude";
++type SubscriptionKind =
++  | "openai-codex"
++  | "github-copilot"
++  | "xai"
++  | "claude"
++  | "opencode-go"
++  | "minimax-token-plan";
+ const COLORS = {
+   neutral: "bg-muted text-foreground-subtle",
+   green: "bg-success/15 text-foreground border-success/30",
+@@ -8,7 +14,7 @@ const COLORS = {
+   teal: "bg-usage-chart-4/15 text-foreground border-usage-chart-4/30",
+ } as const;
+ type Plan = readonly [name: string, color: keyof typeof COLORS];
+-const PLANS: Record<SubscriptionKind, Record<string, Plan>> = {
++const PLANS: Partial<Record<SubscriptionKind, Record<string, Plan>>> = {
+   claude: {
+     pro: ["Pro", "green"],
+     max: ["Max", "gold"],
+@@ -56,6 +62,6 @@ export function subscriptionPlanPresentation(kind: SubscriptionKind, plan: strin
+     .toLowerCase()
+     .replace(/[\s_-]/g, "")
+     .replace(/\+/g, "plus");
+-  const known = PLANS[kind][key];
++  const known = PLANS[kind]?.[key];
+   return { name: known?.[0] ?? plan, className: COLORS[known?.[1] ?? "neutral"] };
+ }
+diff --git a/packages/ui/src/settings/model-provider-section/ApiKeyPlanAllowance.tsx b/packages/ui/src/settings/model-provider-section/ApiKeyPlanAllowance.tsx
+new file mode 100644
+index 0000000..149f468
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/ApiKeyPlanAllowance.tsx
+@@ -0,0 +1,34 @@
++import { useServices } from "@/hooks/useServices.js";
++import { useSubscriptionAccountList } from "./useSubscriptionAccountList.js";
++import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
++import type { ApiKeyPlanRoute } from "@zcode/shared";
++
++/** API Key 套餐的额度沿用订阅账号的同一额度卡片与刷新逻辑；密钥本身只在宿主服务内使用。 */
++export function ApiKeyPlanAllowance({
++  providerId,
++  route,
++  onError,
++}: {
++  providerId: string;
++  route: ApiKeyPlanRoute;
++  onError(error: unknown): void;
++}) {
++  const { providerSettingsService } = useServices();
++  const { accounts, reload } = useSubscriptionAccountList(
++    providerSettingsService,
++    providerId,
++    () => {},
++    onError,
++  );
++  const account = accounts?.accounts.find((entry) => entry.active);
++  return account && accounts ? (
++    <SubscriptionUsageSection
++      providerId={providerId}
++      kind={route}
++      accountId={account.id}
++      revision={accounts.revision}
++      showReset={false}
++      onScopeChanged={() => void reload()}
++    />
++  ) : null;
++}
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index ce1a33b..25b6ef2 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -1,3 +1,5 @@
++import { ApiKeyPlanAllowance } from "./ApiKeyPlanAllowance.js";
++import { apiKeyPlanRoute } from "@zcode/shared";
+ import { NativeCliConnectionSection } from "./NativeCliConnectionSection.js";
+ import { modelDiscoveryBlockReason } from "./modelDiscoveryActions.js";
+ import { SubscriptionConnectionSection } from "./SubscriptionConnectionSection.js";
+@@ -934,6 +936,10 @@ export function InlineEditableProviderCard({
+   const headerProviderName = providerDisplayName;
+   const isAccountProvider = provider.config.access?.type === "zhipu-account";
+   const isApiKeyProvider = isApiKeyAccess(provider.config.access);
++  const apiKeyPlan =
++    provider.config.access?.type === "api-key"
++      ? apiKeyPlanRoute({ templateId: provider.templateId, baseUrl: provider.config.api?.baseUrl })
++      : undefined;
+   const effectiveHeaderVisible = headerVisible && statusSection === undefined;
+ 
+   return (
+@@ -1074,6 +1080,15 @@ export function InlineEditableProviderCard({
+           />
+         ) : null}
+ 
++        {isApiKeyProvider && apiKeyPlan && configuredProviderKeys(provider).some((key) => key.trim()) ? (
++          <ApiKeyPlanAllowance
++            key={`plan:${provider.providerId}`}
++            providerId={provider.providerId}
++            route={apiKeyPlan}
++            onError={() => undefined}
++          />
++        ) : null}
++
+         {isApiKeyProvider && connectionInvalid ? (
+           <p role="alert" className="text-ui-sm text-destructive">
+             {intl.formatMessage({ id: "settings.modelProvider.catalog.invalid" })}
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index 3ce091f..b0cc5e8 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -25,7 +25,7 @@ export function SubscriptionUsageSection({
+ }: {
+   providerId: string;
+   revision: string;
+-  kind: "openai-codex" | "github-copilot" | "xai" | "claude";
++  kind: "openai-codex" | "github-copilot" | "xai" | "claude" | "opencode-go" | "minimax-token-plan";
+   accountId?: string;
+   enabled?: boolean;
+   compact?: boolean;

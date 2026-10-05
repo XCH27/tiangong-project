@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Show OpenCode Go and MiniMax Token Plan allowance from the saved API key on the existing
+  allowance card; label Grok's weekly credits by duration.
+
 - Read Grok allowance per Grok Build `billing.rs` (credits, deprecated monthly fallback, proto3-omitted
   zero on a confirmed weekly period), fixing the live SuperGrok account's empty quota; add the
   Orca/Paseo `oauth/usage` fallback for Claude when the SDK control returns no windows; display the
