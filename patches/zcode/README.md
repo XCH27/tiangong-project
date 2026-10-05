@@ -200,3 +200,13 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0133 | [0133-contain-contextual-assistant-resize.patch](0133-contain-contextual-assistant-resize.patch) | `0efe00738ffcd6935c13b244056631a658871417` |
 
 | 0134 | [0134-shared-on-demand-guide-topics.patch](0134-shared-on-demand-guide-topics.patch) | `5791dcc138695154e75443839f83c3a43d58a099` |
+
+| 0135 | [0135-file-publication-integrity.patch](0135-file-publication-integrity.patch) | `9b493fff3eaff99cf3ab343c192eccea4c877777` |
+
+| 0136 | [0136-background-agent-stop-settlement.patch](0136-background-agent-stop-settlement.patch) | `3151c06000e8ed7842c809425bac41fb3d3523fb` |
+
+| 0137 | [0137-api-request-and-accounting-chain.patch](0137-api-request-and-accounting-chain.patch) | `132c16bc2674fe95bc5c60c4646ab46cd4682cb9` |
+
+| 0138 | [0138-unknown-workflow-effect-recovery.patch](0138-unknown-workflow-effect-recovery.patch) | `6b5e311266a51e4ecdd9c54f472c9d6c25e22c25` |
+
+| 0139 | [0139-catalog-observation-identity.patch](0139-catalog-observation-identity.patch) | `58e7eb82e244aa9115fb903df370e801ca2e8dcb` |

@@ -1,0 +1,254 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index f97eaa6..3b09f9e 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -36,6 +36,14 @@ changes another model's corrections or adds a storage owner. The existing
+ `model-discovery-persistence.test.ts` exercises these distinct operations with synthetic
+ catalog transport and the real personal repository.
+ 
++Changing a model ID moves only explicit personal corrections and membership/order. A returned
++directory observation remains under the exact ID the provider returned; it must not become
++provider evidence for an unlisted replacement. Preview and committed edits use this same rule.
++Deleting the actual connection removes its personal and observed exact rules together, so
++reusing that connection ID cannot attach an old directory to a new credential. Recommendation
++restore still clears personal overrides only. Cold reopen and failed refresh preserve these
++boundaries; manual model IDs remain available without fabricating vendor capabilities.
++
+ The enabled-key guard inspects effective Headers without transferring a Request body. Normal
+ failover/revocation and network owners remain unchanged; an exhausted pool keeps its typed stop
+ identity through final error normalization to workflow recovery. Successful accounting merges
+diff --git a/package.json b/package.json
+index 7f4e0b4..ef8dfcd 100644
+--- a/package.json
++++ b/package.json
+@@ -49,7 +49,7 @@
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+     "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts",
+-    "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts",
++    "test:provider-catalog": "tsx --test packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+     "test:embedded-browser": "pnpm test:browser-scope && node scripts/test-embedded-browser.mjs",
+diff --git a/packages/provider/src/config/model-config.ts b/packages/provider/src/config/model-config.ts
+index 14793eb..db8e211 100644
+--- a/packages/provider/src/config/model-config.ts
++++ b/packages/provider/src/config/model-config.ts
+@@ -604,9 +604,8 @@ export class ModelConfigRules {
+     if (currentModelId === nextModelId) return this;
+     return new ModelConfigRules(
+       this.#rules.map((rule) =>
+-        (isExactModelRule(rule) || rule.type === "discovered-provider-model") &&
+-        rule.providerId === providerId &&
+-        rule.modelId === currentModelId
++        // Vendor observations retain their returned ID; only personal corrections may move.
++        isExactModelRule(rule) && rule.providerId === providerId && rule.modelId === currentModelId
+           ? { ...rule, modelId: nextModelId }
+           : rule,
+       ),
+@@ -615,7 +614,12 @@ export class ModelConfigRules {
+ 
+   deleteExactForProvider(providerId: string): ModelConfigRules {
+     return new ModelConfigRules(
+-      this.#rules.filter((rule) => !isExactModelRule(rule) || rule.providerId !== providerId),
++      // Connection deletion must not attach old observations to a reused connection ID.
++      this.#rules.filter(
++        (rule) =>
++          (!isExactModelRule(rule) && rule.type !== "discovered-provider-model") ||
++          rule.providerId !== providerId,
++      ),
+     );
+   }
+ 
+diff --git a/packages/services/test/catalog-fact-lifecycle.test.ts b/packages/services/test/catalog-fact-lifecycle.test.ts
+new file mode 100644
+index 0000000..f4b6f1e
+--- /dev/null
++++ b/packages/services/test/catalog-fact-lifecycle.test.ts
+@@ -0,0 +1,186 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
++import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
++
++const SOURCE_ID = "vendor/source-only";
++const MANUAL_ID = "vendor/not-listed";
++
++async function fixture() {
++  const root = await mkdtemp(join(tmpdir(), "fleet-catalog-facts-"));
++  const options = {
++    personalFilePath: join(root, "providers.json"),
++    zcodeBuiltinFilePath: fileURLToPath(
++      new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++    ),
++    personalPollingIntervalMs: false as const,
++    watch: false,
++  };
++  let unavailable = false;
++  const create = () =>
++    new ProviderRuntime({
++      configRuntime: createProviderConfigRuntime(options),
++      fetch: async () =>
++        unavailable
++          ? new Response(null, { status: 503 })
++          : Response.json({
++              data: [
++                {
++                  id: SOURCE_ID,
++                  context_length: 65536,
++                  max_output_tokens: 4096,
++                  architecture: { input_modalities: ["text"], output_modalities: ["text"] },
++                  supported_parameters: ["tools", "structured_outputs"],
++                },
++              ],
++            }),
++    });
++  let runtime = create();
++  await runtime.start();
++  const add = async () =>
++    runtime.providerSettings.createPersonalProvider({
++      templateId: "openrouter",
++      initialConfig: { access: { type: "api-key", apiKey: "synthetic" } },
++    });
++  const { providerId } = await add();
++  await runtime.providerSettings.discoverModels(providerId);
++  return {
++    providerId,
++    add,
++    get runtime() {
++      return runtime;
++    },
++    get service() {
++      return runtime.providerSettings;
++    },
++    model: async (id: string, provider = providerId) =>
++      (await runtime.providerSettings.getView()).providers
++        .find((row) => row.providerId === provider)!
++        .models.find((row) => row.modelId === id)!,
++    failRefresh() {
++      unavailable = true;
++    },
++    async reopen() {
++      runtime.dispose();
++      runtime = create();
++      await runtime.start();
++    },
++    async close() {
++      runtime.dispose();
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}
++
++for (const edit of ["rename", "draft"] as const) {
++  test(`${edit} does not claim old provider facts for a new model ID through failed refresh/reopen`, async () => {
++    const f = await fixture();
++    try {
++      assert.equal((await f.model(SOURCE_ID)).contextEvidenceSource, "provider");
++      if (edit === "rename")
++        await f.service.renamePersonalModel(f.providerId, SOURCE_ID, MANUAL_ID);
++      else
++        await f.service.savePersonalModelDraft({
++          providerId: f.providerId,
++          originalModelId: SOURCE_ID,
++          nextModelId: MANUAL_ID,
++          personalConfig: {},
++          useRecommendedConfig: true,
++          basedOnRevision: (await f.service.getView()).revision,
++        });
++      const inspect = async () => {
++        const model = await f.model(MANUAL_ID);
++        assert.ok(model);
++        assert.notEqual(model.contextEvidenceSource, "provider");
++        assert.equal(model.evidenceConfig.properties?.contextWindow, undefined);
++        assert.equal(model.evidenceConfig.properties?.supportsToolCall, undefined);
++        assert.equal(model.evidenceConfig.optionSpecs?.maxOutputTokens?.max, undefined);
++      };
++      await inspect();
++      f.failRefresh();
++      await assert.rejects(f.service.discoverModels(f.providerId));
++      await inspect();
++      await f.reopen();
++      await inspect();
++    } finally {
++      await f.close();
++    }
++  });
++}
++
++test("model draft preview keeps personal correction and omits unrelated provider observation", async () => {
++  const f = await fixture();
++  try {
++    const preview = await f.service.resolveModelConfig({
++      providerId: f.providerId,
++      originalModelId: SOURCE_ID,
++      modelId: MANUAL_ID,
++      personalConfig: { properties: { contextWindow: 32000 } },
++    });
++    assert.equal(preview.effectiveConfig.properties?.contextWindow, 32000);
++    assert.equal(preview.evidenceConfig.optionSpecs?.maxOutputTokens?.max, undefined);
++    assert.equal((await f.model(SOURCE_ID)).contextEvidenceSource, "provider");
++  } finally {
++    await f.close();
++  }
++});
++
++test("actual connection deletion clears observations before same-ID recreation, preserving another connection", async () => {
++  const f = await fixture();
++  try {
++    const other = await f.add();
++    await f.service.discoverModels(other.providerId);
++    await f.service.deletePersonalProvider(f.providerId);
++    const restored = await f.add();
++    assert.equal(restored.providerId, f.providerId);
++    await f.service.addPersonalModel(restored.providerId, SOURCE_ID, {});
++    const check = async () => {
++      const model = await f.model(SOURCE_ID, restored.providerId);
++      assert.equal(model.evidenceConfig.properties?.contextWindow, undefined);
++      assert.notEqual(model.contextEvidenceSource, "provider");
++      assert.equal(
++        (await f.model(SOURCE_ID, other.providerId)).evidenceConfig.properties?.contextWindow,
++        65536,
++      );
++    };
++    await check();
++    await f.reopen();
++    await check();
++  } finally {
++    await f.close();
++  }
++});
++
++test("renamed explicit personal corrections survive; restore keeps exact returned observations", async () => {
++  const f = await fixture();
++  try {
++    await f.service.savePersonalModelDraft({
++      providerId: f.providerId,
++      originalModelId: SOURCE_ID,
++      nextModelId: SOURCE_ID,
++      personalConfig: { properties: { contextWindow: 32000 } },
++      useRecommendedConfig: true,
++      basedOnRevision: (await f.service.getView()).revision,
++    });
++    await f.service.renamePersonalModel(f.providerId, SOURCE_ID, MANUAL_ID);
++    assert.equal((await f.model(MANUAL_ID)).personalExactConfig?.properties?.contextWindow, 32000);
++    await f.service.addPersonalModel(f.providerId, SOURCE_ID, {});
++    await f.service.savePersonalModelDraft({
++      providerId: f.providerId,
++      originalModelId: SOURCE_ID,
++      nextModelId: SOURCE_ID,
++      personalConfig: {},
++      useRecommendedConfig: true,
++      basedOnRevision: (await f.service.getView()).revision,
++    });
++    await f.reopen();
++    assert.equal((await f.model(SOURCE_ID)).evidenceConfig.properties?.contextWindow, 65536);
++    assert.equal((await f.model(MANUAL_ID)).personalExactConfig?.properties?.contextWindow, 32000);
++  } finally {
++    await f.close();
++  }
++});

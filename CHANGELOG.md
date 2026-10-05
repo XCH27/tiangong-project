@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Correct file-publication data loss and stale revisions, background cancellation before fallible
+  receipts, unknown opaque workflow replay, API body/pool-stop/accounting propagation, and catalogue
+  fact ownership. Preserve original completed-verifier invalidation after a changed workspace;
+  independent cross-review also repairs partial-read hashes, profile-split locks, masked staging
+  errors and equal-metadata stale Read consumers. Late entered-effect receipts remain unresolved.
+
 - Audit every registered capability and the candidate/retained change inventories against their
   actual producers, consumers and recovery paths. Record reproduced data-loss, repeated-effect,
   cancellation, plugin-withdrawal, API-body, catalogue and accounting failures separately from

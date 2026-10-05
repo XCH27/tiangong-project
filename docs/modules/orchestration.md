@@ -40,6 +40,18 @@ records. Preserve those owners when the ordered slices add contracts; do not inf
 from **[decided]**, a diagram, or a target field list. New feature work also remains subject to the
 baseline exit in `TODO.md`.
 
+### Candidate background cancellation
+
+The existing RuntimeTaskRegistry and Session events own task state. A Stop requests child
+cancellation before output/notification I/O; failed settlement retains an execution-local retry
+plan, not a second task store. Only that run may finish its artifacts/receipts. Concurrent Stop
+shares the same flight; failed publication does not claim a committed terminal outcome. Normal
+settlement releases its temporary coordination state, while a failed Stop plan remains retryable.
+Known completed output wins once the registry commits completion. Reusing its task ID waits for
+the old receipt writer, then the existing Started event resets the old terminal projection.
+Cancellation requests do not prove every native executor terminated. Receipt commit followed by
+lost acknowledgement, cold reconstruction and generic late I/O require separate recovery proof.
+
 ### 0. The one-sentence model
 
 **Code owns execution state; any Session may delegate; surfaces operate on the same authorities.**

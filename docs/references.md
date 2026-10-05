@@ -3981,3 +3981,42 @@ Delivery status remains solely in [the capability register](capabilities.md#capa
 | [ORCH-12](modules/marketplace.md) | shell, domains | DOM-02, DOM-03, DOM-08 |
 
 The previous handoff was read as evidence, not instructions. Candidate Git/patch/recovery protection and Pi Core selection now differ from its snapshot; plugin UI absence and broad page-operation/native-production gaps remain true. Mixed retained/candidate register descriptions and older execution-source pointers require reconciliation without transferring authorities. Most importantly, passing the earlier suites did not cover combined SDK/header/body behavior, post-result observer failure, partial scheduler settlement, interrupted effects, pending scope changes or file-publication faults; those gaps must be tested at the actual producer and consumer.
+
+
+### Source-backed kernel corrections
+
+The active comparison links nine original findings to bounded corrections: DOM-20/12,
+K-01/02 and API-01/03/04/05/06. It retains the selected ZCode Host, installed Pi Core, canonical
+Session/registry/journal and provider repository. No authority cutover, credential import,
+production dependency, UI redesign or reference re-pin is implied. Evidence lives in
+`/Volumes/AIGC/天工参考/meta/fleet-kernel-corrections/manifest.json`; earlier red fixtures and the
+whole-project finding index above remain intact. Capability delivery statuses are unchanged.
+
+| Chain | Reference mechanism and disposition | Implemented boundary and evidence |
+|---|---|---|
+| File Read → Write/Edit → atomic publication → Host/Pi/SQLite | Original ZCode `29628c9`; GenOffice `e4be545a881eed5b700d5da997aae26e8e24fc82` atomic writer; Kun `ebce7f6cd94fc2882009fcf8169d7a59f5f5c289` pre-commit/signal seam. Current public tips checked. GenOffice's destructive direct-write fallback is rejected; bounded retry and staging are adapted under the existing FileSystemPort. | Same canonical file and same OS-user lock rendezvous across HOME/TMPDIR profiles; revision/hash recheck before publication; optional cancellation before commit; preserve executable mode and original bytes on fault. Truncated reads omit a whole-file hash. Strict complete Read consumers compare content before metadata shortcuts. Real file, separate-process and Host/Pi/SQLite failure/freshness cases. |
+| Background Stop → abort → artifacts/notification/events → registry → resumed child | Pi current tip `98d2e1947aa9c75dff4c20474d541873dadc1d05` Core `agent.ts` abort/waitForIdle and Coding Agent session cancellation order; Cindy current tip `a5c582f4ebf69f28f83f6e4f2f22d589a5c94285` continuation retirement; Craft v0.14.0 `73bd9c2a3573158bea880984eb8d5fdb41e0cac2` late-event fencing. Immutable inspected files retained externally; required pins and installed Core unchanged. | Existing AbortController signals before receipt I/O. Per-run temporary write coordination retains failed Stop retry stages, fences old completion, releases normal terminal state, preserves known completion and waits the prior writer on same-child resume. TaskStop/public Runtime/reducer plus disposable real Node termination proof; not universal native termination or exactly-once receipts. |
+| Opaque world.run → admitted node → effect → durable result → orphan/resume/amend | Original ZCode's running fallthrough duplicated effects. OpenCode current immutable `907b3bc518fa48e90e8ec24dd327d13eee71c36c` V2 typed unknown interruption and Pi durable-call non-idempotence are comparisons, not imported Hosts. Original dynamic-workflow Skill/patterns define completed-result invalidation after a live world change. | Unknown admitted run refuses redispatch, retaining its original row. Existing amendment lineage and hash occurrence carry unknown barriers through cache closure and cold replay. Completed same-run receipts retain original replay; amended completed imports invalidate after live changes. Missing/cyclic lineage refuses recovery. Actual subprocess append + reopened SQLite proves no duplicate recovery effect; independently fresh work still runs. |
+| API selection/switch → Headers/body → provider → SDK finish → accounting/error → workflow | Existing transport/credential owners and installed AI SDK7 `7.0.127` stream source: finish-step carries provider metadata; final finish does not. Follow original provider-body/auth failover semantics and existing typed workflow stop policy. | Guard inspects Headers without transferring a Request body. Final adapter errors retain pool-stop code. Successful accounting overlays existing cost facts; step metadata stays within its attempt and clears on step/error/retry. Actual loopback POSTs cover three formats, generate/stream, revocation/rotation and zero/nonzero reported cost; not live entitlement or invoices. |
+| Model edit/preview → Rules → repository → refresh failure → cold reopen | Original provider Rules/personal repository own both human and Agent operations. Exact provider observations are facts about returned IDs, unlike explicit personal corrections. Existing recommendation restore semantics provide a countercase to indiscriminate cleanup. | Renames move personal corrections only; actual connection deletion clears both exact layers before identity reuse. Failed refresh/cold reopen do not manufacture capabilities for an unreturned ID. Five new lifecycle cases and the 37 existing discovery cases exercise real repository/facade/registry, with synthetic directory transport. |
+
+Cross-review found four additional coupled defects: a truncated prefix hash masqueraded as the
+whole file; HOME/TMPDIR split same-user file locks; close failure masked staging ENOSPC; and
+complete Read content could be stale despite equal size/time. Each was corrected at its producer or
+consumer and re-exercised independently. Lock coordination uses existing OS-user file persistence;
+if its cache cannot be used the write refuses, rather than bypassing serialization. It does not
+lock arbitrary foreign editors, create OS compare-and-swap or prove power-loss durability.
+
+An initial workflow repair also reused completed imports after world changes. Primary review
+rejected that expansion: an actual changed-source/identical verifier command returned old output.
+The correction restores original invalidation, carrying only uncertainty barriers and occurrence
+positions across closure. This retraction and the failing/passing countercase are retained in the
+workflow evidence; reading one replay branch was insufficient to define the whole feature.
+
+The independent entered-rename Stop fixture still shows a file may commit after the turn has
+settled cancelled without a late effect receipt (RECOVERY-01). This inherited generic executor
+settlement gap is explicitly pending; no rollback or no-effect claim follows from cancellation.
+Background after-commit acknowledgement loss, cold Stop-plan reconstruction, general native
+termination, paid/provider effects, plugin withdrawal, request budgets, scheduler/Goal and other
+receipt failures remain separate indexed work. Source, real local execution, staged executable,
+live service behavior and owner visual acceptance remain separate proof levels.

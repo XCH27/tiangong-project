@@ -85,6 +85,18 @@ its immutable outputs and marks blocked descendants. Repair creates a new defini
 may explicitly reuse committed inputs/results; it never rewrites history or silently repeats an
 unknown charge. Missing pinned capability versions leave a readable but non-runnable definition.
 
+The candidate uses the existing run/node journal for opaque `world.run` effects. A retained
+running command without durable completion remains uncertain: same-run or matching amended
+recovery stops with `Interrupted`, preserves the row and does not dispatch it again. Known
+same-run results remain replayable. Amended result caches retain their original invalidation
+after live work changes the workspace, so an unchanged verification/build command observes the
+new code; closing that cache does not discard uncertainty barriers or their occurrence order.
+Existing predecessor lineage supplies unconsumed unknown effects; missing/cyclic lineage refuses
+that recovery rather than guessing. A genuinely new workflow remains an explicit separate action.
+This supplies refusal and inspectable evidence, not a receipt-query/reconciliation feature or an
+exactly-once guarantee. The ordinary `test:kernel-recovery` entry covers process effects, SQLite
+reopen, amended lineage and the changed-workspace verifier countercase.
+
 ## Execution contracts
 
 These sections own the next step for the listed capability IDs. Read the

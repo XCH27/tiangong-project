@@ -1,0 +1,1000 @@
+diff --git a/apps/zcode-cli/docs/background-agent-stop.md b/apps/zcode-cli/docs/background-agent-stop.md
+new file mode 100644
+index 0000000..c9738cd
+--- /dev/null
++++ b/apps/zcode-cli/docs/background-agent-stop.md
+@@ -0,0 +1,23 @@
++# Background Agent cancellation
++
++The existing RuntimeTaskRegistry, child AbortController and Session event/notification owners
++retain their responsibilities. Execution-local settlement state coordinates writes; it is not
++another task store or queue.
++
++```text
++accepted Stop → cancel owned child → serialized output/notification/terminal receipts
++             → registry terminal settlement → release execution-local coordination
++I/O failure → retain retry plan + reject caller; never restore a live child
++```
++
++Concurrent Stop shares the current run's settlement. Failed stages are retryable without a second
++notification; late child completion cannot overwrite a stopped or resumed run. Ordinary completed,
++failed and foreground runs release temporary state. Known committed completion stays completed.
++Reusing its task ID waits for its prior receipt writer, rechecks the same registry, and uses the
++existing Started event before the new execution.
++
++Acceptance uses TaskStop → strict Runtime → real runner/registry/events, a disposable process,
++artifact/queue/event failures, concurrent requests, late completion and completed-result preservation.
++Cancellation requests are not proof of every native executor's termination. Lost acknowledgement
++after committed receipt and cold reconstruction remain separate recovery work; no schema, store,
++permission grant, new UI or exactly-once claim is introduced.
+diff --git a/apps/zcode-cli/packages/core/src/subagent/background-agent-settlement.ts b/apps/zcode-cli/packages/core/src/subagent/background-agent-settlement.ts
+new file mode 100644
+index 0000000..d630c49
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/subagent/background-agent-settlement.ts
+@@ -0,0 +1,64 @@
++import type { TraceContext } from "@zcode/contracts";
++import { isTerminalRuntimeTask, type RuntimeTaskSnapshot } from "../runtime-task/registry.js";
++
++/** I/O coordination derived from a registry run, never another accepted task store. */
++interface BackgroundRunLifecycle {
++  agentId: string;
++  runTraceContext: TraceContext;
++  backgroundSettlement: BackgroundAgentSettlement;
++}
++
++export interface StoppedBackgroundAgentTask {
++  task: RuntimeTaskSnapshot;
++  totalDurationMs: number;
++  traceContext: TraceContext;
++  artifactsWritten?: boolean;
++  notificationEnqueued?: boolean;
++  backgroundEventEmitted?: boolean;
++  subagentEventEmitted?: boolean;
++}
++
++export interface BackgroundAgentSettlement {
++  tail: Promise<void>;
++  stopped?: StoppedBackgroundAgentTask;
++  stopFlight?: Promise<RuntimeTaskSnapshot | undefined>;
++}
++
++export function serializeBackgroundSettlement<T>(
++  settlement: BackgroundAgentSettlement,
++  work: () => Promise<T>,
++): Promise<T> {
++  const flight = settlement.tail.then(work);
++  settlement.tail = flight.then(
++    () => undefined,
++    () => undefined,
++  );
++  return flight;
++}
++
++export function releaseBackgroundSettlement(
++  settlements: Map<string, BackgroundAgentSettlement>,
++  lifecycle: BackgroundRunLifecycle,
++): void {
++  const settlement = lifecycle.backgroundSettlement;
++  if (!settlement.stopped && settlements.get(lifecycle.agentId) === settlement) {
++    settlements.delete(lifecycle.agentId);
++  }
++}
++
++export function ownsBackgroundRun(
++  lifecycle: BackgroundRunLifecycle,
++  task: RuntimeTaskSnapshot | undefined,
++): boolean {
++  return (
++    !lifecycle.backgroundSettlement.stopped &&
++    task?.traceContext?.spanId === lifecycle.runTraceContext.spanId
++  );
++}
++
++export function canFinalizeBackgroundRun(
++  lifecycle: BackgroundRunLifecycle,
++  task: RuntimeTaskSnapshot | undefined,
++): boolean {
++  return ownsBackgroundRun(lifecycle, task) && task !== undefined && !isTerminalRuntimeTask(task);
++}
+diff --git a/apps/zcode-cli/packages/core/src/subagent/runner.ts b/apps/zcode-cli/packages/core/src/subagent/runner.ts
+index d327f8b..202faeb 100644
+--- a/apps/zcode-cli/packages/core/src/subagent/runner.ts
++++ b/apps/zcode-cli/packages/core/src/subagent/runner.ts
+@@ -1,3 +1,11 @@
++import {
++  serializeBackgroundSettlement,
++  releaseBackgroundSettlement,
++  ownsBackgroundRun,
++  canFinalizeBackgroundRun,
++  type BackgroundAgentSettlement,
++  type StoppedBackgroundAgentTask,
++} from "./background-agent-settlement.js";
+ /* eslint-disable max-lines -- subagent runner 集中维护前台/后台生命周期、registry 与 notification 顺序，拆分前需要先稳定生命周期边界。 */
+ // ============================================================
+ // Subagent Runner
+@@ -131,6 +139,8 @@ export interface ExploreSubagentPortOptions {
+ export function createExploreSubagentPort(options: ExploreSubagentPortOptions): SubagentPort {
+   const registry = options.runtimeTaskRegistry ?? new InMemoryRuntimeTaskRegistry();
+   const abortControllers = new Map<string, AbortController>();
++  // Per-run I/O coordination only; the existing registry remains the task owner.
++  const backgroundSettlements = new Map<string, BackgroundAgentSettlement>();
+   const borrowedForegroundAgentIds = new Set<string>();
+   const profiles = normalizeAgentProfiles(options.profiles ?? [], {
+     builtInModelSelectionOverrides: options.builtInModelSelectionOverrides,
+@@ -176,6 +186,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+     ): Promise<AgentOutput> {
+       const { profile, request } = resolveAgentProfileForRequest(profiles, rawRequest);
+       const lifecycle = createSubagentLifecycle(options, request, profile);
++      backgroundSettlements.set(lifecycle.agentId, lifecycle.backgroundSettlement);
+       const startedAt = new Date(lifecycle.startedAt);
+ 
+       registry.register(
+@@ -193,6 +204,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+         // 启动元数据写入失败时，child runtime 还没有开始执行；
+         // 保留 running task 会让父 runtime 误以为仍有后台任务并持续 defer。
+         registry.remove(lifecycle.agentId);
++        releaseBackgroundSettlement(backgroundSettlements, lifecycle);
+         throw error;
+       }
+ 
+@@ -269,6 +281,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+         taskAbort.dispose();
+         borrowedForegroundAgentIds.delete(lifecycle.agentId);
+         registry.remove(lifecycle.agentId);
++        releaseBackgroundSettlement(backgroundSettlements, lifecycle);
+         throw error;
+       }
+ 
+@@ -289,6 +302,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+       );
+ 
+       let autoBackgroundTimer: AutoBackgroundTimer | undefined;
++      let backgrounded = false;
+       try {
+         autoBackgroundTimer =
+           !hasForegroundModelOverride && autoBackgroundMs !== undefined
+@@ -316,16 +330,24 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+         ]);
+ 
+         if (winner.kind === "backgrounded") {
++          backgrounded = true;
+           taskAbort.detachParent();
+           activityWatchdog.stop();
+           void completionPromise
+             .then((completed) =>
+-              finalizeBackgroundCompletion(options, request, lifecycle, registry, completed),
++              serializeBackgroundSettlement(lifecycle.backgroundSettlement, () =>
++                finalizeBackgroundCompletion(options, request, lifecycle, registry, completed),
++              ),
+             )
+             .catch((error) =>
+-              finalizeBackgroundFailure(options, request, lifecycle, registry, error),
++              serializeBackgroundSettlement(lifecycle.backgroundSettlement, () =>
++                finalizeBackgroundFailure(options, request, lifecycle, registry, error),
++              ),
+             )
+-            .finally(taskAbort.dispose);
++            .finally(() => {
++              taskAbort.dispose();
++              releaseBackgroundSettlement(backgroundSettlements, lifecycle);
++            });
+           return createAgentBackgroundedOutput(request, lifecycle);
+         }
+ 
+@@ -433,6 +455,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+       } finally {
+         activityWatchdog.stop();
+         autoBackgroundTimer?.cancel();
++        if (!backgrounded) releaseBackgroundSettlement(backgroundSettlements, lifecycle);
+       }
+     },
+ 
+@@ -442,6 +465,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+     ): Promise<AgentBackgroundedOutput> {
+       const { profile, request } = resolveAgentProfileForRequest(profiles, rawRequest);
+       const lifecycle = createSubagentLifecycle(options, request, profile);
++      backgroundSettlements.set(lifecycle.agentId, lifecycle.backgroundSettlement);
+       const startedAt = new Date(lifecycle.startedAt);
+       const output = createAgentBackgroundedOutput(request, lifecycle);
+ 
+@@ -459,6 +483,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+       } catch (error) {
+         // setup 失败时移除 registry 记录，避免 fake running background task。
+         registry.remove(lifecycle.agentId);
++        releaseBackgroundSettlement(backgroundSettlements, lifecycle);
+         throw error;
+       }
+ 
+@@ -503,13 +528,17 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+           },
+           onSessionStartFailed: readyGate.reject,
+         },
+-        taskAbort.dispose,
++        () => {
++          taskAbort.dispose();
++          releaseBackgroundSettlement(backgroundSettlements, lifecycle);
++        },
+       );
+       try {
+         await readyGate.promise;
+       } catch (error) {
+         taskAbort.abort(error);
+         registry.remove(lifecycle.agentId);
++        releaseBackgroundSettlement(backgroundSettlements, lifecycle);
+         throw error;
+       }
+ 
+@@ -553,16 +582,38 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+       }
+       const task = registry.get(taskId);
+       if (!task || task.type !== "local_agent") return task;
+-      if (isTerminalRuntimeTask(task)) return task;
+-
+-      const stopped = createBackgroundStoppedTask(registry, task);
++      const settlement = backgroundSettlements.get(taskId) ?? {
++        tail: Promise.resolve(),
++      };
++      if (!settlement.stopped && isTerminalRuntimeTask(task)) return task;
++      const stopped = settlement.stopped ?? createBackgroundStoppedTask(registry, task);
+       if (!stopped) return undefined;
+-      return finalizeBackgroundStopped(options, registry, stopped, () => {
++      settlement.stopped = stopped;
++      backgroundSettlements.set(taskId, settlement);
++      // 原实现先写收据再取消，磁盘失败会让子 Agent 继续跑；先取消，再按原 owner 收敛收据。
++      // 失败计划仍保留供重试，迟到输出不能覆盖停止状态或新的执行。
++      if (!settlement.stopFlight) {
+         abortControllers
+           .get(taskId)
+           ?.abort(new Error(`${BACKGROUND_AGENT_STOPPED_STATE.message}: ${taskId}`));
+         abortControllers.delete(taskId);
+-      });
++        const flight = serializeBackgroundSettlement(settlement, () =>
++          finalizeBackgroundStopped(options, registry, stopped),
++        );
++        settlement.stopFlight = flight;
++        void flight.then(
++          () => {
++            settlement.stopFlight = undefined;
++            if (backgroundSettlements.get(taskId) === settlement) {
++              backgroundSettlements.delete(taskId);
++            }
++          },
++          () => {
++            settlement.stopFlight = undefined;
++          },
++        );
++      }
++      return settlement.stopFlight;
+     },
+ 
+     async sendMessage(
+@@ -574,6 +625,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+         profiles,
+         registry,
+         abortControllers,
++        backgroundSettlements,
+         request,
+         sendOptions,
+       );
+@@ -584,6 +636,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+ }
+ 
+ interface SubagentLifecycle {
++  backgroundSettlement: BackgroundAgentSettlement;
+   agentId: string;
+   childSessionId: SessionId;
+   metadataFile: string;
+@@ -834,6 +887,7 @@ function createSubagentLifecycle(
+   });
+ 
+   return {
++    backgroundSettlement: { tail: Promise.resolve() },
+     agentId,
+     childSessionId,
+     metadataFile,
+@@ -885,6 +939,7 @@ function createSubagentLifecycleFromTask(
+   });
+ 
+   return {
++    backgroundSettlement: { tail: Promise.resolve() },
+     agentId,
+     childSessionId,
+     metadataFile,
+@@ -902,6 +957,7 @@ async function sendMessageToLocalAgent(
+   profiles: readonly AgentProfile[],
+   registry: RuntimeTaskRegistry,
+   abortControllers: Map<string, AbortController>,
++  backgroundSettlements: Map<string, BackgroundAgentSettlement>,
+   request: SubagentSendMessageRequest,
+   sendOptions?: SubagentSendMessageOptions,
+ ): Promise<SubagentSendMessageResult> {
+@@ -909,7 +965,7 @@ async function sendMessageToLocalAgent(
+     return createSendMessageFailure(request, `SendMessage was aborted for ${request.to}.`);
+   }
+ 
+-  const task = registry.get(request.to);
++  let task = registry.get(request.to);
+   if (!task || task.type !== "local_agent") {
+     return createSendMessageFailure(
+       request,
+@@ -918,6 +974,27 @@ async function sendMessageToLocalAgent(
+   }
+ 
+   const message = createRuntimeTaskPendingMessage(request);
++  if (isTerminalRuntimeTask(task)) {
++    // A terminal registry snapshot may precede its awaited receipts. Reusing the
++    // task ID before that writer settles would let an old receipt end the new run.
++    await backgroundSettlements.get(task.taskId)?.tail;
++    if (sendOptions?.signal?.aborted) {
++      return createSendMessageFailure(request, `SendMessage was aborted for ${request.to}.`);
++    }
++    task = registry.get(request.to);
++    if (!task || task.type !== "local_agent") {
++      return createSendMessageFailure(
++        request,
++        `No active local_agent task found for target ${request.to}.`,
++      );
++    }
++  }
++  if (backgroundSettlements.get(request.to)?.stopped && !isTerminalRuntimeTask(task)) {
++    return createSendMessageFailure(
++      request,
++      `Stop settlement is pending for local agent ${request.to}. Retry Stop before sending a message.`,
++    );
++  }
+   if (!isTerminalRuntimeTask(task)) {
+     return deliverMessageToRunningAgent(registry, task, message);
+   }
+@@ -927,6 +1004,7 @@ async function sendMessageToLocalAgent(
+     profiles,
+     registry,
+     abortControllers,
++    backgroundSettlements,
+     task,
+     request,
+     message,
+@@ -957,6 +1035,7 @@ async function resumeTerminalAgentInBackground(
+   profiles: readonly AgentProfile[],
+   registry: RuntimeTaskRegistry,
+   abortControllers: Map<string, AbortController>,
++  backgroundSettlements: Map<string, BackgroundAgentSettlement>,
+   task: RuntimeTaskSnapshot,
+   request: SubagentSendMessageRequest,
+   message: RuntimeTaskPendingMessage,
+@@ -1011,6 +1090,7 @@ async function resumeTerminalAgentInBackground(
+   }
+ 
+   const taskAbort = createSubagentTaskAbortController(abortControllers, lifecycle.agentId);
++  backgroundSettlements.set(lifecycle.agentId, lifecycle.backgroundSettlement);
+   const readyGate = createSubagentSessionReadyGate();
+   void runBackgroundAgent(
+     options,
+@@ -1039,11 +1119,33 @@ async function resumeTerminalAgentInBackground(
+             status: "running",
+           },
+         );
++        await emitSubagentEvent(
++          options,
++          SessionEventType.BackgroundTaskStarted,
++          resumeRequest,
++          lifecycle.runTraceContext,
++          {
++            taskId: lifecycle.agentId,
++            toolCallId: String(resumeRequest.parentToolCallId),
++            toolName: "Agent",
++            taskKind: "subagent",
++            childSessionId: lifecycle.childSessionId,
++            cancellable: true,
++            description: resumeRequest.description,
++            status: "running",
++            startedAt,
++            outputPath: lifecycle.outputFile,
++            terminalId: lifecycle.agentId,
++          },
++        );
+         readyGate.resolve();
+       },
+       onSessionStartFailed: readyGate.reject,
+     },
+-    taskAbort.dispose,
++    () => {
++      taskAbort.dispose();
++      releaseBackgroundSettlement(backgroundSettlements, lifecycle);
++    },
+   );
+   try {
+     await readyGate.promise;
+@@ -1353,13 +1455,17 @@ async function runBackgroundAgent(
+         },
+       },
+     );
+-    await finalizeBackgroundCompletion(options, request, lifecycle, registry, completed);
++    await serializeBackgroundSettlement(lifecycle.backgroundSettlement, () =>
++      finalizeBackgroundCompletion(options, request, lifecycle, registry, completed),
++    );
+   } catch (error) {
+     if (!sessionReady) {
+       executionOptions.onSessionStartFailed?.(error);
+       return;
+     }
+-    await finalizeBackgroundFailure(options, request, lifecycle, registry, error);
++    await serializeBackgroundSettlement(lifecycle.backgroundSettlement, () =>
++      finalizeBackgroundFailure(options, request, lifecycle, registry, error),
++    );
+   } finally {
+     onSettled?.();
+   }
+@@ -1499,9 +1605,10 @@ async function finalizeBackgroundCompletion(
+   completed: { output: AgentCompletedOutput },
+ ): Promise<void> {
+   const current = registry.get(lifecycle.agentId);
+-  if (current && isTerminalRuntimeTask(current)) return;
++  if (!canFinalizeBackgroundRun(lifecycle, current)) return;
+ 
+   await writeCompletedAgentArtifacts(lifecycle, request, completed.output);
++  if (!canFinalizeBackgroundRun(lifecycle, registry.get(lifecycle.agentId))) return;
+   const notification = formatLocalAgentTaskNotification({
+     agentId: completed.output.agentId,
+     agentType: completed.output.agentType,
+@@ -1538,6 +1645,7 @@ async function finalizeBackgroundCompletion(
+   if (task) {
+     await emitBackgroundTaskCompletedEvent(options, request, lifecycle.runTraceContext, task);
+   }
++  if (!ownsBackgroundRun(lifecycle, registry.get(lifecycle.agentId))) return;
+ 
+   await emitSubagentEvent(
+     options,
+@@ -1578,7 +1686,7 @@ async function finalizeBackgroundFailure(
+   error: unknown,
+ ): Promise<void> {
+   const current = registry.get(lifecycle.agentId);
+-  if (current && isTerminalRuntimeTask(current)) return;
++  if (!canFinalizeBackgroundRun(lifecycle, current)) return;
+ 
+   // background runner 收到的通常是 Turn failure wrapper，直接读 message
+   // 会把 provider 的 429 原文替换成通用的 “Turn execution failed”；这里只选择
+@@ -1587,6 +1695,7 @@ async function finalizeBackgroundFailure(
+   const completedAt = new Date();
+   const totalDurationMs = Date.now() - lifecycle.startedAt;
+   await writeFailedAgentArtifacts(lifecycle, request, errorMessage);
++  if (!canFinalizeBackgroundRun(lifecycle, registry.get(lifecycle.agentId))) return;
+   const notification = formatLocalAgentTaskNotification({
+     agentId: lifecycle.agentId,
+     agentType: request.agentType,
+@@ -1616,6 +1725,7 @@ async function finalizeBackgroundFailure(
+   if (task) {
+     await emitBackgroundTaskCompletedEvent(options, request, lifecycle.runTraceContext, task);
+   }
++  if (!ownsBackgroundRun(lifecycle, registry.get(lifecycle.agentId))) return;
+ 
+   await emitSubagentEvent(
+     options,
+@@ -1645,13 +1755,6 @@ async function finalizeBackgroundFailure(
+   });
+ }
+ 
+-interface StoppedBackgroundAgentTask {
+-  previousTask: RuntimeTaskSnapshot;
+-  task: RuntimeTaskSnapshot;
+-  totalDurationMs: number;
+-  traceContext: TraceContext;
+-}
+-
+ const BACKGROUND_AGENT_STOPPED_STATE = {
+   backgroundEventStatus: "cancelled",
+   message: "Background agent task stopped.",
+@@ -1680,14 +1783,13 @@ function createBackgroundStoppedTask(
+   };
+ 
+   const traceContext = traceContextFromRuntimeTask(stopped);
+-  return { previousTask: current, task: stopped, totalDurationMs, traceContext };
++  return { task: stopped, totalDurationMs, traceContext };
+ }
+ 
+ async function finalizeBackgroundStopped(
+   options: ExploreSubagentPortOptions,
+   registry: RuntimeTaskRegistry,
+   stopped: StoppedBackgroundAgentTask,
+-  onCommitted?: () => void,
+ ): Promise<RuntimeTaskSnapshot | undefined> {
+   const notification = formatLocalAgentTaskNotification({
+     agentId: stopped.task.agentId,
+@@ -1698,36 +1800,48 @@ async function finalizeBackgroundStopped(
+     status: BACKGROUND_AGENT_STOPPED_STATE.notificationStatus,
+     totalDurationMs: stopped.totalDurationMs,
+   });
+-  await writeStoppedAgentArtifacts(stopped.task);
+-  registry.update(stopped.task.taskId, (current) => ({
+-    ...stopped.task,
+-    notified: current.notified,
+-  }));
+-  const enqueued = enqueueBackgroundNotification(
+-    options,
+-    registry,
+-    stopped.task.taskId,
+-    notification,
+-    stopped.traceContext,
+-  );
+-  if (!enqueued) {
+-    registry.register(stopped.previousTask);
+-    throw new Error(
+-      `Background agent task stopped notification was not enqueued: ${stopped.task.taskId}`,
++  if (!stopped.artifactsWritten) {
++    await writeStoppedAgentArtifacts(stopped.task);
++    stopped.artifactsWritten = true;
++  }
++  if (!stopped.notificationEnqueued) {
++    const enqueued = enqueueBackgroundNotification(
++      options,
++      registry,
++      stopped.task.taskId,
++      notification,
++      stopped.traceContext,
+     );
++    if (!enqueued) {
++      throw new Error(
++        `Background agent task stopped notification was not enqueued: ${stopped.task.taskId}`,
++      );
++    }
++    stopped.notificationEnqueued = true;
+   }
+ 
+-  const committed = registry.get(stopped.task.taskId);
++  if (!stopped.subagentEventEmitted) {
++    await emitRuntimeTaskSubagentStoppedEvent(
++      options,
++      stopped.task,
++      stopped.traceContext,
++      stopped.totalDurationMs,
++    );
++    stopped.subagentEventEmitted = true;
++  }
++  // The background terminal receipt closes the public Stop retry path. Emit it
++  // last, so an earlier event-write failure still permits another Stop request.
++  if (!stopped.backgroundEventEmitted) {
++    await emitRuntimeTaskBackgroundCompletedEvent(options, stopped.task, stopped.traceContext);
++    stopped.backgroundEventEmitted = true;
++  }
++  // No terminal waiter or successful Stop sees killed before the existing receipt
++  // and notification owners have accepted their writes.
++  const committed = registry.update(stopped.task.taskId, (current) => ({
++    ...stopped.task,
++    notified: current.notified,
++  }));
+   if (!committed) return undefined;
+-  onCommitted?.();
+-
+-  await emitRuntimeTaskBackgroundCompletedEvent(options, committed, stopped.traceContext);
+-  await emitRuntimeTaskSubagentStoppedEvent(
+-    options,
+-    committed,
+-    stopped.traceContext,
+-    stopped.totalDurationMs,
+-  );
+   options.logger?.info("Subagent background task stopped", {
+     ...traceContextToLogContext(stopped.traceContext),
+     agentId: stopped.task.agentId,
+diff --git a/apps/zcode-cli/packages/core/test/background-agent-stop.test.ts b/apps/zcode-cli/packages/core/test/background-agent-stop.test.ts
+new file mode 100644
+index 0000000..8e5a942
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/background-agent-stop.test.ts
+@@ -0,0 +1,404 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { spawn, type ChildProcess } from "node:child_process";
++import { once } from "node:events";
++import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { dirname, join } from "node:path";
++import { tmpdir } from "node:os";
++import {
++  EventReducer,
++  SessionEventType,
++  createRootTraceContext,
++  type SessionEvent,
++  type SubagentStartRequest,
++} from "@zcode/contracts";
++import {
++  createExploreSubagentPort,
++  type ExploreSubagentRuntimeRequest,
++  type ExploreSubagentRuntimeResult,
++} from "../src/subagent/runner.js";
++import { InMemoryRuntimeTaskRegistry } from "../src/runtime-task/registry.js";
++import { stopBackgroundTask } from "../src/runtime/methods/background.js";
++import { taskStopToolEntry } from "../src/tool/handlers/task-stop.js";
++
++async function fixture(realChild = false, foreground: boolean | "foreground" | "foreground_failed" = false) {
++  const root = await mkdtemp(join(tmpdir(), "fleet-background-stop-"));
++  const registry = new InMemoryRuntimeTaskRegistry();
++  const events: SessionEvent[] = [];
++  const notifications: unknown[] = [];
++  const runs: Array<{
++    request: ExploreSubagentRuntimeRequest;
++    signal: AbortSignal;
++    finish: ReturnType<typeof Promise.withResolvers<ExploreSubagentRuntimeResult>>;
++  }> = [];
++  const failures = { queue: false, event: undefined as SessionEventType | undefined };
++  const spawned = Promise.withResolvers<void>();
++  let eventGate: { type: SessionEventType; wait: () => Promise<void> } | undefined;
++  let aborts = 0;
++  let child: ChildProcess | undefined;
++  let childExit: Promise<unknown[]> | undefined;
++  const trace = createRootTraceContext({ sessionId: "parent" as never });
++  const request = {
++    agentType: "general-purpose",
++    sessionId: "parent",
++    turnId: "turn",
++    parentToolCallId: "agent-call",
++    description: "owned temporary stop fixture",
++    prompt: "no model or external effect",
++    workingDirectory: root,
++    workspaceRoot: root,
++    trace,
++  } as SubagentStartRequest;
++  const port = createExploreSubagentPort({
++    outputRootDir: root,
++    createAgentId: () => "child",
++    runtimeTaskRegistry: registry,
++    async emitParentEvent(event) {
++      if (eventGate && event.type === eventGate.type) await eventGate.wait();
++      if (failures.event === event.type) throw new Error("synthetic receipt write failed");
++      events.push(event);
++      if (event.type === SessionEventType.SubagentSpawned) spawned.resolve();
++    },
++    enqueueParentTaskNotification(notification) {
++      if (notification.text.includes("<status>stopped</status>")) {
++        assert.equal(runs.at(-1)?.signal.aborted, true, "Stop must precede notification I/O");
++      }
++      if (failures.queue) throw new Error("synthetic notification admission failed");
++      notifications.push(notification);
++      return undefined;
++    },
++    async runExploreAgent(childRequest, options) {
++      assert.ok(options?.signal);
++      const signal = options.signal;
++      const finish = Promise.withResolvers<ExploreSubagentRuntimeResult>();
++      runs.push({ request: childRequest, signal, finish });
++      if (realChild) {
++        // The disposable process only announces readiness and waits. No model/network/files.
++        child = spawn(process.execPath, ["-e", "process.stdout.write('ready'); setInterval(() => {}, 1000)"], {
++          stdio: ["ignore", "pipe", "pipe"],
++        });
++        childExit = once(child, "close");
++        signal.addEventListener("abort", () => { aborts++; child?.kill("SIGTERM"); }, { once: true });
++        await once(child.stdout!, "data");
++        await childRequest.onSessionReady?.();
++        await childExit;
++        return { response: "late child result after SIGTERM", traceId: trace.traceId, events: [] };
++      }
++      signal.addEventListener("abort", () => { aborts++; }, { once: true });
++      await childRequest.onSessionReady?.();
++      return finish.promise;
++    },
++  });
++  const runtime = {
++    runtimeTaskRegistry: registry,
++    subagentPort: port,
++    rootTraceContext: trace,
++    rebuildProjection: async () => new EventReducer().reduce(events),
++    stopBackgroundTask(taskId: string, options: unknown) {
++      return stopBackgroundTask.call(runtime as never, taskId, options as never);
++    },
++  };
++  if (foreground) {
++    const running = port.run(request);
++    await spawned.promise;
++    if (foreground === true) {
++      await port.backgroundTask!("child");
++      assert.equal((await running).status, "async_launched");
++    } else if (foreground === "foreground_failed") {
++      runs[0]!.finish.reject(new Error("synthetic foreground child failure"));
++      await assert.rejects(running, /Explore subagent failed/);
++    } else {
++      runs[0]!.finish.resolve({ response: "foreground completed output", traceId: trace.traceId, events: [] });
++      assert.equal((await running).status, "completed");
++    }
++  } else {
++    await port.start!(request);
++  }
++  const outputFile = registry.get("child")!.outputFile!;
++  return {
++    port, registry, events, notifications, failures, runs, root, outputFile, runtime,
++    get aborts() { return aborts; },
++    get childExit() { return childExit; },
++    gateEvent(gate: () => Promise<void>, type: SessionEventType = SessionEventType.SubagentStopped) {
++      eventGate = { type, wait: gate };
++    },
++    async stop() {
++      return taskStopToolEntry.handler({ task_id: "child" }, {
++        backgroundTaskControlPort: runtime,
++        traceContext: trace,
++        toolCallId: "stop-call",
++      } as never);
++    },
++    finish(index: number, response: string) {
++      runs[index]!.finish.resolve({ response, traceId: trace.traceId, events: [] });
++    },
++    async resume() {
++      return port.sendMessage!({
++        ...request,
++        to: "child",
++        message: "continue the same child with a new input",
++        parentToolCallId: "message-call",
++      } as never);
++    },
++    async close() {
++      failures.queue = false;
++      failures.event = undefined;
++      eventGate = undefined;
++      await port.stopTask!("child").catch(() => {});
++      child?.kill("SIGKILL");
++      await childExit?.catch(() => {});
++      for (const run of runs) run.finish.resolve({ response: "fixture cleanup", traceId: trace.traceId, events: [] });
++      await new Promise<void>((resolve) => setImmediate(resolve));
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}
++
++const terminalEvents = (events: SessionEvent[]) => events.filter((event) =>
++  event.type === SessionEventType.BackgroundTaskCompleted || event.type === SessionEventType.SubagentStopped,
++);
++
++test("TaskStop cancels a real child before a failed artifact write; repair and retry settles once", { timeout: 10000 }, async () => {
++  const f = await fixture(true);
++  try {
++    const outputDir = dirname(f.outputFile);
++    await rm(outputDir, { recursive: true });
++    await writeFile(outputDir, "owned fault: blocks output directory");
++    let waiterResolved = false;
++    const waiter = f.port.waitForTask!("child").then((task) => { waiterResolved = true; return task; });
++    await assert.rejects(f.stop(), /EEXIST|ENOTDIR/);
++    assert.equal(f.runs[0]!.signal.aborted, true);
++    assert.deepEqual(await f.childExit, [null, "SIGTERM"]);
++    await new Promise<void>((resolve) => setImmediate(resolve));
++    assert.equal(f.aborts, 1);
++    assert.equal(f.registry.get("child")!.status, "running", "failed settlement must not claim killed");
++    assert.equal(waiterResolved, false);
++    assert.equal(f.notifications.length, 0);
++    assert.equal(terminalEvents(f.events).length, 0);
++    assert.equal((await f.resume()).status, "failed", "no message is queued to a cancelled run awaiting settlement");
++    await rm(outputDir);
++    await f.stop();
++    assert.equal((await waiter)!.status, "killed");
++    assert.equal(f.notifications.length, 1);
++    assert.equal(terminalEvents(f.events).length, 2);
++    assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
++    await f.port.stopTask!("child");
++    assert.equal(f.notifications.length, 1);
++    assert.equal(f.aborts, 1);
++  } finally { await f.close(); }
++});
++
++test("normal foreground, promoted and background settlements release their private run coordination", { concurrency: false }, async () => {
++  // Observe the private per-run Map without adding a production diagnostic API.
++  // This hook is limited to this test realm and restored before the next test.
++  const originalSet = Map.prototype.set;
++  const maps: Array<Map<unknown, unknown>> = [];
++  Map.prototype.set = function (key: unknown, value: unknown) {
++    if (
++      key === "child" && value && typeof value === "object" &&
++      "tail" in value && value.tail instanceof Promise && !maps.includes(this)
++    ) maps.push(this);
++    return originalSet.call(this, key, value);
++  };
++  try {
++    for (const mode of [false, true, "foreground", "foreground_failed"] as const) {
++      const f = await fixture(false, mode);
++      try {
++        const map = maps.at(-1)!;
++        if (mode === false || mode === true) {
++          assert.equal(map.size, 1, "a running child retains cancellation coordination");
++          f.finish(0, "normal completed output");
++          await f.port.waitForTask!("child");
++          await new Promise<void>((resolve) => setImmediate(resolve));
++        }
++        assert.equal(map.size, 0, `normal ${String(mode)} lifecycle leaves no retained entry`);
++      } finally { await f.close(); }
++    }
++    const failed = await fixture();
++    try {
++      const map = maps.at(-1)!;
++      failed.runs[0]!.finish.reject(new Error("synthetic background child failure"));
++      await failed.port.waitForTask!("child");
++      await new Promise<void>((resolve) => setImmediate(resolve));
++      assert.equal(failed.registry.get("child")!.status, "failed");
++      assert.equal(map.size, 0, "a normally settled failure also releases its entry");
++    } finally { await failed.close(); }
++    const pendingStop = await fixture();
++    try {
++      const map = maps.at(-1)!;
++      pendingStop.failures.queue = true;
++      await assert.rejects(pendingStop.stop(), /notification was not enqueued/);
++      pendingStop.finish(0, "cancelled child settled after publication failure");
++      await new Promise<void>((resolve) => setImmediate(resolve));
++      assert.equal(map.size, 1, "failed Stop retains its retry plan after child exit");
++      pendingStop.failures.queue = false;
++      await pendingStop.stop();
++      assert.equal(map.size, 0, "successful retry releases the same plan");
++    } finally { await pendingStop.close(); }
++  } finally { Map.prototype.set = originalSet; }
++});
++
++test("Stop preserves known completion while its receipt waits; resumed work starts after that writer", async () => {
++  const f = await fixture();
++  const entered = Promise.withResolvers<void>();
++  const release = Promise.withResolvers<void>();
++  let resumed: ReturnType<typeof f.resume> | undefined;
++  try {
++    f.gateEvent(async () => { entered.resolve(); await release.promise; }, SessionEventType.BackgroundTaskCompleted);
++    f.finish(0, "known completed output");
++    await entered.promise;
++    assert.equal(f.registry.get("child")!.status, "completed");
++    assert.equal(await readFile(f.outputFile, "utf8"), "known completed output");
++    await assert.rejects(f.stop(), /not running/);
++    assert.equal((await f.port.stopTask!("child"))!.status, "completed");
++    assert.equal(f.aborts, 0);
++    resumed = f.resume();
++    await new Promise<void>((resolve) => setImmediate(resolve));
++    assert.equal(f.runs.length, 1, "resume cannot reuse the task ID during old receipt publication");
++    assert.equal(f.registry.get("child")!.status, "completed");
++    release.resolve();
++    assert.equal((await resumed).delivery, "resumed_background");
++    assert.equal(f.registry.get("child")!.status, "running");
++    assert.equal(new EventReducer().reduce(f.events).backgroundTasks.at(-1)!.status, "running");
++    // The old run's cleanup must not remove the new run's failed-Stop retry fence.
++    f.failures.queue = true;
++    await assert.rejects(f.stop(), /notification was not enqueued/);
++    f.finish(1, "late result from new cancelled run");
++    await new Promise<void>((resolve) => setImmediate(resolve));
++    assert.equal(f.registry.get("child")!.status, "running");
++    f.failures.queue = false;
++    await f.stop();
++    assert.equal(f.registry.get("child")!.status, "killed");
++    assert.equal(f.notifications.length, 2, "one completion and one later Stop notification");
++    assert.equal(terminalEvents(f.events).filter((event) =>
++      event.type === SessionEventType.BackgroundTaskCompleted &&
++      (event.payload as { status: string }).status === "completed",
++    ).length, 1);
++    assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
++  } finally {
++    release.resolve();
++    await resumed?.catch(() => {});
++    await f.close();
++  }
++});
++
++test("failed notification admission never resolves terminal waiters or restores a live child", async () => {
++  const f = await fixture();
++  try {
++    f.failures.queue = true;
++    await assert.rejects(f.stop(), /notification was not enqueued/);
++    assert.equal(f.runs[0]!.signal.aborted, true);
++    assert.equal(f.registry.get("child")!.status, "running");
++    assert.equal(f.registry.get("child")!.notified, undefined);
++    assert.equal(terminalEvents(f.events).length, 0);
++    f.finish(0, "late success must be ignored");
++    await new Promise<void>((resolve) => setImmediate(resolve));
++    assert.equal(f.registry.get("child")!.status, "running");
++    f.failures.queue = false;
++    await f.stop();
++    assert.equal(f.registry.get("child")!.status, "killed");
++    assert.equal(f.notifications.length, 1);
++    assert.equal(f.aborts, 1);
++    assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
++  } finally { await f.close(); }
++});
++
++test("an Agent moved from foreground to background shares the failure-safe Stop path", async () => {
++  const f = await fixture(false, true);
++  try {
++    f.failures.queue = true;
++    await assert.rejects(f.stop(), /notification was not enqueued/);
++    assert.equal(f.runs[0]!.signal.aborted, true);
++    f.finish(0, "late promoted-child result");
++    await new Promise<void>((resolve) => setImmediate(resolve));
++    assert.equal(f.registry.get("child")!.status, "running");
++    f.failures.queue = false;
++    await f.stop();
++    assert.equal(f.registry.get("child")!.status, "killed");
++    assert.equal(f.notifications.length, 1);
++    assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
++  } finally { await f.close(); }
++});
++
++for (const type of [SessionEventType.SubagentStopped, SessionEventType.BackgroundTaskCompleted]) {
++  test(`public TaskStop retries ${type} receipt failure without a second notification`, async () => {
++    const f = await fixture();
++    try {
++      f.failures.event = type;
++      await assert.rejects(f.stop(), /receipt write failed/);
++      assert.equal(f.runs[0]!.signal.aborted, true);
++      assert.equal(f.registry.get("child")!.status, "running");
++      assert.equal(new EventReducer().reduce(f.events).backgroundTasks.some((task) => task.status === "cancelled"), false);
++      assert.equal(f.notifications.length, 1);
++      f.failures.event = undefined;
++      await f.stop();
++      assert.equal(f.registry.get("child")!.status, "killed");
++      assert.equal(f.notifications.length, 1);
++      assert.equal(terminalEvents(f.events).length, 2);
++    } finally { await f.close(); }
++  });
++}
++
++test("concurrent Stop requests share settlement and cancellation", async () => {
++  const f = await fixture();
++  const entered = Promise.withResolvers<void>();
++  const release = Promise.withResolvers<void>();
++  try {
++    f.gateEvent(async () => { entered.resolve(); await release.promise; });
++    const first = f.stop();
++    await entered.promise;
++    const second = f.stop();
++    assert.equal(f.runs[0]!.signal.aborted, true);
++    assert.equal(f.registry.get("child")!.status, "running");
++    release.resolve();
++    await Promise.all([first, second]);
++    assert.equal(f.notifications.length, 1);
++    assert.equal(f.aborts, 1);
++    assert.equal(terminalEvents(f.events).length, 2);
++  } finally { release.resolve(); await f.close(); }
++});
++
++test("a stopped child's late completion cannot overwrite a resumed run", async () => {
++  const f = await fixture();
++  try {
++    await f.stop();
++    assert.equal((await f.resume()).delivery, "resumed_background");
++    f.finish(0, "old stopped result");
++    await new Promise<void>((resolve) => setImmediate(resolve));
++    assert.equal(f.registry.get("child")!.status, "running");
++    f.finish(1, "new accepted result");
++    await f.port.waitForTask!("child");
++    await new Promise<void>((resolve) => setImmediate(resolve));
++    assert.equal(f.registry.get("child")!.status, "completed");
++    assert.equal(await readFile(f.outputFile, "utf8"), "new accepted result");
++  } finally { await f.close(); }
++});
++
++test("completed-task Stop leaves original completion output and notification unchanged", async () => {
++  const f = await fixture();
++  try {
++    f.finish(0, "original completed output");
++    await f.port.waitForTask!("child");
++    await new Promise<void>((resolve) => setImmediate(resolve));
++    const before = { events: f.events.length, notifications: f.notifications.length };
++    await assert.rejects(f.stop(), /not running/);
++    assert.equal((await f.port.stopTask!("child"))!.status, "completed");
++    assert.equal(f.aborts, 0);
++    assert.equal(await readFile(f.outputFile, "utf8"), "original completed output");
++    assert.equal(f.events.length, before.events);
++    assert.equal(f.notifications.length, before.notifications);
++  } finally { await f.close(); }
++});
++
++test("an already-cancelled Stop caller does not cancel its target", async () => {
++  const f = await fixture();
++  try {
++    const caller = new AbortController();
++    caller.abort(new Error("caller cancelled before dispatch"));
++    await assert.rejects(f.port.stopTask!("child", { signal: caller.signal }), /before dispatch/);
++    assert.equal(f.runs[0]!.signal.aborted, false);
++    assert.equal(f.registry.get("child")!.status, "running");
++    assert.equal(terminalEvents(f.events).length, 0);
++    await f.stop();
++  } finally { await f.close(); }
++});
+diff --git a/package.json b/package.json
+index af95740..ecb8bee 100644
+--- a/package.json
++++ b/package.json
+@@ -78,7 +78,7 @@
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+-    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts"
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",

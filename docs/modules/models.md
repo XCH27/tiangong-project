@@ -543,7 +543,7 @@ routes use frozen Registry selections and the existing Provider writer. Native d
 admit newly returned exact IDs independently of a Pi static list. Sparse input/effort/capacity
 facts stay independent of internal budgets; unsupported routes fail. Discovery atomically adds models
 through the existing Provider configuration owner, publishes that same persisted list to settings
-and conversation selection, and preserves existing disabled models, custom metadata and order. Restoring recommended configuration clears personal overrides only; actual model deletion also clears its directory observations.
+and conversation selection, preserving disabled models, personal corrections and order. Model-ID edits move personal rules only; provider observations stay under returned IDs. Actual model/connection deletion clears corresponding observations; recommendation restore retains them. [Request and catalogue invariants](../../.fleet/zcode/apps/zcode-cli/docs/provider-routing.md) cover effective headers/body, terminal pool errors and attempt-scoped SDK7 accounting; live entitlement remains separate.
 Search only filters existing models and never adds on Enter. The search field contains an explicit
 search action; it filters locally and never triggers discovery or addition. Following the owner’s
 consistency correction, Add Model stays below all model draft rows. Model and API-key drafts share

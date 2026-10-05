@@ -33,14 +33,22 @@ and [design-chain comparison](docs/references.md#active-design-chain-comparison)
 The 63 capability dispositions cover breadth; remaining per-path partial/unread, platform and live
 proof are explicit in the external evidence. Source coverage is not implementation completion.
 
-1. Preserve original files on failed atomic publication and serialize same-revision Fleet file writes
-   through the existing owner (DOM-20/12). Stop must request cancellation independently of output or
-   notification I/O (K-01). Reconcile interrupted effects before workflow re-execution (K-02), and
-   prove Project executable trust plus future-turn plugin/Skill/MCP withdrawal (DOM-01/02).
-2. Repair the actual API switching Request-body guard and propagate exhausted-pool stop to workflow
-   recovery (API-01/03). Keep discovery/inference auth and native executor network targets aligned
-   (PRI-08); retire observations on model-ID and
-   connection identity changes without clearing them on recommendation restore (API-02/04/05).
+The [bounded kernel corrections](docs/references.md#source-backed-kernel-corrections) now preserve
+failed file publications and same-revision writes, request child cancellation before receipt I/O,
+refuse unknown opaque workflow replay, preserve API bodies/pool-stop/cost metadata, and isolate
+catalogue observations from renamed or recreated identities. These repair nine original findings;
+they do not close the kernel or promote delivery status. Independent cross-review also corrected
+partial-read hashes, per-profile lock partitioning, masked staging errors and complete-Read freshness.
+
+1. Retain late executor outcomes after Stop: an entered file rename can still commit after the turn
+   settles, so a cancelled tool is not proof of no effect (RECOVERY-01). Complete unknown/committed
+   outcome recovery without replay or rollback assumptions. Prove Project executable trust plus
+   future-turn plugin/Skill/MCP withdrawal (DOM-01/02). Preserve the new cancellation retry plan and
+   workflow uncertainty guards while testing acknowledgement loss and cold reconstruction.
+2. Keep discovery/inference auth and native executor network targets aligned (PRI-08). Preserve
+   returned-ID observations separately from personal model renames; connection deletion clears both
+   exact layers, while recommendation restore retains observations (API-02). Verify these through
+   live permitted provider paths after the existing local fixtures.
    Cancelled native login inspection must not admit a later binding (PRI-01).
 3. Include final tool declarations and output reserve in the Host request-budget path, including
    dynamic discovery and reported usage deltas. Preserve sparse capacity and distinguish estimates

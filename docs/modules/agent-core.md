@@ -41,6 +41,7 @@ End state: intent → prompt/profile → ActorRef → PermissionDecision → gov
 execution → RunReport/event evidence → optional Git/PR delivery receipt. Implement through the selected host
 owners. OV-027 selects ZCode as the product direction; the retained Craft contracts below are
 reference and preservation obligations, not proof of a migrated or replaced runtime.
+Native file publication follows the existing [FileSystemPort integrity contract](../../.fleet/zcode/apps/zcode-cli/docs/file-write-integrity.md); generic late-effect reconciliation after Stop remains distinct from pre-publication cancellation.
 
 ## Kernel target under OV-036
 
