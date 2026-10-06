@@ -254,3 +254,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0160 | [0160-retire-gemini-cli.patch](0160-retire-gemini-cli.patch) | `5798efe03c287a7de48d1b3509bdb5ea8445509c` |
 
 | 0161 | [0161-kimi-mimo-logos.patch](0161-kimi-mimo-logos.patch) | `918213ea789a4628ff658a537d7d81ea42b4f90a` |
+
+| 0162 | [0162-fold-model-variants.patch](0162-fold-model-variants.patch) | `533e1974fb5889eec35f9a13fd86724d9d9e1f72` |

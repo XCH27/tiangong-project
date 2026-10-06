@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Show thinking-effort and speed variants of one native-CLI model as one model with thinking/Fast
+  options (Antigravity 14 → 7 entries); Xiaomi uses its orange brand SVG.
+
 - Use the official coloured Kimi mark (light/dark variants) and the official Xiaomi MiMo app icon.
 
 - Retire the Gemini CLI connection added in candidate 0159 (owner instruction, 2026-10-06).
