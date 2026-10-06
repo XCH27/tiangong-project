@@ -256,3 +256,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0161 | [0161-kimi-mimo-logos.patch](0161-kimi-mimo-logos.patch) | `918213ea789a4628ff658a537d7d81ea42b4f90a` |
 
 | 0162 | [0162-fold-model-variants.patch](0162-fold-model-variants.patch) | `533e1974fb5889eec35f9a13fd86724d9d9e1f72` |
+
+| 0163 | [0163-native-cli-accounts.patch](0163-native-cli-accounts.patch) | `9212a3bff679163a234564b011c65318520fa6c5` |

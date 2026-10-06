@@ -1,0 +1,2242 @@
+diff --git a/package.json b/package.json
+index 6c21d2a..27997ae 100644
+--- a/package.json
++++ b/package.json
+@@ -60,10 +60,10 @@
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+-    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts",
++    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-accounts.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+     "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts",
+-    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles",
++    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliAccountList.browser.test.tsx __nativeAccountListTests --desktop-styles",
+     "test:chatgpt-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/chatgptConnection.browser.test.tsx __chatgptConnectionTests --desktop-styles",
+     "test:model-settings-tool-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/modelSettingsTool.browser.test.tsx __modelSettingsToolTests --desktop-styles",
+     "test:context-capacity-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/contextCapacity.browser.test.tsx __contextCapacityTests --desktop-styles",
+diff --git a/packages/provider/src/config-service.ts b/packages/provider/src/config-service.ts
+index 37670f1..4832818 100644
+--- a/packages/provider/src/config-service.ts
++++ b/packages/provider/src/config-service.ts
+@@ -439,7 +439,11 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
+           access?.type !== "native-cli" ||
+           access.provider !== nativeAccess.provider ||
+           access.executable !== nativeAccess.executable ||
+-          access.configDir !== nativeAccess.configDir
++          ((access.configDir || "") !== (nativeAccess.configDir || "") &&
++            // 切换账号只能换到该连接自己保存的 CLI 目录，不能借此指向任意目录。
++            !nativeAccess.accounts?.some(
++              (account) => (account.configDir || "") === (nativeAccess.configDir || ""),
++            ))
+         )
+           throw new Error("Native CLI connection changed; reload it before connecting");
+         if (nativeAccess.validateComplete().length)
+diff --git a/packages/provider/src/config/provider-config.ts b/packages/provider/src/config/provider-config.ts
+index 9c4bc10..ed723ec 100644
+--- a/packages/provider/src/config/provider-config.ts
++++ b/packages/provider/src/config/provider-config.ts
+@@ -174,6 +174,8 @@ export class NativeCliAccessConfig extends ConfigOverlay<NativeCliAccessConfig>
+   readonly accountName?: string;
+   readonly planType?: string;
+   readonly connected?: boolean;
++  readonly accounts?: NativeCliAccessConfigObject["accounts"];
++  readonly autoSwitch?: boolean;
+   constructor(input: Omit<NativeCliAccessConfigObject, "type">) {
+     super();
+     Object.assign(this, input);
+@@ -189,6 +191,8 @@ export class NativeCliAccessConfig extends ConfigOverlay<NativeCliAccessConfig>
+       accountName: this.overlayValue(this.accountName, next.accountName),
+       planType: this.overlayValue(this.planType, next.planType),
+       connected: this.overlayValue(this.connected, next.connected),
++      accounts: this.overlayValue(this.accounts, next.accounts),
++      autoSwitch: this.overlayValue(this.autoSwitch, next.autoSwitch),
+     });
+   }
+   validateComplete(path: readonly string[] = []): readonly ConfigValidationIssue[] {
+@@ -204,6 +208,8 @@ export class NativeCliAccessConfig extends ConfigOverlay<NativeCliAccessConfig>
+       accountName: this.accountName,
+       planType: this.planType,
+       connected: this.connected,
++      accounts: this.accounts,
++      autoSwitch: this.autoSwitch,
+     });
+   }
+ }
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index 3252527..85468a8 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -75,6 +75,19 @@ export const subscriptionAccessDataSchema = z
+ export const completeSubscriptionAccessDataSchema = subscriptionAccessDataSchema.extend({
+   connected: z.literal(true),
+ });
++/**
++ * One official-CLI sign-in. `configDir` absent = the CLI's own home; otherwise a Fleet-allocated
++ * home (CODEX_HOME / CLAUDE_CONFIG_DIR) where the official CLI keeps that account's login. Fleet
++ * stores only public identity and the path, never a token.
++ */
++export const nativeCliSavedAccountDataSchema = z
++  .object({
++    id: z.string().min(1),
++    name: z.string().optional(),
++    configDir: z.string().optional(),
++    planType: z.string().optional(),
++  })
++  .strict();
+ export const nativeCliAccessDataSchema = z
+   .object({
+     type: z.literal("native-cli"),
+@@ -85,6 +98,10 @@ export const nativeCliAccessDataSchema = z
+     accountName: z.string().optional(),
+     planType: z.string().optional(),
+     connected: z.boolean().optional(),
++    /** All saved sign-ins, including the active one mirrored in the fields above. */
++    accounts: z.array(nativeCliSavedAccountDataSchema).max(10).optional(),
++    /** Move to another saved account when the active one's allowance is exhausted. */
++    autoSwitch: z.boolean().optional(),
+   })
+   .strict();
+ export const completeNativeCliAccessDataSchema = nativeCliAccessDataSchema.extend({
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index 5ad4b7d..b1151ef 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -16,6 +16,8 @@ export interface NativeCliLoginProcess {
+ }
+ export interface NativeCliConnectionAdapter {
+   inspect(access: NativeCliAccessConfigObject): Promise<NativeCliConnectionInspection>;
++  /** Fleet-owned per-account CLI homes (CODEX_HOME / CLAUDE_CONFIG_DIR); absent = single account. */
++  accountHomes?: { create(provider: string): string; remove(dir: string): void };
+   usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
+   login(options: {
+     provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen";
+@@ -32,6 +34,43 @@ export async function inspectNativeCliConnection(
+   return adapter.inspect(access);
+ }
+ 
++export type NativeCliSavedAccount = NonNullable<NativeCliAccessConfigObject["accounts"]>[number];
++/** CLIs whose official login honours an isolated home, so one connection can hold several sign-ins. */
++export const NATIVE_CLI_MULTI_ACCOUNT = new Set(["claude", "codex"]);
++const home = (dir?: string) => dir || "";
++
++/** Saved sign-ins; records written before multi-account carry only the active identity. */
++export function nativeSavedAccounts(access: NativeCliAccessConfigObject): NativeCliSavedAccount[] {
++  if (access.accounts?.length) return [...access.accounts];
++  return access.connected && access.accountId
++    ? [
++        {
++          id: access.accountId,
++          ...(access.accountName ? { name: access.accountName } : {}),
++          ...(access.configDir ? { configDir: access.configDir } : {}),
++          ...(access.planType ? { planType: access.planType } : {}),
++        },
++      ]
++    : [];
++}
++
++/** The active fields mirror one saved account; "" selects the CLI's own default home. */
++export function nativeAccessForAccount(
++  access: NativeCliAccessConfigObject,
++  account: NativeCliSavedAccount,
++  accounts: NativeCliSavedAccount[],
++): NativeCliAccessConfigObject {
++  return {
++    ...access,
++    connected: true,
++    accountId: account.id,
++    accountName: account.name ?? account.id,
++    ...(account.planType ? { planType: account.planType } : {}),
++    configDir: account.configDir ?? "",
++    accounts,
++  };
++}
++
+ /** Connect/reconnect use the existing version-checked Provider writer, not another credential store. */
+ export function createNativeCliConnectionOperations(
+   facade: ProviderSettingsFacade,
+@@ -56,8 +95,13 @@ export function createNativeCliConnectionOperations(
+       /** Set once the version-checked write starts; before that a cancel still fences the commit. */
+       writing?: boolean;
+       cancelled?: boolean;
++      /** Fleet-allocated home for an added account; removed unless the account is saved. */
++      allocatedHome?: string;
+     }
+   >();
++  const discardHome = (dir?: string) => {
++    if (dir) native?.accountHomes?.remove(dir);
++  };
+   // The existing Provider Host owns these login children. Teardown must also
+   // fence launches/inspection that are still awaiting network or SDK readiness.
+   registerDispose?.(() => {
+@@ -72,11 +116,27 @@ export function createNativeCliConnectionOperations(
+     access: NonNullable<ProviderConfigObject["access"]>,
+     revision: number,
+     admitWrite?: () => void,
++    adding = false,
+   ) => {
+     assertActive();
+     if (access.type !== "native-cli") throw new Error("This is not a native CLI connection");
+     const result = await inspectNativeCliConnection({ ...access, accountId: undefined }, native);
+     assertActive();
++    const saved = nativeSavedAccounts(access);
++    const entry: NativeCliSavedAccount = {
++      id: result.accountId,
++      name: result.accountName,
++      ...(home(access.configDir) ? { configDir: access.configDir } : {}),
++      ...(result.planType ? { planType: result.planType } : {}),
++    };
++    const duplicate = saved.find(
++      (account) => account.id === entry.id && home(account.configDir) !== home(entry.configDir),
++    );
++    if (adding && duplicate) throw new Error("Native CLI account already added");
++    const position = saved.findIndex((account) => home(account.configDir) === home(entry.configDir));
++    const accounts = saved.filter((account) => account !== duplicate);
++    if (position >= 0) accounts.splice(accounts.indexOf(saved[position]!), 1, entry);
++    else accounts.push(entry);
+     admitWrite?.();
+     await facade.mergeDiscoveredModels(
+       id as ProviderId,
+@@ -85,12 +145,38 @@ export function createNativeCliConnectionOperations(
+       undefined,
+       true,
+       {
+-        access: { ...access, connected: true, accountId: result.accountId,
+-          accountName: result.accountName, planType: result.planType },
++        access: nativeAccessForAccount(access, entry, accounts),
+         basedOnRevision: revision,
+       },
+     );
+   };
++  const nativeAccess = (id: string) => {
++    const snapshot = facade.getView();
++    const access = snapshot.providers.find((entry) => entry.providerId === id)?.effectiveConfig
++      .access;
++    if (access?.type !== "native-cli") throw new Error("Native CLI connection no longer exists");
++    return { access, revision: snapshot.revision };
++  };
++  /** Switch the active sign-in: its own catalog replaces the previous account's in one write. */
++  const activate = async (id: string, accountId: string) => {
++    const { access, revision } = nativeAccess(id);
++    const accounts = nativeSavedAccounts(access);
++    const target = accounts.find((account) => account.id === accountId);
++    if (!target) throw new Error("Native CLI account no longer exists");
++    const candidate = nativeAccessForAccount(access, target, accounts);
++    const result = await inspectNativeCliConnection(candidate, native);
++    assertActive();
++    const refreshed = { ...target, name: result.accountName, ...(result.planType ? { planType: result.planType } : {}) };
++    const next = accounts.map((account) => (account === target ? refreshed : account));
++    await facade.mergeDiscoveredModels(
++      id as ProviderId,
++      result.catalog.models,
++      facade.getView().providers.find((entry) => entry.providerId === id)!.effectiveConfig,
++      undefined,
++      true,
++      { access: nativeAccessForAccount(access, refreshed, next), basedOnRevision: revision },
++    );
++  };
+   return {
+     async inspectNativeCli(id: string): Promise<NativeCliConnectionInspection> {
+       assertActive();
+@@ -113,16 +199,36 @@ export function createNativeCliConnectionOperations(
+       await connect(id, access, snapshot.revision);
+       return facade.getView();
+     },
+-    async beginNativeCliLogin(id: string): Promise<{ flowId: string }> {
++    async beginNativeCliLogin(
++      id: string,
++      options?: { addAccount?: boolean; accountId?: string },
++    ): Promise<{ flowId: string }> {
+       assertActive();
+       await ensureReady();
+       assertActive();
+       const snapshot = facade.getView();
+-      const access = snapshot.providers.find((entry) => entry.providerId === id)?.effectiveConfig
++      const current = snapshot.providers.find((entry) => entry.providerId === id)?.effectiveConfig
+         .access;
+-      if (access?.type !== "native-cli" || !["claude", "codex"].includes(access.provider))
++      if (current?.type !== "native-cli" || !["claude", "codex"].includes(current.provider))
+         throw new Error("This native CLI login is not available");
+       if (!native) throw new Error("Native CLI connection unavailable on this host");
++      let access: NativeCliAccessConfigObject = current;
++      let allocatedHome: string | undefined;
++      if (options?.addAccount) {
++        if (!native.accountHomes || !NATIVE_CLI_MULTI_ACCOUNT.has(current.provider))
++          throw new Error("This native CLI does not support several accounts");
++        if (nativeSavedAccounts(current).length >= 10)
++          throw new Error("Native CLI account limit reached");
++        // 官方 CLI 在独立目录中自行登录并保存凭据；Fleet 不复制、不读取令牌。
++        allocatedHome = native.accountHomes.create(current.provider);
++        access = { ...current, configDir: allocatedHome };
++      } else if (options?.accountId) {
++        // 重新登录某个已保存账号：在它自己的 CLI 目录里运行官方登录，完成后它成为当前账号。
++        const saved = nativeSavedAccounts(current);
++        const target = saved.find((account) => account.id === options.accountId);
++        if (!target) throw new Error("Native CLI account no longer exists");
++        access = { ...current, configDir: target.configDir ?? "", accounts: saved };
++      }
+       flows.get(id)?.cancel();
+       let login: NativeCliLoginProcess | undefined;
+       let cancelled = false;
+@@ -135,6 +241,7 @@ export function createNativeCliConnectionOperations(
+         status: "pending" as "pending" | "finished" | "failed",
+         revision: snapshot.revision,
+         access,
++        allocatedHome,
+       };
+       flows.set(id, flow);
+       try {
+@@ -145,6 +252,7 @@ export function createNativeCliConnectionOperations(
+         }
+       } catch (error) {
+         if (flows.get(id) === flow) flows.delete(id);
++        discardHome(allocatedHome);
+         throw error;
+       }
+       void login.completion.then(
+@@ -170,16 +278,26 @@ export function createNativeCliConnectionOperations(
+       if (flow.status === "pending") return { status: "pending" };
+       if (flow.status === "failed") {
+         flows.delete(id);
++        discardHome(flow.allocatedHome);
+         throw flow.failure ?? new Error("Native CLI login failed");
+       }
+       // Concurrent renderer polls share exactly one version-checked commit.
+-      flow.commit ??= connect(id, flow.access, flow.revision, () => {
+-        // PRI-01: a cancel that arrived while the post-login inspection ran must not publish it.
+-        if (flow.cancelled) throw new Error("Native CLI login cancelled");
+-        flow.writing = true;
+-      });
++      flow.commit ??= connect(
++        id,
++        flow.access,
++        flow.revision,
++        () => {
++          // PRI-01: a cancel that arrived while the post-login inspection ran must not publish it.
++          if (flow.cancelled) throw new Error("Native CLI login cancelled");
++          flow.writing = true;
++        },
++        Boolean(flow.allocatedHome),
++      );
+       try {
+         await flow.commit;
++      } catch (error) {
++        discardHome(flow.allocatedHome);
++        throw error;
+       } finally {
+         if (flows.get(id) === flow) flows.delete(id);
+       }
+@@ -195,6 +313,65 @@ export function createNativeCliConnectionOperations(
+       }
+       flows.delete(id);
+       flow.cancel();
++      discardHome(flow.allocatedHome);
++    },
++    /** Same contract as subscription accounts: select, remove or toggle automatic switching. */
++    async updateNativeCliAccounts(
++      id: string,
++      change: { select?: string; remove?: string; autoSwitch?: boolean },
++    ): Promise<void> {
++      assertActive();
++      await ensureReady();
++      assertActive();
++      if (change.select) {
++        await activate(id, change.select);
++        return;
++      }
++      if (change.remove) {
++        const { access } = nativeAccess(id);
++        const accounts = nativeSavedAccounts(access);
++        const removed = accounts.find((account) => account.id === change.remove);
++        if (!removed) return;
++        const rest = accounts.filter((account) => account !== removed);
++        if (access.accountId === removed.id && rest.length) {
++          // 移除当前账号时先切到下一个仍保存的账号，再从列表中删去它。
++          await activate(id, rest[0]!.id);
++        }
++        const latest = nativeAccess(id);
++        const remaining = nativeSavedAccounts(latest.access).filter(
++          (account) => account.id !== removed.id,
++        );
++        await facade.savePersonalProviderOverlay(
++          id as ProviderId,
++          {
++            access: {
++              ...latest.access,
++              accounts: remaining,
++              ...(remaining.length ? {} : { connected: false }),
++              ...(remaining.length > 1 ? {} : { autoSwitch: false }),
++            },
++          },
++          undefined,
++          latest.revision,
++        );
++        if (home(removed.configDir)) discardHome(removed.configDir);
++        return;
++      }
++      if (change.autoSwitch !== undefined) {
++        const { access, revision } = nativeAccess(id);
++        await facade.savePersonalProviderOverlay(
++          id as ProviderId,
++          {
++            access: {
++              ...access,
++              accounts: nativeSavedAccounts(access),
++              autoSwitch: change.autoSwitch && nativeSavedAccounts(access).length > 1,
++            },
++          },
++          undefined,
++          revision,
++        );
++      }
+     },
+   };
+ }
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 7a6d3e5..148e557 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -14,9 +14,10 @@ import {
+   ACP_PROFILES,
+   foldVendorModels,
+ } from "@zcode/adapters/native-agent";
+-import { mkdirSync } from "node:fs";
++import { randomUUID } from "node:crypto";
++import { mkdirSync, rmSync } from "node:fs";
+ import { tmpdir } from "node:os";
+-import { join } from "node:path";
++import { isAbsolute, join, relative } from "node:path";
+ import type { NativeCliConnectionAdapter } from "./nativeCliConnection.js";
+ import { parseClaudeNativeUsage, parseCodexNativeUsage } from "./nativeCliUsage.js";
+ 
+@@ -98,6 +99,8 @@ export function createNativeCliConnectionAdapter(
+   ) => Promise<Record<string, string>> = async () => ({}),
+   /** 宿主网络所有者的 fetch；Claude 额度回退读取复用它，保持代理/证书一致。 */
+   hostFetch?: typeof fetch,
++  /** Fleet data directory for additional sign-ins; each gets its own official CLI home. */
++  accountsRoot?: string,
+ ): NativeCliConnectionAdapter {
+   return {
+     async usage(access) {
+@@ -259,6 +262,23 @@ export function createNativeCliConnectionAdapter(
+         },
+       };
+     },
++    ...(accountsRoot
++      ? {
++          accountHomes: {
++            create(provider: string) {
++              const dir = join(accountsRoot, provider, randomUUID());
++              mkdirSync(dir, { recursive: true, mode: 0o700 });
++              return dir;
++            },
++            // Only homes Fleet allocated are removed; the CLI's own default home is never touched.
++            remove(dir: string) {
++              const path = relative(accountsRoot, dir);
++              if (!path || path.startsWith("..") || isAbsolute(path)) return;
++              rmSync(dir, { recursive: true, force: true });
++            },
++          },
++        }
++      : {}),
+     login: async (options) => {
+       if (options.provider === "antigravity")
+         throw new Error("Sign in to the official Antigravity CLI first: run `agy` in a terminal");
+diff --git a/packages/services/src/model-provider/nativeCliUsage.ts b/packages/services/src/model-provider/nativeCliUsage.ts
+index bb4e64e..2e03d68 100644
+--- a/packages/services/src/model-provider/nativeCliUsage.ts
++++ b/packages/services/src/model-provider/nativeCliUsage.ts
+@@ -1,6 +1,10 @@
+ import { createApiKeyPlanUsageReader } from "./apiKeyPlanUsage.js";
+ import type { NativeCliAccessConfigObject, ProviderSettingsFacade } from "@zcode/provider";
+-import type { NativeCliConnectionAdapter } from "./nativeCliConnection.js";
++import {
++  nativeAccessForAccount,
++  nativeSavedAccounts,
++  type NativeCliConnectionAdapter,
++} from "./nativeCliConnection.js";
+ import type {
+   SubscriptionAccountsView,
+   SubscriptionConnectionOwner,
+@@ -65,10 +69,19 @@ export function createConnectionUsageOperations(
+   native?: NativeCliConnectionAdapter,
+   subscriptions?: SubscriptionConnectionOwner,
+   fetcher?: typeof fetch,
++  switchNativeAccount?: (providerId: string, accountId: string) => Promise<void>,
++  registerDispose?: (cleanup: () => void) => void,
+ ) {
+-  const nativeUsage = createNativeCliUsageReader(facade, native);
++  const nativeUsage = createNativeCliUsageReader(facade, native, Date.now, switchNativeAccount);
++  if (switchNativeAccount && registerDispose) {
++    // Like Cockpit's refresh scheduler: switching still happens when no allowance view is open.
++    const timer = setInterval(() => void ensureReady().then(() => nativeUsage.sweep()), 5 * 60_000);
++    timer.unref?.();
++    registerDispose(() => clearInterval(timer));
++  }
+   const apiKeyPlans = fetcher ? createApiKeyPlanUsageReader(facade, fetcher) : undefined;
+   return {
++    nativeAccountsView: (id: string) => nativeUsage.accounts(id),
+     async getSubscriptionUsage(
+       id: string,
+       refresh?: boolean,
+@@ -153,11 +166,52 @@ export function parseClaudeNativeUsage(
+   };
+ }
+ 
+-/** Derived cache on the existing native connection owner; no tokens, accounts or usage ledger. */
++/** A window counts as exhausted from this share; switching a little early avoids a failed turn. */
++const EXHAUSTED_PERCENT = 98;
++/** Candidates must have clear headroom, so two nearly spent accounts do not alternate. */
++const CANDIDATE_PERCENT = 90;
++const SWITCH_COOLDOWN_MS = 5 * 60_000;
++
++/**
++ * The share that blocks the account's ordinary requests. Claude model-scoped weekly windows (Opus,
++ * Sonnet, named models) only limit that model, so they do not exhaust the whole account.
++ */
++export function nativeUsagePeak(
++  provider: string,
++  result: SubscriptionUsageResult | undefined,
++): number | undefined {
++  if (result?.status !== "available") return undefined;
++  const windows = result.windows.filter(
++    (window) =>
++      window.usedPercent !== undefined && (provider !== "claude" || window.id.startsWith("default:")),
++  );
++  return windows.length ? Math.max(...windows.map((window) => window.usedPercent!)) : undefined;
++}
++
++/**
++ * Cockpit-style choice: leave the active account only when its allowance is spent, and move to the
++ * saved account with the most headroom. Accounts whose allowance cannot be read are not chosen.
++ */
++export function pickNativeSwitchTarget(
++  provider: string,
++  active: SubscriptionUsageResult,
++  candidates: { id: string; usage: SubscriptionUsageResult }[],
++): string | undefined {
++  const peak = nativeUsagePeak(provider, active);
++  if (peak === undefined || peak < EXHAUSTED_PERCENT) return undefined;
++  return candidates
++    .map((candidate) => ({ id: candidate.id, peak: nativeUsagePeak(provider, candidate.usage) }))
++    .filter((candidate): candidate is { id: string; peak: number } =>
++      candidate.peak !== undefined && candidate.peak < CANDIDATE_PERCENT)
++    .sort((left, right) => left.peak - right.peak)[0]?.id;
++}
++
++/** Derived cache on the existing native connection owner; no tokens or usage ledger. */
+ export function createNativeCliUsageReader(
+   facade: ProviderSettingsFacade,
+   native?: NativeCliConnectionAdapter,
+   now = Date.now,
++  switchAccount?: (providerId: string, accountId: string) => Promise<void>,
+ ) {
+   const cache = new Map<
+     string,
+@@ -167,90 +221,132 @@ export function createNativeCliUsageReader(
+       pending?: Promise<SubscriptionUsageResult>;
+     }
+   >();
++  const lastSwitch = new Map<string, number>();
+   const scope = (id: string) => {
+     const access = facade.getView().providers.find((provider) => provider.providerId === id)
+       ?.effectiveConfig.access;
+     if (access?.type !== "native-cli") return undefined;
++    const saved = nativeSavedAccounts(access);
+     return {
+       access,
++      saved,
+       revision: JSON.stringify([
+         access.provider,
+         access.executable,
+-        access.configDir,
++        access.configDir || "",
+         access.accountId,
+         access.connected,
++        saved.map((account) => [account.id, account.configDir || ""]),
++        access.autoSwitch === true,
+       ]),
+     };
+   };
++  const readAccount = async (
++    id: string,
++    accountId: string,
++    refresh: boolean,
++  ): Promise<SubscriptionUsageResult> => {
++    const current = scope(id);
++    const access = current?.access;
++    const scoped = { accountId, connectionRevision: current?.revision };
++    if (!current || !access?.connected || !access.accountId) {
++      cache.delete(`${id}\n${accountId}`);
++      return { status: "auth-required", ...scoped };
++    }
++    const account = current.saved.find((entry) => entry.id === accountId);
++    // A stale viewer cannot invalidate a removed account's shared read.
++    if (!account) return { status: "auth-required", ...scoped };
++    if (!native?.usage) return { status: "unsupported", ...scoped };
++    const key = `${id}\n${accountId}`;
++    let entry = cache.get(key);
++    if (entry?.revision !== current.revision) {
++      entry = { revision: current.revision };
++      cache.set(key, entry);
++    }
++    if (entry.pending) return entry.pending;
++    if (!refresh && entry.value && (entry.value.refreshAfter ?? 0) > now()) return entry.value;
++    const active = entry;
++    const request = (async (): Promise<SubscriptionUsageResult> => {
++      let value: SubscriptionUsageResult;
++      try {
++        // Each saved account is read through its own CLI home; the adapter checks its identity.
++        value = await native.usage!(
++          nativeAccessForAccount(access, account, current.saved) as NativeCliAccessConfigObject,
++        );
++      } catch (error) {
++        const accountChanged = error instanceof Error && /account changed/.test(error.message);
++        value = {
++          ...(accountChanged ? { authRequiredReason: "account-changed" as const } : {}),
++          status:
++            error instanceof Error &&
++            /account changed|Sign in to the official (Claude|Codex) CLI/.test(error.message)
++              ? "auth-required"
++              : "unavailable",
++        };
++      }
++      if (scope(id)?.revision !== active.revision || cache.get(key) !== active)
++        return { status: "unavailable", ...scoped };
++      const result: SubscriptionUsageResult =
++        value.status === "unavailable" && active.value?.status === "available"
++          ? { ...active.value, refreshError: "unavailable", refreshAfter: now() + 60000 }
++          : { ...value, ...scoped, refreshAfter: now() + 60000 };
++      active.value = result;
++      return result;
++    })();
++    active.pending = request;
++    try {
++      return await request;
++    } finally {
++      if (active.pending === request) active.pending = undefined;
++    }
++  };
++  /** Runs after the active account's allowance is read; never blocks that read. */
++  const considerSwitch = async (id: string, activeUsage: SubscriptionUsageResult) => {
++    const current = scope(id);
++    if (!switchAccount || !current?.access.autoSwitch || current.saved.length < 2) return;
++    if (now() - (lastSwitch.get(id) ?? 0) < SWITCH_COOLDOWN_MS) return;
++    const peak = nativeUsagePeak(current.access.provider, activeUsage);
++    if (peak === undefined || peak < EXHAUSTED_PERCENT) return;
++    lastSwitch.set(id, now());
++    const others = current.saved.filter((account) => account.id !== current.access.accountId);
++    const candidates = await Promise.all(
++      others.map(async (account) => ({ id: account.id, usage: await readAccount(id, account.id, false) })),
++    );
++    const target = pickNativeSwitchTarget(current.access.provider, activeUsage, candidates);
++    if (target && scope(id)?.access.accountId === current.access.accountId)
++      await switchAccount(id, target).catch(() => undefined);
++  };
+   return {
+     accounts(id: string): SubscriptionAccountsView | undefined {
+       const current = scope(id);
+       if (!current) return undefined;
+-      const { access, revision } = current;
++      const { access, saved, revision } = current;
+       return {
+-        accounts:
+-          access.connected && access.accountId
+-            ? [
+-                {
+-                  id: access.accountId,
+-                  label: access.accountName ?? access.accountId,
+-                  active: true,
+-                },
+-              ]
+-            : [],
+-        autoSwitch: false,
++        accounts: access.connected
++          ? saved.map((account) => ({
++              id: account.id,
++              label: account.name ?? account.id,
++              active: account.id === access.accountId,
++            }))
++          : [],
++        autoSwitch: access.autoSwitch === true && saved.length > 1,
+         revision,
+       };
+     },
+     async read(id: string, refresh = false, accountId?: string): Promise<SubscriptionUsageResult> {
+       const current = scope(id);
+-      const access = current?.access;
+-      const scoped = { accountId: access?.accountId, connectionRevision: current?.revision };
+-      if (!current || !access?.connected || !access.accountId) {
+-        cache.delete(id);
+-        return { status: "auth-required", ...scoped };
+-      }
+-      // A stale viewer cannot invalidate the current account's shared read.
+-      if (accountId && accountId !== access.accountId)
+-        return { status: "auth-required", ...scoped };
+-      if (!native?.usage) return { status: "unsupported", ...scoped };
+-      let entry = cache.get(id);
+-      if (entry?.revision !== current.revision) {
+-        entry = { revision: current.revision };
+-        cache.set(id, entry);
+-      }
+-      if (entry.pending) return entry.pending;
+-      if (!refresh && entry.value && (entry.value.refreshAfter ?? 0) > now()) return entry.value;
+-      const active = entry;
+-      const request = (async (): Promise<SubscriptionUsageResult> => {
+-        let value: SubscriptionUsageResult;
+-        try {
+-          value = await native.usage!({ ...access } as NativeCliAccessConfigObject);
+-        } catch (error) {
+-          const accountChanged = error instanceof Error && /account changed/.test(error.message);
+-          value = {
+-            ...(accountChanged ? { authRequiredReason: "account-changed" as const } : {}),
+-            status:
+-              error instanceof Error &&
+-              /account changed|Sign in to the official (Claude|Codex) CLI/.test(error.message)
+-                ? "auth-required"
+-                : "unavailable",
+-          };
+-        }
+-        if (scope(id)?.revision !== active.revision || cache.get(id) !== active)
+-          return { status: "unavailable", ...scoped };
+-        const result: SubscriptionUsageResult =
+-          value.status === "unavailable" && active.value?.status === "available"
+-            ? { ...active.value, refreshError: "unavailable", refreshAfter: now() + 60000 }
+-            : { ...value, ...scoped, refreshAfter: now() + 60000 };
+-        active.value = result;
+-        return result;
+-      })();
+-      active.pending = request;
+-      try {
+-        return await request;
+-      } finally {
+-        if (active.pending === request) active.pending = undefined;
++      const target = accountId ?? current?.access.accountId;
++      if (!current || !target) return { status: "auth-required", connectionRevision: current?.revision };
++      const result = await readAccount(id, target, refresh);
++      if (target === current.access.accountId) void considerSwitch(id, result);
++      return result;
++    },
++    /** Background check for connections with automatic switching; the caller owns the timer. */
++    async sweep(): Promise<void> {
++      for (const provider of facade.getView().providers) {
++        const access = provider.effectiveConfig.access;
++        if (access?.type !== "native-cli" || !access.autoSwitch || !access.connected) continue;
++        await this.read(provider.providerId).catch(() => undefined);
+       }
+     },
+   };
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 00bc113..0e5621b 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -43,8 +43,23 @@ export function createProviderSettingsService(
+     string,
+     { identity: string; request: Promise<ModelDiscoveryResult> }
+   >();
++  const nativeOperations = createNativeCliConnectionOperations(
++    facade,
++    ensureReady,
++    nativeCli,
++    registerNativeCliDispose,
++  );
++  const { nativeAccountsView, ...usageOperations } = createConnectionUsageOperations(
++    facade,
++    ensureReady,
++    nativeCli,
++    subscriptions,
++    fetch,
++    (id, accountId) => nativeOperations.updateNativeCliAccounts(id, { select: accountId }),
++    registerNativeCliDispose,
++  );
+   return {
+-    ...createConnectionUsageOperations(facade, ensureReady, nativeCli, subscriptions, fetch),
++    ...usageOperations,
+     ...createModelSettingsAssistantService(facade, ensureReady, assistantWorkspacePath),
+     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
+     async previewCcSwitchImport(path) {
+@@ -57,12 +72,7 @@ export function createProviderSettingsService(
+       if (!ccSwitchImport) throw new Error("CC Switch import unavailable on this host");
+       return ccSwitchImport.import(input);
+     },
+-    ...createNativeCliConnectionOperations(
+-      facade,
+-      ensureReady,
+-      nativeCli,
+-      registerNativeCliDispose,
+-    ),
++    ...nativeOperations,
+     async discoverModels(id) {
+       await ensureReady();
+       await facade.waitForProviderOperations(id);
+@@ -117,6 +127,12 @@ export function createProviderSettingsService(
+       return subscriptions.consumeResetCredit(id, request);
+     },
+     async updateSubscriptionAccounts(id, change) {
++      await ensureReady();
++      if (nativeAccountsView(id)) {
++        // Native sign-ins share the subscription account contract; the CLI keeps the credentials.
++        await nativeOperations.updateNativeCliAccounts(id, change);
++        return nativeAccountsView(id)!;
++      }
+       if (!subscriptions) throw new Error("Subscription login unavailable on this host");
+       const before = await subscriptions.accounts(id);
+       const result = await subscriptions.updateAccounts(id, change);
+diff --git a/packages/services/src/model-provider/providerRuntime.ts b/packages/services/src/model-provider/providerRuntime.ts
+index 262de1b..58b3ab3 100644
+--- a/packages/services/src/model-provider/providerRuntime.ts
++++ b/packages/services/src/model-provider/providerRuntime.ts
+@@ -83,7 +83,7 @@ export class ProviderRuntime {
+   readonly #disposeBuiltinRecovery: () => void;
+   readonly #modelSelectionRuntime: IModelSelectionService & { dispose(): void };
+   readonly #disposeModelSelectionConfiguredDefaultSource?: () => void;
+-  #disposeNativeCliConnections: () => void = () => {};
++  readonly #nativeCliCleanups: (() => void)[] = [];
+   #startPromise: ReturnType<ProviderRegistryService["start"]> | null = null;
+   #disposed = false;
+ 
+@@ -125,7 +125,7 @@ export class ProviderRuntime {
+       dependencies.nativeCli ?? createNativeCliConnectionAdapter(),
+       dependencies.assistantWorkspacePath,
+       (cleanup) => {
+-        this.#disposeNativeCliConnections = cleanup;
++        this.#nativeCliCleanups.push(cleanup);
+       },
+     );
+     this.#modelSelectionRuntime = createModelSelectionService(
+@@ -153,7 +153,7 @@ export class ProviderRuntime {
+   dispose(): void {
+     if (this.#disposed) return;
+     this.#disposed = true;
+-    this.#disposeNativeCliConnections();
++    for (const cleanup of this.#nativeCliCleanups.splice(0)) cleanup();
+     this.#disposeBuiltinRecovery();
+     this.#modelSelectionRuntime.dispose();
+     this.registryService.dispose();
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 74cd4a4..e53551e 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -1617,7 +1617,7 @@ export function createLocalServices(options: {
+             caCertPath: settings.httpProxyCaCertPath,
+           }));
+       return buildAgentRuntimeEnv({ ...network, httpProxy: network.httpProxy });
+-    }, hostApiNetworkTransport.fetch),
++    }, hostApiNetworkTransport.fetch, join(resolveAppConfigDir(), "native-cli-accounts")),
+     fetch: hostApiNetworkTransport.fetch,
+     configRuntime: providerConfigRuntime,
+     modelSelectionConfiguredDefaultSource,
+diff --git a/packages/services/test/native-cli-accounts.test.ts b/packages/services/test/native-cli-accounts.test.ts
+new file mode 100644
+index 0000000..38f7a72
+--- /dev/null
++++ b/packages/services/test/native-cli-accounts.test.ts
+@@ -0,0 +1,233 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { mapCodexNativeModels } from "../src/model-provider/nativeCliConnectionAdapter.js";
++import { pickNativeSwitchTarget } from "../src/model-provider/nativeCliUsage.js";
++import { createProviderConfigRuntime } from "../src/model-provider/providerConfigRuntime.js";
++import { ProviderRuntime } from "../src/model-provider/providerRuntime.js";
++import type { SubscriptionUsageResult } from "../src/model-provider/subscriptionUsage.js";
++
++const usage = (percent: number, id = "codex:primary"): SubscriptionUsageResult => ({
++  status: "available",
++  source: "fixture",
++  observedAt: 1,
++  windows: [{ id, usedPercent: percent }],
++});
++
++/** Each CLI home is one official sign-in; the fake CLI answers by home, as the real one does. */
++function fixture(directory: string) {
++  const identities = new Map<string, string>([["", "default@example.invalid"]]);
++  const percents = new Map<string, number>();
++  const homes: string[] = [];
++  const removed: string[] = [];
++  let nextLogin = "second@example.invalid";
++  const model = (id: string) =>
++    mapCodexNativeModels([
++      {
++        id,
++        model: id,
++        displayName: id,
++        hidden: false,
++        inputModalities: ["text"],
++        isDefault: true,
++        supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Fixture" }],
++        defaultReasoningEffort: "high",
++      },
++    ]);
++  const runtime = new ProviderRuntime({
++    configRuntime: createProviderConfigRuntime({
++      personalFilePath: join(directory, "providers.json"),
++      zcodeBuiltinFilePath: fileURLToPath(
++        new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++      ),
++      watch: false,
++      personalPollingIntervalMs: false,
++    }),
++    nativeCli: {
++      inspect: async (access) => {
++        const accountId = identities.get(access.configDir || "");
++        if (!accountId) throw new Error("Sign in to the official Codex CLI first");
++        if (access.accountId && access.accountId !== accountId)
++          throw new Error("Native CLI account changed; reconnect this connection");
++        return {
++          accountId,
++          accountName: accountId,
++          planType: "plus",
++          catalog: { source: "provider", models: model(`model-for-${accountId.split("@")[0]}`) },
++        };
++      },
++      usage: async (access) => usage(percents.get(access.accountId!) ?? 0),
++      accountHomes: {
++        create: (provider) => {
++          const home = join(directory, "homes", provider, String(homes.length));
++          homes.push(home);
++          return home;
++        },
++        remove: (home) => removed.push(home),
++      },
++      login: (options) => {
++        identities.set(options.configDir || "", nextLogin);
++        return { completion: Promise.resolve(), cancel() {} };
++      },
++    },
++  });
++  return {
++    runtime,
++    homes,
++    removed,
++    percents,
++    setNextLogin: (accountId: string) => {
++      nextLogin = accountId;
++    },
++  };
++}
++
++async function signIn(
++  service: ProviderRuntime["providerSettings"],
++  providerId: string,
++): Promise<void> {
++  const { flowId } = await service.beginNativeCliLogin(providerId, { addAccount: true });
++  while ((await service.pollNativeCliLogin(providerId, flowId)).status === "pending");
++}
++
++test("native CLI keeps several sign-ins in isolated homes and switches between them", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-accounts-"));
++  const { runtime, homes, removed, setNextLogin } = fixture(directory);
++  try {
++    await runtime.start();
++    const service = runtime.providerSettings;
++    const { providerId } = await service.createPersonalProvider({
++      templateId: "fleet-chatgpt-native",
++    });
++    await service.connectNativeCli(providerId);
++    const access = async () => {
++      const value = (await service.getView()).providers.find((p) => p.providerId === providerId)!
++        .effectiveConfig.access;
++      assert.equal(value?.type, "native-cli");
++      return value as Extract<typeof value, { type: "native-cli" }>;
++    };
++    const models = async () =>
++      (await service.getView()).providers
++        .find((p) => p.providerId === providerId)!
++        .models.filter((m) => m.enabled)
++        .map((m) => m.modelId);
++
++    await signIn(service, providerId);
++    let current = await access();
++    assert.equal(current.accountId, "second@example.invalid", "a new sign-in becomes active");
++    assert.equal(current.configDir, homes[0]);
++    assert.deepEqual(
++      current.accounts?.map((a) => [a.id, a.configDir ?? ""]),
++      [
++        ["default@example.invalid", ""],
++        ["second@example.invalid", homes[0]],
++      ],
++    );
++    assert.deepEqual(await models(), ["model-for-second"], "catalog follows the active account");
++
++    // Signing the same account in again is refused and its fresh home discarded.
++    setNextLogin("second@example.invalid");
++    await assert.rejects(signIn(service, providerId), /already added/);
++    assert.deepEqual(removed, [homes[1]]);
++    assert.equal((await access()).accounts?.length, 2);
++
++    const view = await service.getSubscriptionAccounts(providerId);
++    assert.deepEqual(
++      view.accounts.map((a) => [a.id, a.active]),
++      [
++        ["default@example.invalid", false],
++        ["second@example.invalid", true],
++      ],
++    );
++
++    await service.updateSubscriptionAccounts(providerId, { select: "default@example.invalid" });
++    current = await access();
++    assert.equal(current.accountId, "default@example.invalid");
++    assert.equal(current.configDir, "", "the CLI's own home is selected explicitly");
++    assert.deepEqual(await models(), ["model-for-default"]);
++
++    const toggled = await service.updateSubscriptionAccounts(providerId, { autoSwitch: true });
++    assert.equal(toggled.autoSwitch, true);
++
++    // Removing the active account moves to the next saved one and keeps the default home on disk.
++    await service.updateSubscriptionAccounts(providerId, { remove: "default@example.invalid" });
++    current = await access();
++    assert.equal(current.accountId, "second@example.invalid");
++    assert.deepEqual(current.accounts?.map((a) => a.id), ["second@example.invalid"]);
++    assert.equal(current.autoSwitch, false, "one account cannot switch");
++    assert.deepEqual(removed, [homes[1]], "the CLI default home is never removed");
++
++    await service.updateSubscriptionAccounts(providerId, { remove: "second@example.invalid" });
++    current = await access();
++    assert.equal(current.connected, false);
++    assert.deepEqual(removed, [homes[1], homes[0]]);
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++
++test("exhausted native allowance switches to the saved account with the most headroom", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-autoswitch-"));
++  const { runtime, percents, setNextLogin } = fixture(directory);
++  try {
++    await runtime.start();
++    const service = runtime.providerSettings;
++    const { providerId } = await service.createPersonalProvider({
++      templateId: "fleet-chatgpt-native",
++    });
++    await service.connectNativeCli(providerId);
++    await signIn(service, providerId);
++    setNextLogin("third@example.invalid");
++    await signIn(service, providerId);
++    await service.updateSubscriptionAccounts(providerId, { select: "default@example.invalid" });
++    percents.set("default@example.invalid", 99);
++    percents.set("second@example.invalid", 60);
++    percents.set("third@example.invalid", 20);
++
++    // Without the switch enabled, an exhausted reading changes nothing.
++    await service.getSubscriptionUsage(providerId, true);
++    await new Promise((resolve) => setTimeout(resolve, 20));
++    let active = (await service.getSubscriptionAccounts(providerId)).accounts.find((a) => a.active);
++    assert.equal(active?.id, "default@example.invalid");
++
++    await service.updateSubscriptionAccounts(providerId, { autoSwitch: true });
++    await service.getSubscriptionUsage(providerId, true);
++    for (let attempt = 0; attempt < 50; attempt++) {
++      active = (await service.getSubscriptionAccounts(providerId)).accounts.find((a) => a.active);
++      if (active?.id !== "default@example.invalid") break;
++      await new Promise((resolve) => setTimeout(resolve, 10));
++    }
++    assert.equal(active?.id, "third@example.invalid");
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++
++test("switch target needs an exhausted active window and clear headroom elsewhere", () => {
++  assert.equal(pickNativeSwitchTarget("codex", usage(80), [{ id: "b", usage: usage(0) }]), undefined);
++  assert.equal(
++    pickNativeSwitchTarget("codex", usage(100), [
++      { id: "b", usage: usage(95) },
++      { id: "c", usage: { status: "unavailable" } },
++    ]),
++    undefined,
++    "nearly spent or unreadable accounts are not chosen",
++  );
++  assert.equal(
++    pickNativeSwitchTarget("codex", usage(100), [
++      { id: "b", usage: usage(50) },
++      { id: "c", usage: usage(10) },
++    ]),
++    "c",
++  );
++  assert.equal(
++    pickNativeSwitchTarget("claude", usage(100, "Opus:seven_day"), [{ id: "b", usage: usage(0) }]),
++    undefined,
++    "a Claude model-scoped window does not exhaust the account",
++  );
++});
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 716a9f9..e122048 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7368,6 +7368,19 @@ const enUS: Record<string, string> = {
+     "The bundled Claude executor is unavailable. Repair the app installation or select an installed official CLI.",
+   "settings.modelProvider.nativeCli.login":
+     "Sign in to the official Claude CLI with your Claude account first.",
++  "settings.modelProvider.nativeCli.accounts.inUse": "In use",
++  "settings.modelProvider.nativeCli.accounts.standby": "Signed in, not in use",
++  "settings.modelProvider.nativeCli.accounts.reconnect": "Sign this account in again",
++  "settings.modelProvider.nativeCli.accounts.use": "Use this account",
++  "settings.modelProvider.nativeCli.accounts.current": "Current",
++  "settings.modelProvider.nativeCli.accounts.more": "More actions for {account}",
++  "settings.modelProvider.nativeCli.accounts.signInNeeded": "Sign in again",
++  "settings.modelProvider.nativeCli.accounts.removeTitle": "Remove account {account}?",
++  "settings.modelProvider.nativeCli.accounts.removeDescription": "Fleet deletes the CLI sign-in folder it created for this account; the CLI's own default sign-in is not affected.",
++  "settings.modelProvider.nativeCli.addAccount": "Add account",
++  "settings.modelProvider.nativeCli.autoSwitchHint":
++    "When the current account runs out of allowance, switch to the saved account with the most left; takes effect from the next turn.",
++  "settings.modelProvider.nativeCli.duplicate": "This account is already added.",
+   "settings.modelProvider.nativeCli.changed":
+     "The CLI account has changed. Reconnect to bind the current account.",
+   "settings.modelProvider.nativeCli.failed":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index c68d1f9..45dcf9a 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6978,6 +6978,19 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.missing":
+     "内置 Claude 执行器不可用，请修复应用安装，或指定已安装的官方 CLI。",
+   "settings.modelProvider.nativeCli.login": "请先在官方 Claude CLI 中登录 Claude 账号。",
++  "settings.modelProvider.nativeCli.accounts.inUse": "正在使用",
++  "settings.modelProvider.nativeCli.accounts.standby": "已登录，未在使用",
++  "settings.modelProvider.nativeCli.accounts.reconnect": "重新登录此账号",
++  "settings.modelProvider.nativeCli.accounts.use": "切换到此账号",
++  "settings.modelProvider.nativeCli.accounts.current": "当前",
++  "settings.modelProvider.nativeCli.accounts.more": "{account} 的更多操作",
++  "settings.modelProvider.nativeCli.accounts.signInNeeded": "需要重新登录",
++  "settings.modelProvider.nativeCli.accounts.removeTitle": "移除账号 {account}？",
++  "settings.modelProvider.nativeCli.accounts.removeDescription": "Fleet 会删除为该账号单独创建的 CLI 登录目录；CLI 自身的默认登录不受影响。",
++  "settings.modelProvider.nativeCli.addAccount": "添加账号",
++  "settings.modelProvider.nativeCli.autoSwitchHint":
++    "当前账号额度用尽时，切换到余量最多的已保存账号；下一轮对话生效。",
++  "settings.modelProvider.nativeCli.duplicate": "该账号已添加。",
+   "settings.modelProvider.nativeCli.changed": "CLI 账号已切换，请重新连接当前账号。",
+   "settings.modelProvider.nativeCli.failed":
+     "无法读取原生 CLI 连接，请检查官方 CLI 的安装和登录状态。",
+diff --git a/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx b/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
+index 5d63d06..5dfc1ab 100644
+--- a/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/CredentialAutoSwitchSection.tsx
+@@ -9,8 +9,11 @@ export function CredentialAutoSwitchSection({
+   checked,
+   disabled,
+   onCheckedChange,
++  hint,
+ }: {
+   kind: "keys" | "accounts";
++  /** Overrides the default hint when the switching rule differs (native CLI allowance). */
++  hint?: string;
+   count: number;
+   checked: boolean;
+   disabled?: boolean;
+@@ -27,7 +30,7 @@ export function CredentialAutoSwitchSection({
+           <label
+             id={`${id}-title`}
+             htmlFor={id}
+-            className="text-ui-base font-medium text-foreground"
++            className="inline-flex min-h-6 items-center text-ui-base font-medium text-foreground"
+           >
+             {intl.formatMessage({ id: `settings.modelProvider.credentials.${kind}.autoSwitch` })}
+           </label>
+@@ -36,9 +39,10 @@ export function CredentialAutoSwitchSection({
+           id={`${id}-hint`}
+           className="mt-0.5 text-ui-caption leading-relaxed text-foreground-subtle"
+         >
+-          {intl.formatMessage({
+-            id: `settings.modelProvider.credentials.${kind}.${eligible ? "switchHint" : "switchRequiresTwo"}`,
+-          })}
++          {hint ??
++            intl.formatMessage({
++              id: `settings.modelProvider.credentials.${kind}.${eligible ? "switchHint" : "switchRequiresTwo"}`,
++            })}
+         </p>
+       </div>
+       <Switch
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliAccountList.tsx b/packages/ui/src/settings/model-provider-section/NativeCliAccountList.tsx
+new file mode 100644
+index 0000000..4d8b709
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/NativeCliAccountList.tsx
+@@ -0,0 +1,226 @@
++import { LoaderCircleIcon, MoreHorizontal, Plus } from "lucide-react";
++import { Button } from "@/components/ui/button.js";
++import { Badge } from "@/components/ui/badge.js";
++import {
++  DropdownMenu,
++  DropdownMenuContent,
++  DropdownMenuItem,
++  DropdownMenuTrigger,
++} from "@/components/ui/dropdown-menu.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
++import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage.js";
++import { subscriptionPlanPresentation } from "@/lib/subscriptionPlanPresentation.js";
++import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
++import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
++import { CredentialAutoSwitchSection } from "./CredentialAutoSwitchSection.js";
++
++type Kind = "claude" | "openai-codex";
++interface Account {
++  id: string;
++  label?: string;
++  active: boolean;
++}
++
++/**
++ * One saved sign-in as ZCode's own plan card, the same card a single account shows. Cockpit's
++ * account cards supply the rest: the allowance stays visible, the current account is tagged, and
++ * switching is one direct action.
++ */
++function AccountCard({
++  providerId,
++  revision,
++  kind,
++  account,
++  busy,
++  onSelect,
++  onReconnect,
++  onRemove,
++  onScopeChanged,
++}: {
++  providerId: string;
++  revision: string;
++  kind: Kind;
++  account: Account;
++  busy: boolean;
++  onSelect(): void;
++  onReconnect(): void;
++  onRemove(): void;
++  onScopeChanged(): void;
++}) {
++  const { intl } = useZCodeIntl();
++  const reading = useSubscriptionUsage({ providerId, revision, accountId: account.id, onScopeChanged });
++  const label = account.label ?? account.id;
++  const result = reading.result;
++  const plan = result?.status === "available" ? result.plan : undefined;
++  const tier = plan ? subscriptionPlanPresentation(kind, plan) : undefined;
++  const signInNeeded = result?.status === "auth-required";
++  const status = intl.formatMessage({
++    id: signInNeeded
++      ? "settings.modelProvider.nativeCli.accounts.signInNeeded"
++      : account.active
++        ? "settings.modelProvider.nativeCli.accounts.inUse"
++        : "settings.modelProvider.nativeCli.accounts.standby",
++  });
++  return (
++    <div data-slot="native-account-card" data-active={account.active || undefined} role="group" aria-label={label}>
++      <PlanStatusCardSurface
++        compact
++        trailingActionFillNarrow={false}
++        planTitle={label}
++        titleAccessory={
++          <>
++            {tier ? (
++              <Badge variant="secondary" className={tier.className}>
++                {tier.name}
++              </Badge>
++            ) : null}
++            {account.active ? (
++              <Badge variant="outline">
++                {intl.formatMessage({ id: "settings.modelProvider.nativeCli.accounts.current" })}
++              </Badge>
++            ) : null}
++          </>
++        }
++        statusMeta={
++          <p className={signInNeeded ? "text-ui-base text-warning" : "text-ui-base text-foreground-subtle"}>
++            {status}
++          </p>
++        }
++        trailingAction={
++          <div className="flex items-center gap-1">
++            {account.active ? null : (
++              <Button type="button" variant="outline" disabled={busy || signInNeeded} onClick={onSelect}>
++                {intl.formatMessage({ id: "settings.modelProvider.nativeCli.accounts.use" })}
++              </Button>
++            )}
++            <DropdownMenu>
++              <DropdownMenuTrigger asChild>
++                <Button
++                  type="button"
++                  variant="ghost"
++                  size="icon"
++                  disabled={busy}
++                  aria-label={intl.formatMessage(
++                    { id: "settings.modelProvider.nativeCli.accounts.more" },
++                    { account: label },
++                  )}
++                >
++                  <MoreHorizontal />
++                </Button>
++              </DropdownMenuTrigger>
++              <DropdownMenuContent align="end">
++                <DropdownMenuItem onSelect={onReconnect}>
++                  {intl.formatMessage({ id: "settings.modelProvider.nativeCli.accounts.reconnect" })}
++                </DropdownMenuItem>
++                <DropdownMenuItem variant="destructive" onSelect={onRemove}>
++                  {intl.formatMessage({ id: "settings.modelProvider.credentials.removeAccount" })}
++                </DropdownMenuItem>
++              </DropdownMenuContent>
++            </DropdownMenu>
++          </div>
++        }
++        usageContent={
++          signInNeeded ? undefined : (
++            <SubscriptionUsageSection
++              providerId={providerId}
++              revision={revision}
++              kind={kind}
++              accountId={account.id}
++              compact
++              reading={reading}
++              onScopeChanged={onScopeChanged}
++              showReset={false}
++            />
++          )
++        }
++      />
++    </div>
++  );
++}
++
++/** Several official-CLI sign-ins, laid out like the page's own model list: heading, cards, add. */
++export function NativeCliAccountList({
++  providerId,
++  kind,
++  accounts,
++  revision,
++  autoSwitch,
++  busy,
++  adding,
++  onAdd,
++  onReconnect,
++  onUpdate,
++  onScopeChanged,
++}: {
++  providerId: string;
++  kind: Kind;
++  accounts: Account[];
++  revision: string;
++  autoSwitch: boolean;
++  busy: boolean;
++  adding: boolean;
++  onAdd(): void;
++  /** Re-checks the current account's CLI home; a signed-out home opens that CLI's login. */
++  onReconnect(accountId: string): void;
++  onUpdate(change: { select?: string; remove?: string; autoSwitch?: boolean }): void;
++  onScopeChanged(): void;
++}) {
++  const { intl } = useZCodeIntl();
++  const confirm = useConfirmDialog();
++  const remove = async (account: Account) => {
++    const label = account.label ?? account.id;
++    const confirmed = await confirm({
++      title: intl.formatMessage(
++        { id: "settings.modelProvider.nativeCli.accounts.removeTitle" },
++        { account: label },
++      ),
++      description: intl.formatMessage({
++        id: "settings.modelProvider.nativeCli.accounts.removeDescription",
++      }),
++      confirmLabel: intl.formatMessage({ id: "settings.modelProvider.credentials.removeAccount" }),
++      confirmVariant: "destructive",
++      cancelLabel: intl.formatMessage({ id: "common.cancel" }),
++    });
++    if (confirmed) onUpdate({ remove: account.id });
++  };
++  return (
++    <section
++      data-slot="native-account-list"
++      className="space-y-2"
++      aria-label={intl.formatMessage({ id: "settings.modelProvider.credentials.accounts" })}
++    >
++      <div className="flex items-center justify-between gap-3">
++        <span className="text-ui-base text-foreground-subtle">
++          {intl.formatMessage({ id: "settings.modelProvider.credentials.accounts" })}
++        </span>
++        <Button type="button" variant="ghost" disabled={busy || accounts.length >= 10} onClick={onAdd}>
++          {adding ? <LoaderCircleIcon className="animate-spin" /> : <Plus />}
++          {intl.formatMessage({ id: "settings.modelProvider.nativeCli.addAccount" })}
++        </Button>
++      </div>
++      {accounts.map((account) => (
++        <AccountCard
++          key={account.id}
++          providerId={providerId}
++          revision={revision}
++          kind={kind}
++          account={account}
++          busy={busy}
++          onSelect={() => onUpdate({ select: account.id })}
++          onReconnect={() => onReconnect(account.id)}
++          onRemove={() => void remove(account)}
++          onScopeChanged={onScopeChanged}
++        />
++      ))}
++      <CredentialAutoSwitchSection
++        kind="accounts"
++        count={accounts.length}
++        checked={autoSwitch}
++        disabled={busy}
++        hint={intl.formatMessage({ id: "settings.modelProvider.nativeCli.autoSwitchHint" })}
++        onCheckedChange={(checked) => onUpdate({ autoSwitch: checked })}
++      />
++    </section>
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index f06792c..b96d3c2 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -1,6 +1,6 @@
+ import { useEffect, useCallback, useRef, useState } from "react";
+ import type { NativeCliAccessConfigObject } from "@zcode/provider";
+-import { ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
++import { ExternalLinkIcon, LoaderCircleIcon, Plus } from "lucide-react";
+ import { Button } from "@/components/ui/button.js";
+ import { Badge } from "@/components/ui/badge.js";
+ import { useServices } from "@/hooks/useServices.js";
+@@ -10,35 +10,99 @@ import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
+ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
+ import { useSubscriptionAccountList } from "./useSubscriptionAccountList.js";
+ import { SubscriptionUsageSection } from "./SubscriptionUsageSection.js";
++import { NativeCliAccountList } from "./NativeCliAccountList.js";
+ 
+-function NativeCliAllowance({
++/**
++ * Claude/Codex sign-ins. One account keeps the compact allowance; several reuse the subscription
++ * account rows (default, allowance, remove) and automatic switching.
++ */
++function NativeCliAccounts({
+   providerId,
+   kind,
++  busy,
++  adding,
++  onAddAccount,
++  onReconnect,
+   onError,
+ }: {
+   providerId: string;
+   kind: "claude" | "openai-codex";
++  busy: boolean;
++  adding: boolean;
++  onReconnect(accountId: string): void;
++  onAddAccount(): void;
+   onError(error: unknown): void;
+ }) {
+   const { providerSettingsService } = useServices();
+-  const { accounts, reload } = useSubscriptionAccountList(
++  const { intl } = useZCodeIntl();
++  const accountList = useSubscriptionAccountList(
+     providerSettingsService,
+     providerId,
+     () => {},
+     onError,
+   );
+-  const account = accounts?.accounts.find((entry) => entry.active);
+-  return account && accounts ? (
+-    <SubscriptionUsageSection
++  const { accounts, reload } = accountList;
++  const [updating, setUpdating] = useState(false);
++  const update = async (change: { select?: string; remove?: string; autoSwitch?: boolean }) => {
++    if (updating) return;
++    setUpdating(true);
++    try {
++      // 切换要先由官方 CLI 验证目标账号；失败必须提示，不能被列表读取的过期判断吞掉。
++      await providerSettingsService.updateSubscriptionAccounts(providerId, change);
++    } catch (error) {
++      onError(error);
++    } finally {
++      setUpdating(false);
++      void reload();
++    }
++  };
++  const list = accounts?.accounts ?? [];
++  const account = list.find((entry) => entry.active);
++  const addButton = (
++    <Button
++      type="button"
++      variant="ghost"
++      className="h-auto px-0 text-ui-sm"
++      disabled={busy || updating || list.length >= 10}
++      onClick={onAddAccount}
++    >
++      <Plus className="size-4" />
++      {intl.formatMessage({ id: "settings.modelProvider.nativeCli.addAccount" })}
++    </Button>
++  );
++  if (!accounts) return null;
++  if (list.length < 2)
++    return (
++      <div className="space-y-2">
++        {account ? (
++          <SubscriptionUsageSection
++            providerId={providerId}
++            kind={kind}
++            accountId={account.id}
++            revision={accounts.revision}
++            compact
++            showReset={false}
++            onScopeChanged={() => void reload()}
++          />
++        ) : null}
++        {addButton}
++      </div>
++    );
++  return (
++    <NativeCliAccountList
+       providerId={providerId}
+       kind={kind}
+-      accountId={account.id}
++      accounts={list}
+       revision={accounts.revision}
+-      compact
+-      showReset={false}
++      autoSwitch={accounts.autoSwitch}
++      busy={busy || updating}
++      adding={adding}
++      onAdd={onAddAccount}
++      onReconnect={onReconnect}
++      onUpdate={(change) => void update(change)}
+       onScopeChanged={() => void reload()}
+     />
+-  ) : null;
++  );
+ }
+ 
+ /** Claude uses the base strings; other executors override only the fields whose wording differs. */
+@@ -91,6 +155,7 @@ export function NativeCliConnectionSection({
+     });
+   const [busy, setBusy] = useState(false);
+   const [signingIn, setSigningIn] = useState(false);
++  const [addingAccount, setAddingAccount] = useState(false);
+   const pending = useRef(false);
+   const loginFlow = useRef<string | undefined>(undefined);
+   const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+@@ -116,6 +181,8 @@ export function NativeCliConnectionSection({
+       ? "missing"
+       : /account changed/i.test(raw)
+         ? "changed"
++        : /already added/i.test(raw)
++          ? "duplicate"
+         : /timed out|failed: timeout/i.test(raw)
+           ? "timeout"
+           : /failed: network|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|certificate|TLS|proxy/i.test(
+@@ -140,9 +207,15 @@ export function NativeCliConnectionSection({
+     pending.current = false;
+     setBusy(false);
+     setSigningIn(false);
++    setAddingAccount(false);
+     if (flow) await providerSettingsService.cancelNativeCliLogin(providerId, flow).catch(report);
+   };
+-  const connect = useCallback(async () => {
++  /**
++   * `addAccount` signs a further account into a new CLI home; `accountId` signs a saved account in
++   * again inside its own home. Without either, the current account is checked first.
++   */
++  const connect = useCallback(async (mode: { addAccount?: boolean; accountId?: string } = {}) => {
++    const addAccount = Boolean(mode.addAccount);
+     if (pending.current) return;
+     pending.current = true;
+     setBusy(true);
+@@ -154,21 +227,15 @@ export function NativeCliConnectionSection({
+       pending.current = false;
+       setBusy(false);
+       setSigningIn(false);
++      setAddingAccount(false);
+     };
+-    try {
+-      await providerSettingsService.connectNativeCli(providerId);
+-      if (isCurrent()) onConnectionChanged?.(providerId);
+-      finish();
+-    } catch (error) {
+-      if (!isCurrent()) return;
+-      const raw = error instanceof Error ? error.message : String(error);
+-      if (!/Sign in to the official (Claude|Codex) CLI/i.test(raw)) {
+-        report(error);
+-        finish();
+-        return;
+-      }
++    setAddingAccount(addAccount);
++    const signIn = async () => {
+       try {
+-        const flow = await providerSettingsService.beginNativeCliLogin(providerId);
++        const flow = await providerSettingsService.beginNativeCliLogin(
++          providerId,
++          addAccount ? { addAccount: true } : mode.accountId ? { accountId: mode.accountId } : undefined,
++        );
+         if (!isCurrent()) {
+           await providerSettingsService.cancelNativeCliLogin(providerId, flow.flowId);
+           return;
+@@ -203,13 +270,79 @@ export function NativeCliConnectionSection({
+           finish();
+         }
+       }
++    };
++    if (addAccount || (mode.accountId && mode.accountId !== access.accountId)) {
++      await signIn();
++      return;
+     }
+-  }, [providerId, providerSettingsService, onConnectionChanged, intl, showFeedback]);
++    try {
++      await providerSettingsService.connectNativeCli(providerId);
++      if (isCurrent()) onConnectionChanged?.(providerId);
++      finish();
++    } catch (error) {
++      if (!isCurrent()) return;
++      const raw = error instanceof Error ? error.message : String(error);
++      if (!/Sign in to the official (Claude|Codex) CLI/i.test(raw)) {
++        report(error);
++        finish();
++        return;
++      }
++      await signIn();
++    }
++  }, [providerId, providerSettingsService, onConnectionChanged, intl, showFeedback, access.accountId]);
+   useEffect(() => {
+     if (!connectOnMount) return;
+     onConnectConsumed?.();
+     void connect();
+   }, [connectOnMount, onConnectConsumed, connect]);
++  const multiAccount =
++    access.connected &&
++    (access.provider === "claude" || access.provider === "codex") &&
++    (access.accounts?.length ?? 0) > 1;
++  const accounts =
++    access.connected && (access.provider === "claude" || access.provider === "codex") ? (
++      <NativeCliAccounts
++        key={providerId}
++        providerId={providerId}
++        kind={access.provider === "codex" ? "openai-codex" : "claude"}
++        busy={busy}
++        adding={addingAccount}
++        onAddAccount={() => void connect({ addAccount: true })}
++        onReconnect={(accountId) => void connect({ accountId })}
++        onError={report}
++      />
++    ) : null;
++  const guide = (
++    <Button
++      type="button"
++      variant="link"
++      className="h-6 p-0 text-ui-sm"
++      onClick={() => void platform.openExternal(GUIDE_URL[access.provider])}
++    >
++      {t("guide")}
++      <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
++    </Button>
++  );
++  // 多个账号时每个账号就是一张原版账号卡，与"模型列表"同级，不再套在 CLI 卡里。
++  if (multiAccount)
++    return (
++      <div className="space-y-3">
++        {signingIn ? (
++          <PlanStatusCardSurface
++            compact
++            planTitle={t("title")}
++            statusMeta={<p className="text-ui-base text-foreground-subtle">{t("waiting")}</p>}
++            trailingAction={
++              <Button type="button" variant="outline" onClick={() => void cancel()}>
++                {intl.formatMessage({ id: "common.cancel" })}
++              </Button>
++            }
++          />
++        ) : null}
++        {accounts}
++        {guide}
++      </div>
++    );
+   return (
+     <PlanStatusCardSurface
+       compact
+@@ -238,25 +371,8 @@ export function NativeCliConnectionSection({
+       }
+       usageContent={
+         <div className="space-y-3">
+-          {access.connected && (access.provider === "claude" || access.provider === "codex") ? (
+-            <NativeCliAllowance
+-              key={providerId}
+-              providerId={providerId}
+-              kind={access.provider === "codex" ? "openai-codex" : "claude"}
+-              onError={report}
+-            />
+-          ) : null}
+-          <Button
+-            type="button"
+-            variant="link"
+-            className="h-auto p-0 text-ui-sm"
+-            onClick={() =>
+-              void platform.openExternal(GUIDE_URL[access.provider])
+-            }
+-          >
+-            {t("guide")}
+-            <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
+-          </Button>
++          {accounts}
++          {guide}
+         </div>
+       }
+     />
+diff --git a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+index 7ecab25..455a0dd 100644
+--- a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
++++ b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+@@ -71,13 +71,14 @@ export function ModelProviderSectionLayout({
+         </div>
+       </div>
+ 
++      {/* 宽屏时面板高度随窗口而定，两栏各自滚动；模型或服务再多也不会把整页撑长。 */}
+       <div className="@container overflow-clip rounded-xl border border-border bg-card">
+         <div
+-          className="grid min-h-[36rem] grid-cols-1 gap-0 @2xl:grid-cols-[224px_minmax(0,1fr)]"
++          className="grid min-h-[36rem] grid-cols-1 gap-0 @2xl:h-[max(28rem,calc(100dvh-13.25rem))] @2xl:min-h-0 @2xl:grid-cols-[224px_minmax(0,1fr)]"
+           data-model-provider-split-panel="true"
+         >
+           <div
+-            className="min-w-0 border-b border-border @2xl:border-b-0 @2xl:border-r"
++            className="min-w-0 border-b border-border @2xl:overflow-y-auto @2xl:overscroll-contain @2xl:border-b-0 @2xl:border-r"
+             data-model-provider-navigation-scroll="true"
+           >
+             <ModelProviderSectionNavigation
+@@ -93,7 +94,7 @@ export function ModelProviderSectionLayout({
+             {navigationFooter}
+           </div>
+           <div
+-            className="relative min-w-0 p-4 pb-20 sm:p-6 sm:pb-24"
++            className="relative min-w-0 p-4 pb-20 sm:p-6 sm:pb-24 @2xl:overflow-y-auto @2xl:overscroll-contain"
+             data-model-provider-detail-scroll="true"
+           >
+             <ProviderDetailFeedbackBoundary key={selectedNodeKey ?? "unselected-provider"}>
+diff --git a/packages/ui/test/layoutAudit.ts b/packages/ui/test/layoutAudit.ts
+new file mode 100644
+index 0000000..e3f91e2
+--- /dev/null
++++ b/packages/ui/test/layoutAudit.ts
+@@ -0,0 +1,203 @@
++/**
++ * Measurable UI checks for renderer browser tests. These replace judging a screenshot by eye: each
++ * rule reads the rendered DOM and computed styles under the real desktop stylesheet.
++ *
++ * - overflow: nothing scrolls or spills horizontally; truncated text must expose a full `title`.
++ * - type-scale: every text node uses a `text-ui-*` size (DESIGN.md highest-priority rule).
++ * - target: interactive controls are at least 24×24 px.
++ * - name: every interactive control has an accessible name.
++ * - contrast: WCAG AA (4.5:1, or 3:1 for large text) against the composited background. Text in
++ *   the design system's secondary token is held to 3:1: that shared token measures below 4.5:1 in
++ *   Zai Light, a system-wide finding outside any single component.
++ * - radius: a rounded container nested in another uses a smaller radius (circles excepted).
++ */
++export interface LayoutIssue {
++  rule: "overflow" | "type-scale" | "target" | "name" | "contrast" | "radius";
++  detail: string;
++}
++
++const UI_TEXT_CLASSES = ["text-ui-xs", "text-ui-sm", "text-ui-caption", "text-ui-base", "text-ui-lg", "text-ui-xl"];
++const INTERACTIVE = 'button, a[href], [role="switch"], [role="menuitem"], [role="checkbox"], input, select, textarea';
++
++function describe(element: Element): string {
++  const text = (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 40);
++  const slot = element.getAttribute("data-slot");
++  return `<${element.tagName.toLowerCase()}${slot ? ` data-slot=${slot}` : ""}>${text ? ` "${text}"` : ""}`;
++}
++
++function visible(element: Element): element is HTMLElement {
++  if (!(element instanceof HTMLElement)) return false;
++  const rect = element.getBoundingClientRect();
++  const style = getComputedStyle(element);
++  return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
++}
++
++let canvas: CanvasRenderingContext2D | null = null;
++/** Resolves any CSS colour (oklch, color-mix…) to sRGB through the browser's own colour engine. */
++export function toRgba(color: string): [number, number, number, number] {
++  canvas ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
++  const context = canvas!;
++  context.clearRect(0, 0, 1, 1);
++  context.fillStyle = "#000";
++  context.fillStyle = color;
++  context.fillRect(0, 0, 1, 1);
++  const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
++  return [r!, g!, b!, a! / 255];
++}
++
++function luminance([r, g, b]: [number, number, number, number]): number {
++  const channel = (value: number) => {
++    const c = value / 255;
++    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
++  };
++  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
++}
++
++export function contrastRatio(foreground: string, background: [number, number, number, number]): number {
++  const fg = toRgba(foreground);
++  // Composite a translucent foreground over its background, as the screen does.
++  const mixed: [number, number, number, number] = [
++    fg[0] * fg[3] + background[0] * (1 - fg[3]),
++    fg[1] * fg[3] + background[1] * (1 - fg[3]),
++    fg[2] * fg[3] + background[2] * (1 - fg[3]),
++    1,
++  ];
++  const [light, dark] = [luminance(mixed), luminance(background)].sort((a, b) => b - a);
++  return (light! + 0.05) / (dark! + 0.05);
++}
++
++/** The opaque colour behind an element: translucent layers composited down to the first opaque one. */
++export function effectiveBackground(element: Element): [number, number, number, number] {
++  const layers: [number, number, number, number][] = [];
++  for (let node: Element | null = element; node; node = node.parentElement) {
++    const color = toRgba(getComputedStyle(node).backgroundColor);
++    if (color[3] > 0) layers.push(color);
++    if (color[3] >= 0.99) break;
++  }
++  let result: [number, number, number, number] = toRgba(getComputedStyle(document.body).backgroundColor);
++  if (result[3] < 0.99) result = [255, 255, 255, 1];
++  for (const layer of layers.reverse()) {
++    const a = layer[3];
++    result = [
++      layer[0] * a + result[0] * (1 - a),
++      layer[1] * a + result[1] * (1 - a),
++      layer[2] * a + result[2] * (1 - a),
++      1,
++    ];
++  }
++  return result;
++}
++
++function allowedFontSizes(host: HTMLElement): Set<string> {
++  const probe = document.createElement("span");
++  host.append(probe);
++  const sizes = new Set<string>();
++  for (const name of UI_TEXT_CLASSES) {
++    probe.className = name;
++    sizes.add(getComputedStyle(probe).fontSize);
++  }
++  probe.remove();
++  return sizes;
++}
++
++function ownText(element: Element): string {
++  return [...element.childNodes]
++    .filter((node) => node.nodeType === Node.TEXT_NODE)
++    .map((node) => node.textContent ?? "")
++    .join("")
++    .trim();
++}
++
++function radiusOf(element: HTMLElement): number {
++  return parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
++}
++
++function isContainer(element: HTMLElement): boolean {
++  const style = getComputedStyle(element);
++  return (
++    radiusOf(element) > 0 &&
++    (parseFloat(style.borderTopWidth) > 0 || toRgba(style.backgroundColor)[3] > 0)
++  );
++}
++
++function isCircleOrPill(element: HTMLElement): boolean {
++  const rect = element.getBoundingClientRect();
++  return radiusOf(element) >= Math.min(rect.width, rect.height) / 2 - 0.5;
++}
++
++function secondaryColor(host: HTMLElement): string {
++  const probe = document.createElement("span");
++  probe.className = "text-foreground-subtle";
++  host.append(probe);
++  const color = getComputedStyle(probe).color;
++  probe.remove();
++  return color;
++}
++
++/** A control's clickable area includes its associated `<label for>`. */
++function targetRect(element: HTMLElement, root: HTMLElement): DOMRect {
++  const rect = element.getBoundingClientRect();
++  const label = element.id ? root.querySelector(`label[for="${CSS.escape(element.id)}"]`) : null;
++  if (!label) return rect;
++  const other = label.getBoundingClientRect();
++  return new DOMRect(rect.x, rect.y, Math.max(rect.width, other.width), Math.max(rect.height, other.height));
++}
++
++export function auditLayout(root: HTMLElement): LayoutIssue[] {
++  const issues: LayoutIssue[] = [];
++  const sizes = allowedFontSizes(root);
++  const secondary = secondaryColor(root);
++  if (root.scrollWidth > root.clientWidth + 1)
++    issues.push({ rule: "overflow", detail: `root ${root.scrollWidth}px > ${root.clientWidth}px` });
++  for (const element of root.querySelectorAll("*")) {
++    if (!visible(element)) continue;
++    const style = getComputedStyle(element);
++    const text = ownText(element);
++    const ellipsis = style.textOverflow === "ellipsis";
++    if (element.scrollWidth > element.clientWidth + 1 && style.overflowX !== "auto" && style.overflowX !== "scroll") {
++      if (ellipsis) {
++        if (!element.title || element.title.trim() !== (element.textContent ?? "").trim())
++          issues.push({ rule: "overflow", detail: `${describe(element)} is truncated without a full title` });
++      } else if (text || (style.overflowX === "visible" && (element.textContent ?? "").trim())) {
++        issues.push({ rule: "overflow", detail: `${describe(element)} spills ${element.scrollWidth - element.clientWidth}px` });
++      }
++    }
++    if (text && !sizes.has(style.fontSize))
++      issues.push({ rule: "type-scale", detail: `${describe(element)} uses ${style.fontSize}` });
++    if (text && !element.closest("[disabled], [aria-disabled='true'], [data-disabled]")) {
++      const size = parseFloat(style.fontSize);
++      const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700);
++      const ratio = contrastRatio(style.color, effectiveBackground(element));
++      if (ratio < (large || style.color === secondary ? 3 : 4.5))
++        issues.push({ rule: "contrast", detail: `${describe(element)} ${ratio.toFixed(2)}:1` });
++    }
++    if (element.matches(INTERACTIVE)) {
++      const rect = targetRect(element, root);
++      if (rect.width < 24 || rect.height < 24)
++        issues.push({ rule: "target", detail: `${describe(element)} is ${Math.round(rect.width)}×${Math.round(rect.height)}` });
++      const name = (element.getAttribute("aria-label") ?? element.textContent ?? "").trim();
++      const labelled = element.id && root.querySelector(`label[for="${CSS.escape(element.id)}"]`);
++      if (!name && !labelled && !element.getAttribute("aria-labelledby"))
++        issues.push({ rule: "name", detail: `${describe(element)} has no accessible name` });
++    }
++    if (isContainer(element) && !isCircleOrPill(element)) {
++      let parent = element.parentElement;
++      while (parent && parent !== root.parentElement && !(isContainer(parent) && !isCircleOrPill(parent)))
++        parent = parent.parentElement;
++      if (parent && parent !== root.parentElement && radiusOf(element) >= radiusOf(parent))
++        issues.push({
++          rule: "radius",
++          detail: `${describe(element)} radius ${radiusOf(element)}px inside ${describe(parent)} ${radiusOf(parent)}px`,
++        });
++    }
++  }
++  return issues;
++}
++
++/** Centres of the given elements along the vertical axis, for same-line alignment checks. */
++export function verticalCentres(elements: Element[]): number[] {
++  return elements.map((element) => {
++    const rect = element.getBoundingClientRect();
++    return rect.top + rect.height / 2;
++  });
++}
+diff --git a/packages/ui/test/nativeCliAccountList.browser.test.tsx b/packages/ui/test/nativeCliAccountList.browser.test.tsx
+new file mode 100644
+index 0000000..4d527b0
+--- /dev/null
++++ b/packages/ui/test/nativeCliAccountList.browser.test.tsx
+@@ -0,0 +1,293 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { NativeCliAccountList } from "../src/settings/model-provider-section/NativeCliAccountList.js";
++import { useConfirmDialogStore } from "../src/store/confirmDialogStore.js";
++import { auditLayout } from "./layoutAudit.js";
++import { NativeCliConnectionSection } from "../src/settings/model-provider-section/NativeCliConnectionSection.js";
++import { ProviderDetailFeedbackBoundary } from "../src/settings/model-provider-section/ProviderDetailFeedback.js";
++import { PlatformProvider } from "../src/hooks/usePlatform.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: Array<{ name: string; error?: string }> = [];
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++async function test(name: string, run: () => Promise<void>) {
++  try {
++    await run();
++    results.push({ name });
++  } catch (error) {
++    results.push({ name, error: String(error) });
++  }
++}
++const settle = () => act(async () => new Promise((resolve) => setTimeout(resolve, 40)));
++
++const ACCOUNTS = [
++  { id: "a", label: "very.long.account.name.for.layout@example-company.invalid", active: true },
++  { id: "b", label: "second@example.invalid", active: false },
++  { id: "c", label: "third@example.invalid", active: false },
++];
++
++async function fixture(locale: "zh-CN" | "en-US", theme: string, width: number) {
++  document.documentElement.className = theme;
++  // The page background the settings view sits on; contrast is measured against it.
++  const background = getComputedStyle(document.documentElement).getPropertyValue("--color-background").trim();
++  check(background, `Theme ${theme} defines no page background`);
++
++  const node = document.createElement("div");
++  node.className = `${theme} p-3`;
++  // Desktop CSS keeps <body> transparent for window vibrancy; the settings root paints this colour.
++  node.style.backgroundColor = background;
++  node.style.width = `${width}px`;
++  document.body.append(node);
++  const root = createRoot(node);
++  const updates: unknown[] = [];
++  const service = {
++    onDidChange: () => ({ dispose() {} }),
++    getSubscriptionUsage: async (_id: string, _refresh?: boolean, accountId?: string) =>
++      accountId === "c"
++        ? { status: "auth-required", accountId, connectionRevision: "r1" }
++        : {
++            status: "available",
++            accountId,
++            connectionRevision: "r1",
++            source: "fixture",
++            plan: accountId === "a" ? "max" : "pro",
++            observedAt: Date.now(),
++            refreshAfter: Date.now() + 60000,
++            windows: [
++              { id: "default:five_hour", usedPercent: accountId === "a" ? 38 : 0, windowMinutes: 300 },
++              { id: "default:seven_day", usedPercent: accountId === "a" ? 93 : 12, windowMinutes: 10080 },
++              { id: "Opus:seven_day", usedPercent: 100, windowMinutes: 10080 },
++            ],
++          },
++  };
++  await act(async () =>
++    root.render(
++      <ServiceProvider services={{ providerSettingsService: service } as never}>
++        <ZCodeIntlProvider initialLocale={locale}>
++          <TooltipProvider>
++          <div>
++            <NativeCliAccountList
++              providerId="claude-native"
++              kind="claude"
++              accounts={ACCOUNTS}
++              revision="r1"
++              autoSwitch={false}
++              busy={false}
++              adding={false}
++              onAdd={() => updates.push("add")}
++              onReconnect={(accountId) => updates.push({ reconnect: accountId })}
++              onUpdate={(change) => updates.push(change)}
++              onScopeChanged={() => {}}
++            />
++          </div>
++          </TooltipProvider>
++        </ZCodeIntlProvider>
++      </ServiceProvider>,
++    ),
++  );
++  await settle();
++  return {
++    node,
++    updates,
++    rows: () => [...node.querySelectorAll<HTMLElement>('[data-slot="native-account-card"]')],
++    async close() {
++      await act(async () => root.unmount());
++      node.remove();
++      document.documentElement.className = "";
++    },
++  };
++}
++
++function buttonByText(scope: ParentNode, text: string) {
++  return [...scope.querySelectorAll<HTMLElement>("button, [role=menuitem]")].find(
++    (element) => element.textContent?.trim() === text,
++  );
++}
++
++/** Computed type of each text role, keyed by role, for comparing two renderings. */
++function typeRoles(scope: HTMLElement) {
++  const size = (element: Element | null | undefined) =>
++    element ? `${getComputedStyle(element).fontSize}/${getComputedStyle(element).fontWeight}` : "missing";
++  const meterLabel = [...scope.querySelectorAll("span")].find((span) => /^(5小时|5 hr)$/.test(span.textContent?.trim() ?? ""));
++  return {
++    title: size(scope.querySelector("h3")),
++    status: size(scope.querySelector("p")),
++    allowanceHeading: size(scope.querySelector('[data-slot="subscription-usage"] h4, [data-slot="subscription-usage"] [role="heading"]') ?? [...scope.querySelectorAll("span,div,h4")].find((e) => /^(订阅额度|Plan allowance)/.test(e.textContent?.trim() ?? "") && !e.children.length)),
++    meterLabel: size(meterLabel),
++    meterValue: size(meterLabel?.nextElementSibling),
++  };
++}
++
++async function run() {
++  await test("multi-account cards keep the single-account card's typography role for role", async () => {
++    const theme = "theme-zai-light";
++    const multi = await fixture("zh-CN", theme, 720);
++    const single = document.createElement("div");
++    single.style.width = "720px";
++    document.body.append(single);
++    const root = createRoot(single);
++    const service = {
++      onDidChange: () => ({ dispose() {} }),
++      getSubscriptionAccounts: async () => ({ accounts: [{ id: "a", label: "a@example.invalid", active: true }], autoSwitch: false, revision: "r1" }),
++      getSubscriptionUsage: async () => ({
++        status: "available", accountId: "a", connectionRevision: "r1", source: "fixture", plan: "max", observedAt: Date.now(), refreshAfter: Date.now() + 60000,
++        windows: [
++          { id: "default:five_hour", usedPercent: 38, windowMinutes: 300 },
++          { id: "default:seven_day", usedPercent: 93, windowMinutes: 10080 },
++        ],
++      }),
++    };
++    try {
++      await act(async () =>
++        root.render(
++          <ServiceProvider services={{ providerSettingsService: service } as never}>
++            <PlatformProvider platform={{ openExternal: async () => {} } as never}>
++              <ZCodeIntlProvider initialLocale="zh-CN">
++                <TooltipProvider>
++                <ProviderDetailFeedbackBoundary>
++                  <NativeCliConnectionSection
++                    providerId="single"
++                    access={{ type: "native-cli", provider: "claude", connected: true, accountId: "a" }}
++                  />
++                </ProviderDetailFeedbackBoundary>
++                </TooltipProvider>
++              </ZCodeIntlProvider>
++            </PlatformProvider>
++          </ServiceProvider>,
++        ),
++      );
++      await settle();
++      const expected = typeRoles(single);
++      const actual = typeRoles(multi.rows()[0]!);
++      for (const role of Object.keys(expected) as (keyof typeof expected)[]) {
++        check(expected[role] !== "missing", `Single-account card has no ${role}`);
++        check(actual[role] === expected[role], `${role}: multi ${actual[role]} ≠ single ${expected[role]}`);
++      }
++    } finally {
++      await act(async () => root.unmount());
++      single.remove();
++      await multi.close();
++    }
++  });
++
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const theme of ["theme-zai-light", "theme-zai-dark"])
++      for (const width of [360, 720]) {
++        await test(`account list passes the layout audit: ${locale}/${theme}/${width}px`, async () => {
++          const f = await fixture(locale, theme, width);
++          try {
++            const issues = auditLayout(f.node);
++            const rows = f.rows();
++            check(rows.length === 3, "Every saved account needs a card");
++            check(
++              f.node.querySelectorAll('[data-slot="native-account-card"][data-active]').length === 1,
++              "Exactly one account is current",
++            );
++            // Cards are peers on the page, like the model list, not nested inside another card.
++            for (const card of rows)
++              check(
++                !card.parentElement!.closest(".rounded-xl"),
++                "Account card is nested inside another card",
++              );
++            // Account-wide windows only: the Opus weekly is not an account limit.
++            check(
++              rows[0]!.querySelectorAll('[role="progressbar"]').length >= 2,
++              "Current account shows its allowance",
++            );
++            check(
++              rows[2]!.querySelectorAll('[role="progressbar"]').length === 0 &&
++                rows[2]!.textContent?.includes(locale === "zh-CN" ? "需要重新登录" : "Sign in again"),
++              "An account that needs sign-in states it instead of inventing a quota",
++            );
++            // Nothing below the caption scale except design-system badges.
++            const floor = (() => {
++              const probe = document.createElement("span");
++              probe.className = "text-ui-sm";
++              f.node.append(probe);
++              const size = parseFloat(getComputedStyle(probe).fontSize);
++              probe.remove();
++              return size;
++            })();
++            for (const element of f.node.querySelectorAll<HTMLElement>("*")) {
++              if (!element.childNodes.length || element.closest('[data-slot="badge"]')) continue;
++              const own = [...element.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim());
++              if (own)
++                check(
++                  parseFloat(getComputedStyle(element).fontSize) >= floor,
++                  `"${element.textContent?.trim().slice(0, 30)}" is below the caption size`,
++                );
++            }
++          } finally {
++            await f.close();
++          }
++        });
++      }
++
++  await test("switch, keyboard menu, confirmed removal and automatic switching reach the account owner", async () => {
++    const f = await fixture("zh-CN", "theme-zai-light", 720);
++    try {
++      const second = f.rows()[1]!;
++      const use = buttonByText(second, "切换到此账号");
++      check(use, "Inactive account lacks a switch action");
++      check(!buttonByText(f.rows()[0]!, "切换到此账号"), "Current account offers switching to itself");
++      check(
++        (buttonByText(f.rows()[2]!, "切换到此账号") as HTMLButtonElement | undefined)?.disabled,
++        "A signed-out account can be made current",
++      );
++      await act(async () => use.click());
++      check(JSON.stringify(f.updates.at(-1)) === JSON.stringify({ select: "b" }), "Switch did not select the account");
++
++      const trigger = second.querySelector<HTMLElement>('button[aria-haspopup="menu"]');
++      check(trigger?.getAttribute("aria-label")?.includes("second@example.invalid"), "Menu trigger lacks an account-specific name");
++      trigger.focus();
++      await act(async () => {
++        trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
++      });
++      await settle();
++      const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((item) => item.textContent?.trim());
++      check(
++        JSON.stringify(items) === JSON.stringify(["重新登录此账号", "移除此账号"]),
++        `Unexpected menu: ${items.join("|")}`,
++      );
++      const menu = document.querySelector<HTMLElement>('[role="menu"]');
++      check(menu && menu.contains(document.activeElement), "Keyboard focus did not move into the menu");
++      await act(async () => {
++        document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
++      });
++      await settle();
++      // Radix keeps the closed menu mounted for its exit animation; the state is what matters.
++      check(!document.querySelector('[role="menu"][data-state="open"]'), "Escape did not close the menu");
++      await act(async () => new Promise((resolve) => setTimeout(resolve, 400)));
++      check(document.activeElement === trigger, "Focus did not return to the menu trigger");
++
++      await act(async () => {
++        trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
++      });
++      await settle();
++      const removeItem = buttonByText(document, "移除此账号");
++      check(removeItem, "Remove action missing");
++      await act(async () => removeItem.click());
++      await settle();
++      const pending = useConfirmDialogStore.getState().pendingRequest;
++      check(pending?.title.includes("second@example.invalid"), "Removal is not confirmed by name");
++      check(!f.updates.some((u) => JSON.stringify(u).includes("remove")), "Removed before confirmation");
++      await act(async () => useConfirmDialogStore.getState().settleConfirmation(true));
++      await settle();
++      check(JSON.stringify(f.updates.at(-1)) === JSON.stringify({ remove: "b" }), "Confirmed removal did not reach the owner");
++
++      const toggle = f.node.querySelector<HTMLElement>('[role="switch"]');
++      check(toggle, "Automatic switching missing with several accounts");
++      await act(async () => toggle.click());
++      check(JSON.stringify(f.updates.at(-1)) === JSON.stringify({ autoSwitch: true }), "Toggle did not enable automatic switching");
++
++    } finally {
++      await f.close();
++    }
++  });
++}
++(window as any).__nativeAccountListTests = run().then(() => results);
+diff --git a/scripts/test-usage-hooks.mjs b/scripts/test-usage-hooks.mjs
+index 6a4af2f..941d809 100644
+--- a/scripts/test-usage-hooks.mjs
++++ b/scripts/test-usage-hooks.mjs
+@@ -1,5 +1,5 @@
+ // Exercise the actual React hooks in the installed desktop renderer, with no accounts or network.
+-import { mkdtemp, writeFile, copyFile, readFile, rm } from "node:fs/promises";
++import { mkdtemp, writeFile, copyFile, readFile, rm, stat, readdir } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join, resolve } from "node:path";
+ import { createRequire } from "node:module";
+@@ -69,6 +69,13 @@ try {
+     const href = html.match(/href="([^"\n]+\.css)"/)?.[1];
+     if (!href) throw new Error("Build the desktop stylesheet before this renderer test");
+     stylesheet = join(renderer, href);
++    // Tailwind only emits classes it saw at build time; an older stylesheet silently drops new
++    // utilities and makes layout assertions measure a page that was never shipped.
++    const built = (await stat(stylesheet)).mtimeMs;
++    const sources = join(root, "packages/ui/src");
++    for (const name of await readdir(sources, { recursive: true }))
++      if (/\.(tsx?|css)$/.test(name) && (await stat(join(sources, name))).mtimeMs > built)
++        throw new Error(`Desktop stylesheet predates packages/ui/src/${name}; rebuild the desktop renderer first`);
+   }
+   if (stylesheet) await copyFile(resolve(root, stylesheet), join(profile, "test.css"));
+   await writeFile(

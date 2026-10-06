@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Restore multiple accounts for Claude/Codex CLI connections: each added account signs in to its
+  own official CLI home; switch, remove and opt-in quota auto-switch (lost when `25debe2f` hid the
+  ChatGPT OAuth template). Model settings' split panel no longer grows with long model lists.
+  Renderer tests gain a measured layout audit (overflow, type scale, targets, contrast, radius).
+
 - Show thinking-effort and speed variants of one native-CLI model as one model with thinking/Fast
   options (Antigravity 14 → 7 entries); Xiaomi uses its orange brand SVG.
 
