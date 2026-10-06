@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Native CLI accounts no longer drop into "reconnect" when Cockpit Tools or a terminal login
+  switches the CLI's own account: Fleet follows it. Reconnects no longer fail on unrelated writes,
+  network faults are no longer reported as "sign in first", and page feedback stays at the bottom
+  of the visible settings pane.
+
 - Model capabilities: a catalog layer generated from pi-ai's shipped data replaces the 200K
   text-only placeholder (46 → 1 unknown contexts in the review profile); ACP CLIs no longer mark
   every model text-only; image, video, speech, transcription and embedding models are recognised

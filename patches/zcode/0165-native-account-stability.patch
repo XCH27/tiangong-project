@@ -1,0 +1,828 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+index d00e719..7819e7e 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+@@ -41,10 +41,23 @@ export function acpOptionValues(option: AcpConfigOption | undefined): { value: s
+ export const acpOption = (options: readonly AcpConfigOption[], category: string) =>
+   options.find((option) => option.category === category || option.id === category);
+ 
+-function authFailure(kind: AcpExecutorKind, error: unknown): Error {
++const NETWORK_FAILURE = /ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|network|certificate|TLS|proxy/iu;
++const AUTH_FAILURE =
++  /auth(?:entication|orization)? (?:required|failed|expired)|unauthori[sz]ed|not (?:logged|signed) in|(?:log|sign) ?in (?:required|first)|token (?:expired|invalid|revoked)|\b401\b/iu;
++
++/**
++ * 修复：曾把任何含 auth/login 字样的错误（含 OAuth 端点的网络错误）都说成"请先登录"，让仍然登录着的账号
++ * 显示为失效。网络故障保留原因；只有 agent 明确的认证拒绝（含 CodeBuddy 的 category=auth）才算未登录。
++ */
++export function acpFailure(kind: AcpExecutorKind, error: unknown): Error {
+   const message = error instanceof Error ? error.message : String(error);
+-  return /auth|sign.?in|log.?in/iu.test(message) ? new Error(acpSignInMessage(kind)) : error instanceof Error ? error : new Error(message);
++  const category = (error as { data?: { category?: unknown } } | undefined)?.data?.category;
++  if (NETWORK_FAILURE.test(message))
++    return new Error(`${ACP_PROFILES[kind].label} could not reach its service (network): ${message}`);
++  if (category === "auth" || AUTH_FAILURE.test(message)) return new Error(acpSignInMessage(kind));
++  return error instanceof Error ? error : new Error(message);
+ }
++const authFailure = acpFailure;
+ 
+ /**
+  * Opens one ACP session. A continuation prefers `session/resume` (no replay), then
+@@ -94,8 +107,13 @@ export async function openAcpSession(input: {
+     if (initialized.protocolVersion !== 1) throw new Error("This CLI does not speak ACP protocol version 1");
+     if (profile.authMethodId)
+       // 未登录时 Cursor 的 authenticate 不返回；超时按未登录处理。
+-      await client.request("authenticate", { methodId: profile.authMethodId }, AUTH_TIMEOUT_MS).catch(() => {
+-        throw new Error(acpSignInMessage(input.kind));
++      await client.request("authenticate", { methodId: profile.authMethodId }, AUTH_TIMEOUT_MS).catch((error: unknown) => {
++        // 未登录时 Cursor 的 authenticate 不返回；但断网也会超时，所以说明两种可能，不武断判为未登录。
++        if (error instanceof AcpRpcError && error.code === -32001)
++          throw new Error(
++            `${profile.label} did not answer its sign-in check (timed out): sign in with \`${profile.loginCommand}\` or check the network`,
++          );
++        throw acpFailure(input.kind, error);
+       });
+     const capabilities = initialized.agentCapabilities?.sessionCapabilities ?? {};
+     const common = { cwd: input.cwd, mcpServers: [] };
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+index 849660d..a84cda8 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+@@ -11,7 +11,7 @@ import type {
+ import { NativeEvents } from "./native-events.js";
+ import { AcpRpcError, type AcpIncomingRequest, type AcpNotification } from "./acp-client.js";
+ import { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
+-import { acpSignInMessage, openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
++import { acpFailure, acpSignInMessage, openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
+ import { latestImageBlocks, nativeTranscriptPrompt } from "./native-prompt.js";
+ import { resolveVariantModelId } from "./native-variants.js";
+ import { withNativeExecutorNetwork } from "./native-network.js";
+@@ -225,12 +225,8 @@ export function createAcpNativeAgentPort(
+               prompt: [{ type: "text", text: prompt }, ...images],
+             })
+             .catch((error: unknown) => {
+-              // 登录过期等厂商拒绝以 JSON-RPC 错误返回（CodeBuddy 记为 category=auth）。
+-              const message = error instanceof Error ? error.message : String(error);
+-              const data = (error as { data?: { category?: unknown } }).data;
+-              throw /auth|sign.?in|log.?in/iu.test(message) || data?.category === "auth"
+-                ? new Error(acpSignInMessage(kind))
+-                : error;
++              // 登录过期等厂商拒绝以 JSON-RPC 错误返回（CodeBuddy 记为 category=auth）；网络故障保留原因。
++              throw acpFailure(kind, error);
+             });
+           if (response.stopReason === "cancelled") throw new Error(`${profile.label} turn stopped`);
+           if (response.stopReason === "refusal" && !text.trim())
+diff --git a/package.json b/package.json
+index 0b2d8e2..0219f12 100644
+--- a/package.json
++++ b/package.json
+@@ -63,7 +63,7 @@
+     "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-accounts.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+     "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts",
+-    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliAccountList.browser.test.tsx __nativeAccountListTests --desktop-styles",
++    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliAccountList.browser.test.tsx __nativeAccountListTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/providerDetailFeedback.browser.test.tsx __providerFeedbackTests --desktop-styles",
+     "test:chatgpt-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/chatgptConnection.browser.test.tsx __chatgptConnectionTests --desktop-styles",
+     "test:model-settings-tool-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/modelSettingsTool.browser.test.tsx __modelSettingsToolTests --desktop-styles",
+     "test:context-capacity-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/contextCapacity.browser.test.tsx __contextCapacityTests --desktop-styles",
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index f8b79d1..5bd0eb6 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -414,10 +414,14 @@ export class ProviderSettingsFacade {
+     expectedConnection: ProviderConfigObject,
+     assertAccountCurrent?: () => Promise<void>,
+     replace = false,
+-    nativeConnection?: { access: NativeCliAccessConfigObject; basedOnRevision: number },
++    /** `basedOnRevision` fences on the whole settings revision; omit it to fence on this connection only. */
++    nativeConnection?: { access: NativeCliAccessConfigObject; basedOnRevision?: number },
+   ): Promise<ProviderSettingsView> {
+     return this.#mutateProvider(providerId, "discover-models", async (target) => {
+-      if (nativeConnection && this.getView().revision !== nativeConnection.basedOnRevision)
++      if (
++        nativeConnection?.basedOnRevision !== undefined &&
++        this.getView().revision !== nativeConnection.basedOnRevision
++      )
+         throw new Error("Provider Settings revision conflict; reload this connection");
+       await assertAccountCurrent?.();
+       const current = this.getView().providers.find(
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index b1151ef..a3e3124 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -89,7 +89,8 @@ export function createNativeCliConnectionOperations(
+       cancel(): void;
+       status: "pending" | "finished" | "failed";
+       failure?: Error;
+-      revision: number;
++      /** The connection's stored config when the login began; fences the post-login write. */
++      expected: ProviderConfigObject;
+       access: NonNullable<ProviderConfigObject["access"]>;
+       commit?: Promise<void>;
+       /** Set once the version-checked write starts; before that a cancel still fences the commit. */
+@@ -99,6 +100,7 @@ export function createNativeCliConnectionOperations(
+       allocatedHome?: string;
+     }
+   >();
++  const adoptions = new Map<string, Promise<boolean>>();
+   const discardHome = (dir?: string) => {
+     if (dir) native?.accountHomes?.remove(dir);
+   };
+@@ -114,7 +116,8 @@ export function createNativeCliConnectionOperations(
+   const connect = async (
+     id: string,
+     access: NonNullable<ProviderConfigObject["access"]>,
+-    revision: number,
++    /** This connection's stored config when the operation began: the only write fence. */
++    expected: ProviderConfigObject,
+     admitWrite?: () => void,
+     adding = false,
+   ) => {
+@@ -133,33 +136,37 @@ export function createNativeCliConnectionOperations(
+       (account) => account.id === entry.id && home(account.configDir) !== home(entry.configDir),
+     );
+     if (adding && duplicate) throw new Error("Native CLI account already added");
++    admitWrite?.();
++    // The CLI's default login now holds an account Fleet also keeps in its own home: keep that
++    // stable home entry and make it current instead of dropping it.
++    if (duplicate && !home(entry.configDir) && home(duplicate.configDir)) {
++      const accounts = saved.filter((account) => home(account.configDir));
++      await facade.mergeDiscoveredModels(id as ProviderId, result.catalog.models, expected, undefined, true, {
++        access: nativeAccessForAccount(access, duplicate, accounts),
++      });
++      return;
++    }
+     const position = saved.findIndex((account) => home(account.configDir) === home(entry.configDir));
+     const accounts = saved.filter((account) => account !== duplicate);
+     if (position >= 0) accounts.splice(accounts.indexOf(saved[position]!), 1, entry);
+     else accounts.push(entry);
+-    admitWrite?.();
+-    await facade.mergeDiscoveredModels(
+-      id as ProviderId,
+-      result.catalog.models,
+-      facade.getView().providers.find((entry) => entry.providerId === id)!.effectiveConfig,
+-      undefined,
+-      true,
+-      {
+-        access: nativeAccessForAccount(access, entry, accounts),
+-        basedOnRevision: revision,
+-      },
+-    );
++    // 修复：曾用全局 revision 作围栏，检查 CLI 的 5–7 秒内任何无关写入都会让重连失败；
++    // 只要本连接自身配置未变即可写入（Facade 比较 api+access）。
++    await facade.mergeDiscoveredModels(id as ProviderId, result.catalog.models, expected, undefined, true, {
++      access: nativeAccessForAccount(access, entry, accounts),
++    });
+   };
+   const nativeAccess = (id: string) => {
+     const snapshot = facade.getView();
+     const access = snapshot.providers.find((entry) => entry.providerId === id)?.effectiveConfig
+       .access;
+     if (access?.type !== "native-cli") throw new Error("Native CLI connection no longer exists");
+-    return { access, revision: snapshot.revision };
++    const config = snapshot.providers.find((entry) => entry.providerId === id)!.effectiveConfig;
++    return { access, config };
+   };
+   /** Switch the active sign-in: its own catalog replaces the previous account's in one write. */
+   const activate = async (id: string, accountId: string) => {
+-    const { access, revision } = nativeAccess(id);
++    const { access, config } = nativeAccess(id);
+     const accounts = nativeSavedAccounts(access);
+     const target = accounts.find((account) => account.id === accountId);
+     if (!target) throw new Error("Native CLI account no longer exists");
+@@ -168,14 +175,9 @@ export function createNativeCliConnectionOperations(
+     assertActive();
+     const refreshed = { ...target, name: result.accountName, ...(result.planType ? { planType: result.planType } : {}) };
+     const next = accounts.map((account) => (account === target ? refreshed : account));
+-    await facade.mergeDiscoveredModels(
+-      id as ProviderId,
+-      result.catalog.models,
+-      facade.getView().providers.find((entry) => entry.providerId === id)!.effectiveConfig,
+-      undefined,
+-      true,
+-      { access: nativeAccessForAccount(access, refreshed, next), basedOnRevision: revision },
+-    );
++    await facade.mergeDiscoveredModels(id as ProviderId, result.catalog.models, config, undefined, true, {
++      access: nativeAccessForAccount(access, refreshed, next),
++    });
+   };
+   return {
+     async inspectNativeCli(id: string): Promise<NativeCliConnectionInspection> {
+@@ -196,7 +198,7 @@ export function createNativeCliConnectionOperations(
+       const access = provider?.effectiveConfig.access;
+       if (!provider || access?.type !== "native-cli")
+         throw new Error("Native CLI connection no longer exists");
+-      await connect(id, access, snapshot.revision);
++      await connect(id, access, provider.effectiveConfig);
+       return facade.getView();
+     },
+     async beginNativeCliLogin(
+@@ -239,7 +241,7 @@ export function createNativeCliConnectionOperations(
+           login?.cancel();
+         },
+         status: "pending" as "pending" | "finished" | "failed",
+-        revision: snapshot.revision,
++        expected: snapshot.providers.find((entry) => entry.providerId === id)!.effectiveConfig,
+         access,
+         allocatedHome,
+       };
+@@ -285,7 +287,7 @@ export function createNativeCliConnectionOperations(
+       flow.commit ??= connect(
+         id,
+         flow.access,
+-        flow.revision,
++        flow.expected,
+         () => {
+           // PRI-01: a cancel that arrived while the post-login inspection ran must not publish it.
+           if (flow.cancelled) throw new Error("Native CLI login cancelled");
+@@ -315,6 +317,26 @@ export function createNativeCliConnectionOperations(
+       flow.cancel();
+       discardHome(flow.allocatedHome);
+     },
++    /**
++     * Follow the machine's CLI: when the official CLI's own default login changed (another tool or
++     * a terminal `login` switched it), adopt the new identity and catalog instead of demanding a
++     * reconnect. Fleet-owned homes cannot change from outside and are never adopted here.
++     * Concurrent callers share one adoption per connection.
++     */
++    adoptNativeCliAccount(id: string): Promise<boolean> {
++      const running = adoptions.get(id);
++      if (running) return running;
++      const run = (async () => {
++        assertActive();
++        await ensureReady();
++        const { access, config } = nativeAccess(id);
++        if (!access.connected || home(access.configDir)) return false;
++        await connect(id, access, config);
++        return true;
++      })().finally(() => adoptions.delete(id));
++      adoptions.set(id, run);
++      return run;
++    },
+     /** Same contract as subscription accounts: select, remove or toggle automatic switching. */
+     async updateNativeCliAccounts(
+       id: string,
+@@ -352,13 +374,13 @@ export function createNativeCliConnectionOperations(
+             },
+           },
+           undefined,
+-          latest.revision,
++          undefined,
+         );
+         if (home(removed.configDir)) discardHome(removed.configDir);
+         return;
+       }
+       if (change.autoSwitch !== undefined) {
+-        const { access, revision } = nativeAccess(id);
++        const { access } = nativeAccess(id);
+         await facade.savePersonalProviderOverlay(
+           id as ProviderId,
+           {
+@@ -369,7 +391,7 @@ export function createNativeCliConnectionOperations(
+             },
+           },
+           undefined,
+-          revision,
++          undefined,
+         );
+       }
+     },
+diff --git a/packages/services/src/model-provider/nativeCliUsage.ts b/packages/services/src/model-provider/nativeCliUsage.ts
+index 2e03d68..6eb0824 100644
+--- a/packages/services/src/model-provider/nativeCliUsage.ts
++++ b/packages/services/src/model-provider/nativeCliUsage.ts
+@@ -71,8 +71,15 @@ export function createConnectionUsageOperations(
+   fetcher?: typeof fetch,
+   switchNativeAccount?: (providerId: string, accountId: string) => Promise<void>,
+   registerDispose?: (cleanup: () => void) => void,
++  adoptNativeAccount?: (providerId: string) => Promise<boolean>,
+ ) {
+-  const nativeUsage = createNativeCliUsageReader(facade, native, Date.now, switchNativeAccount);
++  const nativeUsage = createNativeCliUsageReader(
++    facade,
++    native,
++    Date.now,
++    switchNativeAccount,
++    adoptNativeAccount,
++  );
+   if (switchNativeAccount && registerDispose) {
+     // Like Cockpit's refresh scheduler: switching still happens when no allowance view is open.
+     const timer = setInterval(() => void ensureReady().then(() => nativeUsage.sweep()), 5 * 60_000);
+@@ -82,6 +89,11 @@ export function createConnectionUsageOperations(
+   const apiKeyPlans = fetcher ? createApiKeyPlanUsageReader(facade, fetcher) : undefined;
+   return {
+     nativeAccountsView: (id: string) => nativeUsage.accounts(id),
++    /** Re-check every followed CLI login now (a turn reported that the CLI switched accounts). */
++    async syncNativeCliAccounts(): Promise<void> {
++      await ensureReady();
++      await nativeUsage.sweep(true);
++    },
+     async getSubscriptionUsage(
+       id: string,
+       refresh?: boolean,
+@@ -212,6 +224,8 @@ export function createNativeCliUsageReader(
+   native?: NativeCliConnectionAdapter,
+   now = Date.now,
+   switchAccount?: (providerId: string, accountId: string) => Promise<void>,
++  /** Adopts a changed default CLI login (see adoptNativeCliAccount); never a Fleet-owned home. */
++  adoptAccount?: (providerId: string) => Promise<boolean>,
+ ) {
+   const cache = new Map<
+     string,
+@@ -338,15 +352,23 @@ export function createNativeCliUsageReader(
+       const target = accountId ?? current?.access.accountId;
+       if (!current || !target) return { status: "auth-required", connectionRevision: current?.revision };
+       const result = await readAccount(id, target, refresh);
+-      if (target === current.access.accountId) void considerSwitch(id, result);
++      if (target === current.access.accountId) {
++        if (result.status === "auth-required" && result.authRequiredReason === "account-changed")
++          void adoptAccount?.(id).catch(() => false);
++        else void considerSwitch(id, result);
++      }
+       return result;
+     },
+     /** Background check for connections with automatic switching; the caller owns the timer. */
+-    async sweep(): Promise<void> {
++    async sweep(refresh = false): Promise<void> {
+       for (const provider of facade.getView().providers) {
+         const access = provider.effectiveConfig.access;
+-        if (access?.type !== "native-cli" || !access.autoSwitch || !access.connected) continue;
+-        await this.read(provider.providerId).catch(() => undefined);
++        // Auto-switch connections need fresh allowance; default-login Claude/Codex connections need
++        // their identity re-checked so an outside account switch is adopted without user action.
++        const followsCli =
++          (access?.type === "native-cli" && !access.configDir && (access.provider === "claude" || access.provider === "codex"));
++        if (access?.type !== "native-cli" || !access.connected || (!access.autoSwitch && !followsCli)) continue;
++        await this.read(provider.providerId, refresh).catch(() => undefined);
+       }
+     },
+   };
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 0e5621b..77fdaf9 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -57,6 +57,7 @@ export function createProviderSettingsService(
+     fetch,
+     (id, accountId) => nativeOperations.updateNativeCliAccounts(id, { select: accountId }),
+     registerNativeCliDispose,
++    (id) => nativeOperations.adoptNativeCliAccount(id),
+   );
+   return {
+     ...usageOperations,
+@@ -90,13 +91,29 @@ export function createProviderSettingsService(
+       if (existing?.identity === identity) return existing.request;
+       // 页面探测挂载和并行读取共享同一次目录请求；保存仍走 Facade 的串行写入。
+       const request = (async () => {
+-        const catalog = await discoverConnectionModels(
+-          provider,
+-          fetch,
+-          subscriptions,
+-          facade.getView().providerTemplates,
+-          nativeCli,
+-        );
++        let catalog: ModelDiscoveryResult;
++        try {
++          catalog = await discoverConnectionModels(
++            provider,
++            fetch,
++            subscriptions,
++            facade.getView().providerTemplates,
++            nativeCli,
++          );
++        } catch (error) {
++          // 修复：其他工具（如 Cockpit Tools）或终端切换了 CLI 默认登录后，这里曾直接报"账号已变更，请重连"。
++          // 默认登录的连接改为跟随本机 CLI：采用新身份并写入其目录，然后返回该目录。
++          if (
++            provider.effectiveConfig.access?.type === "native-cli" &&
++            error instanceof Error &&
++            /account changed/i.test(error.message) &&
++            (await nativeOperations.adoptNativeCliAccount(id))
++          ) {
++            const adopted = facade.getView().providers.find((entry) => entry.providerId === id)!;
++            return discoverConnectionModels(adopted, fetch, subscriptions, facade.getView().providerTemplates, nativeCli);
++          }
++          throw error;
++        }
+         await facade.mergeDiscoveredModels(
+           id,
+           catalog.models,
+diff --git a/packages/services/src/model-provider/providerSettings.ts b/packages/services/src/model-provider/providerSettings.ts
+index 2be67d7..c869aee 100644
+--- a/packages/services/src/model-provider/providerSettings.ts
++++ b/packages/services/src/model-provider/providerSettings.ts
+@@ -61,6 +61,8 @@ export interface IProviderSettingsService
+     request: CodexResetRequest,
+   ): Promise<CodexResetResult>;
+   getSubscriptionAccounts(providerId: string): Promise<SubscriptionAccountsView>;
++  /** Adopt outside switches of the official CLIs' default logins (Cockpit Tools, `codex login`). */
++  syncNativeCliAccounts(): Promise<void>;
+   updateSubscriptionAccounts(
+     providerId: string,
+     change: { select?: string; remove?: string; autoSwitch?: boolean },
+diff --git a/packages/services/test/native-cli-accounts.test.ts b/packages/services/test/native-cli-accounts.test.ts
+index 38f7a72..c3816e5 100644
+--- a/packages/services/test/native-cli-accounts.test.ts
++++ b/packages/services/test/native-cli-accounts.test.ts
+@@ -24,6 +24,7 @@ function fixture(directory: string) {
+   const homes: string[] = [];
+   const removed: string[] = [];
+   let nextLogin = "second@example.invalid";
++  let inspectDelay = 0;
+   const model = (id: string) =>
+     mapCodexNativeModels([
+       {
+@@ -48,6 +49,7 @@ function fixture(directory: string) {
+     }),
+     nativeCli: {
+       inspect: async (access) => {
++        if (inspectDelay) await new Promise((resolve) => setTimeout(resolve, inspectDelay));
+         const accountId = identities.get(access.configDir || "");
+         if (!accountId) throw new Error("Sign in to the official Codex CLI first");
+         if (access.accountId && access.accountId !== accountId)
+@@ -82,6 +84,11 @@ function fixture(directory: string) {
+     setNextLogin: (accountId: string) => {
+       nextLogin = accountId;
+     },
++    /** Another tool rewrites the login stored in a CLI home (default home is ""). */
++    setIdentity: (home: string, accountId: string) => identities.set(home, accountId),
++    setInspectDelay: (ms: number) => {
++      inspectDelay = ms;
++    },
+   };
+ }
+ 
+@@ -231,3 +238,79 @@ test("switch target needs an exhausted active window and clear headroom elsewher
+     "a Claude model-scoped window does not exhaust the account",
+   );
+ });
++
++
++test("an outside switch of the CLI's default login is adopted instead of demanding a reconnect", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-adopt-"));
++  const { runtime, setIdentity } = fixture(directory);
++  try {
++    await runtime.start();
++    const service = runtime.providerSettings;
++    const { providerId } = await service.createPersonalProvider({ templateId: "fleet-chatgpt-native" });
++    await service.connectNativeCli(providerId);
++    setIdentity("", "other@example.invalid");
++    const catalog = await service.discoverModels(providerId);
++    assert.deepEqual(catalog.models.map((m) => m.id), ["model-for-other"]);
++    const access = (await service.getView()).providers.find((p) => p.providerId === providerId)!
++      .effectiveConfig.access as { accountId?: string; accounts?: { id: string }[] };
++    assert.equal(access.accountId, "other@example.invalid");
++    assert.deepEqual(access.accounts?.map((a) => a.id), ["other@example.invalid"]);
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++
++test("a default login that becomes a Fleet-home account keeps that stable home", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-adopt-home-"));
++  const { runtime, setIdentity, homes } = fixture(directory);
++  try {
++    await runtime.start();
++    const service = runtime.providerSettings;
++    const { providerId } = await service.createPersonalProvider({ templateId: "fleet-chatgpt-native" });
++    await service.connectNativeCli(providerId);
++    await signIn(service, providerId);
++    await service.updateSubscriptionAccounts(providerId, { select: "default@example.invalid" });
++    setIdentity("", "second@example.invalid");
++    await service.discoverModels(providerId);
++    const access = (await service.getView()).providers.find((p) => p.providerId === providerId)!
++      .effectiveConfig.access as { accountId?: string; configDir?: string; accounts?: { id: string; configDir?: string }[] };
++    assert.equal(access.accountId, "second@example.invalid");
++    assert.equal(access.configDir, homes[0], "the Fleet home, which other tools cannot rewrite, stays in use");
++    assert.deepEqual(access.accounts?.map((a) => a.id), ["second@example.invalid"]);
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++
++test("an unrelated settings write during a slow CLI check does not fail the reconnect", async () => {
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-fence-"));
++  const { runtime, setInspectDelay } = fixture(directory);
++  try {
++    await runtime.start();
++    const service = runtime.providerSettings;
++    const { providerId } = await service.createPersonalProvider({ templateId: "fleet-chatgpt-native" });
++    setInspectDelay(150);
++    const connecting = service.connectNativeCli(providerId);
++    await new Promise((resolve) => setTimeout(resolve, 30));
++    await service.createPersonalProvider({ templateId: "fleet-claude-native" });
++    await connecting;
++    const access = (await service.getView()).providers.find((p) => p.providerId === providerId)!
++      .effectiveConfig.access as { connected?: boolean };
++    assert.equal(access.connected, true);
++  } finally {
++    runtime.dispose();
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++
++test("ACP failures keep their cause: only explicit authentication refusals mean signed out", async () => {
++  const { acpFailure } = await import("../../../apps/zcode-cli/packages/adapters/src/native-agent/acp-session.js");
++  assert.match(acpFailure("codebuddy", Object.assign(new Error("Authentication required"), { data: { category: "auth" } })).message, /Sign in to the official CodeBuddy CLI/);
++  assert.match(acpFailure("kimi", new Error("401 Unauthorized")).message, /Sign in to the official/);
++  const network = acpFailure("kimi", new Error("oauth token refresh failed: ECONNRESET"));
++  assert.doesNotMatch(network.message, /Sign in/);
++  assert.match(network.message, /network/);
++  assert.doesNotMatch(acpFailure("opencode", new Error("Author field missing")).message, /Sign in/);
++});
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index f9185de..23e48c1 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -238,24 +238,26 @@ function fixture() {
+   let discoveries = 0;
+   let cancellations = 0;
+   const completions: Array<ReturnType<typeof Promise.withResolvers<void>>> = [];
+-  const access = { type: "native-cli", provider: "claude", connected: false };
++  let access: Record<string, unknown> = { type: "native-cli", provider: "claude", connected: false };
+   const facade = {
+     getView: () => ({ revision, providers: [{ providerId: "A", effectiveConfig: { access } }] }),
+     async mergeDiscoveredModels(
+       id: string,
+       _models: unknown[],
+-      _expected: unknown,
++      expected: { access?: unknown },
+       _guard: unknown,
+       replace: boolean,
+       connection: any,
+     ) {
+       assert.equal(id, "A");
+       assert.equal(replace, true);
+-      if (connection.basedOnRevision !== revision) throw new Error("Provider revision changed");
++      // Like the real Facade: the write is fenced on this connection's own config, not the global revision.
++      if (JSON.stringify(expected.access) !== JSON.stringify(access)) throw new Error("Provider revision changed");
+       assert.equal(connection.access.accountId, "fixture@example.invalid");
+       writes++;
+       discoveries++;
+       revision++;
++      access = connection.access;
+     },
+   } as unknown as ProviderSettingsFacade;
+   const catalog = { source: "provider" as const, models: [] };
+@@ -280,8 +282,10 @@ function fixture() {
+   return {
+     operations,
+     completions,
++    /** The connection's own config changed while the login ran. */
+     changeRevision() {
+       revision++;
++      access = { ...access, executable: "/another/claude" };
+     },
+     counts: () => ({ writes, discoveries, cancellations }),
+   };
+diff --git a/packages/ui/src/ChatErrorBanner.tsx b/packages/ui/src/ChatErrorBanner.tsx
+index 0132884..2f0d7ee 100644
+--- a/packages/ui/src/ChatErrorBanner.tsx
++++ b/packages/ui/src/ChatErrorBanner.tsx
+@@ -3,7 +3,8 @@
+  *
+  * 显示 ZCode Agent 链路中的错误，带 traceId 方便排查。
+  */
+-import { useState } from "react";
++import { useEffect, useState } from "react";
++import { useOptionalServices } from "@/hooks/useServices.js";
+ import {
+   MEDIA_BUDGET_CURRENT_ATTACHMENT_TOO_LARGE_ERROR_CODE,
+   MEDIA_BUDGET_CURRENT_IMAGE_TOO_LARGE_ERROR_CODE,
+@@ -67,12 +68,21 @@ function isModelConfigMissingError(error: Pick<ZCodeUiError, "code" | "message">
+   return Boolean(error.code && MODEL_CONFIG_MISSING_CODES.has(error.code));
+ }
+ 
++/** The official CLI's own login was switched outside Fleet (Cockpit Tools, `codex login`). */
++export function isNativeAccountSwitchedError(error: Pick<ZCodeUiError, "message" | "underlyingErrorMessage">) {
++  return [error.message, error.underlyingErrorMessage].some((message) =>
++    /Native (?:CLI|Codex|Claude) account changed/u.test(message ?? ""),
++  );
++}
++
+ export function resolveChatErrorBannerDisplayMessage(
+   error: ZCodeUiError,
+   intl: IntlInstance,
+ ): string {
+   if ([error.message, error.underlyingErrorMessage].some((message) => message?.includes("Native CLI cannot enforce this task's model-request admission policy")))
+     return intl.formatMessage({ id: "chat.error.nativeAdmissionUnsupported" });
++  if (isNativeAccountSwitchedError(error))
++    return intl.formatMessage({ id: "chat.error.nativeAccountSwitched" });
+   if (isModelConfigMissingError(error)) {
+     return intl.formatMessage({ id: "chat.error.noAvailableModel" });
+   }
+@@ -122,6 +132,12 @@ export function ChatErrorBanner({
+ }) {
+   const { intl } = useZCodeIntl();
+   const openFeedbackSubmit = useFeedbackStore((state) => state.openSubmit);
++  const providerSettingsService = useOptionalServices()?.providerSettingsService;
++  const accountSwitched = isNativeAccountSwitchedError(error);
++  useEffect(() => {
++    // 本机 CLI 被其他工具切换了账号：让连接跟随新账号，用户重试即可，不必去设置里重连。
++    if (accountSwitched) void providerSettingsService?.syncNativeCliAccounts?.().catch(() => {});
++  }, [accountSwitched, providerSettingsService]);
+   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+   const actionButtonClassName = "shrink-0";
+   const iconButtonClassName = "shrink-0";
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index e16fa3a..531b58f 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -196,7 +196,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.allowance.not-read":
+     "Refresh to read the current account’s plan allowance.",
+   "settings.modelProvider.allowance.accountChanged":
+-    "The official client account changed. Reconnect this connection.",
++    "The CLI on this machine switched accounts; syncing the new account…",
+   "settings.modelProvider.allowance.auth-required":
+     "Reconnect this account.",
+   "settings.modelProvider.allowance.access-denied":
+@@ -6205,6 +6205,8 @@ const enUS: Record<string, string> = {
+   "chat.error.collapseDetails": "Hide details",
+   "chat.error.feedback": "Report issue",
+   "chat.error.feedbackOpened": "Feedback opened with the error context attached",
++  "chat.error.nativeAccountSwitched":
++    "The CLI on this machine switched accounts outside Fleet (for example Cockpit Tools or a terminal login). Fleet is syncing the new account; retry in a moment.",
+   "chat.error.nativeAdmissionUnsupported":
+     "This CLI connection cannot enforce this task’s model-request admission policy. The task was not executed.",
+   "chat.error.noAvailableModel": "No model available. Connect a provider and choose a model.",
+@@ -7383,7 +7385,7 @@ const enUS: Record<string, string> = {
+     "When the current account runs out of allowance, switch to the saved account with the most left; takes effect from the next turn.",
+   "settings.modelProvider.nativeCli.duplicate": "This account is already added.",
+   "settings.modelProvider.nativeCli.changed":
+-    "The CLI account has changed. Reconnect to bind the current account.",
++    "The CLI on this machine switched accounts; syncing. Reconnect if this persists.",
+   "settings.modelProvider.nativeCli.failed":
+     "Could not read the native CLI connection. Check the official CLI installation and sign-in.",
+   "settings.modelProvider.nativeCli.network":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 830a6bc..79e6e2c 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -166,7 +166,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.allowance.observed": "更新于",
+   "settings.modelProvider.allowance.loading": "正在读取账号额度…",
+   "settings.modelProvider.allowance.not-read": "点击刷新，获取当前账号的订阅额度。",
+-  "settings.modelProvider.allowance.accountChanged": "官方客户端账号已切换，请重新连接。",
++  "settings.modelProvider.allowance.accountChanged": "本机 CLI 已切换账号，正在同步新账号…",
+   "settings.modelProvider.allowance.auth-required": "请重新连接此账号。",
+   "settings.modelProvider.allowance.access-denied": "服务商拒绝查询额度，尚不能判定登录失效。",
+   "settings.modelProvider.allowance.rate-limited": "查询过于频繁，请稍后刷新。",
+@@ -5893,6 +5893,8 @@ const zhCN: Record<string, string> = {
+   "chat.error.collapseDetails": "收起详情",
+   "chat.error.feedback": "反馈问题",
+   "chat.error.feedbackOpened": "已打开反馈，并自动带上报错现场",
++  "chat.error.nativeAccountSwitched":
++    "本机 CLI 已在 Fleet 之外切换了账号（例如 Cockpit Tools 或终端登录）。Fleet 正在同步到新账号，稍后重试即可。",
+   "chat.error.nativeAdmissionUnsupported":
+     "当前 CLI 接入不支持此任务的模型请求准入规则，任务未执行。",
+   "chat.error.noAvailableModel": "当前没有可用模型。请连接供应商并选择模型。",
+@@ -6992,7 +6994,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.autoSwitchHint":
+     "当前账号额度用尽时，切换到余量最多的已保存账号；下一轮对话生效。",
+   "settings.modelProvider.nativeCli.duplicate": "该账号已添加。",
+-  "settings.modelProvider.nativeCli.changed": "CLI 账号已切换，请重新连接当前账号。",
++  "settings.modelProvider.nativeCli.changed": "本机 CLI 已切换账号，正在同步新账号；若持续出现请重新连接。",
+   "settings.modelProvider.nativeCli.failed":
+     "无法读取原生 CLI 连接，请检查官方 CLI 的安装和登录状态。",
+   "settings.modelProvider.nativeCli.network":
+diff --git a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+index 455a0dd..06e4a72 100644
+--- a/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
++++ b/packages/ui/src/settings/model-provider-section/SectionLayout.tsx
+@@ -93,12 +93,16 @@ export function ModelProviderSectionLayout({
+             />
+             {navigationFooter}
+           </div>
+-          <div
+-            className="relative min-w-0 p-4 pb-20 sm:p-6 sm:pb-24 @2xl:overflow-y-auto @2xl:overscroll-contain"
+-            data-model-provider-detail-scroll="true"
+-          >
++          {/* 修复：详情栏改为内部滚动后，反馈覆盖层随内容滚动、弹在列表中间。覆盖层改挂在不滚动的外层，
++              始终贴在可见区域底部（与原版整页滚动时的位置一致）。 */}
++          <div className="relative min-w-0 @2xl:min-h-0" data-model-provider-detail-pane="true">
+             <ProviderDetailFeedbackBoundary key={selectedNodeKey ?? "unselected-provider"}>
+-              {children}
++              <div
++                className="min-w-0 p-4 pb-20 sm:p-6 sm:pb-24 @2xl:h-full @2xl:overflow-y-auto @2xl:overscroll-contain"
++                data-model-provider-detail-scroll="true"
++              >
++                {children}
++              </div>
+             </ProviderDetailFeedbackBoundary>
+           </div>
+         </div>
+diff --git a/packages/ui/test/nativeCliConnection.browser.test.tsx b/packages/ui/test/nativeCliConnection.browser.test.tsx
+index e209bc3..26a08ff 100644
+--- a/packages/ui/test/nativeCliConnection.browser.test.tsx
++++ b/packages/ui/test/nativeCliConnection.browser.test.tsx
+@@ -278,7 +278,7 @@ async function run() {
+       f.setUsage(async (id) => ({ status: "auth-required", authRequiredReason: "account-changed", accountId: id, connectionRevision: id }));
+       try {
+         await f.render("A", locale, true);
+-        check(f.node.textContent?.includes(locale === "zh-CN" ? "官方客户端账号已切换" : "official client account changed"), "Account switch reason was lost in the real quota view");
++        check(f.node.textContent?.includes(locale === "zh-CN" ? "本机 CLI 已切换账号" : "switched accounts"), "Account switch reason was lost in the real quota view");
+         check(!f.node.textContent?.includes(locale === "zh-CN" ? "授权已失效" : "expired"), "Identity mismatch was presented as token expiry");
+         check(f.node.querySelectorAll('[role="progressbar"]').length === 0 && f.changed() === 0,
+           "Mismatch invented allowance or replaced the existing binding");
+diff --git a/packages/ui/test/providerDetailFeedback.browser.test.tsx b/packages/ui/test/providerDetailFeedback.browser.test.tsx
+new file mode 100644
+index 0000000..c3e0623
+--- /dev/null
++++ b/packages/ui/test/providerDetailFeedback.browser.test.tsx
+@@ -0,0 +1,94 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { ModelProviderSectionLayout } from "../src/settings/model-provider-section/SectionLayout.js";
++import { useProviderDetailFeedback } from "../src/settings/model-provider-section/ProviderDetailFeedback.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: Array<{ name: string; error?: string }> = [];
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++async function test(name: string, run: () => Promise<void>) {
++  try {
++    await run();
++    results.push({ name });
++  } catch (error) {
++    results.push({ name, error: String(error) });
++  }
++}
++
++let show: ((message: string) => void) | undefined;
++function Detail() {
++  const { showFeedback } = useProviderDetailFeedback();
++  show = (message) => showFeedback({ key: "probe", state: "failure", message, dismissible: true });
++  return (
++    <div>
++      {Array.from({ length: 60 }, (_, index) => (
++        <div key={index} className="h-12 border-b border-border text-ui-base">
++          model-{index}
++        </div>
++      ))}
++    </div>
++  );
++}
++
++async function run() {
++  for (const scroll of ["top", "bottom"] as const)
++    await test(`page feedback stays at the bottom of the visible detail pane (scrolled ${scroll})`, async () => {
++      document.documentElement.className = "theme-zai-dark";
++      const node = document.createElement("div");
++      node.style.width = "1100px";
++      document.body.append(node);
++      const root = createRoot(node);
++      try {
++        await act(async () =>
++          root.render(
++            <ZCodeIntlProvider initialLocale="zh-CN">
++              <TooltipProvider>
++                <ModelProviderSectionLayout
++                  description="d"
++                  refreshLabel="r"
++                  loadingLabel="l"
++                  presetLoading={false}
++                  customLoading={false}
++                  onRefresh={() => {}}
++                  addProviderLabel="a"
++                  onAddProvider={() => {}}
++                  navigationGroups={[]}
++                  selectedNodeKey="probe"
++                  onSelectNavItem={() => {}}
++                >
++                  <Detail />
++                </ModelProviderSectionLayout>
++              </TooltipProvider>
++            </ZCodeIntlProvider>,
++          ),
++        );
++        const scroller = node.querySelector<HTMLElement>('[data-model-provider-detail-scroll="true"]');
++        const pane = node.querySelector<HTMLElement>('[data-model-provider-detail-pane="true"]');
++        check(scroller && pane, "Missing detail pane");
++        check(scroller.scrollHeight > scroller.clientHeight + 100, "Detail column does not scroll internally");
++        if (scroll === "bottom") scroller.scrollTop = scroller.scrollHeight;
++        await act(async () => show!("连接失败"));
++        await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
++        const toast = node.querySelector<HTMLElement>('[data-testid="provider-detail-feedback-viewport"] [role="alert"]');
++        check(toast, "Feedback not shown");
++        const box = toast.getBoundingClientRect();
++        const visible = pane.getBoundingClientRect();
++        check(
++          box.top >= visible.top && box.bottom <= visible.bottom,
++          `Feedback outside the visible pane: ${Math.round(box.top)}–${Math.round(box.bottom)} vs ${Math.round(visible.top)}–${Math.round(visible.bottom)}`,
++        );
++        check(
++          visible.bottom - box.bottom <= 40,
++          `Feedback is not at the pane bottom: ${Math.round(visible.bottom - box.bottom)}px above it`,
++        );
++      } finally {
++        await act(async () => root.unmount());
++        node.remove();
++      }
++    });
++}
++(window as any).__providerFeedbackTests = run().then(() => results);

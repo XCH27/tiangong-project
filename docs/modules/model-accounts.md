@@ -34,6 +34,23 @@ primary/secondary thresholds (`modules/codex_account_mutations_quota.rs`). Its o
 overwrites the CLI's `auth.json`/keyring, which Fleet does not do; its "instance" homes are the
 adopted mechanism.
 
+## Stability (candidate 0165)
+
+Measured on 2026-10-06: `~/.codex/auth.json` was rewritten at 10:45 while Cockpit Tools was
+running, and Fleet's first `account changed` failure followed at 10:45:36. Every outside switch of
+an official CLI's own login (Cockpit Tools, a terminal `codex login`) made Fleet demand a
+reconnect, because the connection is bound to that shared login. Cockpit is stable because it owns
+its account store; nothing else rewrites it.
+
+| Failure | Cause | Now |
+|---|---|---|
+| "Account changed, reconnect" | Saved identity vs a rewritten default login | A default-login connection follows the CLI: discovery, allowance reads, a five-minute sweep and the chat error adopt the new identity and catalog. If the new login is an account Fleet keeps in its own home, that home stays in use. Fleet homes cannot change from outside. A turn already admitted still fails its account fence and is retried after the sync. |
+| "Revision conflict" on reconnect | Native writes were fenced on the global settings revision, so any unrelated write during a 5–7 s CLI check failed them | Fenced on this connection's own config only |
+| "Sign in first" while signed in | Any ACP `authenticate` failure, and any message containing auth/login, meant signed out | Network causes are kept; only explicit refusals (`category=auth`, 401, "authentication required") mean signed out; Cursor's silent check says signed out *or* offline |
+| Toast in the middle of the list | Feedback overlay lived inside the internally scrolling detail column | Anchored to the visible pane (browser test fails on the old layout) |
+
+CodeBuddy's current failure is genuine (`session/new` → `Authentication required`, category auth).
+
 ## Interface
 
 Each account is ZCode's original plan card (`PlanStatusCardSurface` with the shared allowance
