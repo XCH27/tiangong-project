@@ -258,3 +258,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0162 | [0162-fold-model-variants.patch](0162-fold-model-variants.patch) | `533e1974fb5889eec35f9a13fd86724d9d9e1f72` |
 
 | 0163 | [0163-native-cli-accounts.patch](0163-native-cli-accounts.patch) | `9212a3bff679163a234564b011c65318520fa6c5` |
+
+| 0164 | [0164-model-knowledge-catalog.patch](0164-model-knowledge-catalog.patch) | `bbde03d9a4dc5c21672f4df5d0c4c12763d52b27` |

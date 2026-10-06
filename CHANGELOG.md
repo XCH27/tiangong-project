@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Model capabilities: a catalog layer generated from pi-ai's shipped data replaces the 200K
+  text-only placeholder (46 → 1 unknown contexts in the review profile); ACP CLIs no longer mark
+  every model text-only; image, video, speech, transcription and embedding models are recognised
+  and kept out of the chat picker.
+
 - Restore multiple accounts for Claude/Codex CLI connections: each added account signs in to its
   own official CLI home; switch, remove and opt-in quota auto-switch (lost when `25debe2f` hid the
   ChatGPT OAuth template). Model settings' split panel no longer grows with long model lists.

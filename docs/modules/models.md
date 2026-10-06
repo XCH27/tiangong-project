@@ -545,7 +545,7 @@ facts stay independent of internal budgets; unsupported routes fail. Discovery a
 through the existing Provider configuration owner, publishes that same persisted list to settings
 and conversation selection, preserving disabled models, personal corrections and order. Model-ID edits move personal rules only; provider observations stay under returned IDs. Actual model/connection deletion clears corresponding observations; recommendation restore retains them. [Request and catalogue invariants](../../.fleet/zcode/apps/zcode-cli/docs/provider-routing.md) cover effective headers/body, terminal pool errors and attempt-scoped SDK7 accounting; live entitlement remains separate.
 Search filters existing models locally; it never adds or discovers. Add Model stays below all
-model draft rows. Native CLI accounts: [model-accounts](model-accounts.md). Model and API-key drafts share
+model draft rows. See [model-accounts](model-accounts.md), [model-catalog](model-catalog.md). Model and API-key drafts share
 ProviderDraftInput, ProviderDraftRow and ProviderDraftAdd. API keys commit on Enter/blur without an
 extra confirmation button; manual model IDs retain compact single-row confirmation. Escape reverts
 only the current saved key or removes the current new row; IME candidate keys do neither. There is
