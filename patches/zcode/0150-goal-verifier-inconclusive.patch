@@ -1,0 +1,226 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/queue-auto-drain.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/queue-auto-drain.ts
+index 8ecb6e2..edd9068 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/queue-auto-drain.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/queue-auto-drain.ts
+@@ -1,8 +1,9 @@
+ import type { GoalStatus } from "@zcode/contracts";
+ 
+ /**
+- * 普通 queue 的唯一自动提升闸门。fail-open 不在这里开旁路：verifier 仍先把
+- * target 持久化为 complete，再与显式 pass 共用这一条判断。
++ * 普通 queue 的唯一自动提升闸门。active 目标期间队列等待目标续跑或裁判结论；
++ * complete 或 paused（裁判无法确认时暂停，不再续跑）后普通消息可以继续。
++ * Stop 另由 queue.autoDrain=false 保持暂停队列，不受此处影响。
+  */
+ export function shouldAutoDrainV4QueueHead(input: {
+   autoDrain: boolean;
+@@ -14,6 +15,6 @@ export function shouldAutoDrainV4QueueHead(input: {
+     input.autoDrain &&
+     input.dispatchState === "queued" &&
+     !input.sessionBusy &&
+-    (input.targetStatus === null || input.targetStatus === "complete")
++    (input.targetStatus === null || input.targetStatus === "complete" || input.targetStatus === "paused")
+   );
+ }
+diff --git a/apps/zcode-cli/packages/contracts/src/tools/target.ts b/apps/zcode-cli/packages/contracts/src/tools/target.ts
+index 1ae309e..f1ea87f 100644
+--- a/apps/zcode-cli/packages/contracts/src/tools/target.ts
++++ b/apps/zcode-cli/packages/contracts/src/tools/target.ts
+@@ -291,9 +291,9 @@ export function parseGoalCompletionVerificationText(
+ ): GoalCompletionVerificationOutput {
+   const parsed = parseJsonObject(text);
+   if (!parsed) {
+-    // verifier 是 goal 完成闸门，但 provider 偶发坏 JSON 属于裁判链路故障；
+-    // 按产品语义 fail-open，避免已经交付的 goal 被格式错误卡在继续迭代。
+-    return failOpenGoalCompletionVerification(
++    // 坏 JSON 是裁判链路故障，不是完成证据（K-05）：判为无法确认，由运行时暂停目标，
++    // 既不误标完成，也不会因缺少下一步而无限续跑。
++    return inconclusiveGoalCompletionVerification(
+       "The completion verifier did not return valid JSON.",
+     );
+   }
+@@ -321,13 +321,13 @@ export function failedGoalCompletionVerification(
+   };
+ }
+ 
+-export function failOpenGoalCompletionVerification(
++export function inconclusiveGoalCompletionVerification(
+   reason: string,
+ ): GoalCompletionVerificationOutput {
+-  // 这里表示 verifier 基础设施/格式失败，不是 verifier 明确判定目标未完成。
+-  // 默认通过能避免 goal 因裁判链路偶发失败被无限卡住，同时保留 reason 供日志和 UI 排查。
++  // verifier 基础设施/格式失败：既不是完成，也不是模型给出的下一步。没有 nextAction 时
++  // 续跑会被跳过，目标转为 paused 等待用户恢复；reason 保留给日志和 UI。
+   return {
+-    passed: true,
++    passed: false,
+     reason,
+   };
+ }
+@@ -432,6 +432,6 @@ export const parseTargetCompletionVerificationText =
+   parseGoalCompletionVerificationText;
+ export const failedTargetCompletionVerification =
+   failedGoalCompletionVerification;
+-export const failOpenTargetCompletionVerification =
+-  failOpenGoalCompletionVerification;
++export const inconclusiveTargetCompletionVerification =
++  inconclusiveGoalCompletionVerification;
+ export const escapeTargetPromptText = escapeGoalPromptText;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/deps.ts b/apps/zcode-cli/packages/core/src/runtime/deps.ts
+index 22d3e6b..6db2d5a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/deps.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/deps.ts
+@@ -86,7 +86,7 @@ export {
+   formatTodoStateForModel,
+   formatGoalStateForModel,
+   formatGoalContinuationPrompt,
+-  failOpenGoalCompletionVerification,
++  inconclusiveGoalCompletionVerification,
+   failedGoalCompletionVerification,
+   formatGoalCompletionVerificationFailurePrompt,
+   formatGoalCompletionVerificationPassedContent,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/target-completion-verification.ts b/apps/zcode-cli/packages/core/src/runtime/methods/target-completion-verification.ts
+index 4e6b9e6..81fff09 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/target-completion-verification.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/target-completion-verification.ts
+@@ -2,7 +2,7 @@ import {
+   SessionEventType,
+   GOAL_COMPLETION_VERIFICATION_QUERY_SOURCE,
+   createChildTraceContext,
+-  failOpenGoalCompletionVerification,
++  inconclusiveGoalCompletionVerification,
+   failedGoalCompletionVerification,
+   formatGoalCompletionVerificationPrompt,
+   parseGoalCompletionVerificationText,
+@@ -60,13 +60,19 @@ export async function verifyActiveTargetCompletionForContinuation(
+     });
+ 
+     if (!verification.passed) {
++      // 没有下一步的未通过（含裁判失败）不会续跑；保持 active 会让后续普通消息被当成目标续跑，
++      // 因此暂停，等待用户显式恢复。
++      if (!verification.nextAction?.trim()) await this.pauseActiveTargetForCancellation(input.traceContext);
+       return {
+-        target: input.target,
++        target: (await this.readSessionTargetForContext(input.traceContext)) ?? input.target,
+         verification,
+       };
+     }
+ 
+     const previousTarget = await this.readSessionTargetForContext(input.traceContext);
++    // 裁判期间目标可能被替换或已结束；结论只属于它审查的那个目标。
++    if (previousTarget?.targetID !== input.target.targetID || previousTarget.status !== "active")
++      return { target: previousTarget ?? input.target, verification };
+     const completedTarget =
+       (await this.sessionStore!.updateTargetStatus({
+         sessionID: this.sessionId,
+@@ -203,7 +209,7 @@ async function verifyTargetCompletion(
+     });
+     const verification =
+       toolCalls.length > 0
+-        ? failOpenGoalCompletionVerification(
++        ? inconclusiveGoalCompletionVerification(
+             "The completion verifier attempted to call tools instead of returning a verification result.",
+           )
+         : parseGoalCompletionVerificationText(result.text);
+@@ -263,15 +269,15 @@ async function verifyTargetCompletion(
+       await this.pauseActiveTargetForCancellation(modelTraceContext);
+       throw error;
+     }
+-    this.logger?.warn("Goal completion verification failed open", {
++    this.logger?.warn("Goal completion verification was inconclusive", {
+       ...traceContextToLogContext(modelTraceContext),
+       errorMessage: error instanceof Error ? error.message : String(error),
+-      event: "target.completion_verification.failed_open",
++      event: "target.completion_verification.inconclusive",
+       module: "core.runtime",
+       status: "failed",
+       targetId: input.target.targetID,
+     });
+-    const verification = failOpenGoalCompletionVerification(
++    const verification = inconclusiveGoalCompletionVerification(
+       error instanceof Error
+         ? `Completion verifier request failed: ${error.message}`
+         : "The completion verifier could not confirm that every goal requirement is complete.",
+diff --git a/apps/zcode-cli/packages/core/test/goal-verification.test.ts b/apps/zcode-cli/packages/core/test/goal-verification.test.ts
+new file mode 100644
+index 0000000..3a1e299
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/goal-verification.test.ts
+@@ -0,0 +1,64 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++import { verifyActiveTargetCompletionForContinuation } from "../src/runtime/methods/target-completion-verification.js";
++import { shouldAutoDrainV4QueueHead } from "../../bootstrap/src/zcode-protocol-v4/queue-auto-drain.js";
++
++const session = "session" as never;
++
++test("an unreadable verifier result pauses the Goal instead of completing it (K-05)", async () => {
++  const f = await fixture();
++  try {
++    f.steps.push(() => reply("main reply"));
++    await f.runtime.executeTurn("Initialize local goal fixture");
++    const runtime = f.runtime as never as { rootTraceContext: unknown };
++    const target = await f.store.setTarget({ sessionID: session, objective: "Unfinished synthetic deliverable" });
++    f.steps.push(() => reply("malformed verifier output"));
++    const result = await verifyActiveTargetCompletionForContinuation.call(runtime as never, {
++      target,
++      traceContext: runtime.rootTraceContext as never,
++    });
++    assert.equal(result?.verification.passed, false);
++    assert.equal(result?.target.status, "paused");
++    await f.reopen();
++    assert.equal((await f.store.readTarget({ sessionID: session }))?.status, "paused");
++  } finally {
++    await f.close();
++  }
++});
++
++test("a late pass for a replaced Goal does not complete the new Goal", async () => {
++  const f = await fixture();
++  try {
++    f.steps.push(() => reply("main reply"));
++    await f.runtime.executeTurn("Initialize local goal fixture");
++    const runtime = f.runtime as never as { rootTraceContext: unknown };
++    const old = await f.store.setTarget({ sessionID: session, objective: "Old goal", status: "active" });
++    const received = Promise.withResolvers<void>();
++    const answer = Promise.withResolvers<ReturnType<typeof reply>>();
++    f.steps.push(() => {
++      received.resolve();
++      return answer.promise;
++    });
++    const pending = verifyActiveTargetCompletionForContinuation.call(runtime as never, {
++      target: old,
++      traceContext: runtime.rootTraceContext as never,
++    });
++    await received.promise;
++    await f.store.setTarget({ sessionID: session, objective: "A different new goal", status: "active" });
++    answer.resolve(reply('{"passed":true,"reason":"Old goal reviewed"}'));
++    await pending;
++    const now = await f.store.readTarget({ sessionID: session });
++    assert.equal(now?.objective, "A different new goal");
++    assert.equal(now?.status, "active");
++  } finally {
++    await f.close();
++  }
++});
++
++test("a paused Goal no longer holds ordinary queued input; Stop keeps its own hold", () => {
++  const base = { dispatchState: "queued" as const, sessionBusy: false };
++  assert.equal(shouldAutoDrainV4QueueHead({ ...base, autoDrain: true, targetStatus: "active" }), false);
++  assert.equal(shouldAutoDrainV4QueueHead({ ...base, autoDrain: true, targetStatus: "paused" }), true);
++  assert.equal(shouldAutoDrainV4QueueHead({ ...base, autoDrain: false, targetStatus: "paused" }), false);
++});
+diff --git a/package.json b/package.json
+index 841cea8..7d5cb29 100644
+--- a/package.json
++++ b/package.json
+@@ -78,7 +78,7 @@
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+-    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",

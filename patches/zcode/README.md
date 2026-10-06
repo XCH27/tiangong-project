@@ -230,3 +230,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0148 | [0148-kimi-code-allowance.patch](0148-kimi-code-allowance.patch) | `bfaf479c3889d98b7eb39c50b2db3dc64e5a3dd1` |
 
 | 0149 | [0149-native-login-cancel-and-vendor-route.patch](0149-native-login-cancel-and-vendor-route.patch) | `f2b0ff8d8290cd223c00c003df0ff9eb2fa78d2f` |
+
+| 0150 | [0150-goal-verifier-inconclusive.patch](0150-goal-verifier-inconclusive.patch) | `9e0685810d3a156f210f66fb28eda988767bf3c6` |

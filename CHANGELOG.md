@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Pause a Goal when its completion verifier is inconclusive instead of marking it complete (K-05);
+  a late verifier pass no longer completes a replacement Goal.
+
 - Fence a native login cancelled during post-login inspection (PRI-01) and resolve native CLI
   login/inspection/usage routes from each vendor's own endpoint (PRI-08).
 
