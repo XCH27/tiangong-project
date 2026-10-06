@@ -262,3 +262,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0164 | [0164-model-knowledge-catalog.patch](0164-model-knowledge-catalog.patch) | `bbde03d9a4dc5c21672f4df5d0c4c12763d52b27` |
 
 | 0165 | [0165-native-account-stability.patch](0165-native-account-stability.patch) | `5e209a097d66c0b0f37f130932713d59e5ef7e7e` |
+
+| 0166 | [0166-vendor-compliant-routes.patch](0166-vendor-compliant-routes.patch) | `36d443026dd85c33ca1787f50f2a518047dd6582` |

@@ -12,6 +12,14 @@ own credentials. No token import, copying, keychain read or second account datab
 No register row yet.
 <!-- /module-card -->
 
+## Permitted routes (candidate 0166, OV-096)
+
+Subscriptions run only where the vendor sanctions it: Fleet's own Sign in with ChatGPT registration
+(multi-account, as OpenAI documents), the Codex app-server, and vendors' documented ACP modes,
+including the official Copilot CLI and Grok Build executors added here. Claude subscription,
+Antigravity and borrowed-client Copilot/Grok logins are retired with their data kept; see the
+evidence table in [OV-096](../decisions.md). Multi-account below now applies to Codex only.
+
 ## Native CLI accounts (candidate 0163)
 
 | Concern | Contract |

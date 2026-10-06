@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Follow the vendors' rules (OV-096): retire Claude subscription, Antigravity and the borrowed
+  Copilot/Grok logins (saved data kept, alternative shown); add the official GitHub Copilot CLI and
+  Grok Build executors; restore OpenAI's official Sign in with ChatGPT with multiple accounts.
+
 - Native CLI accounts no longer drop into "reconnect" when Cockpit Tools or a terminal login
   switches the CLI's own account: Fleet follows it. Reconnects no longer fail on unrelated writes,
   network faults are no longer reported as "sign in first", and page feedback stays at the bottom

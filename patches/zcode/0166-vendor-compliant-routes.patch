@@ -1,0 +1,1193 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+index ed8e590..42a2a18 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+@@ -10,7 +10,9 @@ export type AcpExecutorKind =
+   | "hermes"
+   | "openclaw"
+   | "codebuddy"
+-  | "qwen";
++  | "qwen"
++  | "copilot"
++  | "grok";
+ 
+ /**
+  * Per-CLI facts for the shared ACP executor, each verified against the installed binary with an
+@@ -116,6 +118,35 @@ export const ACP_PROFILES: Record<AcpExecutorKind, AcpProfile> = {
+     billingProvider: "alibaba",
+     loginCommand: "qwen",
+   },
++  copilot: {
++    kind: "copilot",
++    label: "GitHub Copilot",
++    binary: bin("copilot"),
++    candidates: [
++      join(home, ".local", "bin", bin("copilot")),
++      join(home, ".npm-global", "bin", bin("copilot")),
++      "/opt/homebrew/bin/copilot",
++      "/usr/local/bin/copilot",
++    ],
++    // GitHub 官方文档（copilot-cli-reference/acp-server）：`copilot --acp --stdio`；这是取代借用 VS Code
++    // 扩展身份的 OAuth 的合规路线。本机未安装，未实测。
++    args: ["--acp", "--stdio"],
++    environment: () => ({}),
++    billingProvider: "github",
++    loginCommand: "copilot",
++  },
++  grok: {
++    kind: "grok",
++    label: "Grok Build",
++    binary: bin("grok"),
++    candidates: [join(home, ".grok", "bin", bin("grok")), "/opt/homebrew/bin/grok", "/usr/local/bin/grok"],
++    // Grok Build 1.0.41：`grok agent stdio` 为 ACP v1（initialize/session/new 实测，cached_token 来自
++    // 官方 `grok login`）；取代借用 Grok CLI 身份的 OAuth。
++    args: ["agent", "stdio"],
++    environment: () => ({}),
++    billingProvider: "xai",
++    loginCommand: "grok login",
++  },
+   hermes: {
+     kind: "hermes",
+     label: "Hermes",
+@@ -169,7 +200,9 @@ export const isAcpExecutorKind = (value: unknown): value is AcpExecutorKind =>
+   value === "hermes" ||
+   value === "openclaw" ||
+   value === "codebuddy" ||
+-  value === "qwen";
++  value === "qwen" ||
++  value === "copilot" ||
++  value === "grok";
+ 
+ /** The single catalog entry for CLIs whose agent configuration owns the model. */
+ export const ACP_FIXED_MODEL_ID = "agent-default";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+index 7819e7e..47663ab 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+@@ -168,7 +168,8 @@ export async function openAcpSession(input: {
+     const modelMeta = new Map<string, { images?: boolean; contextWindow?: number }>();
+     for (const model of result.models?.availableModels ?? []) {
+       if (!model.modelId || !model._meta) continue;
+-      const tokens = model._meta.maxInputTokens;
++      // CodeBuddy 报 maxInputTokens；Grok Build 报 totalContextTokens。
++      const tokens = model._meta.maxInputTokens ?? model._meta.totalContextTokens;
+       modelMeta.set(model.modelId, {
+         ...(typeof model._meta.supportsImages === "boolean" ? { images: model._meta.supportsImages } : {}),
+         ...(typeof tokens === "number" && Number.isSafeInteger(tokens) && tokens > 0 ? { contextWindow: tokens } : {}),
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+index a84cda8..5aac835 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+@@ -11,7 +11,7 @@ import type {
+ import { NativeEvents } from "./native-events.js";
+ import { AcpRpcError, type AcpIncomingRequest, type AcpNotification } from "./acp-client.js";
+ import { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
+-import { acpFailure, acpSignInMessage, openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
++import { acpFailure, acpOption, acpOptionValues, acpSignInMessage, openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
+ import { latestImageBlocks, nativeTranscriptPrompt } from "./native-prompt.js";
+ import { resolveVariantModelId } from "./native-variants.js";
+ import { withNativeExecutorNetwork } from "./native-network.js";
+@@ -207,6 +207,7 @@ export function createAcpNativeAgentPort(
+             request.model.optionSpecs,
+             request.model.options,
+             false,
++            acpOptionValues(acpOption(session.configOptions, "model")).map((entry) => entry.value),
+           );
+           if (!profile.fixedModel && !(await setAcpOption(session, "model", modelId)))
+             throw new Error(`${profile.label} does not offer model ${modelId} for this account`);
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+index 37cba5c..73b4f6e 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+@@ -1,7 +1,7 @@
+ import { FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY } from "@zcode/shared";
+ import { applyNetworkEgressEnv, type NetworkEgressEnvPolicy } from "../network/subprocess-env.js";
+ 
+-export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen";
++export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok";
+ 
+ const PROXY_KEYS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
+ 
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-variants.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-variants.ts
+index 736454a..a21a944 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-variants.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-variants.ts
+@@ -6,7 +6,8 @@
+  */
+ export const VARIANT_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+ const EFFORT_SUFFIX = new RegExp(`^(.+)-(${VARIANT_EFFORTS.join("|")})$`, "u");
+-const FAST_SUFFIXES = ["-highspeed"] as const;
++// Kimi `-highspeed`；Grok Build `-build-fast`（官方说明：同一模型的快速版，价格加倍）。
++const FAST_SUFFIXES = ["-highspeed", "-build-fast"] as const;
+ const LABEL_EFFORT = /\s*\((?:minimal|low|medium|high|xhigh|max)\)\s*$/iu;
+ 
+ export interface VendorModel {
+@@ -79,6 +80,8 @@ export function resolveVariantModelId(
+   specs: { reasoningLevel?: { values?: readonly string[] }; speedMode?: string | null } | undefined,
+   options: { reasoningLevel?: string; speedMode?: string } | undefined,
+   effortsInId: boolean,
++  /** Model ids the vendor currently lists, when known. */
++  available?: readonly string[],
+ ): string {
+   let id = modelId;
+   const efforts = effortsInId
+@@ -91,6 +94,8 @@ export function resolveVariantModelId(
+         : defaultVariantEffort(efforts);
+     if (chosen) id = `${id}-${chosen}`;
+   }
+-  if (options?.speedMode === "fast" && specs?.speedMode === "variant-model") id = `${id}${FAST_SUFFIXES[0]}`;
++  if (options?.speedMode === "fast" && specs?.speedMode === "variant-model")
++    // The vendor's own listing decides the suffix (Kimi -highspeed, Grok -build-fast).
++    id = `${id}${FAST_SUFFIXES.find((suffix) => available?.includes(`${id}${suffix}`)) ?? FAST_SUFFIXES[0]}`;
+   return id;
+ }
+diff --git a/apps/zcode-cli/packages/contracts/src/model/model.ts b/apps/zcode-cli/packages/contracts/src/model/model.ts
+index 551ba11..0c83574 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/model.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/model.ts
+@@ -45,7 +45,7 @@ export type ModelEvent = ModelStreamEvent;
+ export interface Model {
+   /** Official CLI connection, frozen with the admitted execution model; no tokens are copied. */
+   readonly nativeExecutor?: {
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen";
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok";
+     executable?: string;
+     configDir?: string;
+     accountId?: string;
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 8a6a905..3ae8564 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2206,6 +2206,70 @@
+             }
+           }
+         },
++        {
++          "templateId": "fleet-copilot-native",
++          "templateNameMap": {
++            "zh-CN": "GitHub Copilot CLI",
++            "en-US": "GitHub Copilot CLI"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "copilot",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "github"
++            }
++          },
++          "catalog": {
++            "vendorId": "github",
++            "vendorNameMap": {
++              "zh-CN": "GitHub Copilot",
++              "en-US": "GitHub Copilot"
++            },
++            "serviceId": "copilot-cli",
++            "serviceNameMap": {
++              "zh-CN": "GitHub Copilot CLI",
++              "en-US": "GitHub Copilot CLI"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-grok-native",
++          "templateNameMap": {
++            "zh-CN": "Grok Build CLI",
++            "en-US": "Grok Build CLI"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "grok",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "grok"
++            }
++          },
++          "catalog": {
++            "vendorId": "xai",
++            "vendorNameMap": {
++              "zh-CN": "xAI",
++              "en-US": "xAI"
++            },
++            "serviceId": "grok-build-cli",
++            "serviceNameMap": {
++              "zh-CN": "Grok Build CLI",
++              "en-US": "Grok Build CLI"
++            }
++          }
++        },
+         {
+           "templateId": "fleet-hermes-native",
+           "templateNameMap": {
+diff --git a/packages/provider/src/config-overlay.ts b/packages/provider/src/config-overlay.ts
+index 4a82278..9b9770e 100644
+--- a/packages/provider/src/config-overlay.ts
++++ b/packages/provider/src/config-overlay.ts
+@@ -5,6 +5,7 @@ export interface ConfigValidationIssue {
+     | "duplicate-model"
+     | "invalid-option-spec"
+     | "invalid-config"
++    | "route-not-permitted"
+     | "invalid-reasoning-mapping"
+     | "invalid-pattern"
+     | "invalid-url"
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index 85468a8..99bc143 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -91,7 +91,7 @@ export const nativeCliSavedAccountDataSchema = z
+ export const nativeCliAccessDataSchema = z
+   .object({
+     type: z.literal("native-cli"),
+-    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode", "hermes", "openclaw", "codebuddy", "qwen"]),
++    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode", "hermes", "openclaw", "codebuddy", "qwen", "copilot", "grok"]),
+     executable: z.string().optional(),
+     configDir: z.string().optional(),
+     accountId: z.string().optional(),
+diff --git a/packages/provider/src/facades.ts b/packages/provider/src/facades.ts
+index 5bd0eb6..fa74751 100644
+--- a/packages/provider/src/facades.ts
++++ b/packages/provider/src/facades.ts
+@@ -185,6 +185,8 @@ export interface ProviderSettingsProviderView extends Pick<
+   readonly personalConfig?: ProviderConfigObject;
+   readonly effectiveConfig: ProviderConfigObject;
+   readonly issues: readonly ConfigValidationIssue[];
++  /** The vendor does not permit this route for a third-party app; the connection cannot run. */
++  readonly routeRestriction?: import("./route-policy.js").ConnectionRouteRestriction;
+   readonly models: readonly ProviderSettingsModelView[];
+ }
+ 
+@@ -777,6 +779,7 @@ function createProviderSettingsView(input: {
+       ...(personalConfig ? { personalConfig: personalConfig.toJSON() } : {}),
+       effectiveConfig: provider.config.toJSON(),
+       issues: provider.providerIssues,
++      ...(provider.routeRestriction ? { routeRestriction: provider.routeRestriction } : {}),
+       models: Object.freeze(
+         provider.models.map((model) => {
+           const personalModelConfig = input.personalModels.getExact(
+diff --git a/packages/provider/src/index.ts b/packages/provider/src/index.ts
+index 0077138..c786172 100644
+--- a/packages/provider/src/index.ts
++++ b/packages/provider/src/index.ts
+@@ -18,3 +18,5 @@ export * from "./sources.js";
+ export { matchEndpointTemplate } from "./endpoint-template.js";
+ 
+ export * from "./classifier-models.js";
++
++export { connectionRouteRestriction, RESTRICTED_ROUTE_ALTERNATIVE, type ConnectionRouteRestriction } from "./route-policy.js";
+diff --git a/packages/provider/src/resolver.ts b/packages/provider/src/resolver.ts
+index 87d5607..2e3d40d 100644
+--- a/packages/provider/src/resolver.ts
++++ b/packages/provider/src/resolver.ts
+@@ -1,3 +1,4 @@
++import { connectionRouteRestriction, type ConnectionRouteRestriction } from "./route-policy.js";
+ /* oxlint-disable eslint(max-lines) -- Resolver 同时产出 Settings 分层结果与唯一 Registry 完整类型证明。 */
+ import type { z } from "zod";
+ import type { completeModelConfigDataSchema } from "@zcode/shared/model-config";
+@@ -231,6 +232,8 @@ export interface ResolvedProvider extends Pick<ProviderConfigRule, "templateId"
+   readonly templateConfig?: ProviderConfig;
+   readonly effectiveBuiltinConfig?: ProviderConfig;
+   readonly providerIssues: readonly ConfigValidationIssue[];
++  /** Set when the vendor does not permit this route for a third-party app (see route-policy). */
++  readonly routeRestriction?: ConnectionRouteRestriction;
+   readonly models: readonly ResolvedProviderModel[];
+ }
+ 
+@@ -317,6 +320,14 @@ export class ProviderConfigResolver {
+         });
+       }
+       issues.push(...providerIssues);
++      // 厂商不允许第三方应用使用的接入路线：保留已保存数据，但不发布执行（不计入配置错误）。
++      const routeRestriction = connectionRouteRestriction(config.access);
++      if (routeRestriction)
++        providerIssues.push({
++          code: "route-not-permitted",
++          path: [...providerPath, "access"],
++          message: `This connection route is not permitted by its vendor (${routeRestriction})`,
++        });
+       // Scoped directories own automatic membership; static templates cannot bypass them.
+       const builtinModelIds =
+         usesAccountScopedModelCatalog(config) ? [] : (config.builtinModelIds ?? []);
+@@ -458,6 +469,7 @@ export class ProviderConfigResolver {
+           ? { effectiveBuiltinConfig: effectiveBuiltinProviders.get(providerId) }
+           : {}),
+         providerIssues: Object.freeze([...providerIssues]),
++        ...(routeRestriction ? { routeRestriction } : {}),
+         models: Object.freeze(models),
+       });
+       resolvedProviders.push(resolvedProvider);
+diff --git a/packages/provider/src/route-policy.ts b/packages/provider/src/route-policy.ts
+new file mode 100644
+index 0000000..a19a8f7
+--- /dev/null
++++ b/packages/provider/src/route-policy.ts
+@@ -0,0 +1,44 @@
++/**
++ * Connection routes the vendors do not permit for a third-party application such as Fleet. A
++ * restricted connection keeps its saved data but cannot run, and is not offered for new
++ * connections; the UI explains the permitted alternative. Sources (checked 2026-10-06):
++ *
++ * - anthropic-subscription: Anthropic does not allow third-party developers to offer claude.ai
++ *   login or route requests through Free/Pro/Max credentials, including agents built on the Claude
++ *   Agent SDK (code.claude.com/docs/en/legal-and-compliance; /docs/en/agent-sdk/overview). Claude
++ *   runs through an API key or a cloud provider; a subscription only in Claude Code itself.
++ * - google-antigravity: Antigravity Additional Terms §6, "Using third party software, tools, or
++ *   services to access the Service … is a breach", enforced with account suspensions in 2026.
++ * - impersonated-client: the login presents another product's OAuth client (GitHub Copilot as the
++ *   VS Code extension, Grok as the Grok CLI). The vendors' own agents are reachable instead through
++ *   their documented ACP modes (`copilot --acp`, `grok agent stdio`).
++ */
++export type ConnectionRouteRestriction =
++  | "anthropic-subscription"
++  | "google-antigravity"
++  | "impersonated-client";
++
++interface AccessLike {
++  readonly type: string;
++  readonly provider?: string;
++}
++
++export function connectionRouteRestriction(
++  access: AccessLike | null | undefined,
++): ConnectionRouteRestriction | undefined {
++  if (access?.type === "native-cli") {
++    if (access.provider === "claude") return "anthropic-subscription";
++    if (access.provider === "antigravity") return "google-antigravity";
++  }
++  if (access?.type === "subscription" && (access.provider === "github-copilot" || access.provider === "xai"))
++    return "impersonated-client";
++  return undefined;
++}
++
++/** The API-key template a restricted connection points users to. */
++export const RESTRICTED_ROUTE_ALTERNATIVE: Readonly<Record<string, string>> = {
++  claude: "anthropic",
++  antigravity: "fleet-google",
++  xai: "xai",
++  "github-copilot": "fleet-copilot-native",
++};
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index a3e3124..c7375dd 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -1,4 +1,5 @@
+ import type { ProviderSettingsFacade, ProviderId } from "@zcode/provider";
++import { connectionRouteRestriction } from "@zcode/provider";
+ import type { NativeCliAccessConfigObject } from "@zcode/provider";
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import type { ModelDiscoveryResult } from "./modelDiscovery.js";
+@@ -20,7 +21,7 @@ export interface NativeCliConnectionAdapter {
+   accountHomes?: { create(provider: string): string; remove(dir: string): void };
+   usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
+   login(options: {
+-    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen";
++    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok";
+     executable?: string;
+     configDir?: string;
+   }): NativeCliLoginProcess | Promise<NativeCliLoginProcess>;
+@@ -36,7 +37,8 @@ export async function inspectNativeCliConnection(
+ 
+ export type NativeCliSavedAccount = NonNullable<NativeCliAccessConfigObject["accounts"]>[number];
+ /** CLIs whose official login honours an isolated home, so one connection can hold several sign-ins. */
+-export const NATIVE_CLI_MULTI_ACCOUNT = new Set(["claude", "codex"]);
++// Claude is excluded: Anthropic does not permit subscription sign-in in third-party apps (route-policy).
++export const NATIVE_CLI_MULTI_ACCOUNT = new Set(["codex"]);
+ const home = (dir?: string) => dir || "";
+ 
+ /** Saved sign-ins; records written before multi-account carry only the active identity. */
+@@ -123,6 +125,8 @@ export function createNativeCliConnectionOperations(
+   ) => {
+     assertActive();
+     if (access.type !== "native-cli") throw new Error("This is not a native CLI connection");
++    if (connectionRouteRestriction(access))
++      throw new Error("This connection route is not permitted by its vendor; use an API key instead");
+     const result = await inspectNativeCliConnection({ ...access, accountId: undefined }, native);
+     assertActive();
+     const saved = nativeSavedAccounts(access);
+@@ -211,7 +215,7 @@ export function createNativeCliConnectionOperations(
+       const snapshot = facade.getView();
+       const current = snapshot.providers.find((entry) => entry.providerId === id)?.effectiveConfig
+         .access;
+-      if (current?.type !== "native-cli" || !["claude", "codex"].includes(current.provider))
++      if (current?.type !== "native-cli" || current.provider !== "codex")
+         throw new Error("This native CLI login is not available");
+       if (!native) throw new Error("Native CLI connection unavailable on this host");
+       let access: NativeCliAccessConfigObject = current;
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 45966f6..fcd500a 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -95,7 +95,7 @@ export function mapCodexNativeModels(
+ export function createNativeCliConnectionAdapter(
+   /** 按执行器解析其官方端点的网络路由（PAC 可能对各厂商给出不同代理）。 */
+   resolveEnvironment: (
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen",
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok",
+   ) => Promise<Record<string, string>> = async () => ({}),
+   /** 宿主网络所有者的 fetch；Claude 额度回退读取复用它，保持代理/证书一致。 */
+   hostFetch?: typeof fetch,
+diff --git a/packages/services/src/model-provider/nativeCliUsage.ts b/packages/services/src/model-provider/nativeCliUsage.ts
+index 6eb0824..4bbbdc3 100644
+--- a/packages/services/src/model-provider/nativeCliUsage.ts
++++ b/packages/services/src/model-provider/nativeCliUsage.ts
+@@ -1,5 +1,6 @@
+ import { createApiKeyPlanUsageReader } from "./apiKeyPlanUsage.js";
+ import type { NativeCliAccessConfigObject, ProviderSettingsFacade } from "@zcode/provider";
++import { connectionRouteRestriction } from "@zcode/provider";
+ import {
+   nativeAccessForAccount,
+   nativeSavedAccounts,
+@@ -349,6 +350,8 @@ export function createNativeCliUsageReader(
+     },
+     async read(id: string, refresh = false, accountId?: string): Promise<SubscriptionUsageResult> {
+       const current = scope(id);
++      // 厂商不允许的路线不再启动其 CLI 读取额度。
++      if (current && connectionRouteRestriction(current.access)) return { status: "unsupported" };
+       const target = accountId ?? current?.access.accountId;
+       if (!current || !target) return { status: "auth-required", connectionRevision: current?.revision };
+       const result = await readAccount(id, target, refresh);
+@@ -368,6 +371,7 @@ export function createNativeCliUsageReader(
+         const followsCli =
+           (access?.type === "native-cli" && !access.configDir && (access.provider === "claude" || access.provider === "codex"));
+         if (access?.type !== "native-cli" || !access.connected || (!access.autoSwitch && !followsCli)) continue;
++        if (connectionRouteRestriction(access)) continue;
+         await this.read(provider.providerId, refresh).catch(() => undefined);
+       }
+     },
+diff --git a/packages/services/src/model-provider/providerFacadeServices.ts b/packages/services/src/model-provider/providerFacadeServices.ts
+index 77fdaf9..af53ac0 100644
+--- a/packages/services/src/model-provider/providerFacadeServices.ts
++++ b/packages/services/src/model-provider/providerFacadeServices.ts
+@@ -79,6 +79,8 @@ export function createProviderSettingsService(
+       await facade.waitForProviderOperations(id);
+       const provider = facade.getView().providers.find((entry) => entry.providerId === id);
+       if (!provider) throw new Error("Connection no longer exists");
++      if (provider.routeRestriction)
++        throw new Error("This connection route is not permitted by its vendor; use its official CLI or an API key");
+       const subscription =
+         provider.effectiveConfig.access?.type === "subscription" ? subscriptions : undefined;
+       const accountRevision = (await subscription?.accounts(id))?.revision;
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+index 1cae8a6..a03ab57 100644
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -9,6 +9,7 @@ import {
+   readAdapterSubscriptionCatalog,
+   subscriptionCredentialOAuth,
+ } from "./subscriptionCatalog.js";
++import { connectionRouteRestriction } from "@zcode/provider";
+ import { chatgptHostId, isChatGPTPlanCredential, loginChatGPT, subscriptionCredentialUsable } from "./chatgptAuthorization.js";
+ import { subscriptionLoginInteraction } from "./subscriptionLoginInteraction.js";
+ import { captureSubscriptionAccountId } from "./subscriptionAccountCapture.js";
+@@ -82,6 +83,9 @@ export function createSubscriptionConnections(options: {
+       throw new Error("Subscription connection no longer exists");
+     if (expectedKind && access.provider !== expectedKind)
+       throw new Error("Subscription connection changed; select the model again");
++    // 合规：借用其他产品 OAuth 身份的路线（Copilot=VS Code 扩展、Grok=Grok CLI）不再登录、读取或调用。
++    if (connectionRouteRestriction(access))
++      throw new Error("This connection route is not permitted by its vendor; use its official CLI or an API key");
+     const oauth = providers[access.provider].auth.oauth;
+     if (!oauth) throw new Error("Subscription authorization is unavailable");
+     return { oauth, kind: access.provider };
+@@ -346,8 +350,12 @@ export function createSubscriptionConnections(options: {
+           if (!canRecover) throw new Error("No eligible subscription recovery account");
+         }
+         const provider = providers[kind];
+-        const eligible = (credential: OAuthCredential) =>
+-          subscriptionCredentialUsable(credential) && (!modelId ||
++        // The production ChatGPT driver is OpenAI's public Sign in with ChatGPT registration.
++        const officialChatGPT = kind === "openai-codex" && provider.id === "openai";
++        const unusableCredential = (credential: OAuthCredential) =>
++          !subscriptionCredentialUsable(credential) || (officialChatGPT && !isChatGPTPlanCredential(credential));
++        // 合规：旧版 ChatGPT 授权用的是 Codex CLI 的客户端身份；只有官方 Sign in with ChatGPT 注册可用。
++        const eligible = (credential: OAuthCredential) => !unusableCredential(credential) && (!modelId ||
+           kind === "openai-codex" ||
+           kind === "xai" ||
+           (provider.filterModels
+@@ -367,7 +375,7 @@ export function createSubscriptionConnections(options: {
+           now(),
+           eligible,
+         );
+-        if (!account && saved.accounts.some((entry) => !subscriptionCredentialUsable(entry.credential)))
++        if (!account && saved.accounts.some((entry) => unusableCredential(entry.credential)))
+           throw new Error("ChatGPT plan permission requires reauthorization (chatgpt.tokens.use.direct)");
+         if (!account || !eligible(account.credential))
+           throw new Error("No eligible subscription account for this model");
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index e53551e..9c9d0ac 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -2873,6 +2873,8 @@ const NATIVE_CLI_LOGIN_ENDPOINTS = {
+   openclaw: "https://openclaw.ai/",
+   codebuddy: "https://www.codebuddy.ai/",
+   qwen: "https://chat.qwen.ai/",
++  copilot: "https://github.com/login/device",
++  grok: "https://accounts.x.ai/",
+ } as const;
+ 
+ const NATIVE_EXECUTOR_ENDPOINTS = {
+@@ -2886,6 +2888,8 @@ const NATIVE_EXECUTOR_ENDPOINTS = {
+   openclaw: "https://openclaw.ai/",
+   codebuddy: "https://www.codebuddy.ai/",
+   qwen: "https://chat.qwen.ai/",
++  copilot: "https://api.githubcopilot.com/",
++  grok: "https://cli-chat-proxy.grok.com/",
+ } as const;
+ 
+ async function resolveNativeExecutorNetworkEnv(transport: {
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index 23e48c1..7dd02ae 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -99,66 +99,43 @@ test("Codex directory capacity replaces old recommendations and preserves explic
+   }
+ });
+ 
+-test("native account connection publishes selectable models through the real registry and reopen", async () => {
+-  const directory = await mkdtemp(join(tmpdir(), "fleet-native-registry-"));
+-  const personalFilePath = join(directory, "providers.json");
+-  const open = () =>
+-    new ProviderRuntime({
+-      configRuntime: createProviderConfigRuntime({
+-        personalFilePath,
+-        zcodeBuiltinFilePath: fileURLToPath(
+-          new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
+-        ),
+-        watch: false,
+-        personalPollingIntervalMs: false,
+-      }),
+-      nativeCli: {
+-        inspect: async () => ({
+-          accountId: "fixture@example.invalid",
+-          accountName: "Fixture",
+-          planType: "pro",
+-          catalog: {
+-            source: "provider",
+-            models: mapClaudeNativeModels([
+-              {
+-                value: "opus",
+-                resolvedModel: "claude-opus-5-5",
+-                displayName: "Opus",
+-                description: "Fixture",
+-                supportsFastMode: false,
+-                supportedEffortLevels: ["low", "medium", "high"],
+-              },
+-            ]),
+-          },
+-        }),
+-        login: () => {
+-          throw new Error("Already signed in");
+-        },
++test("the Claude subscription route is refused, cannot run and keeps its saved data", async () => {
++  // Anthropic does not permit claude.ai login in third-party apps, including Agent SDK agents.
++  const directory = await mkdtemp(join(tmpdir(), "fleet-native-claude-policy-"));
++  let inspections = 0;
++  const runtime = new ProviderRuntime({
++    configRuntime: createProviderConfigRuntime({
++      personalFilePath: join(directory, "providers.json"),
++      zcodeBuiltinFilePath: fileURLToPath(
++        new URL("../../../config/provider/zcode-builtin.json", import.meta.url),
++      ),
++      watch: false,
++      personalPollingIntervalMs: false,
++    }),
++    nativeCli: {
++      inspect: async () => {
++        inspections++;
++        throw new Error("must not run");
+       },
+-    });
+-  let runtime = open();
++      login: () => {
++        throw new Error("must not run");
++      },
++    },
++  });
+   try {
+     await runtime.start();
+     const { providerId } = await runtime.providerSettings.createPersonalProvider({
+       templateId: "fleet-claude-native",
+     });
+-    await runtime.providerSettings.connectNativeCli(providerId);
+-    const verify = async () => {
+-      const provider = (await runtime.providerSettings.getView()).providers.find(
+-        (p) => p.providerId === providerId,
+-      )!;
+-      assert.equal(provider.effectiveConfig.api, undefined);
+-      assert.equal(provider.effectiveConfig.access?.type, "native-cli");
+-      assert.equal(provider.executable, true);
+-      assert.equal(provider.models[0]?.selectable, true);
+-      assert.deepEqual(provider.models[0]?.issues, []);
+-      assert.equal(provider.models[0]?.effectiveConfig.optionSpecs?.speedMode, null);
+-    };
+-    await verify();
+-    runtime.dispose();
+-    runtime = open();
+-    await runtime.start();
+-    await verify();
++    await assert.rejects(runtime.providerSettings.connectNativeCli(providerId), /not permitted/);
++    await assert.rejects(runtime.providerSettings.beginNativeCliLogin(providerId), /not available/);
++    await assert.rejects(runtime.providerSettings.discoverModels(providerId), /not permitted/);
++    const provider = (await runtime.providerSettings.getView()).providers.find(
++      (p) => p.providerId === providerId,
++    )!;
++    assert.equal(provider.routeRestriction, "anthropic-subscription");
++    assert.equal(provider.executable, false);
++    assert.equal(inspections, 0, "the Claude CLI is never started on a subscription");
+   } finally {
+     runtime.dispose();
+     await rm(directory, { recursive: true, force: true });
+@@ -196,7 +173,7 @@ test("disposing the Provider runtime cancels pending native login and prevents l
+   try {
+     await runtime.start();
+     const { providerId } = await runtime.providerSettings.createPersonalProvider({
+-      templateId: "fleet-claude-native",
++      templateId: "fleet-chatgpt-native",
+     });
+     const { flowId } = await runtime.providerSettings.beginNativeCliLogin(providerId);
+     runtime.dispose();
+@@ -238,7 +215,7 @@ function fixture() {
+   let discoveries = 0;
+   let cancellations = 0;
+   const completions: Array<ReturnType<typeof Promise.withResolvers<void>>> = [];
+-  let access: Record<string, unknown> = { type: "native-cli", provider: "claude", connected: false };
++  let access: Record<string, unknown> = { type: "native-cli", provider: "codex", connected: false };
+   const facade = {
+     getView: () => ({ revision, providers: [{ providerId: "A", effectiveConfig: { access } }] }),
+     async mergeDiscoveredModels(
+@@ -313,7 +290,7 @@ test("cancelling while the post-login inspection runs publishes nothing (PRI-01)
+     catalog: { source: "provider"; models: [] };
+   }>();
+   const done = Promise.withResolvers<void>();
+-  const access = { type: "native-cli", provider: "claude", connected: false };
++  const access = { type: "native-cli", provider: "codex", connected: false };
+   const facade = {
+     getView: () => ({ revision: 1, providers: [{ providerId: "A", effectiveConfig: { access } }] }),
+     mergeDiscoveredModels: async () => {
+@@ -359,7 +336,7 @@ test("Provider teardown fences readiness waits and asynchronous native launches"
+         providers: [
+           {
+             providerId: "A",
+-            effectiveConfig: { access: { type: "native-cli", provider: "claude" } },
++            effectiveConfig: { access: { type: "native-cli", provider: "codex" } },
+           },
+         ],
+       }),
+@@ -413,7 +390,7 @@ test("a native inspection that returns after Provider teardown cannot commit its
+       providers: [
+         {
+           providerId: "A",
+-          effectiveConfig: { access: { type: "native-cli", provider: "claude" } },
++          effectiveConfig: { access: { type: "native-cli", provider: "codex" } },
+         },
+       ],
+     }),
+@@ -448,7 +425,7 @@ test("a native inspection that returns after Provider teardown cannot commit its
+ });
+ 
+ test("overlapping asynchronous CLI launches cancel the superseded process before publication", async () => {
+-  const access = { type: "native-cli", provider: "claude", connected: false };
++  const access = { type: "native-cli", provider: "codex", connected: false };
+   const facade = {
+     getView: () => ({ revision: 1, providers: [{ providerId: "A", effectiveConfig: { access } }] }),
+   } as unknown as ProviderSettingsFacade;
+@@ -547,7 +524,7 @@ test(
+   },
+ );
+ 
+-for (const kind of ["codex", "claude"] as const) {
++for (const kind of ["codex"] as const) {
+   test(`manual ${kind} model is selectable without fabricated API maps/capabilities after refresh and reopen`, async () => {
+     const directory = await mkdtemp(join(tmpdir(), "fleet-native-manual-"));
+     const open = () =>
+diff --git a/packages/services/test/native-cli-usage.test.ts b/packages/services/test/native-cli-usage.test.ts
+index ee45365..6bc511e 100644
+--- a/packages/services/test/native-cli-usage.test.ts
++++ b/packages/services/test/native-cli-usage.test.ts
+@@ -171,7 +171,7 @@ lines.on('line',line=>{
+ test("native usage coalesces reads, retains dated last-good on network failure, clears on account mismatch", async () => {
+   let access: NativeCliAccessConfigObject = {
+     type: "native-cli",
+-    provider: "claude",
++    provider: "codex",
+     connected: true,
+     accountId: "A",
+   };
+@@ -271,7 +271,7 @@ test("native allowance uses the existing Provider service and survives config re
+   try {
+     await runtime.start();
+     const { providerId } = await runtime.providerSettings.createPersonalProvider({
+-      templateId: "fleet-claude-native",
++      templateId: "fleet-chatgpt-native",
+     });
+     await runtime.providerSettings.connectNativeCli(providerId);
+     for (let i = 0; i < 2; i++) {
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 81592cf..47db302 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -1,3 +1,4 @@
++import { connectionRouteRestriction } from "@zcode/provider";
+ import assert from "node:assert/strict";
+ import { readFile } from "node:fs/promises";
+ import test from "node:test";
+@@ -61,12 +62,12 @@ test("Antigravity is a native CLI route that is complete only after a signed-in
+ });
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 58);
++  assert.equal(templates.length, 60);
+   assert.equal(vendors.length, 25);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    58,
++    60,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+@@ -325,11 +326,16 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   const subscriptions = section("subscription");
+   const api = section("api");
+   const grok = subscriptions.find((g) => g.id === "vendor:xai")!;
+-  assert.equal(grok.label, "Grok");
+-  assert.equal(grok.templates.length, 1, "membership tiers share the existing login path");
+-  assert.equal(grok.templates[0]?.templateId, "fleet-xai");
+-  assert.equal(grok.templates[0]?.config.logo?.key, "grok");
+-  assert.equal(grok.templates[0]?.catalog?.vendorId, "xai");
++  assert.equal(grok.label, "xAI");
++  // The Grok CLI-client OAuth route is retained for saved data but restricted; the official Grok
++  // Build CLI is the offered route under the same vendor and logo.
++  assert.deepEqual(grok.templates.map((t) => t.templateId).sort(), ["fleet-grok-native", "fleet-xai"]);
++  const xaiOAuth = grok.templates.find((t) => t.templateId === "fleet-xai")!;
++  assert.equal(connectionRouteRestriction(xaiOAuth.config.access), "impersonated-client");
++  const grokCli = grok.templates.find((t) => t.templateId === "fleet-grok-native")!;
++  assert.equal(connectionRouteRestriction(grokCli.config.access), undefined);
++  assert.equal(grokCli.config.logo?.key, "grok");
++  assert.equal(grokCli.catalog?.vendorId, "xai");
+   const xai = api.find((g) => g.id === "vendor:xai")!;
+   assert.equal(xai.label, "xAI");
+   assert.equal(xai.templates[0]?.config.logo?.key, "xai");
+diff --git a/packages/services/test/provider-overlay-revision.test.ts b/packages/services/test/provider-overlay-revision.test.ts
+index 26b12d8..e8b5467 100644
+--- a/packages/services/test/provider-overlay-revision.test.ts
++++ b/packages/services/test/provider-overlay-revision.test.ts
+@@ -230,7 +230,7 @@ test("native account and model catalog commit together through the actual Provid
+   let inspected = 0;
+   try {
+     const { providerId } = await f.runtime.configService.createPersonalProvider({
+-      templateId: "fleet-claude-native",
++      templateId: "fleet-chatgpt-native",
+     });
+     await f.runtime.registryService.refresh("native-created");
+     const operations = createNativeCliConnectionOperations(f.facade, async () => {}, {
+diff --git a/packages/services/test/subscription-bundle.test.ts b/packages/services/test/subscription-bundle.test.ts
+index 97b2a38..36b852b 100644
+--- a/packages/services/test/subscription-bundle.test.ts
++++ b/packages/services/test/subscription-bundle.test.ts
+@@ -71,24 +71,17 @@ const owner = createSubscriptionConnections({
+   setConnected: async () => {},
+   withConnectionLock: async (_id, operation) => operation(),
+ });
+-for (const kind of ["openai-codex", "github-copilot"]) {
+-  if (kind === "github-copilot") {
+-  const flow = await owner.begin(kind, "device_code");
+-  assert.equal(flow.userCode, kind === "openai-codex" ? "CODEX" : "COPILOT");
+-  const finished = assert.rejects(owner.finish(kind, flow.flowId), /cancel|abort/i);
+-  await owner.cancel(kind, flow.flowId);
+-  await finished;
+-  assert.equal(JSON.parse(records.get("model-subscription:" + kind)).pendingFlowId, undefined);
+-  }
+-  records.set("model-subscription:" + kind, JSON.stringify({
+-    kind, credential: { type: "oauth", access: "expired", refresh: "fixture-refresh", expires: 1, accountId: "fixture-account" }
+-  }));
+-  const auth = await owner.resolve(kind);
+-  assert.notEqual(auth.apiKey, "expired");
+-  if (kind === "openai-codex") assert.equal(auth.headers["chatgpt-account-id"], "fixture-account");
+-  else assert.equal(auth.baseUrl, "https://api.individual.githubcopilot.com");
++// Legacy ChatGPT grants used the Codex CLI's OAuth client: kept, but refused until re-registered.
++records.set("model-subscription:openai-codex", JSON.stringify({
++  kind: "openai-codex", credential: { type: "oauth", access: "expired", refresh: "fixture-refresh", expires: 1, accountId: "fixture-account" }
++}));
++await assert.rejects(owner.resolve("openai-codex"), /reauthorization/);
++// Copilot (VS Code extension client) and Grok (Grok CLI client) never reach the vendor.
++for (const kind of ["github-copilot", "xai"]) {
++  await assert.rejects(owner.begin(kind, "device_code"), /not permitted/);
++  await assert.rejects(owner.resolve(kind), /not permitted/);
+ }
+-assert.equal(requests.length, 4);
++assert.equal(requests.length, 0);
+ const browser = await owner.begin("openai-codex");
+ assert.equal(browser.method, "browser");
+ const state = new URL(browser.verificationUrl).searchParams.get("state");
+@@ -101,15 +94,7 @@ await owner.submit("openai-codex", browser.flowId, callback.href);
+ await owner.finish("openai-codex", browser.flowId);
+ assert.equal((await owner.accounts("openai-codex")).accounts.length, 2);
+ assert.equal(JSON.parse(records.get("model-subscription:openai-codex")).pendingFlowId, undefined);
+-const grok = await owner.begin("xai");
+-assert.equal(grok.userCode, "GROK");
+-await owner.finish("xai", grok.flowId);
+-const grokAuth = await owner.resolve("xai");
+-assert.equal(grokAuth.baseUrl, "https://cli-chat-proxy.grok.com/v1");
+-assert.equal(grokAuth.headers["x-userid"], "grok-account");
+-assert.equal(grokAuth.apiKey, "xai-access");
+-assert.equal((await owner.accounts("xai")).accounts[0].label, "test@example.com");
+-console.log("Bundled ChatGPT public authorization, legacy record refresh, Copilot and Grok passed");
++console.log("Bundled ChatGPT public authorization passed; legacy, Copilot and Grok routes refused");
+ `;
+ 
+ for (const minify of [false, true]) {
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index 3a61313..999660c 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -1173,7 +1173,7 @@ function nativeCatalog(kind: string, ids: string[]) {
+       : { models: ids.map((slug) => ({ slug })) },
+   );
+ }
+-for (const kind of ["openai-codex", "xai"] as const) {
++for (const kind of ["openai-codex"] as const) {
+   test(`${kind} selected account cannot use a model discovered under another account`, async () => {
+     const requested: string[] = [];
+     const f = fixture(undefined, async (_url, init) => {
+@@ -1353,44 +1353,20 @@ test("an account switch discards an in-flight subscription catalog", async () =>
+   await assert.rejects(result, /account changed/);
+ });
+ 
+-test("context selection is checked on every account before obtaining auth, including a failover backup", async () => {
+-  const f = fixture(undefined, async (_url, init) => {
+-    const account = new Headers(init?.headers).get("x-userid");
+-    return Response.json({
+-      data: [
+-        {
+-          id: "model-one",
+-          api_backend: "responses",
+-          context_window: 256000,
+-          context_windows: account === "alice" ? [256000, 500000] : [256000],
+-        },
+-      ],
++test("Grok and Copilot subscription routes that borrow another client are refused before any request", async () => {
++  // Route policy: these logins present the Grok CLI's / VS Code extension's OAuth client.
++  for (const kind of ["xai", "github-copilot"] as const) {
++    let requests = 0;
++    const f = fixture(undefined, async () => {
++      requests++;
++      return Response.json({ data: [] });
+     });
+-  });
+-  seedCatalogAccounts(f, "xai");
+-  await f.owner.updateAccounts("one", { autoSwitch: true });
+-  const first = await f.owner.resolve("one", "xai", "model-one", undefined, {
+-    contextWindow: 500000,
+-  });
+-  await assert.rejects(
+-    f.owner.resolve(
+-      "one",
+-      "xai",
+-      "model-one",
+-      {
+-        revision: first.credentialSelection!.revision,
+-        attemptedAccountIds: [first.credentialSelection!.accountId],
+-        status: 429,
+-        rejection: { reason: "quota", scope: "credential" },
+-      },
+-      { contextWindow: 500000 },
+-    ),
+-    /Context window is unavailable/,
+-  );
+-  assert.equal(
+-    (await f.owner.resolve("one", "xai", "model-one", undefined, { contextWindow: 256000 })).apiKey,
+-    "bob",
+-  );
++    seedCatalogAccounts(f, kind);
++    await assert.rejects(f.owner.begin("one"), /not permitted by its vendor/);
++    await assert.rejects(f.owner.resolve("one", kind, "model-one"), /not permitted by its vendor/);
++    await assert.rejects(f.owner.models("one"), /not permitted by its vendor/);
++    assert.equal(requests, 0, `${kind} must not reach the vendor`);
++  }
+ });
+ 
+ test("failed subscription accounts persist across requests and owner restarts", async () => {
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 531b58f..22a2f88 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -118,6 +118,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.discovery.allAdded": "All catalog models have been added",
+   "settings.modelProvider.discovery.pendingConnection":
+     "The model list updates after the connection is saved",
++  "settings.modelProvider.discovery.routeRestricted": "This connection route is retired; its model list is no longer read.",
+   "settings.modelProvider.discovery.connectFirst": "Connect a subscription account to load models",
+   "settings.modelProvider.discovery.configureConnection":
+     "Configure an API address and key to load models",
+@@ -7349,6 +7350,16 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.nativeCli.openclaw.missing": "OpenClaw (openclaw) was not found. Install the official CLI first.",
+   "settings.modelProvider.nativeCli.openclaw.login": "Run openclaw onboard in a terminal and start the gateway, then connect again.",
+   "settings.modelProvider.nativeCli.openclaw.guide": "OpenClaw ACP guide",
++  "settings.modelProvider.nativeCli.copilot.title": "GitHub Copilot account",
++  "settings.modelProvider.nativeCli.copilot.flow": "Connect the account signed in to the official GitHub Copilot CLI (copilot) on this machine.",
++  "settings.modelProvider.nativeCli.copilot.missing": "GitHub Copilot CLI (copilot) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.copilot.login": "Run copilot in a terminal and sign in with /login, then connect again.",
++  "settings.modelProvider.nativeCli.copilot.guide": "GitHub Copilot CLI setup and sign-in",
++  "settings.modelProvider.nativeCli.grok.title": "Grok account",
++  "settings.modelProvider.nativeCli.grok.flow": "Connect the account signed in to the official Grok Build CLI (grok) on this machine.",
++  "settings.modelProvider.nativeCli.grok.missing": "Grok Build CLI (grok) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.grok.login": "Run grok login in a terminal to sign in, then connect again.",
++  "settings.modelProvider.nativeCli.grok.guide": "Grok Build CLI setup and sign-in",
+   "settings.modelProvider.nativeCli.codebuddy.title": "CodeBuddy account",
+   "settings.modelProvider.nativeCli.codebuddy.flow": "Connect the account signed in to CodeBuddy Code (codebuddy) on this machine.",
+   "settings.modelProvider.nativeCli.codebuddy.missing": "CodeBuddy Code (codebuddy) was not found. Install the official CLI first.",
+@@ -7384,6 +7395,18 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.nativeCli.autoSwitchHint":
+     "When the current account runs out of allowance, switch to the saved account with the most left; takes effect from the next turn.",
+   "settings.modelProvider.nativeCli.duplicate": "This account is already added.",
++  "settings.modelProvider.routeRestricted.title":
++    "This connection route is retired",
++  "settings.modelProvider.routeRestricted.anthropic-subscription":
++    "Anthropic does not allow third-party apps to use Claude subscription sign-in, including apps built on the Agent SDK. Use a Claude API key instead (Add provider → Anthropic); subscription allowance is only for Claude Code itself. Saved settings are kept.",
++  "settings.modelProvider.routeRestricted.google-antigravity":
++    "Google Antigravity's terms forbid accessing it through third-party software and suspend accounts that do. Use a Gemini API key instead (Add provider → Google). Saved settings are kept.",
++  "settings.modelProvider.routeRestricted.impersonated-client":
++    "This sign-in borrows the VS Code Copilot extension's identity, which GitHub does not permit for other apps. Use the official Copilot CLI instead (Add provider → GitHub Copilot CLI). Saved settings are kept.",
++  "settings.modelProvider.routeRestricted.impersonated-client-xai":
++    "This sign-in borrows the Grok CLI's identity, which xAI has not published for other apps. Use the official Grok Build CLI (Add provider → Grok Build CLI) or an xAI API key instead. Saved settings are kept.",
++  "settings.modelProvider.routeRestricted.source":
++    "Official statement",
+   "settings.modelProvider.nativeCli.changed":
+     "The CLI on this machine switched accounts; syncing. Reconnect if this persists.",
+   "settings.modelProvider.nativeCli.failed":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 79e6e2c..271b815 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -99,6 +99,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.discovery.available": "可添加的模型",
+   "settings.modelProvider.discovery.allAdded": "目录中的模型均已添加",
+   "settings.modelProvider.discovery.pendingConnection": "连接保存后自动更新模型列表",
++  "settings.modelProvider.discovery.routeRestricted": "此接入方式已停用，不再读取模型列表。",
+   "settings.modelProvider.discovery.connectFirst": "连接订阅账号后自动加载模型列表",
+   "settings.modelProvider.discovery.configureConnection": "配置 API 地址和密钥后自动加载模型列表",
+   "settings.modelProvider.discovery.catalog": "适配器目录，实际可用性取决于账号。",
+@@ -6961,6 +6962,16 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.openclaw.missing": "未找到 OpenClaw（openclaw），请先安装官方 CLI。",
+   "settings.modelProvider.nativeCli.openclaw.login": "请先在终端运行 openclaw onboard 完成配置并启动网关，然后再连接。",
+   "settings.modelProvider.nativeCli.openclaw.guide": "OpenClaw ACP 说明",
++  "settings.modelProvider.nativeCli.copilot.title": "GitHub Copilot 账号",
++  "settings.modelProvider.nativeCli.copilot.flow": "连接本机官方 GitHub Copilot CLI（copilot）当前登录的账号。",
++  "settings.modelProvider.nativeCli.copilot.missing": "未找到 GitHub Copilot CLI（copilot），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.copilot.login": "请先在终端运行 copilot，用 /login 完成登录，然后再连接。",
++  "settings.modelProvider.nativeCli.copilot.guide": "GitHub Copilot CLI 安装与登录",
++  "settings.modelProvider.nativeCli.grok.title": "Grok 账号",
++  "settings.modelProvider.nativeCli.grok.flow": "连接本机官方 Grok Build CLI（grok）当前登录的账号。",
++  "settings.modelProvider.nativeCli.grok.missing": "未找到 Grok Build CLI（grok），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.grok.login": "请先在终端运行 grok login 完成登录，然后再连接。",
++  "settings.modelProvider.nativeCli.grok.guide": "Grok Build CLI 安装与登录",
+   "settings.modelProvider.nativeCli.codebuddy.title": "CodeBuddy 账号",
+   "settings.modelProvider.nativeCli.codebuddy.flow": "连接本机 CodeBuddy Code（codebuddy）当前登录的账号。",
+   "settings.modelProvider.nativeCli.codebuddy.missing": "未找到 CodeBuddy Code（codebuddy），请先安装官方 CLI。",
+@@ -6994,6 +7005,18 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.autoSwitchHint":
+     "当前账号额度用尽时，切换到余量最多的已保存账号；下一轮对话生效。",
+   "settings.modelProvider.nativeCli.duplicate": "该账号已添加。",
++  "settings.modelProvider.routeRestricted.title":
++    "此接入方式已停用",
++  "settings.modelProvider.routeRestricted.anthropic-subscription":
++    "Anthropic 不允许第三方应用使用 Claude 订阅登录（包括基于 Agent SDK 的应用）。请改用 Claude API Key（添加供应商 → Anthropic）；订阅额度只能在 Claude Code 中直接使用。已保存的设置保留。",
++  "settings.modelProvider.routeRestricted.google-antigravity":
++    "Google Antigravity 条款禁止通过第三方软件访问其服务，违者可能被封号。请改用 Gemini API Key（添加供应商 → Google）。已保存的设置保留。",
++  "settings.modelProvider.routeRestricted.impersonated-client":
++    "这条登录方式借用了 VS Code Copilot 扩展的身份，GitHub 未授权第三方这样使用。请改用官方 Copilot CLI 接入（添加供应商 → GitHub Copilot CLI）。已保存的设置保留。",
++  "settings.modelProvider.routeRestricted.impersonated-client-xai":
++    "这条登录方式借用了 Grok CLI 的身份，xAI 未公开授权第三方这样使用。请改用官方 Grok Build CLI 接入（添加供应商 → Grok Build CLI）或 xAI API Key。已保存的设置保留。",
++  "settings.modelProvider.routeRestricted.source":
++    "查看官方说明",
+   "settings.modelProvider.nativeCli.changed": "本机 CLI 已切换账号，正在同步新账号；若持续出现请重新连接。",
+   "settings.modelProvider.nativeCli.failed":
+     "无法读取原生 CLI 连接，请检查官方 CLI 的安装和登录状态。",
+diff --git a/packages/ui/src/lib/providerSettingsFormProjection.ts b/packages/ui/src/lib/providerSettingsFormProjection.ts
+index 6e8ac18..7936da8 100644
+--- a/packages/ui/src/lib/providerSettingsFormProjection.ts
++++ b/packages/ui/src/lib/providerSettingsFormProjection.ts
+@@ -36,6 +36,7 @@ function projectProviderSettingsProviders(
+     accountState: provider.accountState,
+     hasPersonalConfig: provider.personalConfig !== undefined,
+     issues: provider.issues,
++    ...(provider.routeRestriction ? { routeRestriction: provider.routeRestriction } : {}),
+     personalConfig: structuredClone(provider.personalConfig ?? {}),
+     config: structuredClone(provider.effectiveConfig),
+     models: provider.models.map((model) => ({
+diff --git a/packages/ui/src/lib/providerSettingsFormTypes.ts b/packages/ui/src/lib/providerSettingsFormTypes.ts
+index 8b6a797..1b557d3 100644
+--- a/packages/ui/src/lib/providerSettingsFormTypes.ts
++++ b/packages/ui/src/lib/providerSettingsFormTypes.ts
+@@ -14,6 +14,8 @@ export interface ProviderSettingsFormProvider extends Pick<
+   ProviderSettingsProviderView,
+   "providerName" | "templateId"
+ > {
++  /** The vendor does not permit this route for a third-party app (see @zcode/provider route-policy). */
++  routeRestriction?: import("@zcode/provider").ConnectionRouteRestriction;
+   providerId: string;
+   /** 仅本次显式改名的补丁；其他编辑不得把继承名称物化成个人配置。 */
+   providerNameUpdate?: string | null;
+diff --git a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+index 25b6ef2..7aed067 100644
+--- a/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
++++ b/packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+@@ -1,6 +1,7 @@
+ import { ApiKeyPlanAllowance } from "./ApiKeyPlanAllowance.js";
+ import { apiKeyPlanRoute } from "@zcode/shared";
+ import { NativeCliConnectionSection } from "./NativeCliConnectionSection.js";
++import { RestrictedRouteNotice } from "./RestrictedRouteNotice.js";
+ import { modelDiscoveryBlockReason } from "./modelDiscoveryActions.js";
+ import { SubscriptionConnectionSection } from "./SubscriptionConnectionSection.js";
+ /* oxlint-disable eslint(max-lines) -- provider 卡片同时承载名称、连接、鉴权、模型和映射编辑；本阶段先维持单组件，后续再按表单域拆分。 */
+@@ -1027,7 +1028,16 @@ export function InlineEditableProviderCard({
+           />
+         )}
+ 
+-        {provider.config.access?.type === "native-cli" ? (
++        {provider.routeRestriction ? (
++          <RestrictedRouteNotice
++            restriction={provider.routeRestriction}
++            provider={
++              provider.config.access && "provider" in provider.config.access
++                ? provider.config.access.provider
++                : undefined
++            }
++          />
++        ) : provider.config.access?.type === "native-cli" ? (
+           <NativeCliConnectionSection
+             providerId={provider.providerId}
+             access={provider.config.access}
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index b96d3c2..f25fe8d 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -116,6 +116,8 @@ const PROVIDER_TEXT: Partial<Record<NativeCliAccessConfigObject["provider"], Rea
+   openclaw: new Set(["title", "flow", "missing", "login", "guide"]),
+   codebuddy: new Set(["title", "flow", "missing", "login", "guide"]),
+   qwen: new Set(["title", "flow", "missing", "login", "guide"]),
++  copilot: new Set(["title", "flow", "missing", "login", "guide"]),
++  grok: new Set(["title", "flow", "missing", "login", "guide"]),
+ };
+ 
+ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+@@ -129,6 +131,8 @@ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+   openclaw: "https://docs.openclaw.ai/cli/acp",
+   codebuddy: "https://www.codebuddy.cn/docs/cli/overview",
+   qwen: "https://github.com/QwenLM/qwen-code",
++  copilot: "https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli",
++  grok: "https://docs.x.ai/build/overview",
+ };
+ 
+ /** Official CLI keeps login/refresh; this card binds its public identity through the existing writer. */
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+index 65dbea8..d1d6196 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+@@ -1,3 +1,4 @@
++import { connectionRouteRestriction } from "@zcode/provider";
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import type { ProviderSettingsView } from "@zcode/services";
+ import { ArrowLeftIcon, ChevronRightIcon, PlusIcon, Download } from "lucide-react";
+@@ -54,9 +55,10 @@ export function ProviderTemplatePicker({
+   const [routeError, setRouteError] = useState(false);
+   const creationLock = useRef(false);
+   const categoryTemplates = templates.filter(
+-    // 新连接使用官方 Codex 原生路径；旧公开授权模板仅保留给已有记录，不能破坏其解析/重连。
++    // 厂商不允许第三方应用使用的路线不再提供（见 @zcode/provider route-policy）。ChatGPT 订阅走 OpenAI
++    // 官方的 Sign in with ChatGPT 注册（fleet-openai-codex，支持多账号），与 Codex CLI 原生路径并列。
+     (template) =>
+-      template.templateId !== "fleet-openai-codex" &&
++      !connectionRouteRestriction(template.config?.access) &&
+       providerConnectionCategory(template) === category,
+   );
+   const vendors = groupProviderTemplates(categoryTemplates, locale);
+diff --git a/packages/ui/src/settings/model-provider-section/RestrictedRouteNotice.tsx b/packages/ui/src/settings/model-provider-section/RestrictedRouteNotice.tsx
+new file mode 100644
+index 0000000..beb5e00
+--- /dev/null
++++ b/packages/ui/src/settings/model-provider-section/RestrictedRouteNotice.tsx
+@@ -0,0 +1,51 @@
++import { ExternalLinkIcon } from "lucide-react";
++import type { ConnectionRouteRestriction } from "@zcode/provider";
++import { Button } from "@/components/ui/button.js";
++import { usePlatform } from "@/hooks/usePlatform.js";
++import { useZCodeIntl } from "@/i18n/IntlProvider.js";
++import { PlanStatusCardSurface } from "./PlanStatusCardSurface.js";
++
++/** Official statements each restriction rests on (see packages/provider/src/route-policy.ts). */
++const SOURCE: Record<ConnectionRouteRestriction, string> = {
++  "anthropic-subscription": "https://code.claude.com/docs/en/legal-and-compliance",
++  "google-antigravity": "https://antigravity.google/terms/",
++  "impersonated-client": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server",
++};
++
++/**
++ * Replaces the connect controls of a route its vendor does not permit for third-party apps. Saved
++ * data stays; the connection cannot run and the card names the permitted alternative.
++ */
++export function RestrictedRouteNotice({
++  restriction,
++  provider,
++}: {
++  restriction: ConnectionRouteRestriction;
++  provider?: string;
++}) {
++  const { intl } = useZCodeIntl();
++  const platform = usePlatform();
++  const key = restriction === "impersonated-client" && provider === "xai" ? "impersonated-client-xai" : restriction;
++  return (
++    <PlanStatusCardSurface
++      compact
++      planTitle={intl.formatMessage({ id: "settings.modelProvider.routeRestricted.title" })}
++      statusMeta={
++        <p className="text-ui-base text-foreground-subtle">
++          {intl.formatMessage({ id: `settings.modelProvider.routeRestricted.${key}` })}
++        </p>
++      }
++      usageContent={
++        <Button
++          type="button"
++          variant="link"
++          className="h-6 p-0 text-ui-sm"
++          onClick={() => void platform.openExternal(SOURCE[restriction])}
++        >
++          {intl.formatMessage({ id: "settings.modelProvider.routeRestricted.source" })}
++          <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
++        </Button>
++      }
++    />
++  );
++}
+diff --git a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+index dcb8589..872c5e5 100644
+--- a/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
++++ b/packages/ui/src/settings/model-provider-section/modelDiscoveryActions.ts
+@@ -1,3 +1,4 @@
++import { connectionRouteRestriction } from "@zcode/provider";
+ import { readProviderSettings } from "../../lib/providerSettingsRead.js";
+ import { getEnabledApiKeys, type ProviderConfigObject } from "@zcode/provider";
+ import type { IProviderSettingsService } from "@zcode/services";
+@@ -34,8 +35,10 @@ export async function fetchSavedModelCatalog(input: {
+ export function modelDiscoveryBlockReason(
+   config: ProviderConfigObject,
+   pendingDraft: boolean,
+-): "pendingConnection" | "connectFirst" | "configureConnection" | undefined {
++): "pendingConnection" | "connectFirst" | "configureConnection" | "routeRestricted" | undefined {
+   if (pendingDraft) return "pendingConnection";
++  // 厂商不允许的路线不再读取模型列表，避免报错和向厂商发请求。
++  if (connectionRouteRestriction(config.access)) return "routeRestricted";
+   if ((config.access?.type === "subscription" || config.access?.type === "native-cli"))
+     return config.access.connected ? undefined : "connectFirst";
+   if (
