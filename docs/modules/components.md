@@ -100,7 +100,8 @@ The owner's clarified effect is page-local assistance: keep the current feature 
 natural-language request, attach that feature's instructions and exact target, allow follow-up,
 execute through the existing permission path, then refresh the original view from committed state.
 A global Help action, a generic guide mention, or navigation to a blank main conversation is not
-equivalent. The owner confirms Craft's anchored small conversation. Supply the Agent's required documents,
+equivalent. The owner confirms Craft's anchored small conversation (400×480, floating grip, centered empty-state prompt,
+opened 50 ms after the menu closes as in Craft `AppShell.tsx`). Supply the Agent's required documents,
 configuration target and supported operations; do not substitute a generic user-intent wizard.
 
 Source anchors: Craft `EditPopover.tsx` owns `EDIT_CONFIGS`, `buildEditPrompt`, lazy hidden Session

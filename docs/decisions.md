@@ -2857,3 +2857,18 @@ correctly. New entries state the decision and its intent in plain language. Quot
 where a specific word or UI literal matters. Existing quotations stay as history; no ledger rewrite
 is required, but they never outrank a later decision's stated meaning.
 
+### OV-094 — Antigravity follows the existing permission selector (2026-10-05)
+
+The owner points to the composer's existing permission modes instead of a separate yes/no choice.
+The Antigravity executor maps them onto `agy`: plan → `--mode plan`; ask before changes → default
+(`agy` cannot forward approval prompts over stream-json, so its own risky tools are refused while
+Fleet Host tools keep Fleet's approval); auto edit → `--mode accept-edits`; full access →
+`--dangerously-skip-permissions`. Like native Codex, real effects should route through Fleet Host
+tools so one permission owner applies. Reuse the existing design before proposing new choices.
+
+### OV-095 — Keep the original product name until release (2026-10-05)
+
+Keep the inherited ZCode product name, data directories and menus during development. Rename
+once, together with data migration, when the product is complete; repeated interim renames would
+confuse the project. This defers the R2 branding rename; it does not change other debranding.
+

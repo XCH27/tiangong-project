@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Contextual assistant follows Craft's EditPopover (floating grip, empty-state prompt, 50 ms open
+  after menu close); sidebar entries, project rows and task rows target themselves; project rows gain
+  right-click actions; history hides never-used assistant conversations. Record OV-094/095.
+
 - List Grok Build's fast variant once in model pickers; the Fast switch selects it. Update the
   packaged guide for plan allowance, model-row actions and capability tags.
 

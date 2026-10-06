@@ -220,3 +220,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0143 | [0143-guide-allowance-and-model-actions.patch](0143-guide-allowance-and-model-actions.patch) | `84d60025b3f8607b081e4815f46e4fd13e8ec414` |
 
 | 0144 | [0144-grok-fast-variant-listed-once.patch](0144-grok-fast-variant-listed-once.patch) | `13d84dbba93af344a4b956b7032cccdc0e3b9a3f` |
+
+| 0145 | [0145-craft-style-contextual-assistant.patch](0145-craft-style-contextual-assistant.patch) | `afced14e153d5c40c628b2b7d72069b6caaa8eb6` |
