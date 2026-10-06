@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Run the official Antigravity CLI (`agy`) as a native executor with native conversation resume and
+  the composer permission mapped onto its modes; give native executor children the Host-resolved
+  system proxy route so GUI launches reach the vendor; keep Edit first in the model-row menu.
+
 - Contextual assistant follows Craft's EditPopover (floating grip, empty-state prompt, 50 ms open
   after menu close); sidebar entries, project rows and task rows target themselves; project rows gain
   right-click actions; history hides never-used assistant conversations. Record OV-094/095.

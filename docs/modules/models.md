@@ -640,8 +640,8 @@ repeated address/key/switch/authentication question icons; one format help expla
 model brand and how provider documentation maps to each offered choice, without advertising
 unverified optimality; catalog/policy cases reject invalid host writes. Membership-key routes are
 not OAuth integrations. Claude subscription uses the official SDK/native lane described in [Agent
-core](agent-core.md#first-proof); Gemini/native ChatGPT image execution and Antigravity consumer
-access remain unimplemented; [OV-036 kernel
+core](agent-core.md#first-proof); Gemini/native ChatGPT image execution remains unimplemented and
+Antigravity runs as described below; [OV-036 kernel
 comparison](../references.md#kernel-choice-against-fleets-complete-product) addresses their
 different execution and authorization boundaries. The earlier region-policy HTTP 403 was traced to
 Host direct routing while the browser used the OS proxy; an isolated route probe and subsequent real
@@ -658,21 +658,19 @@ Claude allowance uses the same native connection and existing account/usage serv
 [Context](context.md#subscription-allowance-acquisition-and-display) owns its acquisition and
 freshness rules. The existing account card and conversation meter share the same reading, with no
 separate account picker or credentials import. A successful quota read is not an inference test.
-The installed Antigravity CLI 1.2.14 exposes real `models`, `/config`, `/usage` and `/credits`
-metadata (zero inference in the observed calls). This is not integrated execution evidence. Its
-[public headless protocol](https://www.antigravity.google/docs/cli/headless/) is not Claude SDK
-control-message compatible and reports cumulative session counters. Paseo `d831c7bf33bb` uses the
-official CLI: its image capability writes a private temporary file and passes its path as text,
-not a native image content block. That mechanism is a viable adapter reference; paid image
-understanding was not verified. Paseo forces `--dangerously-skip-permissions`, so its launch policy
-cannot establish Fleet-governed execution. CLI hooks, MCP routing, Stop/restart and account/usage
-identity still need actual proof. The official PreToolUse hook uses camelCase fields, unlike the
-snake_case stream protocol; the isolated preflight now validates that contract and sends only the
-operation identity/args to its loopback callback. Its five transport tests do not establish a live
-native executor or headless approval integration. The separate Python SDK uses Gemini/Vertex endpoints; it is not
-evidence for or against the official CLI consumer route. Antigravity remains unimplemented in
-Fleet, not declared impossible. Do not substitute API billing, import foreign tokens or advertise
-the reserved native kind before its declared capabilities and permission/receipt path are proved.
+Antigravity (candidate 0146) runs the official `agy` as one executor per turn, following the Paseo
+agy 1.2.13 captures and AionCore `backend/antigravity`: `--input-format/--output-format stream-json`,
+`--conversation` resume fenced by executor version, `result.response` as the only text (deltas split
+multibyte characters), usage summed from DONE agent steps. Connection is `agy --version` plus `agy
+models` under the user's own Google sign-in; Fleet starts no login, imports no token and strips
+inherited Gemini API variables. The composer permission maps onto agy modes (OV-094); `denied_actions`
+are appended to the reply. Its tools still run inside agy, not through Fleet Host receipts; routing
+effects through Host tools (MCP or the PreToolUse hook, which must answer within 20 s) is open.
+Allowance stays unsupported: the token lives in the OS keyring and Orca only mirrors Gemini CLI quota.
+GUI launches lack terminal proxy variables, so the Host resolves the OS route per official endpoint
+at Agent spawn (`FLEET_NATIVE_EXECUTOR_NETWORK`) and only native executor children apply it.
+Verified on 2026-10-05: fake-process tests, plus a live two-turn conversation on
+`gemini-3.8-flash-low` with native resume and Google-subscription accounting.
 
 ## Execution contracts
 
