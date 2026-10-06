@@ -4107,3 +4107,8 @@ proved in the real desktop UI with a local fake ACP agent (allow → file writte
 given `OPENCODE_CONFIG_CONTENT` permission `ask` outside Full access so its edits reach Fleet. No
 live paid request was made; the user's DeepSeek key behind OpenCode was not used.
 
+
+Candidate 0156 adds Hermes (`hermes-acp`; hermes-agent `acp_adapter/server.py` modes default /
+accept_edits / dont_ask, no plan; models via `session/set_model`) and OpenClaw (`openclaw acp`, a
+Gateway bridge: model selection and per-session MCP unsupported per `docs/cli/acp.md`, exec approvals
+relayed through `session/request_permission`). Fake-agent tests only; neither CLI is installed here.

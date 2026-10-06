@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Add Hermes and OpenClaw connections through the same ACP executor (not live-verified; CLIs not
+  installed on the review machine).
+
 - Add Cursor, Kimi Code CLI and OpenCode CLI as native executors through one ACP client; their
   permission requests follow the composer permission and use Fleet's approval card.
 

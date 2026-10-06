@@ -242,3 +242,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0154 | [0154-antigravity-modes-measured.patch](0154-antigravity-modes-measured.patch) | `5bb3824ec314ceb96243b4f5679f1d7b678cf70a` |
 
 | 0155 | [0155-acp-native-executor.patch](0155-acp-native-executor.patch) | `3d4dc297c0de705261f244a0e89ac71c38a1d361` |
+
+| 0156 | [0156-acp-hermes-openclaw.patch](0156-acp-hermes-openclaw.patch) | `364ec6c85782ad52bce761e4793d59ad9811915e` |
