@@ -663,12 +663,12 @@ agy 1.2.13 captures and AionCore `backend/antigravity`: `--input-format/--output
 `--conversation` resume fenced by executor version, `result.response` as the only text (deltas split
 multibyte characters), usage summed from DONE agent steps. Connection is `agy --version` plus `agy
 models` under the user's own Google sign-in; Fleet starts no login, imports no token and strips
-inherited Gemini API variables. Headless agy (Paseo `tools-*` captures) allows file reads/edits and
-auto-denies commands in default, `plan` and `accept-edits` alike; only Full access runs commands, and
-`denied_actions` are appended to the reply. Per-edit confirmation needs agy's PreToolUse hook as the
-sole gate under `--dangerously-skip-permissions` (AionCore pattern; hook `timeout` defaults to 30 s,
-after which agy proceeds); every hook location is the user's project or global agy config, so it
-awaits an owner checkpoint. Its tools still run inside agy, not through Fleet Host receipts.
+inherited Gemini API variables. agy 1.2.14 (measured): default refuses writes and commands,
+`accept-edits` allows writes only, `plan` only plans, and `--disable-slash-commands` disables plan.
+Fleet maps its four permissions onto these (OV-094) and names the permission allowing each
+`denied_actions` entry; user `permissions.allow` rules can loosen defaults. Mid-run confirmation
+needs the PreToolUse hook (AionCore; project/global file: owner checkpoint). Direct model access
+(CLIProxyAPI/NewMax) reuses Antigravity's OAuth client identity: excluded. Tools run inside agy.
 Allowance stays unsupported: the token lives in the OS keyring and Orca only mirrors Gemini CLI quota.
 GUI launches lack terminal proxy variables; the Host resolves the OS route per official endpoint at
 Agent spawn (`FLEET_NATIVE_EXECUTOR_NETWORK`) for native executor children only. Verified: fake-process

@@ -238,3 +238,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0152 | [0152-memory-extraction-usage.patch](0152-memory-extraction-usage.patch) | `b7fc1e138245b480970cffdfea2772a9a00f1a91` |
 
 | 0153 | [0153-shell-scope-fixes.patch](0153-shell-scope-fixes.patch) | `60753ec73d73b15672ef2431e2b3d0e040cbd143` |
+
+| 0154 | [0154-antigravity-modes-measured.patch](0154-antigravity-modes-measured.patch) | `5bb3824ec314ceb96243b4f5679f1d7b678cf70a` |

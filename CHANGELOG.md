@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Restore Antigravity plan mode (it was disabled by `--disable-slash-commands`) and correct its
+  permission mapping to measured agy 1.2.14 behaviour; refusal notes name the permission to switch to.
+
 - Keep Settings drafts when opening Help, lock the subagent scope while saving, and keep page
   assistant keystrokes out of the main composer (SHELL-HELP-DRAFT/SUBAGENT-SCOPE/SHORTCUT-SCOPE;
   typechecked, not yet visually checked).

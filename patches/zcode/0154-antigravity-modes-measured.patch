@@ -1,0 +1,152 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
+index 3e82444..99dfa30 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
+@@ -11,6 +11,7 @@ import type {
+ import { NativeEvents } from "./native-events.js";
+ import {
+   addAgyUsage,
++  agyDeniedNote,
+   agyPermissionArgs,
+   agyPrompt,
+   decodeAgyFrame,
+@@ -116,7 +117,6 @@ export function createAntigravityNativeAgentPort(
+             "stream-json",
+             "--add-dir",
+             request.workingDirectory,
+-            "--disable-slash-commands",
+             ...agyPermissionArgs(request.collaborationMode),
+             "--model",
+             String(request.model.modelId),
+@@ -166,13 +166,7 @@ export function createAntigravityNativeAgentPort(
+                     ? SIGN_IN
+                     : result.error?.trim() || "Antigravity turn failed",
+                 );
+-              const denied = (result.denied_actions ?? [])
+-                .map((item) => item.display_name || item.action)
+-                .filter(Boolean);
+-              const note = denied.length
+-                ? `\n\n> Antigravity 未执行需要确认的操作：${denied.join("、")}。如需执行，请在输入框切换到“完全访问”。`
+-                : "";
+-              finish(`${result.response ?? ""}${note}`);
++              finish(`${result.response ?? ""}${agyDeniedNote(result.denied_actions ?? [])}`);
+               child?.stdin.end();
+             } catch (error) {
+               fail(error);
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
+index b9cf608..39809c7 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
+@@ -87,16 +87,26 @@ export function addAgyUsage(total: ModelUsage, usage: AgyUsage | null | undefine
+ }
+ 
+ /**
+- * Fleet 权限选择 → agy 参数（OV-094）。agy 无法在 stream-json 中转发确认请求，且 agy 1.2.13 实测
+- * （Paseo tools-* 抓包）在默认、plan、accept-edits 三种模式下都允许读写文件、只自动拒绝命令，
+- * 被拒的操作在 result.denied_actions 中报告。因此只有 yolo（完全访问）→ --dangerously-skip-permissions
+- * 会执行命令；文件改动的逐次确认需要 PreToolUse 钩子作为唯一闸门，尚待 owner 决定。
++ * Fleet 权限选择 → agy 参数（OV-094）。agy 1.2.14 本机实测：默认模式拒绝写文件和命令；
++ * accept-edits 允许写文件、拒绝命令；plan 只规划不改动；--dangerously-skip-permissions 全部放行。
++ * 无界面模式不能弹出确认，被拒的操作在 result.denied_actions 中报告。用户自己的 agy
++ * settings.json（permissions.allow）仍可能放宽这些默认值。
+  */
+ export function agyPermissionArgs(mode: CollaborationMode | undefined): string[] {
++  // --disable-slash-commands 会让 --mode plan 失效（agy 警告 "has no effect"），计划模式不加它；
++  // 其它模式加上，避免用户文本里的 "/xxx" 被当成 agy 命令。
+   if (mode === "plan") return ["--mode", "plan"];
+-  if (mode === "edit") return ["--mode", "accept-edits"];
+-  if (mode === "yolo") return ["--dangerously-skip-permissions"];
+-  return [];
++  if (mode === "edit") return ["--mode", "accept-edits", "--disable-slash-commands"];
++  if (mode === "yolo") return ["--dangerously-skip-permissions", "--disable-slash-commands"];
++  return ["--disable-slash-commands"];
++}
++
++/** 按被拒操作的类型指向能放行它的权限：写文件 → 自动编辑；命令或其它 → 完全访问。 */
++export function agyDeniedNote(denied: readonly { action?: string; display_name?: string }[]): string {
++  if (!denied.length) return "";
++  const names = denied.map((item) => item.display_name || item.action).filter(Boolean);
++  const onlyEdits = denied.every((item) => /write|edit|file/iu.test(item.action ?? ""));
++  return `\n\n> Antigravity 未执行需要确认的操作：${names.join("、")}。如需执行，请在输入框切换到“${onlyEdits ? "自动编辑" : "完全访问"}”后重试。`;
+ }
+ 
+ function text(content: ModelInputMessage["content"]): string {
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index 747bc16..f917696 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -53,9 +53,10 @@ that changing the default before a queued turn starts leaves that turn on its fo
+ 
+ Claude, ChatGPT and Antigravity connections run each turn through the official CLI on this machine.
+ Antigravity first needs a Google sign-in: run `agy` in a terminal. Its tools run inside its own
+-process. Under any permission other than Full access it can still read and edit project files but
+-does not run commands; refused actions are listed at the end of the reply. Switch to Full access when
+-it needs to run commands. It offers no allowance query, so its card
++process, and the composer permission maps to its own modes: Plan mode only plans; Ask before changes
++neither writes files nor runs commands; Edit automatically edits files but runs no commands; Full
++access allows everything. It cannot ask mid-run, so refused actions are listed at the end of the
++reply; switch the permission as suggested and retry. It offers no allowance query, so its card
+ shows no allowance.
+ 
+ Subscription allowance appears in the account card. API plans such as OpenCode Go, MiniMax Token
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index f65774d..27fba2d 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -40,8 +40,9 @@ API 密钥按回车或离开输入框自动保存，没有额外确认按钮。E
+ 账号；排队期间修改默认账号，尚不能保证排队中的任务继续使用原来的账号。
+ 
+ Claude、ChatGPT、Antigravity 连接调用本机官方 CLI 完成整轮工作。Antigravity 需先在终端运行 `agy`
+-完成 Google 登录；它在自身进程内执行工具。完全访问以外的权限下，Antigravity 仍可读写项目文件，
+-但不会执行命令，被拒的操作列在回复末尾；需要它运行命令时切换到完全访问。
++完成 Google 登录；它在自身进程内执行工具，输入框的权限对应它自己的模式：计划模式只规划不改动，
++变更前确认不写文件也不执行命令，自动编辑可以改文件但不执行命令，完全访问全部放行。它不能在
++运行中弹出确认，被拒的操作列在回复末尾，按提示切换权限后重试即可。
+ 它不提供额度查询，账号卡片因此不显示额度。
+ 
+ 订阅账号的额度显示在账号卡片中；OpenCode Go、MiniMax Token Plan、Kimi Code 等 API 套餐用已保存的同一把密钥读取额度，
+diff --git a/packages/services/test/antigravity-native.test.ts b/packages/services/test/antigravity-native.test.ts
+index 9f324df..7d8bab5 100644
+--- a/packages/services/test/antigravity-native.test.ts
++++ b/packages/services/test/antigravity-native.test.ts
+@@ -5,6 +5,7 @@ import { join } from "node:path";
+ import test from "node:test";
+ import {
+   addAgyUsage,
++  agyDeniedNote,
+   agyPermissionArgs,
+   agyPrompt,
+   decodeAgyFrame,
+@@ -42,11 +43,19 @@ test("usage sums per-step counters and leaves unreported counters absent", () =>
+   });
+ });
+ 
+-test("the composer permission choice maps onto agy's own modes (OV-094)", () => {
++test("the composer permission choice maps onto agy's own modes (OV-094, measured on agy 1.2.14)", () => {
++  // --disable-slash-commands 会让 plan 失效，计划模式必须不带它。
+   assert.deepEqual(agyPermissionArgs("plan"), ["--mode", "plan"]);
+-  assert.deepEqual(agyPermissionArgs("build"), []);
+-  assert.deepEqual(agyPermissionArgs("edit"), ["--mode", "accept-edits"]);
+-  assert.deepEqual(agyPermissionArgs("yolo"), ["--dangerously-skip-permissions"]);
++  assert.deepEqual(agyPermissionArgs("build"), ["--disable-slash-commands"]);
++  assert.deepEqual(agyPermissionArgs("edit"), ["--mode", "accept-edits", "--disable-slash-commands"]);
++  assert.deepEqual(agyPermissionArgs("yolo"), ["--dangerously-skip-permissions", "--disable-slash-commands"]);
++});
++
++test("a refusal note points to the permission that would allow the refused action", () => {
++  assert.equal(agyDeniedNote([]), "");
++  assert.match(agyDeniedNote([{ action: "write_file", display_name: "WriteToFile" }]), /WriteToFile.*自动编辑/su);
++  assert.match(agyDeniedNote([{ action: "command", display_name: "RunCommand" }]), /RunCommand.*完全访问/su);
++  assert.match(agyDeniedNote([{ action: "write_file" }, { action: "command" }]), /完全访问/u);
+ });
+ 
+ test("a fresh prompt carries instructions and transcript; a resumed one only the uncovered tail", () => {
+@@ -133,7 +142,7 @@ test("a real child process turn uses result.response, sums step usage and checkp
+   const finish = events.at(-1);
+   assert.equal(finish?.type, "finish");
+   if (finish?.type === "finish") assert.deepEqual(finish.usage, { inputTokens: 7, outputTokens: 3, reasoningTokens: undefined, cacheReadTokens: undefined, totalTokens: 10 });
+-  assert.deepEqual(agy.argv().slice(-4), ["--mode", "accept-edits", "--model", "gemini-3-pro"]);
++  assert.deepEqual(agy.argv().slice(-5), ["--mode", "accept-edits", "--disable-slash-commands", "--model", "gemini-3-pro"]);
+   assert.deepEqual(agy.stdin(), { event: "user", message: { role: "user", content: "你好" } });
+   const checkpoint = await turn.checkpoint?.();
+   assert.equal(checkpoint?.sessionId, CONVERSATION);
