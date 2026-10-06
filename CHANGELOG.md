@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Fence a native login cancelled during post-login inspection (PRI-01) and resolve native CLI
+  login/inspection/usage routes from each vendor's own endpoint (PRI-08).
+
 - Show Kimi Code allowance from the saved API key; state Antigravity's real headless permission
   behaviour (only Full access runs commands) pending an owner decision on a PreToolUse gate.
 

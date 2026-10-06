@@ -1,0 +1,220 @@
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index 7f00c7f..3fa781a 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -53,6 +53,9 @@ export function createNativeCliConnectionOperations(
+       revision: number;
+       access: NonNullable<ProviderConfigObject["access"]>;
+       commit?: Promise<void>;
++      /** Set once the version-checked write starts; before that a cancel still fences the commit. */
++      writing?: boolean;
++      cancelled?: boolean;
+     }
+   >();
+   // The existing Provider Host owns these login children. Teardown must also
+@@ -68,11 +71,13 @@ export function createNativeCliConnectionOperations(
+     id: string,
+     access: NonNullable<ProviderConfigObject["access"]>,
+     revision: number,
++    admitWrite?: () => void,
+   ) => {
+     assertActive();
+     if (access.type !== "native-cli") throw new Error("This is not a native CLI connection");
+     const result = await inspectNativeCliConnection({ ...access, accountId: undefined }, native);
+     assertActive();
++    admitWrite?.();
+     await facade.mergeDiscoveredModels(
+       id as ProviderId,
+       result.catalog.models,
+@@ -168,7 +173,11 @@ export function createNativeCliConnectionOperations(
+         throw flow.failure ?? new Error("Native CLI login failed");
+       }
+       // Concurrent renderer polls share exactly one version-checked commit.
+-      flow.commit ??= connect(id, flow.access, flow.revision);
++      flow.commit ??= connect(id, flow.access, flow.revision, () => {
++        // PRI-01: a cancel that arrived while the post-login inspection ran must not publish it.
++        if (flow.cancelled) throw new Error("Native CLI login cancelled");
++        flow.writing = true;
++      });
+       try {
+         await flow.commit;
+       } finally {
+@@ -179,7 +188,11 @@ export function createNativeCliConnectionOperations(
+     async cancelNativeCliLogin(id: string, flowId: string): Promise<void> {
+       const flow = flows.get(id);
+       if (!flow || flow.id !== flowId) return;
+-      if (flow.commit) return; // The original atomic writer has already admitted this connection.
++      if (flow.commit) {
++        // Once the atomic writer has started the connection is admitted; until then cancel fences it.
++        if (!flow.writing) flow.cancelled = true;
++        return;
++      }
+       flows.delete(id);
+       flow.cancel();
+     },
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 75b1594..3c7099e 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -85,7 +85,10 @@ export function mapCodexNativeModels(
+ 
+ /** Node host only, injected alongside the existing subscription and CC Switch adapters. */
+ export function createNativeCliConnectionAdapter(
+-  resolveEnvironment: () => Promise<Record<string, string>> = async () => ({}),
++  /** 按执行器解析其官方端点的网络路由（PAC 可能对各厂商给出不同代理）。 */
++  resolveEnvironment: (
++    kind: "claude" | "codex" | "antigravity",
++  ) => Promise<Record<string, string>> = async () => ({}),
+   /** 宿主网络所有者的 fetch；Claude 额度回退读取复用它，保持代理/证书一致。 */
+   hostFetch?: typeof fetch,
+ ): NativeCliConnectionAdapter {
+@@ -98,7 +101,7 @@ export function createNativeCliConnectionAdapter(
+             executable: access.executable,
+             configDir: access.configDir,
+             accountId: access.accountId,
+-            env: await resolveEnvironment(),
++            env: await resolveEnvironment("codex"),
+           }),
+           Date.now(),
+         );
+@@ -109,7 +112,7 @@ export function createNativeCliConnectionAdapter(
+         executable: access.executable,
+         configDir: access.configDir,
+         accountId: access.accountId,
+-        env: await resolveEnvironment(),
++        env: await resolveEnvironment("claude"),
+         ...(hostFetch
+           ? { readOAuthUsage: (scope) => readClaudeOAuthUsage({ ...scope, fetch: hostFetch }) }
+           : {}),
+@@ -123,7 +126,7 @@ export function createNativeCliConnectionAdapter(
+         const inspected = await inspectCodexNativeConnection({
+           executable: access.executable,
+           configDir: access.configDir,
+-          env: await resolveEnvironment(),
++          env: await resolveEnvironment("codex"),
+         });
+         if (access.accountId && access.accountId !== inspected.accountId)
+           throw new Error("Native CLI account changed; reconnect this connection");
+@@ -141,7 +144,7 @@ export function createNativeCliConnectionAdapter(
+         // agy 不提供账号查询；以本机唯一登录为身份，模型目录来自官方 `agy models`。
+         const inspected = await inspectAntigravityConnection({
+           executable: access.executable,
+-          env: await resolveEnvironment(),
++          env: await resolveEnvironment("antigravity"),
+         });
+         return {
+           accountId: ANTIGRAVITY_LOCAL_ACCOUNT,
+@@ -172,7 +175,7 @@ export function createNativeCliConnectionAdapter(
+       const { account, models } = await inspectClaudeNativeConnection({
+         executable: access.executable,
+         configDir: access.configDir,
+-        env: await resolveEnvironment(),
++        env: await resolveEnvironment("claude"),
+       });
+       requireClaudeSubscriptionAccount(account);
+       const accountId = account.email!;
+@@ -192,8 +195,8 @@ export function createNativeCliConnectionAdapter(
+       if (options.provider === "antigravity")
+         throw new Error("Sign in to the official Antigravity CLI first: run `agy` in a terminal");
+       return options.provider === "codex"
+-        ? startCodexNativeLogin({ ...options, env: await resolveEnvironment() })
+-        : startClaudeNativeLogin({ ...options, env: await resolveEnvironment() });
++        ? startCodexNativeLogin({ ...options, env: await resolveEnvironment("codex") })
++        : startClaudeNativeLogin({ ...options, env: await resolveEnvironment("claude") });
+     },
+   };
+ }
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index b92dfc3..0aa6ed3 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -1608,9 +1608,9 @@ export function createLocalServices(options: {
+     subscriptions: subscriptionConnections,
+     // Native login/inspection are Host children, outside the Agent spawn path.
+     // Reuse the same network owner instead of losing app/system proxy settings.
+-    nativeCli: createNativeCliConnectionAdapter(async () => {
++    nativeCli: createNativeCliConnectionAdapter(async (kind) => {
+       const network = hostApiNetworkTransport.resolveSystemNetwork
+-        ? await hostApiNetworkTransport.resolveSystemNetwork("https://claude.ai/oauth/authorize")
++        ? await hostApiNetworkTransport.resolveSystemNetwork(NATIVE_CLI_LOGIN_ENDPOINTS[kind])
+         : await settingService.get().then((settings) => ({
+             httpProxy: settings.httpProxy,
+             noProxy: settings.httpProxyNoProxy,
+@@ -2861,6 +2861,13 @@ export async function disposeServiceResourcesAndWait(services: ServiceCollection
+     .catch(() => {});
+ }
+ 
++/** 登录/检查走各自的授权入口；PAC 路由按此 URL 解析（PRI-08：此前全部借用 Claude 的地址）。 */
++const NATIVE_CLI_LOGIN_ENDPOINTS = {
++  claude: "https://claude.ai/oauth/authorize",
++  codex: "https://auth.openai.com/oauth/authorize",
++  antigravity: "https://accounts.google.com/o/oauth2/v2/auth",
++} as const;
++
+ const NATIVE_EXECUTOR_ENDPOINTS = {
+   claude: "https://api.anthropic.com/",
+   codex: "https://chatgpt.com/backend-api",
+diff --git a/packages/services/test/antigravity-native.test.ts b/packages/services/test/antigravity-native.test.ts
+index a032111..9f324df 100644
+--- a/packages/services/test/antigravity-native.test.ts
++++ b/packages/services/test/antigravity-native.test.ts
+@@ -168,3 +168,17 @@ test("native executors take the Host-resolved system route only when no explicit
+   assert.equal(explicit.HTTPS_PROXY, "http://corp:8080");
+   assert.equal(withNativeExecutorNetwork({ FLEET_NATIVE_EXECUTOR_NETWORK: routes }, "claude").HTTPS_PROXY, undefined);
+ });
++
++test("native CLI connection resolves the network route for the executor's own vendor (PRI-08)", async () => {
++  const { createNativeCliConnectionAdapter } = await import("../src/model-provider/nativeCliConnectionAdapter.js");
++  const agy = fakeAgy([]);
++  const kinds: string[] = [];
++  const adapter = createNativeCliConnectionAdapter(async (kind) => {
++    kinds.push(kind);
++    return {};
++  });
++  const inspected = await adapter.inspect({ type: "native-cli", provider: "antigravity", executable: agy.script } as never);
++  assert.equal(inspected.accountId, "antigravity-local");
++  assert.deepEqual(inspected.catalog.models.map((model: { id: string }) => model.id), ["gemini-3-pro"]);
++  assert.deepEqual(kinds, ["antigravity"]);
++});
+diff --git a/packages/services/test/native-cli-login.test.ts b/packages/services/test/native-cli-login.test.ts
+index b0b1b2b..f9185de 100644
+--- a/packages/services/test/native-cli-login.test.ts
++++ b/packages/services/test/native-cli-login.test.ts
+@@ -301,6 +301,37 @@ test("native login publishes no account until the CLI completes; simultaneous po
+   assert.deepEqual(f.counts(), { writes: 1, discoveries: 1, cancellations: 0 });
+ });
+ 
++test("cancelling while the post-login inspection runs publishes nothing (PRI-01)", async () => {
++  let writes = 0;
++  const inspected = Promise.withResolvers<{
++    accountId: string;
++    accountName: string;
++    catalog: { source: "provider"; models: [] };
++  }>();
++  const done = Promise.withResolvers<void>();
++  const access = { type: "native-cli", provider: "claude", connected: false };
++  const facade = {
++    getView: () => ({ revision: 1, providers: [{ providerId: "A", effectiveConfig: { access } }] }),
++    mergeDiscoveredModels: async () => {
++      writes++;
++    },
++  } as unknown as ProviderSettingsFacade;
++  const operations = createNativeCliConnectionOperations(facade, async () => {}, {
++    inspect: () => inspected.promise,
++    login: () => ({ completion: done.promise, cancel() {} }),
++  });
++  const { flowId } = await operations.beginNativeCliLogin("A");
++  done.resolve();
++  await Promise.resolve();
++  const polling = operations.pollNativeCliLogin("A", flowId);
++  void polling.catch(() => {});
++  await Promise.resolve();
++  await operations.cancelNativeCliLogin("A", flowId);
++  inspected.resolve({ accountId: "fixture@example.invalid", accountName: "Fixture", catalog: { source: "provider", models: [] } });
++  await assert.rejects(polling, /cancelled/);
++  assert.equal(writes, 0);
++});
++
+ test("a stale login cannot overwrite a changed provider configuration", async () => {
+   const f = fixture();
+   const { flowId } = await f.operations.beginNativeCliLogin("A");

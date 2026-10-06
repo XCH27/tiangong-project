@@ -45,11 +45,11 @@ partial-read hashes, per-profile lock partitioning, masked staging errors and co
    outcome recovery without replay or rollback assumptions. Prove Project executable trust plus
    future-turn plugin/Skill/MCP withdrawal (DOM-01/02). Preserve the new cancellation retry plan and
    workflow uncertainty guards while testing acknowledgement loss and cold reconstruction.
-2. Keep discovery/inference auth and native executor network targets aligned (PRI-08). Preserve
-   returned-ID observations separately from personal model renames; connection deletion clears both
-   exact layers, while recommendation restore retains observations (API-02). Verify these through
-   live permitted provider paths after the existing local fixtures.
-   Cancelled native login inspection must not admit a later binding (PRI-01).
+2. Keep discovery and inference auth aligned (API-02). Preserve returned-ID observations separately
+   from personal model renames; connection deletion clears both exact layers, while recommendation
+   restore retains observations. Verify through live permitted provider paths after the local
+   fixtures. Per-vendor native network routes (PRI-08) and the cancelled post-login inspection fence
+   (PRI-01) are corrected in candidate 0149; the Codex/Claude PAC split still lacks a live proof.
 3. Include final tool declarations and output reserve in the Host request-budget path, including
    dynamic discovery and reported usage deltas. Preserve sparse capacity and distinguish estimates
    from vendor counters; avoid treating a heuristic as a proven provider limit.
