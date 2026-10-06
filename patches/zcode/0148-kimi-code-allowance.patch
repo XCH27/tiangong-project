@@ -1,0 +1,271 @@
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index d7332f4..747bc16 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -58,8 +58,8 @@ does not run commands; refused actions are listed at the end of the reply. Switc
+ it needs to run commands. It offers no allowance query, so its card
+ shows no allowance.
+ 
+-Subscription allowance appears in the account card. API plans such as OpenCode Go and MiniMax Token
+-Plan read their allowance with the same saved key and show it in the connection card. Values come
++Subscription allowance appears in the account card. API plans such as OpenCode Go, MiniMax Token
++Plan and Kimi Code read their allowance with the same saved key and show it in the connection card. Values come
+ from the provider; an unread or missing value stays unknown and is never shown as zero or full.
+ 
+ ## Default models and page assistance
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index e708ae2..f65774d 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -44,7 +44,7 @@ Claude、ChatGPT、Antigravity 连接调用本机官方 CLI 完成整轮工作
+ 但不会执行命令，被拒的操作列在回复末尾；需要它运行命令时切换到完全访问。
+ 它不提供额度查询，账号卡片因此不显示额度。
+ 
+-订阅账号的额度显示在账号卡片中；OpenCode Go、MiniMax Token Plan 等 API 套餐用已保存的同一把密钥读取额度，
++订阅账号的额度显示在账号卡片中；OpenCode Go、MiniMax Token Plan、Kimi Code 等 API 套餐用已保存的同一把密钥读取额度，
+ 显示在连接卡片中。额度由供应商接口返回，读取失败或未返回时保持未知，不显示为 0 或满额。
+ 
+ ## 默认模型与页面助手
+diff --git a/packages/services/src/model-provider/apiKeyPlanUsage.ts b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+index a1694dc..7bebffd 100644
+--- a/packages/services/src/model-provider/apiKeyPlanUsage.ts
++++ b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+@@ -5,9 +5,10 @@ import type { SubscriptionAccountsView } from "./subscriptionConnectionTypes.js"
+ import type { SubscriptionUsageResult, SubscriptionUsageWindow } from "./subscriptionUsage.js";
+ 
+ /**
+- * 用 API Key 购买的套餐（OpenCode Go、MiniMax Token Plan）此前没有额度读取，设置页只能看到密钥。
+- * 读取方式与 Paseo plugins/{opencode-go,minimax}-usage-source、Orca rate-limits/opencode-go-*
+- * 一致：用连接里已保存的同一把密钥，请求厂商的只读额度接口。不另存密钥、不推断套餐档位。
++ * 用 API Key 购买的套餐（OpenCode Go、MiniMax Token Plan、Kimi Code）此前没有额度读取，设置页只能看到密钥。
++ * 读取方式与 Paseo plugins/{opencode-go,minimax}-usage-source、Orca rate-limits/opencode-go-*、
++ * CodexBar KimiUsageFetcher.fetchCodeAPIUsage 一致：用连接里已保存的同一把密钥，请求厂商的只读额度接口。
++ * 不另存密钥、不推断套餐档位。
+  */
+ export { apiKeyPlanRoute, type ApiKeyPlanRoute };
+ 
+@@ -108,6 +109,78 @@ export function parseMiniMaxTokenPlanUsage(
+     : { status: "unavailable", unavailableReason: "no-provider-data" };
+ }
+ 
++const KIMI_POOLS = [
++  ["limit_5h", "session", 300],
++  ["limit_7d", "weekly", 10_080],
++  ["limit_month_total", "monthly", 43_200],
++] as const;
++
++function kimiCounts(detail: Record<string, unknown> | undefined) {
++  const limit = finite(detail?.limit);
++  if (limit === undefined || limit <= 0) return undefined;
++  const used = finite(detail?.used);
++  if (used !== undefined && used >= 0) return { used, limit };
++  const remaining = finite(detail?.remaining);
++  return remaining !== undefined && remaining >= 0 && remaining <= limit
++    ? { used: limit - remaining, limit }
++    : undefined;
++}
++function kimiReset(value: unknown): number | undefined {
++  const parsed = typeof value === "string" ? Date.parse(value) : NaN;
++  return Number.isFinite(parsed) ? parsed : undefined;
++}
++function kimiWindowMinutes(window: Record<string, unknown> | undefined): number | undefined {
++  const duration = finite(window?.duration);
++  if (duration === undefined || duration <= 0) return undefined;
++  const unit = String(window?.timeUnit ?? "").toUpperCase();
++  return unit.includes("DAY") ? duration * 1440 : unit.includes("HOUR") ? duration * 60 : unit.includes("MINUTE") ? duration : undefined;
++}
++
++/**
++ * Kimi Code `/coding/v1/usages`（官方 kimi-code packages/oauth/src/managed-usage.ts、CodexBar）：
++ * 优先 usages.limit_5h/limit_7d/limit_month_total 的 used_ratio；旧响应的 usage（每周）与
++ * limits[]（短窗口）计数作回退。比例为 0 而计数显示已使用时，按 CodexBar 视为占位值、改用计数。
++ */
++export function parseKimiCodeUsage(payload: unknown, observedAt: number): SubscriptionUsageResult {
++  const body = record(payload);
++  const pools = record(body?.usages);
++  const weeklyDetail = record(body?.usage);
++  const firstLimit = record(Array.isArray(body?.limits) ? body.limits[0] : undefined);
++  const sessionDetail = record(firstLimit?.detail);
++  const counted = (detail: Record<string, unknown> | undefined) => {
++    const counts = kimiCounts(detail);
++    return counts ? clampPercent((counts.used / counts.limit) * 100) : undefined;
++  };
++  const windows: SubscriptionUsageWindow[] = [];
++  for (const [key, name, minutes] of KIMI_POOLS) {
++    const pool = record(pools?.[key]);
++    const ratio = finite(pool?.used_ratio);
++    const detail = name === "weekly" ? weeklyDetail : name === "session" ? sessionDetail : undefined;
++    const fallback = counted(detail);
++    const placeholder = ratio === 0 && !pools?.limit_month_total && (fallback ?? 0) > 0;
++    const fromRatio = ratio !== undefined && ratio >= 0 && !placeholder;
++    const usedPercent = fromRatio ? Math.min(1, ratio) * 100 : fallback;
++    if (usedPercent === undefined) continue;
++    const reset = kimiReset(
++      fromRatio ? pool?.reset_time : (detail?.resetTime ?? detail?.reset_time ?? detail?.resetAt),
++    );
++    // 计数回退时，短窗口的时长以响应里 limits[0].window 为准。
++    const windowMinutes =
++      !fromRatio && name === "session" ? (kimiWindowMinutes(record(firstLimit?.window)) ?? minutes) : minutes;
++    windows.push({ id: `default:${name}`, usedPercent, windowMinutes, ...(reset ? { resetAt: reset } : {}) });
++  }
++  return windows.length
++    ? { status: "available", source: "Kimi Code", observedAt, windows }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++}
++
++/** CodexBar codeAPIUsageEndpoint：…/coding → …/coding/v1/usages。 */
++function kimiUsageUrl(baseUrl: string): string {
++  const url = new URL(baseUrl);
++  const path = url.pathname.replace(/\/+$/u, "");
++  return `${url.origin}${path.endsWith("/coding/v1") ? path : path.endsWith("/coding") ? `${path}/v1` : "/coding/v1"}/usages`;
++}
++
+ export async function readApiKeyPlanUsage(
+   route: ApiKeyPlanRoute,
+   apiKey: string,
+@@ -118,7 +191,9 @@ export async function readApiKeyPlanUsage(
+   const url =
+     route === "opencode-go"
+       ? "https://opencode.ai/zen/go/v1/usage"
+-      : `${new URL(baseUrl).origin}/v1/token_plan/remains`;
++      : route === "kimi-code"
++        ? kimiUsageUrl(baseUrl)
++        : `${new URL(baseUrl).origin}/v1/token_plan/remains`;
+   try {
+     const response = await fetcher(url, {
+       method: "GET",
+@@ -142,7 +217,9 @@ export async function readApiKeyPlanUsage(
+     const payload: unknown = await response.json();
+     return route === "opencode-go"
+       ? parseOpenCodeGoUsage(payload, now())
+-      : parseMiniMaxTokenPlanUsage(payload, now());
++      : route === "kimi-code"
++        ? parseKimiCodeUsage(payload, now())
++        : parseMiniMaxTokenPlanUsage(payload, now());
+   } catch {
+     return { status: "unavailable" };
+   }
+diff --git a/packages/services/test/api-key-plan-usage.test.ts b/packages/services/test/api-key-plan-usage.test.ts
+index 20c56e7..e4d76b5 100644
+--- a/packages/services/test/api-key-plan-usage.test.ts
++++ b/packages/services/test/api-key-plan-usage.test.ts
+@@ -3,11 +3,16 @@ import test from "node:test";
+ import {
+   apiKeyPlanRoute,
+   parseMiniMaxTokenPlanUsage,
++  parseKimiCodeUsage,
+   parseOpenCodeGoUsage,
+   readApiKeyPlanUsage,
+ } from "../src/model-provider/apiKeyPlanUsage.js";
+ 
+-test("only OpenCode Go and MiniMax Token Plan templates route to plan allowance", () => {
++test("only OpenCode Go, MiniMax Token Plan and Kimi Code routes read plan allowance", () => {
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.kimi.com/coding" }), "kimi-code");
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.kimi.ai/coding/v1" }), "kimi-code");
++  // Moonshot 开放平台按量 API 不是 Kimi Code 会员。
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.moonshot.cn/anthropic" }), undefined);
+   assert.equal(apiKeyPlanRoute({ baseUrl: "https://opencode.ai/zen/go/v1" }), "opencode-go");
+   assert.equal(apiKeyPlanRoute({ baseUrl: "https://opencode.ai/zen/v1" }), undefined);
+   assert.equal(
+@@ -90,3 +95,49 @@ test("plan reads use the saved key, fixed endpoints and distinct failure states"
+     { url: "https://api.minimaxi.com/v1/token_plan/remains", auth: "Bearer fixture-mm" },
+   ]);
+ });
++
++test("Kimi Code prefers ratio pools, treats a zero ratio with used counters as a placeholder, and falls back to counters", () => {
++  const ratio = parseKimiCodeUsage(
++    {
++      usages: {
++        limit_5h: { used_ratio: 0.25, reset_time: "2026-10-06T03:00:00Z" },
++        limit_7d: { used_ratio: 1.4, reset_time: "2026-10-12T00:00:00Z" },
++        limit_month_total: { used_ratio: 0.1 },
++      },
++    },
++    7,
++  );
++  assert.equal(ratio.status, "available");
++  if (ratio.status === "available")
++    assert.deepEqual(ratio.windows, [
++      { id: "default:session", usedPercent: 25, windowMinutes: 300, resetAt: Date.parse("2026-10-06T03:00:00Z") },
++      { id: "default:weekly", usedPercent: 100, windowMinutes: 10_080, resetAt: Date.parse("2026-10-12T00:00:00Z") },
++      { id: "default:monthly", usedPercent: 10, windowMinutes: 43_200 },
++    ]);
++  const legacy = parseKimiCodeUsage(
++    {
++      usages: { limit_7d: { used_ratio: 0 } },
++      usage: { limit: "100", used: "40", resetTime: "2026-10-12T00:00:00Z" },
++      limits: [{ window: { duration: 3, timeUnit: "TIME_UNIT_HOUR" }, detail: { limit: 20, remaining: 15 } }],
++    },
++    7,
++  );
++  assert.equal(legacy.status, "available");
++  if (legacy.status === "available")
++    assert.deepEqual(legacy.windows, [
++      { id: "default:session", usedPercent: 25, windowMinutes: 180 },
++      { id: "default:weekly", usedPercent: 40, windowMinutes: 10_080, resetAt: Date.parse("2026-10-12T00:00:00Z") },
++    ]);
++  assert.deepEqual(parseKimiCodeUsage({}, 7), { status: "unavailable", unavailableReason: "no-provider-data" });
++});
++
++test("Kimi Code reads the coding usage endpoint with the saved key", async () => {
++  const seen: string[] = [];
++  const fetcher: typeof fetch = async (url) => {
++    seen.push(String(url));
++    return Response.json({ usages: { limit_7d: { used_ratio: 0.5 } } });
++  };
++  await readApiKeyPlanUsage("kimi-code", "fixture-kimi", "https://api.kimi.com/coding", fetcher, () => 1);
++  await readApiKeyPlanUsage("kimi-code", "fixture-kimi", "https://api.kimi.ai/coding/v1/", fetcher, () => 1);
++  assert.deepEqual(seen, ["https://api.kimi.com/coding/v1/usages", "https://api.kimi.ai/coding/v1/usages"]);
++});
+diff --git a/packages/shared/src/api-key-plan-usage.ts b/packages/shared/src/api-key-plan-usage.ts
+index 3fa330a..6387858 100644
+--- a/packages/shared/src/api-key-plan-usage.ts
++++ b/packages/shared/src/api-key-plan-usage.ts
+@@ -1,8 +1,8 @@
+ /**
+- * API Key 套餐的额度读取路由（OpenCode Go、MiniMax Token Plan）。
++ * API Key 套餐的额度读取路由（OpenCode Go、MiniMax Token Plan、Kimi Code）。
+  * 设置页与宿主服务共用同一判定，避免界面显示额度区块而服务不支持，或反之。
+  */
+-export type ApiKeyPlanRoute = "opencode-go" | "minimax-token-plan";
++export type ApiKeyPlanRoute = "opencode-go" | "minimax-token-plan" | "kimi-code";
+ 
+ const MINIMAX_TOKEN_PLAN_TEMPLATES = new Set(["fleet-minimax-token-plan", "fleet-minimax-token-plan-cn"]);
+ 
+@@ -17,6 +17,9 @@ export function apiKeyPlanRoute(provider: {
+     url = undefined;
+   }
+   if (url?.hostname === "opencode.ai" && url.pathname.startsWith("/zen/go")) return "opencode-go";
++  // Kimi Code 会员的 coding 端点；Moonshot 开放平台按量 API（api.moonshot.cn）不在此列。
++  if ((url?.hostname === "api.kimi.com" || url?.hostname === "api.kimi.ai") && /^\/coding(\/|$)/u.test(url.pathname))
++    return "kimi-code";
+   // 普通 MiniMax 按量 API 与 Token Plan 共用域名；只对 Token Plan 模板读取，避免把余额当成套餐额度。
+   if (provider.templateId && MINIMAX_TOKEN_PLAN_TEMPLATES.has(provider.templateId)) {
+     if (url?.hostname === "api.minimax.io" || url?.hostname === "api.minimaxi.com")
+diff --git a/packages/ui/src/lib/subscriptionPlanPresentation.ts b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+index 5d9ecbb..ff7b149 100644
+--- a/packages/ui/src/lib/subscriptionPlanPresentation.ts
++++ b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+@@ -4,7 +4,8 @@ type SubscriptionKind =
+   | "xai"
+   | "claude"
+   | "opencode-go"
+-  | "minimax-token-plan";
++  | "minimax-token-plan"
++  | "kimi-code";
+ const COLORS = {
+   neutral: "bg-muted text-foreground-subtle",
+   green: "bg-success/15 text-foreground border-success/30",
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index b0cc5e8..f18e7e2 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -25,7 +25,7 @@ export function SubscriptionUsageSection({
+ }: {
+   providerId: string;
+   revision: string;
+-  kind: "openai-codex" | "github-copilot" | "xai" | "claude" | "opencode-go" | "minimax-token-plan";
++  kind: "openai-codex" | "github-copilot" | "xai" | "claude" | "opencode-go" | "minimax-token-plan" | "kimi-code";
+   accountId?: string;
+   enabled?: boolean;
+   compact?: boolean;

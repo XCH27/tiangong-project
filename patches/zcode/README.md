@@ -226,3 +226,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0146 | [0146-antigravity-native-executor.patch](0146-antigravity-native-executor.patch) | `62d259456e922800e87cf613dec2e8bff2d07757` |
 
 | 0147 | [0147-antigravity-permission-truth.patch](0147-antigravity-permission-truth.patch) | `c1ad6573c3a7d3804654c8357c5ec7271751f309` |
+
+| 0148 | [0148-kimi-code-allowance.patch](0148-kimi-code-allowance.patch) | `bfaf479c3889d98b7eb39c50b2db3dc64e5a3dd1` |

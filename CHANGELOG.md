@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Show Kimi Code allowance from the saved API key; state Antigravity's real headless permission
+  behaviour (only Full access runs commands) pending an owner decision on a PreToolUse gate.
+
 - Run the official Antigravity CLI (`agy`) as a native executor with native conversation resume and
   the composer permission mapped onto its modes; give native executor children the Host-resolved
   system proxy route so GUI launches reach the vendor; keep Edit first in the model-row menu.
