@@ -232,3 +232,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0149 | [0149-native-login-cancel-and-vendor-route.patch](0149-native-login-cancel-and-vendor-route.patch) | `f2b0ff8d8290cd223c00c003df0ff9eb2fa78d2f` |
 
 | 0150 | [0150-goal-verifier-inconclusive.patch](0150-goal-verifier-inconclusive.patch) | `9e0685810d3a156f210f66fb28eda988767bf3c6` |
+
+| 0151 | [0151-usage-before-publication.patch](0151-usage-before-publication.patch) | `db4ef4688a65c77bb028644c6698bd8407c261ba` |

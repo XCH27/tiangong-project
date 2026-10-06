@@ -1,0 +1,205 @@
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/target-completion-verification.ts b/apps/zcode-cli/packages/core/src/runtime/methods/target-completion-verification.ts
+index 81fff09..cf00fd7 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/target-completion-verification.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/target-completion-verification.ts
+@@ -172,6 +172,8 @@ async function verifyTargetCompletion(
+   input.events.push(modelRequestEvent);
+   const modelStartedAt = Date.now();
+   const networkEventStartIndex = input.events.length;
++  // K-04：收到的回执只记一次；之后的 Stop 或事件写入失败不会再记一条无用量的失败行。
++  let usageRecorded = false;
+ 
+   try {
+     const result = await generateTargetCompletionVerificationText.call(this, {
+@@ -181,8 +183,20 @@ async function verifyTargetCompletion(
+       model,
+       traceContext: modelTraceContext,
+     });
+-    throwIfTurnAborted(input.abortSignal);
+     const toolCalls = this.extractToolCallsFromResult(result);
++    usageRecorded = true;
++    await recordModelUsageFact(this, {
++      events: input.events,
++      model,
++      networkEventStartIndex,
++      querySource: GOAL_COMPLETION_VERIFICATION_QUERY_SOURCE,
++      result,
++      startedAt: modelStartedAt,
++      status: input.abortSignal?.aborted ? "cancelled" : "completed",
++      toolCallCount: toolCalls.length,
++      traceContext: modelTraceContext,
++    });
++    throwIfTurnAborted(input.abortSignal);
+     const modelCompleteEvent = this.createEvent(
+       SessionEventType.ModelComplete,
+       {
+@@ -196,17 +210,6 @@ async function verifyTargetCompletion(
+     );
+     await this.appendEvent(modelCompleteEvent, modelTraceContext);
+     input.events.push(modelCompleteEvent);
+-    await recordModelUsageFact(this, {
+-      events: input.events,
+-      model,
+-      networkEventStartIndex,
+-      querySource: GOAL_COMPLETION_VERIFICATION_QUERY_SOURCE,
+-      result,
+-      startedAt: modelStartedAt,
+-      status: "completed",
+-      toolCallCount: toolCalls.length,
+-      traceContext: modelTraceContext,
+-    });
+     const verification =
+       toolCalls.length > 0
+         ? inconclusiveGoalCompletionVerification(
+@@ -231,16 +234,17 @@ async function verifyTargetCompletion(
+     );
+     return verification;
+   } catch (error) {
+-    await recordModelUsageFact(this, {
+-      error,
+-      events: input.events,
+-      model,
+-      networkEventStartIndex,
+-      querySource: GOAL_COMPLETION_VERIFICATION_QUERY_SOURCE,
+-      startedAt: modelStartedAt,
+-      status: input.abortSignal?.aborted ? "cancelled" : "error",
+-      traceContext: modelTraceContext,
+-    });
++    if (!usageRecorded)
++      await recordModelUsageFact(this, {
++        error,
++        events: input.events,
++        model,
++        networkEventStartIndex,
++        querySource: GOAL_COMPLETION_VERIFICATION_QUERY_SOURCE,
++        startedAt: modelStartedAt,
++        status: input.abortSignal?.aborted ? "cancelled" : "error",
++        traceContext: modelTraceContext,
++      });
+     if (input.abortSignal?.aborted) {
+       const preserveQueueAutoDrainOnCancel =
+         this.activeForegroundExecution?.preserveQueueAutoDrainOnCancel === true;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/title-generation-sidecar.ts b/apps/zcode-cli/packages/core/src/runtime/methods/title-generation-sidecar.ts
+index 3ebf9cf..ded41bb 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/title-generation-sidecar.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/title-generation-sidecar.ts
+@@ -180,8 +180,7 @@ async function generateTitleCandidateImpl(
+     },
+     modelTraceContext,
+   );
+-  await this.appendEvent(modelCompleteEvent, modelTraceContext);
+-  events.push(modelCompleteEvent);
++  // K-04：先记账再发布，事件写入失败不会丢失已收到的用量。
+   await recordModelUsageFact(this, {
+     events,
+     model,
+@@ -194,6 +193,8 @@ async function generateTitleCandidateImpl(
+     toolCallCount: toolCalls.length,
+     traceContext: modelTraceContext,
+   });
++  await this.appendEvent(modelCompleteEvent, modelTraceContext);
++  events.push(modelCompleteEvent);
+ 
+   if (toolCalls.length > 0) {
+     logTitleGenerationSkipped.call(
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+index dbd06ad..eeb56fa 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+@@ -628,11 +628,7 @@ async function runModelBackedTurnStepImpl(
+     supportsTurnFileChanges && toolCalls.length === 0
+       ? buildTurnFileChangeSummary(this.currentTurnFileChanges)
+       : undefined;
+-  await publishModelResponseObservation(this, state, {
+-    result, querySource, contextWindow: publishedContextWindow, content: state.modelResponse,
+-    traceContext: modelTraceContext, toolCallCount: toolCalls.length, cacheHit, fileChanges,
+-  });
+-  this.lastAssistantCompletedAtMs = Date.now();
++  // K-04：已收到的回执先进入用量账本，再发布依赖它的 ModelComplete；发布失败不能抹掉已发生的消耗。
+   await recordMainTurnModelUsage(this, state, {
+     assistantMessageId,
+     model,
+@@ -643,6 +639,11 @@ async function runModelBackedTurnStepImpl(
+     status: "completed",
+     toolCallCount: toolCalls.length,
+   });
++  await publishModelResponseObservation(this, state, {
++    result, querySource, contextWindow: publishedContextWindow, content: state.modelResponse,
++    traceContext: modelTraceContext, toolCallCount: toolCalls.length, cacheHit, fileChanges,
++  });
++  this.lastAssistantCompletedAtMs = Date.now();
+   state.turnMachine = new TurnMachineImpl(
+     state.turnMachine.receiveModelResponse(state.modelResponse),
+   );
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts b/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
+index 5b86a85..1b6fe98 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/workspace-generate-text.ts
+@@ -276,8 +276,7 @@ async function generateWorkspaceTextImpl(
+     },
+     modelTraceContext,
+   );
+-  await this.appendEvent(modelCompleteEvent, modelTraceContext);
+-  events.push(modelCompleteEvent);
++  // K-04：先记账再发布，事件写入失败不会丢失已收到的用量。
+   await recordModelUsageFact(this, {
+     events,
+     model,
+@@ -289,6 +288,8 @@ async function generateWorkspaceTextImpl(
+     toolCallCount: toolCalls.length,
+     traceContext: modelTraceContext,
+   });
++  await this.appendEvent(modelCompleteEvent, modelTraceContext);
++  events.push(modelCompleteEvent);
+ 
+   return {
+     text: result.text,
+diff --git a/apps/zcode-cli/packages/core/test/usage-before-publication.test.ts b/apps/zcode-cli/packages/core/test/usage-before-publication.test.ts
+new file mode 100644
+index 0000000..017e908
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/usage-before-publication.test.ts
+@@ -0,0 +1,30 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { DatabaseSync } from "node:sqlite";
++import { join } from "node:path";
++import { call, fixture, reply } from "./helpers/pi-runtime-fixture.js";
++
++test("a received main response keeps its usage when ModelComplete publication fails (K-04)", async () => {
++  const f = await fixture();
++  try {
++    const runtime = f.runtime as never as { appendEvent(event: { type: string }, trace: unknown): Promise<void> };
++    const append = runtime.appendEvent.bind(runtime);
++    runtime.appendEvent = async (event, trace) => {
++      if (event.type === "model_complete") throw new Error("synthetic completion publication failure");
++      return append(event, trace);
++    };
++    f.steps.push(() => ({
++      ...reply("known complete response", [call("effect", "must not run")]),
++      usage: { inputTokens: 701, outputTokens: 23, totalTokens: 724 },
++    }));
++    await assert.rejects(f.runtime.executeTurn("Run local publish fault fixture"));
++    await f.reopen();
++    const db = new DatabaseSync(join(f.dir, "session.sqlite"), { readOnly: true });
++    const rows = db.prepare("select query_source, input_tokens, output_tokens from model_usage").all().map((row) => ({ ...row }));
++    db.close();
++    assert.equal(f.effects, 0);
++    assert.deepEqual(rows, [{ query_source: "main_turn", input_tokens: 701, output_tokens: 23 }]);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/package.json b/package.json
+index 7d5cb29..f2fbf2a 100644
+--- a/package.json
++++ b/package.json
+@@ -78,7 +78,7 @@
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+-    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
