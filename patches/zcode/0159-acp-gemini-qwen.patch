@@ -1,0 +1,376 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+index a141cff..030721a 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+@@ -3,7 +3,15 @@ import { homedir } from "node:os";
+ import { join } from "node:path";
+ import type { CollaborationMode } from "@zcode/contracts";
+ 
+-export type AcpExecutorKind = "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy";
++export type AcpExecutorKind =
++  | "cursor"
++  | "kimi"
++  | "opencode"
++  | "hermes"
++  | "openclaw"
++  | "codebuddy"
++  | "gemini"
++  | "qwen";
+ 
+ /**
+  * Per-CLI facts for the shared ACP executor, each verified against the installed binary with an
+@@ -96,12 +104,39 @@ export const ACP_PROFILES: Record<AcpExecutorKind, AcpProfile> = {
+     billingProvider: "tencent",
+     loginCommand: "codebuddy",
+   },
++  gemini: {
++    kind: "gemini",
++    label: "Gemini CLI",
++    binary: bin("gemini"),
++    candidates: [join(home, ".local", "bin", bin("gemini")), "/opt/homebrew/bin/gemini", "/usr/local/bin/gemini"],
++    // `gemini --acp`（Paseo acp-provider-catalog，@google/gemini-cli 0.52）；本机未装可用版本，未实测。
++    args: ["--acp"],
++    planMode: "plan",
++    manualMode: "default",
++    environment: () => ({ NO_BROWSER: "true" }),
++    billingProvider: "google",
++    loginCommand: "gemini",
++  },
++  qwen: {
++    kind: "qwen",
++    label: "Qwen Code",
++    binary: bin("qwen"),
++    candidates: [join(home, ".local", "bin", bin("qwen")), "/opt/homebrew/bin/qwen", "/usr/local/bin/qwen"],
++    // `qwen --acp`（Paseo acp-provider-catalog，@qwen-code/qwen-code 0.20）；本机未安装，未实测。
++    args: ["--acp"],
++    planMode: "plan",
++    manualMode: "default",
++    environment: () => ({}),
++    billingProvider: "alibaba",
++    loginCommand: "qwen",
++  },
+   hermes: {
+     kind: "hermes",
+     label: "Hermes",
+-    binary: bin("hermes-acp"),
+-    candidates: [join(home, ".local", "bin", bin("hermes-acp")), join(home, ".hermes", "bin", bin("hermes-acp"))],
+-    args: [],
++    binary: bin("hermes"),
++    candidates: [join(home, ".local", "bin", bin("hermes")), join(home, ".hermes", "bin", bin("hermes"))],
++    // `hermes acp`（hermes_cli/main.py；Paseo acp-provider-catalog 同）。
++    args: ["acp"],
+     // Hermes 没有计划模式：计划档由 Fleet 拒绝其改动请求；default 即"改动前询问"。
+     manualMode: "default",
+     environment: () => ({}),
+@@ -147,7 +182,9 @@ export const isAcpExecutorKind = (value: unknown): value is AcpExecutorKind =>
+   value === "opencode" ||
+   value === "hermes" ||
+   value === "openclaw" ||
+-  value === "codebuddy";
++  value === "codebuddy" ||
++  value === "gemini" ||
++  value === "qwen";
+ 
+ /** The single catalog entry for CLIs whose agent configuration owns the model. */
+ export const ACP_FIXED_MODEL_ID = "agent-default";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+index 9028995..2ae9818 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+@@ -1,7 +1,7 @@
+ import { FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY } from "@zcode/shared";
+ import { applyNetworkEgressEnv, type NetworkEgressEnvPolicy } from "../network/subprocess-env.js";
+ 
+-export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy";
++export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "gemini" | "qwen";
+ 
+ const PROXY_KEYS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
+ 
+diff --git a/apps/zcode-cli/packages/contracts/src/model/model.ts b/apps/zcode-cli/packages/contracts/src/model/model.ts
+index 7358f6d..6ab64b1 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/model.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/model.ts
+@@ -45,7 +45,7 @@ export type ModelEvent = ModelStreamEvent;
+ export interface Model {
+   /** Official CLI connection, frozen with the admitted execution model; no tokens are copied. */
+   readonly nativeExecutor?: {
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy";
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "gemini" | "qwen";
+     executable?: string;
+     configDir?: string;
+     accountId?: string;
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index beba93e..fa00220 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -59,9 +59,9 @@ access allows everything. It cannot ask mid-run, so refused actions are listed a
+ reply; switch the permission as suggested and retry. It offers no allowance query, so its card
+ shows no allowance.
+ 
+-Cursor, Kimi Code CLI, OpenCode CLI, CodeBuddy, Hermes and OpenClaw connect through the official CLI's
+-ACP mode; sign in or configure each CLI first (`cursor-agent login`, `kimi login`, `opencode auth
+-login`, `codebuddy`, `hermes setup`, `openclaw onboard`). OpenClaw uses the model configured in its gateway. Plan mode
++Cursor, Kimi Code CLI, OpenCode CLI, CodeBuddy, Gemini CLI, Qwen Code, Hermes and OpenClaw connect
++through the official CLI's ACP mode; sign in or configure each CLI first (`cursor-agent login`, `kimi
++login`, `opencode auth login`, `codebuddy`, `gemini`, `qwen`, `hermes setup`, `openclaw onboard`). OpenClaw uses the model configured in its gateway. Plan mode
+ uses the CLI's own planning mode. Under Ask before changes, file edits and commands raise Fleet's approval card and
+ run only after you allow them; Edit automatically allows file edits and still asks for other
+ actions; Full access allows everything. Available models come from the CLI's account list, and a
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index d5f4c43..2848237 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -45,9 +45,9 @@ Claude、ChatGPT、Antigravity 连接调用本机官方 CLI 完成整轮工作
+ 运行中弹出确认，被拒的操作列在回复末尾，按提示切换权限后重试即可。
+ 它不提供额度查询，账号卡片因此不显示额度。
+ 
+-Cursor、Kimi Code CLI、OpenCode CLI、CodeBuddy、Hermes、OpenClaw 通过官方 CLI 的 ACP 模式接入，先在
+-终端完成各自登录或配置（`cursor-agent login`、`kimi login`、`opencode auth login`、`codebuddy`、
+-`hermes setup`、`openclaw onboard`）。OpenClaw 使用其网关中配置的模型。计划模式使用 CLI 自己的规划模式；
++Cursor、Kimi Code CLI、OpenCode CLI、CodeBuddy、Gemini CLI、Qwen Code、Hermes、OpenClaw 通过官方 CLI
++的 ACP 模式接入，先在终端完成各自登录或配置（`cursor-agent login`、`kimi login`、`opencode auth login`、
++`codebuddy`、`gemini`、`qwen`、`hermes setup`、`openclaw onboard`）。OpenClaw 使用其网关中配置的模型。计划模式使用 CLI 自己的规划模式；
+ 变更前确认下，它们要改文件或执行命令时会弹出 Fleet 的确认卡片，你允许后才执行；自动编辑直接
+ 允许改文件、其它操作仍会询问；完全访问全部放行。可用模型以 CLI 返回的账号列表为准，套餐不包含
+ 的模型会在请求时报错。
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index c21e489..2867157 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -2142,6 +2142,70 @@
+             }
+           }
+         },
++        {
++          "templateId": "fleet-gemini-cli-native",
++          "templateNameMap": {
++            "zh-CN": "Gemini CLI",
++            "en-US": "Gemini CLI"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "gemini",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "gemini-cli"
++            }
++          },
++          "catalog": {
++            "vendorId": "google",
++            "vendorNameMap": {
++              "zh-CN": "Google",
++              "en-US": "Google"
++            },
++            "serviceId": "gemini-cli",
++            "serviceNameMap": {
++              "zh-CN": "Gemini CLI",
++              "en-US": "Gemini CLI"
++            }
++          }
++        },
++        {
++          "templateId": "fleet-qwen-code-native",
++          "templateNameMap": {
++            "zh-CN": "Qwen Code",
++            "en-US": "Qwen Code"
++          },
++          "category": "subscription-plan",
++          "config": {
++            "access": {
++              "type": "native-cli",
++              "provider": "qwen",
++              "connected": false
++            },
++            "builtinModelIds": [],
++            "logo": {
++              "type": "builtin",
++              "key": "qwen-code"
++            }
++          },
++          "catalog": {
++            "vendorId": "alibaba",
++            "vendorNameMap": {
++              "zh-CN": "阿里云百炼",
++              "en-US": "Alibaba Cloud"
++            },
++            "serviceId": "qwen-code-cli",
++            "serviceNameMap": {
++              "zh-CN": "Qwen Code",
++              "en-US": "Qwen Code"
++            }
++          }
++        },
+         {
+           "templateId": "fleet-codebuddy-native",
+           "templateNameMap": {
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index 8c8dcaf..8b86fc8 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -78,7 +78,7 @@ export const completeSubscriptionAccessDataSchema = subscriptionAccessDataSchema
+ export const nativeCliAccessDataSchema = z
+   .object({
+     type: z.literal("native-cli"),
+-    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode", "hermes", "openclaw", "codebuddy"]),
++    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode", "hermes", "openclaw", "codebuddy", "gemini", "qwen"]),
+     executable: z.string().optional(),
+     configDir: z.string().optional(),
+     accountId: z.string().optional(),
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index aeacf3c..5c7c36e 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -18,7 +18,7 @@ export interface NativeCliConnectionAdapter {
+   inspect(access: NativeCliAccessConfigObject): Promise<NativeCliConnectionInspection>;
+   usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
+   login(options: {
+-    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy";
++    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "gemini" | "qwen";
+     executable?: string;
+     configDir?: string;
+   }): NativeCliLoginProcess | Promise<NativeCliLoginProcess>;
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index d4399aa..63da451 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -93,7 +93,7 @@ export function mapCodexNativeModels(
+ export function createNativeCliConnectionAdapter(
+   /** 按执行器解析其官方端点的网络路由（PAC 可能对各厂商给出不同代理）。 */
+   resolveEnvironment: (
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy",
++    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "gemini" | "qwen",
+   ) => Promise<Record<string, string>> = async () => ({}),
+   /** 宿主网络所有者的 fetch；Claude 额度回退读取复用它，保持代理/证书一致。 */
+   hostFetch?: typeof fetch,
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 502b7ba..991d100 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -2872,6 +2872,8 @@ const NATIVE_CLI_LOGIN_ENDPOINTS = {
+   hermes: "https://portal.nousresearch.com/",
+   openclaw: "https://openclaw.ai/",
+   codebuddy: "https://www.codebuddy.ai/",
++  gemini: "https://cloudcode-pa.googleapis.com/",
++  qwen: "https://chat.qwen.ai/",
+ } as const;
+ 
+ const NATIVE_EXECUTOR_ENDPOINTS = {
+@@ -2884,6 +2886,8 @@ const NATIVE_EXECUTOR_ENDPOINTS = {
+   hermes: "https://portal.nousresearch.com/",
+   openclaw: "https://openclaw.ai/",
+   codebuddy: "https://www.codebuddy.ai/",
++  gemini: "https://cloudcode-pa.googleapis.com/",
++  qwen: "https://chat.qwen.ai/",
+ } as const;
+ 
+ async function resolveNativeExecutorNetworkEnv(transport: {
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index d494572..53e17fc 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -61,12 +61,12 @@ test("Antigravity is a native CLI route that is complete only after a signed-in
+ });
+ 
+ test("registry serialization and settings projection retain every route under one vendor", () => {
+-  assert.equal(templates.length, 57);
++  assert.equal(templates.length, 59);
+   assert.equal(vendors.length, 25);
+   assert.equal(
+     new Set(vendors.flatMap((vendor) => vendor.templates.map((template) => template.templateId)))
+       .size,
+-    57,
++    59,
+   );
+   for (const template of templates) {
+     assert.deepEqual(template.catalog, map.get(template.templateId)?.catalog);
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 70dfe5d..bdb5135 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -7351,6 +7351,16 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.nativeCli.codebuddy.missing": "CodeBuddy Code (codebuddy) was not found. Install the official CLI first.",
+   "settings.modelProvider.nativeCli.codebuddy.login": "Run codebuddy in a terminal to sign in, then connect again.",
+   "settings.modelProvider.nativeCli.codebuddy.guide": "CodeBuddy Code setup and sign-in",
++  "settings.modelProvider.nativeCli.gemini.title": "Gemini CLI account",
++  "settings.modelProvider.nativeCli.gemini.flow": "Connect the Google account signed in to Gemini CLI (gemini) on this machine.",
++  "settings.modelProvider.nativeCli.gemini.missing": "Gemini CLI (gemini) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.gemini.login": "Run gemini in a terminal to sign in with Google, then connect again.",
++  "settings.modelProvider.nativeCli.gemini.guide": "Gemini CLI setup and sign-in",
++  "settings.modelProvider.nativeCli.qwen.title": "Qwen Code account",
++  "settings.modelProvider.nativeCli.qwen.flow": "Connect the account signed in to Qwen Code (qwen) on this machine.",
++  "settings.modelProvider.nativeCli.qwen.missing": "Qwen Code (qwen) was not found. Install the official CLI first.",
++  "settings.modelProvider.nativeCli.qwen.login": "Run qwen in a terminal to sign in, then connect again.",
++  "settings.modelProvider.nativeCli.qwen.guide": "Qwen Code setup and sign-in",
+   "settings.modelProvider.nativeCli.flow":
+     "Use the bundled official executor to connect your current account, or sign in to Claude in your browser.",
+   "settings.modelProvider.nativeCli.waiting": "Complete sign-in in the browser.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 6940833..8c1021f 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -6963,6 +6963,16 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.codebuddy.missing": "未找到 CodeBuddy Code（codebuddy），请先安装官方 CLI。",
+   "settings.modelProvider.nativeCli.codebuddy.login": "请先在终端运行 codebuddy 完成登录，然后再连接。",
+   "settings.modelProvider.nativeCli.codebuddy.guide": "CodeBuddy Code 安装与登录",
++  "settings.modelProvider.nativeCli.gemini.title": "Gemini CLI 账号",
++  "settings.modelProvider.nativeCli.gemini.flow": "连接本机 Gemini CLI（gemini）当前登录的 Google 账号。",
++  "settings.modelProvider.nativeCli.gemini.missing": "未找到 Gemini CLI（gemini），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.gemini.login": "请先在终端运行 gemini 完成 Google 登录，然后再连接。",
++  "settings.modelProvider.nativeCli.gemini.guide": "Gemini CLI 安装与登录",
++  "settings.modelProvider.nativeCli.qwen.title": "Qwen Code 账号",
++  "settings.modelProvider.nativeCli.qwen.flow": "连接本机 Qwen Code（qwen）当前登录的账号。",
++  "settings.modelProvider.nativeCli.qwen.missing": "未找到 Qwen Code（qwen），请先安装官方 CLI。",
++  "settings.modelProvider.nativeCli.qwen.login": "请先在终端运行 qwen 完成登录，然后再连接。",
++  "settings.modelProvider.nativeCli.qwen.guide": "Qwen Code 安装与登录",
+   "settings.modelProvider.nativeCli.flow":
+     "使用内置的官方执行器连接当前账号，或在浏览器中登录 Claude。",
+   "settings.modelProvider.nativeCli.waiting": "请在浏览器中完成登录。",
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index 2de909f..8b1953a 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -51,6 +51,8 @@ const PROVIDER_TEXT: Partial<Record<NativeCliAccessConfigObject["provider"], Rea
+   hermes: new Set(["title", "flow", "missing", "login", "guide"]),
+   openclaw: new Set(["title", "flow", "missing", "login", "guide"]),
+   codebuddy: new Set(["title", "flow", "missing", "login", "guide"]),
++  gemini: new Set(["title", "flow", "missing", "login", "guide"]),
++  qwen: new Set(["title", "flow", "missing", "login", "guide"]),
+ };
+ 
+ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+@@ -63,6 +65,8 @@ const GUIDE_URL: Record<NativeCliAccessConfigObject["provider"], string> = {
+   hermes: "https://hermes-agent.nousresearch.com/",
+   openclaw: "https://docs.openclaw.ai/cli/acp",
+   codebuddy: "https://www.codebuddy.cn/docs/cli/overview",
++  gemini: "https://github.com/google-gemini/gemini-cli",
++  qwen: "https://github.com/QwenLM/qwen-code",
+ };
+ 
+ /** Official CLI keeps login/refresh; this card binds its public identity through the existing writer. */
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index c9982fc..1bafc43 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -21,6 +21,8 @@ import Grok from "@lobehub/icons-static-svg/icons/grok.svg";
+ import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg";
+ import Cursor from "@lobehub/icons-static-svg/icons/cursor.svg";
+ import CodeBuddy from "@lobehub/icons-static-svg/icons/codebuddy-color.svg";
++import GeminiCli from "@lobehub/icons-static-svg/icons/geminicli-color.svg";
++import Qwen from "@lobehub/icons-static-svg/icons/qwen-color.svg";
+ import Hermes from "@lobehub/icons-static-svg/icons/hermesagent.svg";
+ import OpenClaw from "@lobehub/icons-static-svg/icons/openclaw-color.svg";
+ import GithubCopilot from "@lobehub/icons-static-svg/icons/githubcopilot.svg";
+@@ -56,6 +58,8 @@ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: stri
+   opencode: { src: OpenCode, color: false },
+   cursor: { src: Cursor, color: false },
+   codebuddy: { src: CodeBuddy, color: true },
++  "gemini-cli": { src: GeminiCli, color: true },
++  "qwen-code": { src: Qwen, color: true },
+   hermes: { src: Hermes, color: false },
+   openclaw: { src: OpenClaw, color: true },
+   github: { src: GithubCopilot, color: false },

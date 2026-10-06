@@ -4119,3 +4119,8 @@ maxInputTokens and credit multipliers, `hy3` at x0.00). The connection listed mo
 app; the following free `hy3` prompt was refused because the CLI login had expired
 (`~/.codebuddy/logs`: "Authentication required … /login"), which now surfaces as the sign-in
 instruction. A completed CodeBuddy turn awaits the owner's re-login.
+
+Candidate 0159 adds Gemini CLI (`gemini --acp`) and Qwen Code (`qwen --acp`) and launches Hermes as
+`hermes acp`, all per Paseo `packages/app/src/data/acp-provider-catalog.ts` (d831c7b) and
+hermes_cli/main.py. The local `gemini` symlink points to a missing binary and Qwen Code is not
+installed, so these profiles are source-derived and untested here.

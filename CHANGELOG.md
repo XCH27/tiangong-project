@@ -5,6 +5,8 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Add Gemini CLI and Qwen Code through the ACP executor (untested here); launch Hermes via `hermes acp`.
+
 - Add CodeBuddy through the ACP executor; vendor sign-in refusals show the CLI's login instruction.
 
 - Show DeepSeek, Moonshot and SiliconFlow balances and OpenRouter key spend from the saved API key.
