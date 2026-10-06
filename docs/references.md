@@ -4077,3 +4077,22 @@ patch 0142: reasoning levels were offered to every model because OpenRouter alwa
 (336 declare `reasoning`/`include_reasoning`; offered now equals declared), and `transcription`/`speech` outputs
 (24/23 models) produced no output capability. Embeddings (37) and rerank (9) remain non-chat, untagged rows.
 
+
+### Native CLI executor intake: Antigravity and Cursor (2026-10-06)
+
+Installed binaries, not screenshots: `agy` 1.2.14 and `cursor-agent` 2026.08.04-aaa8809.
+
+| Question | Antigravity (`agy`) | Cursor (`cursor-agent`) |
+|---|---|---|
+| Long-lived protocol | `--input-format/--output-format stream-json`; no ACP subcommand | `cursor-agent acp` (ACP server); also `-p --output-format stream-json` |
+| Modes | `--mode plan|accept-edits`, `--dangerously-skip-permissions`, `--sandbox`; plan is disabled by `--disable-slash-commands` (measured) | `--mode plan|ask`, `--force/--yolo`, `--auto-review`, `--sandbox enabled|disabled` |
+| Mid-run approval | none headless; PreToolUse hook file only (AionCore `antigravity_hook.rs`, 20 s deadline before agy proceeds) | ACP `session/request_permission` reaches the client (Paseo `acp-agent.ts:2517`) |
+| Catalog | `agy models` (`id\tlabel`) | ACP ext `cursor/list_available_models` with per-model config options (Paseo `cursor-acp-agent.ts`) |
+| Resume | `--conversation <id>` | ACP session load / `--resume <chatId>` |
+| Account | none exposed | `cursor-agent about` / `status` |
+| Quota | keyring token only; Orca mirrors Gemini CLI | Paseo/Orca read Cursor desktop `state.vscdb` token → excluded (foreign token) |
+| Others | Paseo/AionCore: CLI + skip-permissions (+ hook); CLIProxyAPI/NewMax: Antigravity OAuth client + UA impersonation of `cloudcode-pa` (excluded) | Paseo: ACP; Goose: `--print --output-format json --force`; Multica: stream-json `--yolo` |
+
+Disposition: keep each vendor's official CLI as a whole executor (H6), mapping Fleet's four permission
+modes onto the vendor's own modes. Cursor follows Paseo's ACP route so its permission requests reach
+Fleet's existing approval UI; direct model access through another client's OAuth identity is excluded.
