@@ -234,3 +234,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0150 | [0150-goal-verifier-inconclusive.patch](0150-goal-verifier-inconclusive.patch) | `9e0685810d3a156f210f66fb28eda988767bf3c6` |
 
 | 0151 | [0151-usage-before-publication.patch](0151-usage-before-publication.patch) | `db4ef4688a65c77bb028644c6698bd8407c261ba` |
+
+| 0152 | [0152-memory-extraction-usage.patch](0152-memory-extraction-usage.patch) | `b7fc1e138245b480970cffdfea2772a9a00f1a91` |

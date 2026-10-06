@@ -5,6 +5,8 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Record automatic memory extraction's model usage per physical call (K-03).
+
 - Record received model usage before publishing completion events (K-04).
 
 - Pause a Goal when its completion verifier is inconclusive instead of marking it complete (K-05);
