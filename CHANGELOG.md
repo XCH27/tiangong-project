@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Claude subscription works again through the official Claude Code (single account): Anthropic
+  counts Agent SDK apps as plan usage; only token reuse is banned. Signed-out ACP CLIs (CodeBuddy,
+  Cursor, OpenCode…) can sign in from Fleet through their own login methods. ACP models show their
+  own thinking levels; a conversation moved to another executor keeps tool calls and results
+  attributed correctly.
+
 - Follow the vendors' rules (OV-096): retire Claude subscription, Antigravity and the borrowed
   Copilot/Grok logins (saved data kept, alternative shown); add the official GitHub Copilot CLI and
   Grok Build executors; restore OpenAI's official Sign in with ChatGPT with multiple accounts.

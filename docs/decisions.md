@@ -2880,7 +2880,7 @@ Evidence, checked 2026-10-06:
 
 | Route | Ruling | Source |
 |---|---|---|
-| Claude Free/Pro/Max driven by Fleet (Agent SDK) | Retired | Anthropic: no claude.ai login or plan credentials in third-party apps, including Agent SDK agents; developers may not collect, store or intermediate Claude credentials (code.claude.com legal-and-compliance, agent-sdk overview) |
+| Claude Pro/Max through the unmodified Claude Code (Agent SDK), signed in by Claude Code's own flow | Permitted, one account, no rotation | Anthropic help "Use the Claude Agent SDK with your Claude plan" counts third-party apps authenticating through the Agent SDK as plan usage; Fleet never offers its own Claude login or touches Claude credentials (legal-and-compliance). Corrected the same day after the owner noted other projects support it; the banned pattern is token reuse (OpenCode removed it on Anthropic's legal request) |
 | Antigravity driven by Fleet | Retired | Antigravity Additional Terms §6: third-party software accessing the Service is a breach; enforced with suspensions |
 | GitHub Copilot via the VS Code extension's OAuth client | Retired | Impersonation; GitHub documents `copilot --acp --stdio` instead |
 | Grok via the Grok CLI's OAuth client | Retired | Impersonation, no published permission; `grok agent stdio` is xAI's own ACP mode |
@@ -2890,6 +2890,5 @@ Evidence, checked 2026-10-06:
 Retired routes keep their saved data, cannot run, are hidden from new connections and explain the
 permitted alternative (one owner: `packages/provider/src/route-policy.ts`). Fleet never copies,
 reads or writes another product's credentials (Cockpit Tools' account switch does; Anthropic forbids
-it). Claude subscriptions are used in Claude Code itself; Fleet uses Claude through an API key or a
-cloud provider. Claude multi-account and auto-switch are removed; ChatGPT keeps OpenAI's documented
-multi-account registrations, auto-switch default off.
+it). Claude keeps one sign-in with no automatic rotation (plan limits assume ordinary, individual
+use); ChatGPT keeps OpenAI's documented multi-account registrations, auto-switch default off.

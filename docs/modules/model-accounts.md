@@ -16,9 +16,11 @@ No register row yet.
 
 Subscriptions run only where the vendor sanctions it: Fleet's own Sign in with ChatGPT registration
 (multi-account, as OpenAI documents), the Codex app-server, and vendors' documented ACP modes,
-including the official Copilot CLI and Grok Build executors added here. Claude subscription,
-Antigravity and borrowed-client Copilot/Grok logins are retired with their data kept; see the
-evidence table in [OV-096](../decisions.md). Multi-account below now applies to Codex only.
+including the official Copilot CLI and Grok Build executors added here, and the unmodified Claude
+Code (one account, no rotation). Antigravity and borrowed-client Copilot/Grok logins are retired with
+their data kept; see the evidence table in [OV-096](../decisions.md). Multi-account below applies to
+Codex only. Signed-out ACP CLIs offer the sign-in methods they advertise (ACP `authenticate`); the
+vendor runs its own page and Fleet waits, never seeing a token (candidate 0167).
 
 ## Native CLI accounts (candidate 0163)
 

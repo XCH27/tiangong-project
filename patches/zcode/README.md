@@ -264,3 +264,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0165 | [0165-native-account-stability.patch](0165-native-account-stability.patch) | `5e209a097d66c0b0f37f130932713d59e5ef7e7e` |
 
 | 0166 | [0166-vendor-compliant-routes.patch](0166-vendor-compliant-routes.patch) | `36d443026dd85c33ca1787f50f2a518047dd6582` |
+
+| 0167 | [0167-claude-hosted-acp-signin.patch](0167-claude-hosted-acp-signin.patch) | `4a8ff8772e4c813330468a5b1f25e88fc36be23f` |
