@@ -1,0 +1,457 @@
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index 8b9bb43..82e4bb2 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -68,7 +68,7 @@ actions; Full access allows everything. Available models come from the CLI's acc
+ model outside your plan fails when requested.
+ 
+ Subscription allowance appears in the account card. API plans such as OpenCode Go, MiniMax Token
+-Plan and Kimi Code read their allowance with the same saved key and show it in the connection card. Values come
++Plan and Kimi Code read their allowance with the same saved key and show it in the connection card. DeepSeek, Moonshot and SiliconFlow show the account balance; OpenRouter shows this key's spend or remaining limit (the account-wide balance needs a management key). Values come
+ from the provider; an unread or missing value stays unknown and is never shown as zero or full.
+ 
+ ## Default models and page assistance
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index 52158e6..b907e3d 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -53,7 +53,8 @@ Cursor、Kimi Code CLI、OpenCode CLI、Hermes、OpenClaw 通过官方 CLI 的 A
+ 的模型会在请求时报错。
+ 
+ 订阅账号的额度显示在账号卡片中；OpenCode Go、MiniMax Token Plan、Kimi Code 等 API 套餐用已保存的同一把密钥读取额度，
+-显示在连接卡片中。额度由供应商接口返回，读取失败或未返回时保持未知，不显示为 0 或满额。
++显示在连接卡片中；DeepSeek、Moonshot、SiliconFlow 显示账户余额，OpenRouter 显示这把密钥的已用金额或剩余
++额度（账户总余额需要管理密钥）。额度与余额由供应商接口返回，读取失败或未返回时保持未知，不显示为 0 或满额。
+ 
+ ## 默认模型与页面助手
+ 
+diff --git a/packages/services/src/model-provider/apiKeyPlanUsage.ts b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+index 7bebffd..6a28fa6 100644
+--- a/packages/services/src/model-provider/apiKeyPlanUsage.ts
++++ b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
+ import { getEnabledApiKeys, type ProviderSettingsFacade } from "@zcode/provider";
+ import { apiKeyPlanRoute, type ApiKeyPlanRoute } from "@zcode/shared";
+ import type { SubscriptionAccountsView } from "./subscriptionConnectionTypes.js";
+-import type { SubscriptionUsageResult, SubscriptionUsageWindow } from "./subscriptionUsage.js";
++import type {
++  SubscriptionUsageBalance,
++  SubscriptionUsageResult,
++  SubscriptionUsageWindow,
++} from "./subscriptionUsage.js";
+ 
+ /**
+  * 用 API Key 购买的套餐（OpenCode Go、MiniMax Token Plan、Kimi Code）此前没有额度读取，设置页只能看到密钥。
+@@ -174,6 +178,80 @@ export function parseKimiCodeUsage(payload: unknown, observedAt: number): Subscr
+     : { status: "unavailable", unavailableReason: "no-provider-data" };
+ }
+ 
++const balanceResult = (
++  source: string,
++  observedAt: number,
++  balances: SubscriptionUsageBalance[],
++  windows: SubscriptionUsageWindow[] = [],
++): SubscriptionUsageResult =>
++  balances.length || windows.length
++    ? { status: "available", source, observedAt, windows, balances }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++
++/** DeepSeek `GET /user/balance`：balance_infos[].{currency,total_balance}（官方文档；CodexBar 同）。 */
++export function parseDeepSeekBalance(payload: unknown, observedAt: number): SubscriptionUsageResult {
++  const rows = Array.isArray(record(payload)?.balance_infos) ? (record(payload)!.balance_infos as unknown[]) : [];
++  const balances = rows.flatMap((raw): SubscriptionUsageBalance[] => {
++    const row = record(raw);
++    const amount = finite(row?.total_balance);
++    const currency = typeof row?.currency === "string" ? row.currency.toUpperCase() : undefined;
++    return amount === undefined || !currency ? [] : [{ id: `balance:${currency}`, kind: "balance", amount, currency }];
++  });
++  return balanceResult("DeepSeek", observedAt, balances);
++}
++
++/** Moonshot `GET /v1/users/me/balance`：data.available_balance；.cn 为人民币，.ai 为美元（CodexBar moonshot 插件）。 */
++export function parseMoonshotBalance(payload: unknown, observedAt: number, currency: string): SubscriptionUsageResult {
++  const body = record(payload);
++  if (body?.status === false || (finite(body?.code) ?? 0) !== 0) return { status: "unavailable" };
++  const amount = finite(record(body?.data)?.available_balance);
++  return balanceResult(
++    "Moonshot",
++    observedAt,
++    amount === undefined ? [] : [{ id: "balance", kind: "balance", amount, currency }],
++  );
++}
++
++const OPENROUTER_RESET_MINUTES: Record<string, number> = { daily: 1440, weekly: 10_080, monthly: 43_200 };
++
++/**
++ * OpenRouter `GET /api/v1/key`（当前密钥）：有上限时给出剩余额度与使用比例窗口；无上限时只给已用金额。
++ * 账户总余额 `/credits` 需要管理密钥，不在此读取。
++ */
++export function parseOpenRouterKey(payload: unknown, observedAt: number): SubscriptionUsageResult {
++  const data = record(record(payload)?.data);
++  const usage = finite(data?.usage);
++  const limit = finite(data?.limit);
++  const remaining = finite(data?.limit_remaining);
++  const balances: SubscriptionUsageBalance[] = [];
++  const windows: SubscriptionUsageWindow[] = [];
++  if (limit !== undefined && limit > 0) {
++    if (remaining !== undefined) balances.push({ id: "key-remaining", kind: "remaining", amount: remaining, currency: "USD", limit });
++    if (remaining !== undefined || usage !== undefined) {
++      const minutes = typeof data?.limit_reset === "string" ? OPENROUTER_RESET_MINUTES[data.limit_reset] : undefined;
++      windows.push({
++        id: "default:key-limit",
++        usedPercent: clampPercent((((remaining !== undefined ? limit - remaining : usage) ?? 0) / limit) * 100),
++        ...(minutes ? { windowMinutes: minutes } : {}),
++      });
++    }
++  } else if (usage !== undefined) {
++    balances.push({ id: "key-spent", kind: "spent", amount: usage, currency: "USD" });
++  }
++  return balanceResult("OpenRouter", observedAt, balances, windows);
++}
++
++/** SiliconFlow `GET /v1/user/info`：data.totalBalance；.cn 为人民币，.com 为美元。 */
++export function parseSiliconFlowBalance(payload: unknown, observedAt: number, currency: string): SubscriptionUsageResult {
++  const data = record(record(payload)?.data);
++  const amount = finite(data?.totalBalance) ?? finite(data?.balance);
++  return balanceResult(
++    "SiliconFlow",
++    observedAt,
++    amount === undefined ? [] : [{ id: "balance", kind: "balance", amount, currency }],
++  );
++}
++
+ /** CodexBar codeAPIUsageEndpoint：…/coding → …/coding/v1/usages。 */
+ function kimiUsageUrl(baseUrl: string): string {
+   const url = new URL(baseUrl);
+@@ -188,12 +266,21 @@ export async function readApiKeyPlanUsage(
+   fetcher: typeof fetch,
+   now = Date.now,
+ ): Promise<SubscriptionUsageResult> {
++  const origin = new URL(baseUrl).origin;
+   const url =
+     route === "opencode-go"
+       ? "https://opencode.ai/zen/go/v1/usage"
+       : route === "kimi-code"
+         ? kimiUsageUrl(baseUrl)
+-        : `${new URL(baseUrl).origin}/v1/token_plan/remains`;
++        : route === "deepseek-balance"
++          ? "https://api.deepseek.com/user/balance"
++          : route === "moonshot-balance"
++            ? `${origin}/v1/users/me/balance`
++            : route === "openrouter-key"
++              ? "https://openrouter.ai/api/v1/key"
++              : route === "siliconflow-balance"
++                ? `${origin}/v1/user/info`
++                : `${origin}/v1/token_plan/remains`;
+   try {
+     const response = await fetcher(url, {
+       method: "GET",
+@@ -215,11 +302,23 @@ export async function readApiKeyPlanUsage(
+       };
+     }
+     const payload: unknown = await response.json();
+-    return route === "opencode-go"
+-      ? parseOpenCodeGoUsage(payload, now())
+-      : route === "kimi-code"
+-        ? parseKimiCodeUsage(payload, now())
+-        : parseMiniMaxTokenPlanUsage(payload, now());
++    const domesticCurrency = origin.endsWith(".cn") ? "CNY" : "USD";
++    switch (route) {
++      case "opencode-go":
++        return parseOpenCodeGoUsage(payload, now());
++      case "kimi-code":
++        return parseKimiCodeUsage(payload, now());
++      case "deepseek-balance":
++        return parseDeepSeekBalance(payload, now());
++      case "moonshot-balance":
++        return parseMoonshotBalance(payload, now(), domesticCurrency);
++      case "openrouter-key":
++        return parseOpenRouterKey(payload, now());
++      case "siliconflow-balance":
++        return parseSiliconFlowBalance(payload, now(), domesticCurrency);
++      default:
++        return parseMiniMaxTokenPlanUsage(payload, now());
++    }
+   } catch {
+     return { status: "unavailable" };
+   }
+diff --git a/packages/services/src/model-provider/subscriptionUsage.ts b/packages/services/src/model-provider/subscriptionUsage.ts
+index c37f16d..87db51b 100644
+--- a/packages/services/src/model-provider/subscriptionUsage.ts
++++ b/packages/services/src/model-provider/subscriptionUsage.ts
+@@ -18,6 +18,18 @@ export interface SubscriptionUsageWindow {
+   windowMinutes?: number;
+   resetAt?: number;
+ }
++/**
++ * Money readings from API keys (account balance, key spend, key limit remaining). Kept apart from
++ * plan windows: a balance is not a percentage of an allowance and never resets on a schedule.
++ */
++export interface SubscriptionUsageBalance {
++  id: string;
++  kind: "balance" | "spent" | "remaining";
++  amount: number;
++  currency: string;
++  /** Spend cap for "remaining"/"spent" readings when the provider reports one. */
++  limit?: number;
++}
+ export type SubscriptionUsageResult = {
+   refreshAfter?: number;
+   /** Internal saved-account identity, not the provider's upstream account identifier. */
+@@ -38,6 +50,7 @@ export type SubscriptionUsageResult = {
+       billing?: SubscriptionBillingPeriod;
+       membershipReadFailed?: boolean;
+       resetsAvailable?: number;
++      balances?: SubscriptionUsageBalance[];
+       refreshError?:
+         | "auth-required"
+         | "access-denied"
+diff --git a/packages/services/test/api-key-plan-usage.test.ts b/packages/services/test/api-key-plan-usage.test.ts
+index e4d76b5..07af246 100644
+--- a/packages/services/test/api-key-plan-usage.test.ts
++++ b/packages/services/test/api-key-plan-usage.test.ts
+@@ -3,16 +3,24 @@ import test from "node:test";
+ import {
+   apiKeyPlanRoute,
+   parseMiniMaxTokenPlanUsage,
++  parseDeepSeekBalance,
+   parseKimiCodeUsage,
++  parseMoonshotBalance,
+   parseOpenCodeGoUsage,
++  parseOpenRouterKey,
++  parseSiliconFlowBalance,
+   readApiKeyPlanUsage,
+ } from "../src/model-provider/apiKeyPlanUsage.js";
+ 
+ test("only OpenCode Go, MiniMax Token Plan and Kimi Code routes read plan allowance", () => {
+   assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.kimi.com/coding" }), "kimi-code");
+   assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.kimi.ai/coding/v1" }), "kimi-code");
+-  // Moonshot 开放平台按量 API 不是 Kimi Code 会员。
+-  assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.moonshot.cn/anthropic" }), undefined);
++  // Moonshot 开放平台按量 API 不是 Kimi Code 会员：读的是账户余额，而不是套餐额度。
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.moonshot.cn/anthropic" }), "moonshot-balance");
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.deepseek.com/anthropic" }), "deepseek-balance");
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://openrouter.ai/api/v1" }), "openrouter-key");
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.siliconflow.cn/v1" }), "siliconflow-balance");
++  assert.equal(apiKeyPlanRoute({ baseUrl: "https://api.openai.com/v1" }), undefined);
+   assert.equal(apiKeyPlanRoute({ baseUrl: "https://opencode.ai/zen/go/v1" }), "opencode-go");
+   assert.equal(apiKeyPlanRoute({ baseUrl: "https://opencode.ai/zen/v1" }), undefined);
+   assert.equal(
+@@ -141,3 +149,47 @@ test("Kimi Code reads the coding usage endpoint with the saved key", async () =>
+   await readApiKeyPlanUsage("kimi-code", "fixture-kimi", "https://api.kimi.ai/coding/v1/", fetcher, () => 1);
+   assert.deepEqual(seen, ["https://api.kimi.com/coding/v1/usages", "https://api.kimi.ai/coding/v1/usages"]);
+ });
++
++test("API-key balances keep money readings apart from plan windows", () => {
++  const deepseek = parseDeepSeekBalance(
++    { is_available: true, balance_infos: [{ currency: "CNY", total_balance: "110.00", granted_balance: "10.00", topped_up_balance: "100.00" }] },
++    7,
++  );
++  assert.equal(deepseek.status, "available");
++  if (deepseek.status === "available") {
++    assert.deepEqual(deepseek.windows, []);
++    assert.deepEqual(deepseek.balances, [{ id: "balance:CNY", kind: "balance", amount: 110, currency: "CNY" }]);
++  }
++  const moonshot = parseMoonshotBalance({ code: 0, scode: "0x0", status: true, data: { available_balance: 49.5, voucher_balance: 0, cash_balance: 49.5 } }, 7, "CNY");
++  assert.equal(moonshot.status === "available" && moonshot.balances?.[0]?.amount, 49.5);
++  assert.equal(parseMoonshotBalance({ code: 1, status: false, data: {} }, 7, "CNY").status, "unavailable");
++  const capped = parseOpenRouterKey({ data: { limit: 20, usage: 5, limit_remaining: 15, limit_reset: "monthly" } }, 7);
++  assert.equal(capped.status, "available");
++  if (capped.status === "available") {
++    assert.deepEqual(capped.balances, [{ id: "key-remaining", kind: "remaining", amount: 15, currency: "USD", limit: 20 }]);
++    assert.deepEqual(capped.windows, [{ id: "default:key-limit", usedPercent: 25, windowMinutes: 43_200 }]);
++  }
++  const uncapped = parseOpenRouterKey({ data: { limit: null, usage: 3.25 } }, 7);
++  assert.equal(uncapped.status === "available" && uncapped.balances?.[0]?.kind, "spent");
++  const silicon = parseSiliconFlowBalance({ code: 20000, status: true, data: { balance: "0.88", totalBalance: "88.88" } }, 7, "CNY");
++  assert.equal(silicon.status === "available" && silicon.balances?.[0]?.amount, 88.88);
++  assert.deepEqual(parseSiliconFlowBalance({ data: {} }, 7), { status: "unavailable", unavailableReason: "no-provider-data" });
++});
++
++test("balance reads use each vendor's documented endpoint with the saved key", async () => {
++  const seen: string[] = [];
++  const fetcher: typeof fetch = async (url) => {
++    seen.push(String(url));
++    return Response.json({});
++  };
++  await readApiKeyPlanUsage("deepseek-balance", "k", "https://api.deepseek.com/anthropic", fetcher, () => 1);
++  await readApiKeyPlanUsage("moonshot-balance", "k", "https://api.moonshot.ai/anthropic", fetcher, () => 1);
++  await readApiKeyPlanUsage("openrouter-key", "k", "https://openrouter.ai/api/v1", fetcher, () => 1);
++  await readApiKeyPlanUsage("siliconflow-balance", "k", "https://api.siliconflow.cn/v1", fetcher, () => 1);
++  assert.deepEqual(seen, [
++    "https://api.deepseek.com/user/balance",
++    "https://api.moonshot.ai/v1/users/me/balance",
++    "https://openrouter.ai/api/v1/key",
++    "https://api.siliconflow.cn/v1/user/info",
++  ]);
++});
+diff --git a/packages/shared/src/api-key-plan-usage.ts b/packages/shared/src/api-key-plan-usage.ts
+index 6387858..a2fe446 100644
+--- a/packages/shared/src/api-key-plan-usage.ts
++++ b/packages/shared/src/api-key-plan-usage.ts
+@@ -2,7 +2,21 @@
+  * API Key 套餐的额度读取路由（OpenCode Go、MiniMax Token Plan、Kimi Code）。
+  * 设置页与宿主服务共用同一判定，避免界面显示额度区块而服务不支持，或反之。
+  */
+-export type ApiKeyPlanRoute = "opencode-go" | "minimax-token-plan" | "kimi-code";
++export type ApiKeyPlanRoute =
++  | "opencode-go"
++  | "minimax-token-plan"
++  | "kimi-code"
++  | "deepseek-balance"
++  | "moonshot-balance"
++  | "openrouter-key"
++  | "siliconflow-balance";
++
++/** Routes that report money (balance/spend) rather than plan windows. */
++export const isApiKeyBalanceRoute = (route: ApiKeyPlanRoute | undefined) =>
++  route === "deepseek-balance" ||
++  route === "moonshot-balance" ||
++  route === "openrouter-key" ||
++  route === "siliconflow-balance";
+ 
+ const MINIMAX_TOKEN_PLAN_TEMPLATES = new Set(["fleet-minimax-token-plan", "fleet-minimax-token-plan-cn"]);
+ 
+@@ -17,6 +31,11 @@ export function apiKeyPlanRoute(provider: {
+     url = undefined;
+   }
+   if (url?.hostname === "opencode.ai" && url.pathname.startsWith("/zen/go")) return "opencode-go";
++  // 官方文档记载、用同一把 API Key 读取的余额/密钥额度接口（DeepSeek、Moonshot、OpenRouter、SiliconFlow）。
++  if (url?.hostname === "api.deepseek.com") return "deepseek-balance";
++  if (url?.hostname === "api.moonshot.cn" || url?.hostname === "api.moonshot.ai") return "moonshot-balance";
++  if (url?.hostname === "openrouter.ai") return "openrouter-key";
++  if (url?.hostname === "api.siliconflow.cn" || url?.hostname === "api.siliconflow.com") return "siliconflow-balance";
+   // Kimi Code 会员的 coding 端点；Moonshot 开放平台按量 API（api.moonshot.cn）不在此列。
+   if ((url?.hostname === "api.kimi.com" || url?.hostname === "api.kimi.ai") && /^\/coding(\/|$)/u.test(url.pathname))
+     return "kimi-code";
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 433de4a..67f9a7e 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -161,6 +161,10 @@ const enUS: Record<string, string> = {
+   "chat.contextUsage.lastRecorded": "Last",
+   "chat.contextUsage.estimated": "Estimate",
+   "chat.contextUsage.compositionEstimate": "Context composition (character estimate)",
++  "settings.modelProvider.allowance.balanceTitle": "Account balance",
++  "settings.modelProvider.allowance.balance.balance": "Balance",
++  "settings.modelProvider.allowance.balance.spent": "Spent with this key",
++  "settings.modelProvider.allowance.balance.remaining": "Key limit remaining",
+   "settings.modelProvider.allowance.title": "Plan allowance",
+   "settings.modelProvider.allowance.claudeApps": "Claude apps",
+   "settings.modelProvider.allowance.noProviderData":
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index e43d764..176638d 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -137,6 +137,10 @@ const zhCN: Record<string, string> = {
+   "chat.contextUsage.lastRecorded": "上次",
+   "chat.contextUsage.estimated": "估算",
+   "chat.contextUsage.compositionEstimate": "上下文构成（按字符估算）",
++  "settings.modelProvider.allowance.balanceTitle": "账户余额",
++  "settings.modelProvider.allowance.balance.balance": "余额",
++  "settings.modelProvider.allowance.balance.spent": "本密钥已用",
++  "settings.modelProvider.allowance.balance.remaining": "本密钥剩余额度",
+   "settings.modelProvider.allowance.title": "订阅额度",
+   "settings.modelProvider.allowance.claudeApps": "Claude 应用",
+   "settings.modelProvider.allowance.noProviderData": "官方客户端未返回额度数据，账号连接保持不变。",
+diff --git a/packages/ui/src/lib/subscriptionPlanPresentation.ts b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+index ff7b149..6abc0f2 100644
+--- a/packages/ui/src/lib/subscriptionPlanPresentation.ts
++++ b/packages/ui/src/lib/subscriptionPlanPresentation.ts
+@@ -1,11 +1,6 @@
+-type SubscriptionKind =
+-  | "openai-codex"
+-  | "github-copilot"
+-  | "xai"
+-  | "claude"
+-  | "opencode-go"
+-  | "minimax-token-plan"
+-  | "kimi-code";
++import type { ApiKeyPlanRoute } from "@zcode/shared";
++
++type SubscriptionKind = "openai-codex" | "github-copilot" | "xai" | "claude" | ApiKeyPlanRoute;
+ const COLORS = {
+   neutral: "bg-muted text-foreground-subtle",
+   green: "bg-success/15 text-foreground border-success/30",
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+index ff5ca8d..480c02a 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionAllowanceDetails.tsx
+@@ -39,9 +39,22 @@ export function SubscriptionAllowanceDetails({
+   const days = activeUntil === undefined ? undefined : Math.ceil((activeUntil - now) / 86_400_000);
+   return (
+     <div className="@container space-y-2">
+-      {result.windows.length === 0 ? (
++      {result.windows.length === 0 && !result.balances?.length ? (
+         <p className="text-ui-sm text-foreground-subtle">{t("windowsUnavailable")}</p>
+       ) : null}
++      {result.balances?.map((balance) => (
++        <div key={balance.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-ui-base">
++          <span className="text-foreground-subtle">{t(`balance.${balance.kind}`)}</span>
++          <span className="tabular-nums">
++            {new Intl.NumberFormat(locale, { style: "currency", currency: balance.currency }).format(balance.amount)}
++            {balance.limit !== undefined ? (
++              <span className="text-foreground-subtle">
++                {` / ${new Intl.NumberFormat(locale, { style: "currency", currency: balance.currency }).format(balance.limit)}`}
++              </span>
++            ) : null}
++          </span>
++        </div>
++      ))}
+       <div
+         className={cn(
+           "grid grid-cols-1 gap-x-4",
+diff --git a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+index f18e7e2..ef67182 100644
+--- a/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/SubscriptionUsageSection.tsx
+@@ -8,6 +8,7 @@ import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { subscriptionPlanPresentation } from "@/lib/subscriptionPlanPresentation.js";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
++import { isApiKeyBalanceRoute, type ApiKeyPlanRoute } from "@zcode/shared";
+ 
+ // 沿用 ZCode 状态卡的标题/动作/内容布局，额度属于账号，不属于上下文 Token 环。
+ export function SubscriptionUsageSection({
+@@ -25,7 +26,7 @@ export function SubscriptionUsageSection({
+ }: {
+   providerId: string;
+   revision: string;
+-  kind: "openai-codex" | "github-copilot" | "xai" | "claude" | "opencode-go" | "minimax-token-plan" | "kimi-code";
++  kind: "openai-codex" | "github-copilot" | "xai" | "claude" | ApiKeyPlanRoute;
+   accountId?: string;
+   enabled?: boolean;
+   compact?: boolean;
+@@ -54,7 +55,7 @@ export function SubscriptionUsageSection({
+     >
+       <div className="flex items-center justify-between gap-3">
+         <span className="text-ui-base font-medium">
+-          {t("title")}
++          {t(isApiKeyBalanceRoute(kind as ApiKeyPlanRoute) ? "balanceTitle" : "title")}
+           {result?.status === "available" && result.plan && !reading
+             ? ` · ${subscriptionPlanPresentation(kind, result.plan).name}`
+             : ""}
+diff --git a/packages/ui/test/subscriptionAllowanceDetails.test.tsx b/packages/ui/test/subscriptionAllowanceDetails.test.tsx
+index 78f2cd1..d02ab39 100644
+--- a/packages/ui/test/subscriptionAllowanceDetails.test.tsx
++++ b/packages/ui/test/subscriptionAllowanceDetails.test.tsx
+@@ -92,3 +92,19 @@ test("Grok tiers share account badges while preserving distinct product tiers an
+   assert.equal(subscriptionPlanPresentation("openai-codex", "chatgptplusplan").name, "Plus");
+   assert.equal(subscriptionPlanPresentation("github-copilot", "pro+").name, "Pro+");
+ });
++test("API-key balances render as money, without the empty-allowance notice", () => {
++  const html = render({
++    ...base,
++    windows: [],
++    balances: [
++      { id: "balance:CNY", kind: "balance", amount: 110, currency: "CNY" },
++      { id: "key-remaining", kind: "remaining", amount: 15, currency: "USD", limit: 20 },
++    ],
++  });
++  assert.match(html, />Balance</);
++  assert.match(html, /CN¥110\.00/);
++  assert.match(html, />Key limit remaining</);
++  assert.match(html, /\$15\.00/);
++  assert.match(html, /\/ \$20\.00/);
++  assert.doesNotMatch(html, /Usage allowance is unavailable/);
++});
