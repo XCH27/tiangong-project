@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Keep Settings drafts when opening Help, lock the subagent scope while saving, and keep page
+  assistant keystrokes out of the main composer (SHELL-HELP-DRAFT/SUBAGENT-SCOPE/SHORTCUT-SCOPE;
+  typechecked, not yet visually checked).
+
 - Record automatic memory extraction's model usage per physical call (K-03).
 
 - Record received model usage before publishing completion events (K-04).
