@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Add Cursor, Kimi Code CLI and OpenCode CLI as native executors through one ACP client; their
+  permission requests follow the composer permission and use Fleet's approval card.
+
 - Restore Antigravity plan mode (it was disabled by `--disable-slash-commands`) and correct its
   permission mapping to measured agy 1.2.14 behaviour; refusal notes name the permission to switch to.
 

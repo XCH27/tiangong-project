@@ -240,3 +240,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0153 | [0153-shell-scope-fixes.patch](0153-shell-scope-fixes.patch) | `60753ec73d73b15672ef2431e2b3d0e040cbd143` |
 
 | 0154 | [0154-antigravity-modes-measured.patch](0154-antigravity-modes-measured.patch) | `5bb3824ec314ceb96243b4f5679f1d7b678cf70a` |
+
+| 0155 | [0155-acp-native-executor.patch](0155-acp-native-executor.patch) | `3d4dc297c0de705261f244a0e89ac71c38a1d361` |

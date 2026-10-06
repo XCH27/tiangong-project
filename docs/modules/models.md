@@ -669,10 +669,10 @@ Fleet maps its four permissions onto these (OV-094) and names the permission all
 `denied_actions` entry; user `permissions.allow` rules can loosen defaults. Mid-run confirmation
 needs the PreToolUse hook (AionCore; project/global file: owner checkpoint). Direct model access
 (CLIProxyAPI/NewMax) reuses Antigravity's OAuth client identity: excluded. Tools run inside agy.
+Cursor/Kimi Code/OpenCode CLIs share one ACP executor (0155, H6; [evidence](../references.md#native-cli-executor-intake-antigravity-and-cursor-2026-10-06)).
 Allowance stays unsupported: the token lives in the OS keyring and Orca only mirrors Gemini CLI quota.
-GUI launches lack terminal proxy variables; the Host resolves the OS route per official endpoint at
-Agent spawn (`FLEET_NATIVE_EXECUTOR_NETWORK`) for native executor children only. Verified: fake-process
-tests and a live two-turn `gemini-3.8-flash-low` conversation with native resume and accounting.
+The Host resolves each executor's OS route at Agent spawn (`FLEET_NATIVE_EXECUTOR_NETWORK`); a live
+two-turn `gemini-3.8-flash-low` conversation verified native resume and accounting.
 
 ## Execution contracts
 

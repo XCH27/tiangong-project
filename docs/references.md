@@ -4096,3 +4096,14 @@ Installed binaries, not screenshots: `agy` 1.2.14 and `cursor-agent` 2026.08.04-
 Disposition: keep each vendor's official CLI as a whole executor (H6), mapping Fleet's four permission
 modes onto the vendor's own modes. Cursor follows Paseo's ACP route so its permission requests reach
 Fleet's existing approval UI; direct model access through another client's OAuth identity is excluded.
+
+Implemented in candidate 0155 as one hand-written ACP v1 executor (no SDK dependency) for Cursor,
+Kimi Code CLI and OpenCode CLI. Verified 2026-10-06: Kimi 0.37.2 and OpenCode 1.18.32 connect and
+list account models (10 / 31; OpenCode thinking levels low…max); signed-out Cursor fails in 20 s with
+its login instruction (its `authenticate` never answers). Live prompts reached each vendor and
+returned its plan errors (Kimi 403 "subscription does not have access to Kimi Code"; OpenCode "An
+active OpenCode Go subscription" required), matching the CLIs run directly. The approval card was
+proved in the real desktop UI with a local fake ACP agent (allow → file written → reply). OpenCode is
+given `OPENCODE_CONFIG_CONTENT` permission `ask` outside Full access so its edits reach Fleet. No
+live paid request was made; the user's DeepSeek key behind OpenCode was not used.
+
