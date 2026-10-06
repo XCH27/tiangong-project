@@ -4112,3 +4112,10 @@ Candidate 0156 adds Hermes (`hermes-acp`; hermes-agent `acp_adapter/server.py` m
 accept_edits / dont_ask, no plan; models via `session/set_model`) and OpenClaw (`openclaw acp`, a
 Gateway bridge: model selection and per-session MCP unsupported per `docs/cli/acp.md`, exec approvals
 relayed through `session/request_permission`). Fake-agent tests only; neither CLI is installed here.
+
+Candidate 0158 adds CodeBuddy Code 2.127.2 (`codebuddy --acp`): handshake verified (modes default /
+acceptEdits / plan / auto / dontAsk / bypassPermissions; 13 models with `_meta` supportsImages,
+maxInputTokens and credit multipliers, `hy3` at x0.00). The connection listed models in the desktop
+app; the following free `hy3` prompt was refused because the CLI login had expired
+(`~/.codebuddy/logs`: "Authentication required … /login"), which now surfaces as the sign-in
+instruction. A completed CodeBuddy turn awaits the owner's re-login.

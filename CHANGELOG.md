@@ -5,6 +5,8 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Add CodeBuddy through the ACP executor; vendor sign-in refusals show the CLI's login instruction.
+
 - Show DeepSeek, Moonshot and SiliconFlow balances and OpenRouter key spend from the saved API key.
 
 - Add Hermes and OpenClaw connections through the same ACP executor (not live-verified; CLIs not

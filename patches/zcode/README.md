@@ -246,3 +246,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0156 | [0156-acp-hermes-openclaw.patch](0156-acp-hermes-openclaw.patch) | `364ec6c85782ad52bce761e4793d59ad9811915e` |
 
 | 0157 | [0157-api-key-balances.patch](0157-api-key-balances.patch) | `b7b6fd8cb9f2171f7e2376f499092f30e9d6e39b` |
+
+| 0158 | [0158-acp-codebuddy.patch](0158-acp-codebuddy.patch) | `badd43e9f52d7c8bef58360e809aa5b321d07d56` |
