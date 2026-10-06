@@ -1,0 +1,384 @@
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-kimi-dark.svg b/packages/ui/src/assets/provider-icons/model-provider-kimi-dark.svg
+new file mode 100644
+index 0000000..83878fa
+--- /dev/null
++++ b/packages/ui/src/assets/provider-icons/model-provider-kimi-dark.svg
+@@ -0,0 +1 @@
++<svg height="1em" style="flex:none;line-height:1" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><title>Kimi</title><path d="M21.846 0a1.923 1.923 0 110 3.846H20.15a.226.226 0 01-.227-.226V1.923C19.923.861 20.784 0 21.846 0z" fill="#1783FF"></path><path d="M11.065 11.199l7.257-7.2c.137-.136.06-.41-.116-.41H14.3a.164.164 0 00-.117.051l-7.82 7.756c-.122.12-.302.013-.302-.179V3.82c0-.127-.083-.23-.185-.23H3.186c-.103 0-.186.103-.186.23V19.77c0 .128.083.23.186.23h2.69c.103 0 .186-.102.186-.23v-3.25c0-.069.025-.135.069-.178l2.424-2.406a.158.158 0 01.205-.023l6.484 4.772a7.677 7.677 0 003.453 1.283c.108.012.2-.095.2-.23v-3.06c0-.117-.07-.212-.164-.227a5.028 5.028 0 01-2.027-.807l-5.613-4.064c-.117-.078-.132-.279-.028-.381z" fill="#fff"></path></svg>
+\ No newline at end of file
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-kimi-light.svg b/packages/ui/src/assets/provider-icons/model-provider-kimi-light.svg
+new file mode 100644
+index 0000000..60719d5
+--- /dev/null
++++ b/packages/ui/src/assets/provider-icons/model-provider-kimi-light.svg
+@@ -0,0 +1 @@
++<svg height="1em" style="flex:none;line-height:1" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><title>Kimi</title><path d="M21.846 0a1.923 1.923 0 110 3.846H20.15a.226.226 0 01-.227-.226V1.923C19.923.861 20.784 0 21.846 0z" fill="#1783FF"></path><path d="M11.065 11.199l7.257-7.2c.137-.136.06-.41-.116-.41H14.3a.164.164 0 00-.117.051l-7.82 7.756c-.122.12-.302.013-.302-.179V3.82c0-.127-.083-.23-.185-.23H3.186c-.103 0-.186.103-.186.23V19.77c0 .128.083.23.186.23h2.69c.103 0 .186-.102.186-.23v-3.25c0-.069.025-.135.069-.178l2.424-2.406a.158.158 0 01.205-.023l6.484 4.772a7.677 7.677 0 003.453 1.283c.108.012.2-.095.2-.23v-3.06c0-.117-.07-.212-.164-.227a5.028 5.028 0 01-2.027-.807l-5.613-4.064c-.117-.078-.132-.279-.028-.381z" fill="#000"></path></svg>
+\ No newline at end of file
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json b/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
+index 7e2b82d..5fc8ac2 100644
+--- a/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
++++ b/packages/ui/src/assets/provider-icons/model-provider-logo-sources.json
+@@ -6,7 +6,9 @@
+       "brand": "OpenRouter",
+       "file": "model-provider-openrouter-light.svg",
+       "darkFile": "model-provider-openrouter-dark.svg",
+-      "providerIds": ["openrouter"],
++      "providerIds": [
++        "openrouter"
++      ],
+       "sourceUrl": "https://openrouter.ai/brand/logos/transparent/glyph/svg/glyph-grape-square.svg",
+       "darkSourceUrl": "https://openrouter.ai/brand/logos/transparent/glyph/svg/glyph-volt-square.svg",
+       "sourceOwner": "OpenRouter",
+@@ -16,7 +18,11 @@
+       "brand": "OpenCode",
+       "file": "model-provider-opencode-light.svg",
+       "darkFile": "model-provider-opencode-dark.svg",
+-      "providerIds": ["opencode-zen-responses", "opencode-zen-messages", "opencode-zen-chat"],
++      "providerIds": [
++        "opencode-zen-responses",
++        "opencode-zen-messages",
++        "opencode-zen-chat"
++      ],
+       "sourceUrl": "https://opencode.ai/brand",
+       "sourceOwner": "OpenCode",
+       "normalization": "Official 300x300 square SVG downloads, unchanged. Decoded logoLightSquareSvg / logoDarkSquareSvg from brand page asset index-CmefrukV.js. Retrieved 2026-09-07."
+@@ -24,7 +30,10 @@
+     {
+       "brand": "Start Plan",
+       "file": "model-provider-start-plan.png",
+-      "providerIds": ["account:zai-start-plan", "account:bigmodel-start-plan"],
++      "providerIds": [
++        "account:zai-start-plan",
++        "account:bigmodel-start-plan"
++      ],
+       "sourceUrl": "user-provided:icon_512.png",
+       "sourceOwner": "User-provided asset",
+       "normalization": "Byte-for-byte copy of the user-provided 128x128 RGBA PNG on 2026-09-17. Shared by both Start Plans in light and dark themes."
+@@ -58,7 +67,9 @@
+     {
+       "brand": "Moonshot Kimi",
+       "file": "model-provider-moonshot-kimi.png",
+-      "providerIds": ["moonshot-kimi"],
++      "providerIds": [
++        "moonshot-kimi"
++      ],
+       "sourceUrl": "https://raw.githubusercontent.com/MoonshotAI/Branding-Guide/67b20b1315f96d05f3192b24050635745abd3d90/scenarios/03-icon-without-kimi/kimi-icon-right-angle.png",
+       "sourceOwner": "Moonshot AI",
+       "normalization": "Official right-angle icon downsampled from 1024x1024 to 80x80 RGB."
+@@ -66,7 +77,9 @@
+     {
+       "brand": "MiniMax",
+       "file": "model-provider-minimax.png",
+-      "providerIds": ["minimax"],
++      "providerIds": [
++        "minimax"
++      ],
+       "sourceUrl": "https://file.cdn.minimax.io/public/MiniMax_Logo.zip",
+       "sourceOwner": "MiniMax",
+       "normalization": "Official 200x200 full-square SVG from the MiniMax brand package rendered at 80x80 RGB."
+@@ -74,7 +87,9 @@
+     {
+       "brand": "DeepSeek",
+       "file": "model-provider-deepseek.png",
+-      "providerIds": ["deepseek"],
++      "providerIds": [
++        "deepseek"
++      ],
+       "sourceUrl": "https://github.com/deepseek-ai.png?size=512",
+       "sourceOwner": "DeepSeek",
+       "normalization": "Official GitHub organization avatar downsampled from 460x460 to 80x80 RGB."
+@@ -82,7 +97,10 @@
+     {
+       "brand": "Alibaba Model Studio",
+       "file": "model-provider-alibaba-cloud.png",
+-      "providerIds": ["qwen-alibaba-model-studio-cn", "qwen-alibaba-model-studio-intl"],
++      "providerIds": [
++        "qwen-alibaba-model-studio-cn",
++        "qwen-alibaba-model-studio-intl"
++      ],
+       "sourceUrl": "https://github.com/aliyun.png?size=512",
+       "sourcePage": "https://github.com/aliyun",
+       "sourceOwner": "Alibaba Cloud",
+@@ -91,7 +109,9 @@
+     {
+       "brand": "Xiaomi MiMo",
+       "file": "model-provider-xiaomi-mimo.png",
+-      "providerIds": ["xiaomi-mimo"],
++      "providerIds": [
++        "xiaomi-mimo"
++      ],
+       "sourceUrl": "https://platform.xiaomimimo.com/static/logo.5c3d18dc51d9cbea.jpg",
+       "sourceOwner": "Xiaomi MiMo",
+       "normalization": "Official 256x256 embedded source image downsampled to 80x80 RGB."
+@@ -99,7 +119,9 @@
+     {
+       "brand": "OpenAI",
+       "file": "model-provider-openai.png",
+-      "providerIds": ["openai"],
++      "providerIds": [
++        "openai"
++      ],
+       "sourceUrl": "https://images.ctfassets.net/j22is2dtoxu1/intercom-img-d177d076c9a5453052925143/49d5d812b0a6fcc20a14faa8c629d9fb/icon-ios-1024_401x.png",
+       "sourceOwner": "OpenAI",
+       "normalization": "Official 1024x1024 OpenAI Help Center icon downsampled to 80x80 RGB."
+@@ -107,7 +129,9 @@
+     {
+       "brand": "Anthropic",
+       "file": "model-provider-anthropic.png",
+-      "providerIds": ["anthropic"],
++      "providerIds": [
++        "anthropic"
++      ],
+       "sourceUrl": "https://cdn.prod.website-files.com/67ce28cfec624e2b733f8a52/67d31dd7aa394792257596c5_webclip.png",
+       "sourceOwner": "Anthropic",
+       "normalization": "Official website webclip downsampled from 256x256 to 80x80 RGB."
+@@ -115,10 +139,37 @@
+     {
+       "brand": "xAI",
+       "file": "model-provider-xai.png",
+-      "providerIds": ["xai"],
++      "providerIds": [
++        "xai"
++      ],
+       "sourceUrl": "https://avatars.githubusercontent.com/u/130314967?v=4",
+       "sourceOwner": "xAI",
+       "normalization": "Official GitHub organization avatar downsampled from 460x460 to 80x80 RGB."
++    },
++    {
++      "brand": "Kimi",
++      "file": "model-provider-kimi-light.svg",
++      "darkFile": "model-provider-kimi-dark.svg",
++      "providerIds": [
++        "moonshot-kimi",
++        "fleet-kimi-coding",
++        "fleet-kimi-coding-global",
++        "fleet-kimi-cli-native"
++      ],
++      "sourceUrl": "https://www.kimi.com/pwa-192.png",
++      "sourceOwner": "Moonshot AI",
++      "normalization": "Official mark (K with blue #1783FF dot) as published in @lobehub/icons-static-svg 1.95.1 kimi-color.svg, matching kimi.com pwa-192.png. Dark file unchanged (white K); light file recolors only the K to #000 so it stays visible on light cards. Retrieved 2026-10-06."
++    },
++    {
++      "brand": "Xiaomi MiMo",
++      "file": "model-provider-xiaomi-mimo.png",
++      "providerIds": [
++        "xiaomi-mimo",
++        "fleet-xiaomi-token-plan-cn"
++      ],
++      "sourceUrl": "https://platform.xiaomimimo.com/favicon.png",
++      "sourceOwner": "Xiaomi",
++      "normalization": "Official platform favicon (black tile, white Xiaomi MIMO wordmark), downscaled from 535x534 to 128px with sips. Xiaomi publishes no coloured MiMo mark (mimo.xiaomi.com logo is grey text). Retrieved 2026-10-06."
+     }
+   ],
+   "scope": "Retained source-asset provenance. Runtime rendering is owned by ProviderLogo.tsx; entries below are not a second lookup table.",
+diff --git a/packages/ui/src/assets/provider-icons/model-provider-xiaomi-mimo.png b/packages/ui/src/assets/provider-icons/model-provider-xiaomi-mimo.png
+index d9db8f8e42f8561b76ee7e7454128b7f07efcbc4..2741c4225a347004a485802874c0708d661eca4b 100644
+GIT binary patch
+literal 6240
+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
+
+literal 2769
+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
+XZu@vgbB!>^00000NkvXXu0mjft^!-;
+
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+index b0bb794..794bc07 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderLogo.tsx
+@@ -7,12 +7,13 @@ import { resolveTheme } from "@/useTheme.js";
+ import startPlanLogo from "@/assets/provider-icons/model-provider-start-plan.png";
+ import openrouterLight from "@/assets/provider-icons/model-provider-openrouter-light.svg";
+ import openrouterDark from "@/assets/provider-icons/model-provider-openrouter-dark.svg";
++import kimiLight from "@/assets/provider-icons/model-provider-kimi-light.svg";
++import kimiDark from "@/assets/provider-icons/model-provider-kimi-dark.svg";
++import xiaomiMimo from "@/assets/provider-icons/model-provider-xiaomi-mimo.png";
+ import Zai from "@lobehub/icons-static-svg/icons/zai.svg";
+-import Kimi from "@lobehub/icons-static-svg/icons/kimi.svg";
+ import Minimax from "@lobehub/icons-static-svg/icons/minimax-color.svg";
+ import DeepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
+ import Bailian from "@lobehub/icons-static-svg/icons/bailian-color.svg";
+-import XiaomiMiMo from "@lobehub/icons-static-svg/icons/xiaomimimo.svg";
+ import OpenAI from "@lobehub/icons-static-svg/icons/openai.svg";
+ import Anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg";
+ import Claude from "@lobehub/icons-static-svg/icons/claude-color.svg";
+@@ -42,11 +43,11 @@ type ProviderLogoRef = NonNullable<ProviderConfigObject["logo"]>;
+ const BUILTIN_PROVIDER_ICONS: Readonly<Record<string, { src: string; dark?: string; color: boolean }>> = {
+   zai: { src: Zai, color: false },
+   bigmodel: { src: Zai, color: false },
+-  "moonshot-kimi": { src: Kimi, color: false },
++  "moonshot-kimi": { src: kimiLight, dark: kimiDark, color: true },
+   minimax: { src: Minimax, color: true },
+   deepseek: { src: DeepSeek, color: true },
+   "alibaba-model-studio": { src: Bailian, color: true },
+-  "xiaomi-mimo": { src: XiaomiMiMo, color: false },
++  "xiaomi-mimo": { src: xiaomiMimo, color: true },
+   openai: { src: OpenAI, color: false },
+   codex: { src: OpenAI, color: false }, // Retain the previous stored key as a ChatGPT-mark alias.
+   anthropic: { src: Anthropic, color: false },

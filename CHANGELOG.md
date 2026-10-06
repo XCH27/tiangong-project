@@ -5,6 +5,8 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Use the official coloured Kimi mark (light/dark variants) and the official Xiaomi MiMo app icon.
+
 - Retire the Gemini CLI connection added in candidate 0159 (owner instruction, 2026-10-06).
 
 - Add Gemini CLI and Qwen Code through the ACP executor (untested here); launch Hermes via `hermes acp`.
