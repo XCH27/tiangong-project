@@ -224,3 +224,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0145 | [0145-craft-style-contextual-assistant.patch](0145-craft-style-contextual-assistant.patch) | `afced14e153d5c40c628b2b7d72069b6caaa8eb6` |
 
 | 0146 | [0146-antigravity-native-executor.patch](0146-antigravity-native-executor.patch) | `62d259456e922800e87cf613dec2e8bff2d07757` |
+
+| 0147 | [0147-antigravity-permission-truth.patch](0147-antigravity-permission-truth.patch) | `c1ad6573c3a7d3804654c8357c5ec7271751f309` |

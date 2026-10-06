@@ -663,14 +663,16 @@ agy 1.2.13 captures and AionCore `backend/antigravity`: `--input-format/--output
 `--conversation` resume fenced by executor version, `result.response` as the only text (deltas split
 multibyte characters), usage summed from DONE agent steps. Connection is `agy --version` plus `agy
 models` under the user's own Google sign-in; Fleet starts no login, imports no token and strips
-inherited Gemini API variables. The composer permission maps onto agy modes (OV-094); `denied_actions`
-are appended to the reply. Its tools still run inside agy, not through Fleet Host receipts; routing
-effects through Host tools (MCP or the PreToolUse hook, which must answer within 20 s) is open.
+inherited Gemini API variables. Headless agy (Paseo `tools-*` captures) allows file reads/edits and
+auto-denies commands in default, `plan` and `accept-edits` alike; only Full access runs commands, and
+`denied_actions` are appended to the reply. Per-edit confirmation needs agy's PreToolUse hook as the
+sole gate under `--dangerously-skip-permissions` (AionCore pattern; hook `timeout` defaults to 30 s,
+after which agy proceeds); every hook location is the user's project or global agy config, so it
+awaits an owner checkpoint. Its tools still run inside agy, not through Fleet Host receipts.
 Allowance stays unsupported: the token lives in the OS keyring and Orca only mirrors Gemini CLI quota.
-GUI launches lack terminal proxy variables, so the Host resolves the OS route per official endpoint
-at Agent spawn (`FLEET_NATIVE_EXECUTOR_NETWORK`) and only native executor children apply it.
-Verified on 2026-10-05: fake-process tests, plus a live two-turn conversation on
-`gemini-3.8-flash-low` with native resume and Google-subscription accounting.
+GUI launches lack terminal proxy variables; the Host resolves the OS route per official endpoint at
+Agent spawn (`FLEET_NATIVE_EXECUTOR_NETWORK`) for native executor children only. Verified: fake-process
+tests and a live two-turn `gemini-3.8-flash-low` conversation with native resume and accounting.
 
 ## Execution contracts
 

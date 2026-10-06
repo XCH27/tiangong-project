@@ -1,0 +1,64 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
+index 85112ff..3e82444 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-turn.ts
+@@ -170,7 +170,7 @@ export function createAntigravityNativeAgentPort(
+                 .map((item) => item.display_name || item.action)
+                 .filter(Boolean);
+               const note = denied.length
+-                ? `\n\n> Antigravity 未执行需要确认的操作：${denied.join("、")}。如需执行，请在输入框切换到“自动编辑”或“完全访问”。`
++                ? `\n\n> Antigravity 未执行需要确认的操作：${denied.join("、")}。如需执行，请在输入框切换到“完全访问”。`
+                 : "";
+               finish(`${result.response ?? ""}${note}`);
+               child?.stdin.end();
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
+index 38bd28e..b9cf608 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/antigravity-wire.ts
+@@ -87,10 +87,10 @@ export function addAgyUsage(total: ModelUsage, usage: AgyUsage | null | undefine
+ }
+ 
+ /**
+- * Fleet 权限选择 → agy 参数（OV-094）。agy 无法在 stream-json 中转发确认请求：
+- * plan（计划模式）→ --mode plan；build（变更前确认）与未暴露的 auto → 默认（agy 需确认的工具被拒绝并在
+- * result.denied_actions 中报告）；edit（自动编辑）→ --mode accept-edits；yolo（完全访问）→
+- * --dangerously-skip-permissions。
++ * Fleet 权限选择 → agy 参数（OV-094）。agy 无法在 stream-json 中转发确认请求，且 agy 1.2.13 实测
++ * （Paseo tools-* 抓包）在默认、plan、accept-edits 三种模式下都允许读写文件、只自动拒绝命令，
++ * 被拒的操作在 result.denied_actions 中报告。因此只有 yolo（完全访问）→ --dangerously-skip-permissions
++ * 会执行命令；文件改动的逐次确认需要 PreToolUse 钩子作为唯一闸门，尚待 owner 决定。
+  */
+ export function agyPermissionArgs(mode: CollaborationMode | undefined): string[] {
+   if (mode === "plan") return ["--mode", "plan"];
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+index db379f7..d7332f4 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.en.md
+@@ -53,9 +53,9 @@ that changing the default before a queued turn starts leaves that turn on its fo
+ 
+ Claude, ChatGPT and Antigravity connections run each turn through the official CLI on this machine.
+ Antigravity first needs a Google sign-in: run `agy` in a terminal. Its tools run inside its own
+-process, so the composer's permission choice maps to its modes: Plan mode only plans; Ask before
+-changes refuses actions that need confirmation and lists them at the end of the reply; Edit
+-automatically allows file edits; Full access stops asking. It offers no allowance query, so its card
++process. Under any permission other than Full access it can still read and edit project files but
++does not run commands; refused actions are listed at the end of the reply. Switch to Full access when
++it needs to run commands. It offers no allowance query, so its card
+ shows no allowance.
+ 
+ Subscription allowance appears in the account card. API plans such as OpenCode Go and MiniMax Token
+diff --git a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+index b36bda6..e708ae2 100644
+--- a/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
++++ b/apps/zcode-cli/packages/zcode-guide-plugin/docs/guide.zh-CN.md
+@@ -40,8 +40,8 @@ API 密钥按回车或离开输入框自动保存，没有额外确认按钮。E
+ 账号；排队期间修改默认账号，尚不能保证排队中的任务继续使用原来的账号。
+ 
+ Claude、ChatGPT、Antigravity 连接调用本机官方 CLI 完成整轮工作。Antigravity 需先在终端运行 `agy`
+-完成 Google 登录；它在自身进程内执行工具，输入框的权限选择对应其模式：计划模式只读规划，
+-变更前确认会拒绝需要确认的操作并在回复末尾列出，自动编辑允许改文件，完全访问不再确认。
++完成 Google 登录；它在自身进程内执行工具。完全访问以外的权限下，Antigravity 仍可读写项目文件，
++但不会执行命令，被拒的操作列在回复末尾；需要它运行命令时切换到完全访问。
+ 它不提供额度查询，账号卡片因此不显示额度。
+ 
+ 订阅账号的额度显示在账号卡片中；OpenCode Go、MiniMax Token Plan 等 API 套餐用已保存的同一把密钥读取额度，
