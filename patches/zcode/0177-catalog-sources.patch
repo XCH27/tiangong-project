@@ -1,0 +1,994 @@
+From faefb87d19a735637158394717ca042d869962a7 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 14:02:09 -0700
+Subject: [PATCH] Catalog sources: the MCP Registry and Agent Skills
+ repositories install as one-primitive plugins (OV-100 phase 2)
+
+An mcp-registry marketplace source pages GET /v0.1/servers?version=latest
+and turns each active server into a strict:false entry: npm, then PyPI,
+then hosted HTTP/SSE, then OCI; required secrets become sensitive plugin
+userConfig used only in env and headers, URL placeholders become
+non-sensitive config, and a secret command argument skips that package.
+Installing stages an empty root and writes the manifest from the entry,
+so install, update and removal stay on the existing lifecycle. A folder or
+repository without a marketplace manifest but with SKILL.md folders lists
+each skill as a one-skill plugin; a folder that is itself a plugin is not
+split. The Add marketplace dialog offers the official MCP Registry, and
+catalog groups larger than 60 start collapsed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../packages/adapters/src/plugins/index.ts    |   7 +
+ .../adapters/src/plugins/marketplace.ts       |  72 +++-
+ .../adapters/src/plugins/mcp-registry.ts      | 348 ++++++++++++++++++
+ .../adapters/src/plugins/skills-repository.ts |  81 ++++
+ .../test/plugin-catalog-adapters.test.ts      | 185 ++++++++++
+ packages/ui/src/i18n/locales/en-US.ts         |   4 +-
+ packages/ui/src/i18n/locales/zh-CN.ts         |   4 +-
+ .../settings/AddMarketplaceSourceDialog.tsx   |  14 +
+ .../ui/src/settings/PluginStoreListView.tsx   |  35 +-
+ 9 files changed, 731 insertions(+), 19 deletions(-)
+ create mode 100644 apps/zcode-cli/packages/adapters/src/plugins/mcp-registry.ts
+ create mode 100644 apps/zcode-cli/packages/adapters/src/plugins/skills-repository.ts
+ create mode 100644 apps/zcode-cli/packages/bootstrap/test/plugin-catalog-adapters.test.ts
+
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/index.ts b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+index 7a8604e..1817053 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+@@ -1059,3 +1059,10 @@ function emptyComponents(hookDetails: PluginHookDetail[] = []): PluginComponents
+ function resolveEnabled(config: PluginConfig, id: string, defaultEnabled: boolean): boolean {
+   return config.enabledPlugins[id] ?? defaultEnabled;
+ }
++export {
++  fetchMcpRegistryCatalog,
++  isMcpRegistryUrl,
++  mcpRegistryServerToEntry,
++  OFFICIAL_MCP_REGISTRY_URL,
++} from "./mcp-registry.js";
++export { synthesizeSkillsMarketplace } from "./skills-repository.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts b/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
+index 361227f..1f49a9f 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
+@@ -18,6 +18,13 @@ import {
+   sanitizePluginId,
+ } from "./helpers.js";
+ import { enumeratePluginComponents, type PluginComponentGroup } from "./plugin-components.js";
++import {
++  fetchMcpRegistryCatalog,
++  isMcpRegistryUrl,
++  MCP_REGISTRY_ENTRY_SOURCE,
++  normalizeRegistryBaseUrl,
++} from "./mcp-registry.js";
++import { skillsMarketplaceName, synthesizeSkillsMarketplace } from "./skills-repository.js";
+ import { applyNetworkEgressEnv } from "../network/subprocess-env.js";
+ import { createNodeWebFetchHttpClientAdapter } from "../http/index.js";
+ import { writeCdnOfficialMarketplacePartitionSync } from "./official-marketplace.js";
+@@ -72,7 +79,8 @@ export type MarketplaceSource =
+   | { source: "directory"; path: string }
+   | { hostPattern: string; source: "hostPattern" }
+   | { pathPattern: string; source: "pathPattern" }
+-  | { source: "settings"; marketplace: PluginMarketplaceManifest };
++  | { source: "settings"; marketplace: PluginMarketplaceManifest }
++  | { source: "mcp-registry"; url: string };
+ 
+ export interface PluginMarketplaceEntry {
+   name: string;
+@@ -225,6 +233,9 @@ export async function parseMarketplaceSourceInput(input: string): Promise<Market
+   }
+ 
+   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
++    if (isMcpRegistryUrl(trimmed)) {
++      return { source: "mcp-registry", url: normalizeRegistryBaseUrl(trimmed) };
++    }
+     const { url, ref } = splitRef(trimmed);
+     if (url.endsWith(".git") || url.includes("/_git/")) {
+       return ref ? { source: "git", url, ref } : { source: "git", url };
+@@ -1300,6 +1311,12 @@ async function resolvePluginSourceRoot(input: {
+   }
+   if (isRecord(source)) {
+     const sourceKind = typeof source.source === "string" ? source.source : "";
++    if (sourceKind === MCP_REGISTRY_ENTRY_SOURCE) {
++      // A registry server is fully described by its catalog entry (strict:false); the package is
++      // the synthesized manifest written into this empty staging root.
++      const path = await mkdtemp(join(tmpdir(), "zcode-mcp-registry-plugin-"));
++      return { cleanup: () => rm(path, { force: true, recursive: true }), path };
++    }
+     if (sourceKind === "directory") {
+       const path = resolve(readRequiredPluginSourceString(source, "path", "directory path"));
+       if (directoryExists(path)) return { path };
+@@ -1594,8 +1611,13 @@ async function loadMarketplaceFromSource(
+     }
+     case "directory": {
+       const file = findMarketplaceManifestPath(source.path);
+-      if (!file) throw new Error(`Marketplace manifest not found in directory: ${source.path}`);
+-      const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
++      const synthesized = file
++        ? null
++        : synthesizeSkillsRepository(source.path, skillsMarketplaceName(basename(source.path)));
++      if (!file && !synthesized) {
++        throw new Error(`Marketplace manifest not found in directory: ${source.path}`);
++      }
++      const parsed = file ? (JSON.parse(await readFile(file, "utf8")) as unknown) : synthesized;
+       const manifest = parseRequiredMarketplaceManifest(parsed);
+       if (options.persist) {
+         const activation = await stageMarketplaceDirectoryPlugins(
+@@ -1613,6 +1635,14 @@ async function loadMarketplaceFromSource(
+       const parsed = await requestMarketplaceJson(source.url, source.headers, options.signal);
+       return { manifest: parseRequiredMarketplaceManifest(parsed) };
+     }
++    case "mcp-registry": {
++      const catalog = await fetchMcpRegistryCatalog({
++        registryUrl: source.url,
++        request: (url) => requestMarketplaceJson(url, undefined, options.signal),
++        signal: options.signal,
++      });
++      return { manifest: parseRequiredMarketplaceManifest(catalog) };
++    }
+     case "github": {
+       const resolved = await resolveRepositoryMarketplaceSource(
+         `https://github.com/${source.repo}.git`,
+@@ -1623,8 +1653,17 @@ async function loadMarketplaceFromSource(
+       const cleanup = resolved.cleanup;
+       try {
+         const file = findMarketplaceManifestPath(resolved.path, source.path);
+-        if (!file) throw new Error(`Marketplace manifest not found in GitHub repo: ${source.repo}`);
+-        const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
++        const synthesized = file
++          ? null
++          : synthesizeSkillsRepository(
++              resolved.path,
++              skillsMarketplaceName(source.repo),
++              source.path ? join(resolved.path, source.path) : resolved.path,
++            );
++        if (!file && !synthesized) {
++          throw new Error(`Marketplace manifest not found in GitHub repo: ${source.repo}`);
++        }
++        const parsed = file ? (JSON.parse(await readFile(file, "utf8")) as unknown) : synthesized;
+         const manifest = parseRequiredMarketplaceManifest(parsed);
+         if (options.persist) {
+           const activation = await stageMarketplaceDirectoryPlugins(
+@@ -1652,8 +1691,17 @@ async function loadMarketplaceFromSource(
+       const cleanup = resolved.cleanup;
+       try {
+         const file = findMarketplaceManifestPath(resolved.path, source.path);
+-        if (!file) throw new Error(`Marketplace manifest not found in git repo: ${source.url}`);
+-        const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
++        const synthesized = file
++          ? null
++          : synthesizeSkillsRepository(
++              resolved.path,
++              skillsMarketplaceName(source.url.replace(/^.*[/:]([^/:]+\/[^/:]+?)(?:\.git)?$/, "$1")),
++              source.path ? join(resolved.path, source.path) : resolved.path,
++            );
++        if (!file && !synthesized) {
++          throw new Error(`Marketplace manifest not found in git repo: ${source.url}`);
++        }
++        const parsed = file ? (JSON.parse(await readFile(file, "utf8")) as unknown) : synthesized;
+         const manifest = parseRequiredMarketplaceManifest(parsed);
+         if (options.persist) {
+           const activation = await stageMarketplaceDirectoryPlugins(
+@@ -2218,6 +2266,16 @@ function findMarketplaceManifestPath(rootPath: string, explicitPath?: string): s
+   return null;
+ }
+ 
++/** A folder that is itself one plugin is installed whole, never split into its skills. */
++function synthesizeSkillsRepository(
++  root: string,
++  marketplaceName: string,
++  scanRoot: string = root,
++): ReturnType<typeof synthesizeSkillsMarketplace> {
++  if (findPluginManifestPath(scanRoot)) return null;
++  return synthesizeSkillsMarketplace(root, marketplaceName, scanRoot);
++}
++
+ function findPluginManifestPath(rootPath: string): string | null {
+   for (const candidate of [ZCODE_MANIFEST_PATH, CLAUDE_MANIFEST_PATH, CODEX_MANIFEST_PATH]) {
+     const path = join(rootPath, candidate);
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/mcp-registry.ts b/apps/zcode-cli/packages/adapters/src/plugins/mcp-registry.ts
+new file mode 100644
+index 0000000..c65eb7c
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/plugins/mcp-registry.ts
+@@ -0,0 +1,348 @@
++import { isRecord } from "./helpers.js";
++
++/**
++ * MCP Registry catalog adapter (OV-100 phase 2).
++ *
++ * Contract: modelcontextprotocol/registry `docs/reference/api/generic-registry-api.md` (`GET
++ * /v0.1/servers`, opaque `metadata.nextCursor`), `official-registry-api.md` (`version=latest`) and
++ * `server-json/generic-server-json.md` (packages with npm/pypi/oci/nuget/mcpb, `remotes`,
++ * environment variables, positional/named arguments). Each active server becomes a one-primitive
++ * Claude-format marketplace entry (`strict: false`) so install, update, enablement and removal stay
++ * on the existing plugin lifecycle. Required secrets become sensitive plugin `userConfig`, which the
++ * MCP resolver substitutes only into env and header fields.
++ */
++
++export const OFFICIAL_MCP_REGISTRY_URL = "https://registry.modelcontextprotocol.io";
++export const MCP_REGISTRY_ENTRY_SOURCE = "mcp-registry";
++
++const SERVERS_PATH = "/v0.1/servers";
++const PAGE_LIMIT = 100;
++const DEFAULT_MAX_PAGES = 100;
++const OFFICIAL_META_KEY = "io.modelcontextprotocol.registry/official";
++
++type JsonRecord = Record<string, unknown>;
++
++interface UserConfigOption {
++  description?: string;
++  required: boolean;
++  sensitive: boolean;
++  title: string;
++  type: "string";
++  default?: string;
++}
++
++export interface McpRegistryCatalog {
++  name: string;
++  description: string;
++  plugins: JsonRecord[];
++}
++
++/** Marketplace id for a registry: the official one is `mcp-registry`, others carry their host. */
++export function mcpRegistryMarketplaceId(registryUrl: string): string {
++  const base = normalizeRegistryBaseUrl(registryUrl);
++  if (base === OFFICIAL_MCP_REGISTRY_URL) return "mcp-registry";
++  const host = new URL(base).hostname.toLowerCase().replace(/[^a-z0-9.-]/g, "-");
++  return `mcp-registry-${host}`;
++}
++
++export function normalizeRegistryBaseUrl(registryUrl: string): string {
++  const url = new URL(registryUrl.trim());
++  if (url.protocol !== "https:" && url.protocol !== "http:") {
++    throw new Error(`MCP registry URL must be http(s): ${registryUrl}`);
++  }
++  const path = url.pathname.replace(/\/+$/, "").replace(/\/v0(?:\.1)?\/servers$/, "");
++  return `${url.origin}${path}`;
++}
++
++/** Whether a pasted URL names an MCP registry rather than a marketplace JSON file. */
++export function isMcpRegistryUrl(value: string): boolean {
++  try {
++    const url = new URL(value.trim());
++    return (
++      url.hostname === new URL(OFFICIAL_MCP_REGISTRY_URL).hostname ||
++      /\/v0(?:\.1)?\/servers\/?$/.test(url.pathname)
++    );
++  } catch {
++    return false;
++  }
++}
++
++/**
++ * Reads every latest active server page by page. `request` performs one GET and returns parsed
++ * JSON, so the caller keeps its own network policy (proxy env, size limit, redirects, abort).
++ */
++export async function fetchMcpRegistryCatalog(input: {
++  maxPages?: number;
++  registryUrl: string;
++  request: (url: string) => Promise<unknown>;
++  signal?: AbortSignal;
++}): Promise<McpRegistryCatalog> {
++  const base = normalizeRegistryBaseUrl(input.registryUrl);
++  const maxPages = input.maxPages ?? DEFAULT_MAX_PAGES;
++  const servers: unknown[] = [];
++  let cursor: string | undefined;
++  for (let page = 0; page < maxPages; page += 1) {
++    if (input.signal?.aborted) throw input.signal.reason ?? new Error("Aborted");
++    const url = new URL(`${base}${SERVERS_PATH}`);
++    url.searchParams.set("version", "latest");
++    url.searchParams.set("limit", String(PAGE_LIMIT));
++    if (cursor) url.searchParams.set("cursor", cursor);
++    const body = await input.request(url.toString());
++    if (!isRecord(body) || !Array.isArray(body.servers)) {
++      throw new Error(`MCP registry returned an unexpected server list: ${url.toString()}`);
++    }
++    servers.push(...body.servers);
++    const next = isRecord(body.metadata) ? body.metadata.nextCursor : undefined;
++    if (typeof next !== "string" || next.length === 0 || next === cursor) break;
++    cursor = next;
++  }
++  return {
++    name: mcpRegistryMarketplaceId(base),
++    description: `MCP servers from ${new URL(base).host}`,
++    plugins: mcpRegistryServersToEntries(servers),
++  };
++}
++
++export function mcpRegistryServersToEntries(items: readonly unknown[]): JsonRecord[] {
++  const entries: JsonRecord[] = [];
++  const usedNames = new Set<string>();
++  for (const item of items) {
++    const entry = mcpRegistryServerToEntry(item);
++    if (!entry) continue;
++    let name = entry.name as string;
++    for (let suffix = 2; usedNames.has(name); suffix += 1) name = `${entry.name}-${suffix}`;
++    usedNames.add(name);
++    entries.push({ ...entry, name });
++  }
++  return entries;
++}
++
++/** One registry list item (`{ server, _meta }`) → marketplace entry, or null when not installable. */
++export function mcpRegistryServerToEntry(item: unknown): JsonRecord | null {
++  const server = isRecord(item) && isRecord(item.server) ? item.server : item;
++  if (!isRecord(server) || typeof server.name !== "string") return null;
++  const official = isRecord(item) && isRecord(item._meta) ? item._meta[OFFICIAL_META_KEY] : undefined;
++  if (isRecord(official) && typeof official.status === "string" && official.status !== "active") {
++    return null;
++  }
++  const userConfig: Record<string, UserConfigOption> = {};
++  const config = selectServerConfig(server, userConfig);
++  if (!config) return null;
++
++  const registryName = server.name;
++  const shortName = registryName.split("/").pop() || registryName;
++  const mcpKey = slug(shortName) || "server";
++  const version = typeof server.version === "string" ? server.version : undefined;
++  const repositoryUrl =
++    isRecord(server.repository) && typeof server.repository.url === "string"
++      ? server.repository.url
++      : undefined;
++  const homepage = typeof server.websiteUrl === "string" ? server.websiteUrl : repositoryUrl;
++  const title = typeof server.title === "string" && server.title.trim() ? server.title.trim() : shortName;
++  const icon = Array.isArray(server.icons)
++    ? server.icons.find((candidate) => isRecord(candidate) && typeof candidate.src === "string" && /^https:\/\//.test(candidate.src))
++    : undefined;
++  return {
++    name: slug(registryName),
++    ...(typeof server.description === "string" ? { description: server.description } : {}),
++    ...(version ? { version } : {}),
++    source: { source: MCP_REGISTRY_ENTRY_SOURCE, server: registryName, ...(version ? { version } : {}) },
++    strict: false,
++    displayName: title,
++    ...(isRecord(icon) ? { icon: icon.src } : {}),
++    ...(homepage ? { homepage } : {}),
++    ...(repositoryUrl ? { repository: repositoryUrl } : {}),
++    mcpServers: { [mcpKey]: config },
++    ...(Object.keys(userConfig).length > 0 ? { userConfig } : {}),
++  };
++}
++
++/**
++ * Prefers a local stdio package a person can run without an account (npm, then PyPI), then a
++ * hosted endpoint, then a container. NuGet and MCPB bundles are not runnable by this host.
++ */
++function selectServerConfig(server: JsonRecord, userConfig: Record<string, UserConfigOption>): JsonRecord | null {
++  for (const candidate of serverConfigCandidates(server)) {
++    const own: Record<string, UserConfigOption> = {};
++    try {
++      const config = candidate(own);
++      if (!config) continue;
++      Object.assign(userConfig, own);
++      return config;
++    } catch (error) {
++      if (error instanceof SecretArgumentError) continue;
++      throw error;
++    }
++  }
++  return null;
++}
++
++/** The host substitutes secrets only into env and headers, never into command arguments. */
++class SecretArgumentError extends Error {}
++
++type CandidateBuilder = (userConfig: Record<string, UserConfigOption>) => JsonRecord | null;
++
++function serverConfigCandidates(server: JsonRecord): CandidateBuilder[] {
++  const packages = Array.isArray(server.packages) ? server.packages.filter(isRecord) : [];
++  const remotes = Array.isArray(server.remotes) ? server.remotes.filter(isRecord) : [];
++  const byType = (type: string) =>
++    packages.find(
++      (pkg) =>
++        pkg.registryType === type &&
++        typeof pkg.identifier === "string" &&
++        (!isRecord(pkg.transport) || pkg.transport.type === undefined || pkg.transport.type === "stdio"),
++    );
++  const candidates: CandidateBuilder[] = [];
++  const npm = byType("npm");
++  if (npm) candidates.push((config) => stdioPackageConfig(npm, "npx", ["-y", pinned(npm, "@")], config));
++  const pypi = byType("pypi");
++  if (pypi) candidates.push((config) => stdioPackageConfig(pypi, "uvx", [pinned(pypi, "==")], config));
++  for (const remoteType of ["streamable-http", "sse"] as const) {
++    for (const remote of remotes.filter((candidate) => candidate.type === remoteType)) {
++      candidates.push((config) => {
++        const url = templatedUrl(remote, config);
++        if (!url) return null;
++        const headers = headerConfig(remote.headers, config);
++        return { type: remoteType === "sse" ? "sse" : "http", url, ...(headers ? { headers } : {}) };
++      });
++    }
++  }
++  const oci = byType("oci");
++  if (oci) {
++    candidates.push((config) => {
++      const runtime = argumentList(oci.runtimeArguments, config);
++      const env = envConfig(oci.environmentVariables, config);
++      const envArgs = Object.keys(env ?? {}).flatMap((name) => ["-e", name]);
++      return {
++        type: "stdio",
++        command: "docker",
++        args: ["run", "-i", "--rm", ...runtime, ...envArgs, oci.identifier as string, ...argumentList(oci.packageArguments, config)],
++        ...(env ? { env } : {}),
++      };
++    });
++  }
++  return candidates;
++}
++
++/**
++ * `{variable}` placeholders in a remote URL become non-sensitive user config. A secret placeholder
++ * would put a credential into a URL, so such a remote is skipped.
++ */
++function templatedUrl(remote: JsonRecord, userConfig: Record<string, UserConfigOption>): string | null {
++  if (typeof remote.url !== "string" || !remote.url) return null;
++  const variables = isRecord(remote.variables) ? remote.variables : {};
++  let failed = false;
++  const url = remote.url.replace(/\{([^}]+)\}/g, (_match, name: string) => {
++    const variable = variables[name];
++    if (!isRecord(variable) || variable.isSecret === true) {
++      failed = true;
++      return "";
++    }
++    const value = inputValue({ ...variable, isRequired: true }, name, userConfig);
++    if (value === undefined) failed = true;
++    return value ?? "";
++  });
++  return failed ? null : url;
++}
++
++function stdioPackageConfig(
++  pkg: JsonRecord,
++  command: string,
++  leading: string[],
++  userConfig: Record<string, UserConfigOption>,
++): JsonRecord {
++  const env = envConfig(pkg.environmentVariables, userConfig);
++  return {
++    type: "stdio",
++    command,
++    args: [...argumentList(pkg.runtimeArguments, userConfig), ...leading, ...argumentList(pkg.packageArguments, userConfig)],
++    ...(env ? { env } : {}),
++  };
++}
++
++function pinned(pkg: JsonRecord, separator: string): string {
++  const identifier = pkg.identifier as string;
++  return typeof pkg.version === "string" && pkg.version ? `${identifier}${separator}${pkg.version}` : identifier;
++}
++
++function envConfig(value: unknown, userConfig: Record<string, UserConfigOption>): Record<string, string> | undefined {
++  const env: Record<string, string> = {};
++  for (const variable of Array.isArray(value) ? value.filter(isRecord) : []) {
++    if (typeof variable.name !== "string") continue;
++    const resolved = inputValue(variable, variable.name, userConfig);
++    if (resolved !== undefined) env[variable.name] = resolved;
++  }
++  return Object.keys(env).length > 0 ? env : undefined;
++}
++
++function headerConfig(value: unknown, userConfig: Record<string, UserConfigOption>): Record<string, string> | undefined {
++  const headers: Record<string, string> = {};
++  for (const header of Array.isArray(value) ? value.filter(isRecord) : []) {
++    if (typeof header.name !== "string") continue;
++    const resolved = inputValue(header, header.name, userConfig);
++    if (resolved !== undefined) headers[header.name] = resolved;
++  }
++  return Object.keys(headers).length > 0 ? headers : undefined;
++}
++
++function argumentList(value: unknown, userConfig: Record<string, UserConfigOption>): string[] {
++  const args: string[] = [];
++  for (const argument of Array.isArray(value) ? value.filter(isRecord) : []) {
++    const label =
++      (typeof argument.name === "string" && argument.name.replace(/^-+/, "")) ||
++      (typeof argument.valueHint === "string" && argument.valueHint) ||
++      `arg${args.length + 1}`;
++    if (argument.isSecret === true) throw new SecretArgumentError(label);
++    const resolved = inputValue(argument, label, userConfig);
++    if (argument.type === "named" && typeof argument.name === "string") {
++      if (resolved === undefined) continue;
++      args.push(argument.name, resolved);
++    } else if (resolved !== undefined) {
++      args.push(resolved);
++    }
++  }
++  return args;
++}
++
++/**
++ * A fixed value or default is written as is. A value the person must supply becomes plugin
++ * userConfig; optional inputs without a default are left out rather than invented.
++ */
++function inputValue(
++  input: JsonRecord,
++  label: string,
++  userConfig: Record<string, UserConfigOption>,
++): string | undefined {
++  // Templated values reference {variables} this adapter does not prompt for.
++  if (typeof input.value === "string" && !/\{[^}]+\}/.test(input.value)) return input.value;
++  const secret = input.isSecret === true;
++  const fallback = typeof input.default === "string" ? input.default : undefined;
++  if (input.isRequired !== true && !secret) return fallback;
++  if (!secret && fallback !== undefined) return fallback;
++  const key = configKey(label, userConfig);
++  userConfig[key] = {
++    title: label,
++    ...(typeof input.description === "string" ? { description: input.description } : {}),
++    required: input.isRequired === true,
++    sensitive: secret,
++    type: "string",
++    ...(!secret && fallback !== undefined ? { default: fallback } : {}),
++  };
++  return `\${user_config.${key}}`;
++}
++
++function configKey(label: string, userConfig: Record<string, UserConfigOption>): string {
++  const base = label.replace(/[^A-Za-z0-9_]/g, "_") || "value";
++  let key = base;
++  for (let suffix = 2; key in userConfig; suffix += 1) key = `${base}_${suffix}`;
++  return key;
++}
++
++function slug(value: string): string {
++  return value
++    .toLowerCase()
++    .replace(/[^a-z0-9._-]+/g, "-")
++    .replace(/-+/g, "-")
++    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "")
++    .slice(0, 128);
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/skills-repository.ts b/apps/zcode-cli/packages/adapters/src/plugins/skills-repository.ts
+new file mode 100644
+index 0000000..ab137b0
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/plugins/skills-repository.ts
+@@ -0,0 +1,81 @@
++import { readdirSync } from "node:fs";
++import { basename, join, relative, sep } from "node:path";
++import { readMarkdownFrontmatter } from "./markdown-frontmatter.js";
++
++/**
++ * Agent Skills repositories as a catalog (OV-100 phase 2).
++ *
++ * The Agent Skills specification defines what a skill folder contains, not a remote index
++ * (`agentskills/docs/client-implementation/adding-skills-support.mdx`); public skill collections
++ * are plain repositories of `SKILL.md` folders. When an added repository or folder has no
++ * marketplace manifest, each skill folder becomes a one-skill plugin entry (`strict: false`,
++ * `skills: ["./"]`) so it installs, updates and uninstalls through the plugin lifecycle.
++ */
++
++const SKILL_FILE = "SKILL.md";
++const MAX_DEPTH = 4;
++const SKIPPED_DIRECTORIES = new Set(["node_modules", "dist", "build", "__pycache__"]);
++// Skills are commonly kept under these hidden client folders; other dot folders are skipped.
++const SKILL_DOT_DIRECTORIES = new Set([".agents", ".claude", ".codex", ".zcode"]);
++
++export function synthesizeSkillsMarketplace(
++  root: string,
++  marketplaceName: string,
++  scanRoot: string = root,
++): { name: string; description: string; plugins: Record<string, unknown>[] } | null {
++  const folders: string[] = [];
++  collectSkillFolders(scanRoot, 0, folders);
++  if (folders.length === 0) return null;
++  const used = new Set<string>();
++  const plugins = folders.map((folder) => {
++    const frontmatter = readMarkdownFrontmatter(join(folder, SKILL_FILE));
++    const skillName = frontmatter.name ?? basename(folder);
++    let name = slug(skillName) || slug(basename(folder)) || "skill";
++    for (let suffix = 2; used.has(name); suffix += 1) name = `${slug(skillName)}-${suffix}`;
++    used.add(name);
++    const path = relative(root, folder).split(sep).join("/");
++    return {
++      name,
++      ...(frontmatter.description ? { description: frontmatter.description } : {}),
++      displayName: skillName,
++      source: path ? `./${path}` : "./",
++      strict: false,
++      skills: ["./"],
++    };
++  });
++  return { name: marketplaceName, description: `Skills from ${marketplaceName}`, plugins };
++}
++
++function collectSkillFolders(directory: string, depth: number, found: string[]): void {
++  let entries;
++  try {
++    entries = readdirSync(directory, { withFileTypes: true });
++  } catch {
++    return;
++  }
++  if (entries.some((entry) => entry.isFile() && entry.name === SKILL_FILE)) {
++    // A skill folder is one unit; its subfolders are its references and scripts.
++    found.push(directory);
++    return;
++  }
++  if (depth >= MAX_DEPTH) return;
++  for (const entry of entries) {
++    if (!entry.isDirectory() || SKIPPED_DIRECTORIES.has(entry.name)) continue;
++    if (entry.name.startsWith(".") && !SKILL_DOT_DIRECTORIES.has(entry.name)) continue;
++    collectSkillFolders(join(directory, entry.name), depth + 1, found);
++  }
++}
++
++/** Marketplace id from a repository or folder name. */
++export function skillsMarketplaceName(label: string): string {
++  return slug(label.replace(/\.git$/, "").replace(/[/:]+/g, "-")) || "skills";
++}
++
++function slug(value: string): string {
++  return value
++    .toLowerCase()
++    .replace(/[^a-z0-9._-]+/g, "-")
++    .replace(/-+/g, "-")
++    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "")
++    .slice(0, 128);
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-catalog-adapters.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-catalog-adapters.test.ts
+new file mode 100644
+index 0000000..e0f18d6
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-catalog-adapters.test.ts
+@@ -0,0 +1,185 @@
++import assert from "node:assert/strict";
++import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { createServer } from "node:http";
++import os from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import {
++  addMarketplace,
++  installMarketplacePlugin,
++  loadMarketplaceManifestSync,
++  mcpRegistryServerToEntry,
++} from "@zcode/adapters/plugins";
++
++// OV-100 phase 2: catalog sources become ordinary marketplaces, so their items install, update and
++// uninstall through the one plugin lifecycle.
++
++test("a folder of Agent Skills becomes a marketplace of one-skill plugins", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-skills-repo-"));
++  try {
++    const repo = join(root, "team-skills");
++    const storageRoot = join(root, "storage");
++    await mkdir(join(repo, "skills", "release-notes", "references"), { recursive: true });
++    await mkdir(join(repo, ".claude", "skills", "triage"), { recursive: true });
++    await mkdir(join(repo, ".git", "skills", "ignored"), { recursive: true });
++    await writeFile(
++      join(repo, "skills", "release-notes", "SKILL.md"),
++      "---\nname: release-notes\ndescription: Draft release notes\n---\nBody\n",
++    );
++    await writeFile(join(repo, "skills", "release-notes", "references", "SKILL.md"), "nested is part of its parent\n");
++    await writeFile(join(repo, ".claude", "skills", "triage", "SKILL.md"), "---\nname: Triage Bugs\n---\nBody\n");
++    await writeFile(join(repo, ".git", "skills", "ignored", "SKILL.md"), "---\nname: ignored\n---\n");
++
++    const record = await addMarketplace({ source: { source: "directory", path: repo }, storageRoot });
++    assert.equal(record.id, "team-skills");
++    const manifest = loadMarketplaceManifestSync(storageRoot, record.id);
++    assert.deepEqual(manifest?.plugins.map((entry) => entry.name).sort(), ["release-notes", "triage-bugs"]);
++
++    const result = await installMarketplacePlugin({ marketplace: record.id, name: "release-notes", storageRoot });
++    const installPath = result.installed.find((plugin) => plugin.name === "release-notes")?.installPath;
++    assert.ok(installPath, JSON.stringify(result));
++    const pluginJson = JSON.parse(await readFile(join(installPath, ".claude-plugin", "plugin.json"), "utf8"));
++    assert.deepEqual(pluginJson.skills, ["./"]);
++    assert.match(await readFile(join(installPath, "SKILL.md"), "utf8"), /Draft release notes/);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("the MCP Registry becomes a marketplace of one-server plugins with secrets as user config", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-mcp-registry-"));
++  const pages: Record<string, unknown> = {
++    "": {
++      servers: [
++        {
++          server: {
++            name: "io.github.example/weather",
++            title: "Weather",
++            description: "Forecasts",
++            version: "1.2.0",
++            packages: [
++              {
++                registryType: "npm",
++                identifier: "@example/weather-mcp",
++                version: "1.2.0",
++                transport: { type: "stdio" },
++                environmentVariables: [
++                  { name: "WEATHER_KEY", isRequired: true, isSecret: true, description: "API key" },
++                  { name: "UNITS", default: "metric" },
++                ],
++              },
++            ],
++          },
++          _meta: { "io.modelcontextprotocol.registry/official": { status: "active", isLatest: true } },
++        },
++        {
++          server: { name: "io.github.example/retired", version: "0.1.0", packages: [{ registryType: "npm", identifier: "x" }] },
++          _meta: { "io.modelcontextprotocol.registry/official": { status: "deleted" } },
++        },
++      ],
++      metadata: { nextCursor: "page-2" },
++    },
++    "page-2": {
++      servers: [
++        {
++          server: {
++            name: "com.example/hosted",
++            version: "2.0.0",
++            remotes: [
++              {
++                type: "streamable-http",
++                url: "https://mcp.example.com/mcp",
++                headers: [{ name: "Authorization", isRequired: true, isSecret: true }],
++              },
++            ],
++          },
++        },
++        { server: { name: "com.example/dotnet-only", version: "1.0.0", packages: [{ registryType: "nuget", identifier: "X" }] } },
++      ],
++      metadata: { nextCursor: null },
++    },
++  };
++  const requests: string[] = [];
++  const server = createServer((req, res) => {
++    const url = new URL(req.url ?? "/", "http://localhost");
++    requests.push(url.pathname + url.search);
++    const body = pages[url.searchParams.get("cursor") ?? ""];
++    res.writeHead(body ? 200 : 404, { "content-type": "application/json" });
++    res.end(JSON.stringify(body ?? {}));
++  });
++  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++  try {
++    const address = server.address();
++    assert.ok(address && typeof address === "object");
++    const storageRoot = join(root, "storage");
++    const record = await addMarketplace({
++      source: { source: "mcp-registry", url: `http://127.0.0.1:${address.port}` },
++      storageRoot,
++    });
++    assert.equal(record.id, "mcp-registry-127.0.0.1");
++    assert.ok(requests.every((request) => request.includes("version=latest")), requests.join("\n"));
++    const manifest = loadMarketplaceManifestSync(storageRoot, record.id);
++    assert.deepEqual(
++      manifest?.plugins.map((entry) => entry.name).sort(),
++      ["com.example-hosted", "io.github.example-weather"],
++      "deleted and unrunnable servers are left out",
++    );
++
++    const result = await installMarketplacePlugin({ marketplace: record.id, name: "io.github.example-weather", storageRoot });
++    const installPath = result.installed[0]?.installPath;
++    assert.ok(installPath, JSON.stringify(result));
++    const pluginJson = JSON.parse(await readFile(join(installPath, ".claude-plugin", "plugin.json"), "utf8"));
++    assert.deepEqual(pluginJson.mcpServers.weather, {
++      type: "stdio",
++      command: "npx",
++      args: ["-y", "@example/weather-mcp@1.2.0"],
++      env: { WEATHER_KEY: "${user_config.WEATHER_KEY}", UNITS: "metric" },
++    });
++    assert.equal(pluginJson.userConfig.WEATHER_KEY.sensitive, true);
++    assert.equal(pluginJson.userConfig.WEATHER_KEY.required, true);
++  } finally {
++    server.close();
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("a secret passed as a command argument skips that package for one that keeps it out of argv", () => {
++  const entry = mcpRegistryServerToEntry({
++    server: {
++      name: "io.github.example/both",
++      packages: [
++        {
++          registryType: "npm",
++          identifier: "both",
++          packageArguments: [{ type: "named", name: "--token", isRequired: true, isSecret: true }],
++        },
++      ],
++      remotes: [{ type: "sse", url: "https://example.com/sse", headers: [{ name: "X-Key", isSecret: true, isRequired: true }] }],
++    },
++  });
++  assert.deepEqual((entry?.mcpServers as Record<string, unknown>).both, {
++    type: "sse",
++    url: "https://example.com/sse",
++    headers: { "X-Key": "${user_config.X-Key}".replace("X-Key}", "X_Key}") },
++  });
++  assert.deepEqual(Object.keys(entry?.userConfig as object), ["X_Key"], "the npm candidate's config is discarded");
++});
++
++test("URL placeholders become user config, but a secret placeholder never goes into a URL", () => {
++  const entry = mcpRegistryServerToEntry({
++    server: {
++      name: "ai.example/docs",
++      icons: [{ src: "https://example.com/icon.svg" }],
++      remotes: [
++        { type: "streamable-http", url: "https://x.example/{token}/mcp", variables: { token: { isSecret: true, isRequired: true } } },
++        { type: "streamable-http", url: "https://x.example/v2/{project_slug}/mcp", variables: { project_slug: { isRequired: true } } },
++      ],
++    },
++  });
++  assert.equal(entry?.icon, "https://example.com/icon.svg");
++  assert.deepEqual((entry?.mcpServers as Record<string, unknown>).docs, {
++    type: "http",
++    url: "https://x.example/v2/${user_config.project_slug}/mcp",
++  });
++  assert.equal((entry?.userConfig as Record<string, { sensitive: boolean }>).project_slug.sensitive, false);
++});
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 0376f83..3b7d7a0 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -4491,7 +4491,9 @@ const enUS: Record<string, string> = {
+   "settings.plugins.installed.title": "Installed",
+   "settings.plugins.marketplaces.title": "Marketplaces",
+   "settings.plugins.marketplaces.count": "{count} marketplaces",
+-  "settings.plugins.marketplaces.source": "GitHub repo, git URL, file, or directory",
++  "settings.plugins.marketplaces.source": "GitHub repo, git URL, file, or directory (skill repos and MCP registries too)",
++  "settings.plugins.marketplaces.catalogs": "Catalogs:",
++  "settings.plugins.marketplaces.mcpRegistry": "Official MCP Registry",
+   "settings.plugins.marketplaces.chooseDirectory": "Choose directory",
+   "settings.plugins.marketplaces.dropHint": "Drag a file or folder here, or choose a directory.",
+   "settings.plugins.marketplaces.validate": "Validate marketplace",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index aac15ea..e7e6dca 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -4171,7 +4171,9 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.installed.title": "已安装",
+   "settings.plugins.marketplaces.title": "插件市场",
+   "settings.plugins.marketplaces.count": "{count} 个市场",
+-  "settings.plugins.marketplaces.source": "GitHub 仓库、Git URL、文件或目录",
++  "settings.plugins.marketplaces.source": "GitHub 仓库、Git URL、文件或目录（含技能仓库、MCP Registry 地址）",
++  "settings.plugins.marketplaces.catalogs": "目录：",
++  "settings.plugins.marketplaces.mcpRegistry": "官方 MCP Registry",
+   "settings.plugins.marketplaces.chooseDirectory": "选择目录",
+   "settings.plugins.marketplaces.dropHint": "拖入文件或文件夹，或选择目录。",
+   "settings.plugins.marketplaces.validate": "校验插件市场",
+diff --git a/packages/ui/src/settings/AddMarketplaceSourceDialog.tsx b/packages/ui/src/settings/AddMarketplaceSourceDialog.tsx
+index 8275d9f..b305da6 100644
+--- a/packages/ui/src/settings/AddMarketplaceSourceDialog.tsx
++++ b/packages/ui/src/settings/AddMarketplaceSourceDialog.tsx
+@@ -8,6 +8,9 @@ import { useOptionalPlatform } from "@/hooks/usePlatform.js";
+ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+ import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
+ 
++/** Catalog sources a person can add in one step (OV-100); the backend recognises the URL. */
++const OFFICIAL_MCP_REGISTRY_URL = "https://registry.modelcontextprotocol.io";
++
+ /**
+  * 顶栏 New 直接打开添加市场源对话框：收编原 AddMarketplacePopover 的
+  * github/git/URL/本地路径（含拖放与目录选择）能力，零后端新增。
+@@ -140,6 +143,17 @@ export function AddMarketplaceSourceDialog({
+           }}
+           placeholder={intl.formatMessage({ id: "settings.plugins.marketplaces.source" })}
+         />
++        <div className="flex flex-wrap items-center gap-2 text-ui-base text-foreground-subtle">
++          <span>{intl.formatMessage({ id: "settings.plugins.marketplaces.catalogs" })}</span>
++          <button
++            type="button"
++            data-testid="plugin-store-add-source-mcp-registry"
++            className="rounded-full border border-border px-2.5 py-0.5 text-foreground transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
++            onClick={() => setSource(OFFICIAL_MCP_REGISTRY_URL)}
++          >
++            {intl.formatMessage({ id: "settings.plugins.marketplaces.mcpRegistry" })}
++          </button>
++        </div>
+         {canPickPath ? (
+           <p className="text-ui-base text-foreground-subtle">
+             {intl.formatMessage({ id: "settings.plugins.marketplaces.dropHint" })}
+diff --git a/packages/ui/src/settings/PluginStoreListView.tsx b/packages/ui/src/settings/PluginStoreListView.tsx
+index bd31da1..b174ff9 100644
+--- a/packages/ui/src/settings/PluginStoreListView.tsx
++++ b/packages/ui/src/settings/PluginStoreListView.tsx
+@@ -41,6 +41,13 @@ const STORE_CONTENT_KIND_LABEL_IDS: Record<StoreContentKind, string> = {
+ 
+ // 分类/市场分组手动收起后的展示数量；默认完整展示，避免较少的插件又被自动隐藏。
+ const CATEGORY_VISIBLE_LIMIT = 6;
++// Catalog sources such as an MCP registry hold thousands of entries; such groups start collapsed
++// and search is the way in, so opening the Market never renders the whole catalog.
++const AUTO_EXPAND_GROUP_LIMIT = 60;
++
++function groupExpandedByDefault(size: number): boolean {
++  return size <= AUTO_EXPAND_GROUP_LIMIT;
++}
+ const RETIRED_STORE_PLUGIN_ID = `restore-legacy-sessions@${ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID}`;
+ 
+ export type PluginStoreSegment = "public" | "personal";
+@@ -169,8 +176,11 @@ export function PluginStoreListView({
+       );
+   }, [items, keyword, locale]);
+ 
+-  const toggleGroup = (key: string) => {
+-    setExpandedGroups((current) => ({ ...current, [key]: !(current[key] ?? true) }));
++  const toggleGroup = (key: string, size: number) => {
++    setExpandedGroups((current) => ({
++      ...current,
++      [key]: !(current[key] ?? groupExpandedByDefault(size)),
++    }));
+   };
+ 
+   return (
+@@ -409,7 +419,7 @@ function CardGrid({
+   );
+ }
+ 
+-/** 分类/市场分组：默认全部展开，手动收起后展示前 6 个和展开入口。 */
++/** 分类/市场分组：默认展开（大目录默认收起），收起后展示前 6 个和展开入口。 */
+ function CollapsibleCardGroup({
+   groupKey,
+   items,
+@@ -421,7 +431,7 @@ function CollapsibleCardGroup({
+   groupKey: string;
+   items: StorePluginItem[];
+   expanded: boolean;
+-  onToggle: (key: string) => void;
++  onToggle: (key: string, size: number) => void;
+   actions: PluginStoreActions;
+   locale: string;
+ }) {
+@@ -438,7 +448,7 @@ function CollapsibleCardGroup({
+           data-testid="plugin-store-group-toggle"
+           data-group-key={groupKey}
+           className="mt-2 flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-2 text-left text-ui-base text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
+-          onClick={() => onToggle(groupKey)}
++          onClick={() => onToggle(groupKey, items.length)}
+         >
+           <span className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
+             {hidden.slice(0, 3).map((item) => (
+@@ -473,7 +483,7 @@ function CollapsibleCardGroup({
+           data-testid="plugin-store-group-toggle"
+           data-group-key={groupKey}
+           className="mt-2 rounded-xl px-2 py-2 text-ui-base text-foreground-subtle transition-colors hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
+-          onClick={() => onToggle(groupKey)}
++          onClick={() => onToggle(groupKey, items.length)}
+         >
+           {intl.formatMessage({ id: "settings.plugins.store.showLess" })}
+         </button>
+@@ -499,7 +509,7 @@ function PublicSegment({
+   loading: boolean;
+   locale: string;
+   resolveCategoryLabel: (category: string) => string;
+-  onToggleGroup: (key: string) => void;
++  onToggleGroup: (key: string, size: number) => void;
+ }) {
+   const { intl } = useZCodeIntl();
+   const isEmpty = featuredItems.length === 0 && categoryGroups.length === 0;
+@@ -541,7 +551,9 @@ function PublicSegment({
+           <CollapsibleCardGroup
+             groupKey={`category:${group.category}`}
+             items={group.items}
+-            expanded={expandedGroups[`category:${group.category}`] ?? true}
++            expanded={
++              expandedGroups[`category:${group.category}`] ?? groupExpandedByDefault(group.items.length)
++            }
+             onToggle={onToggleGroup}
+             actions={actions}
+             locale={locale}
+@@ -563,7 +575,7 @@ function PersonalSegment({
+   expandedGroups: Record<string, boolean>;
+   groups: PersonalMarketplaceGroup[];
+   locale: string;
+-  onToggleGroup: (key: string) => void;
++  onToggleGroup: (key: string, size: number) => void;
+ }) {
+   const { intl } = useZCodeIntl();
+   if (groups.length === 0) {
+@@ -584,7 +596,10 @@ function PersonalSegment({
+           <CollapsibleCardGroup
+             groupKey={`marketplace:${group.marketplace}`}
+             items={group.items}
+-            expanded={expandedGroups[`marketplace:${group.marketplace}`] ?? true}
++            expanded={
++              expandedGroups[`marketplace:${group.marketplace}`] ??
++              groupExpandedByDefault(group.items.length)
++            }
+             onToggle={onToggleGroup}
+             actions={actions}
+             locale={locale}
+-- 
+2.54.0 (Apple Git-157)
+

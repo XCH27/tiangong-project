@@ -1,0 +1,837 @@
+From a8f53278e5639f22d13a789edc77c271ecc3ab95 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 14:43:53 -0700
+Subject: [PATCH] Agent Plugins 1.0.0 packages install and export (OV-100 phase
+ 5)
+
+A folder with a root plugin.json, mcp.json and skills/ loads like any
+plugin: streamable-http maps to the runtime's http transport, PLUGIN_ROOT
+and PLUGIN_DATA expand, and ./ commands resolve inside the package. A
+plugin exports as such a package from its row menu: root plugin.json with
+the 1.0.0 schema, mcp.json without headers, auth or oauth, and portable
+placeholders; hooks, commands and agents are reported as not portable, and
+Fleet views and user config travel in extensions["fleet.workbench"], which
+import reads back. Export never overwrites an existing folder.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../src/plugins/agent-plugins-export.ts       | 145 ++++++++++++++++++
+ .../packages/adapters/src/plugins/index.ts    |  31 +++-
+ .../adapters/src/plugins/marketplace.ts       |   3 +-
+ .../packages/adapters/src/plugins/mcp.ts      |  27 +++-
+ .../adapters/src/plugins/zip-source.ts        |   3 +-
+ .../packages/bootstrap/src/plugins.ts         |  10 ++
+ .../bootstrap/src/zcode-protocol/plugins.ts   |  16 ++
+ .../bootstrap/src/zcode-protocol/server.ts    |   3 +
+ .../test/agent-plugins-format.test.ts         |  99 ++++++++++++
+ .../services/src/plugins/pluginManagement.ts  |   4 +
+ .../src/plugins/pluginManagementService.ts    |   2 +
+ .../services/src/zcode-agent/zcodeAgent.ts    |   3 +
+ .../src/zcode-agent/zcodeAgentPluginParams.ts |   5 +
+ .../src/zcode-agent/zcodeAgentService.ts      |  16 ++
+ packages/shared/src/zcode-protocol/index.ts   |  13 ++
+ packages/ui/src/i18n/locales/en-US.ts         |   3 +
+ packages/ui/src/i18n/locales/zh-CN.ts         |   3 +
+ packages/ui/src/settings/PluginsSection.tsx   |  41 +++++
+ 18 files changed, 420 insertions(+), 7 deletions(-)
+ create mode 100644 apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export.ts
+ create mode 100644 apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts
+
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export.ts b/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export.ts
+new file mode 100644
+index 0000000..7645203
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export.ts
+@@ -0,0 +1,145 @@
++import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
++import { join, relative, sep } from "node:path";
++import type { PluginDiagnostic } from "@zcode/contracts";
++import { isRecord } from "./helpers.js";
++import { loadPluginMcpServerDefinitions } from "./mcp.js";
++import { FLEET_EXTENSION_NAMESPACE, readPluginPackage } from "./index.js";
++
++/**
++ * Export a plugin as an Agent Plugins 1.0.0 package (OV-100 phase 5): root `plugin.json`,
++ * `mcp.json` and the package files, so it installs into any Agent Plugins client. Format:
++ * harnessrouter `protocol/versions/2026-09-28/plugins.md` §1, §2.2 and §5 (export rules).
++ * Credentials (`headers`, `auth`, `oauth`) never travel; what Agent Plugins has no place for is
++ * reported as skipped, and Fleet-only data rides in `extensions["fleet.workbench"]`.
++ */
++
++export const AGENT_PLUGINS_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
++const MANIFEST_DIRECTORIES = new Set([".zcode-plugin", ".claude-plugin", ".codex-plugin"]);
++const REPLACED_FILES = new Set(["plugin.json", "mcp.json", ".mcp.json"]);
++const NON_PORTABLE = ["hooks", "commands", "agents", "lspServers", "outputStyles", "channels", "settings"] as const;
++const PLACEHOLDERS: Array<[RegExp, string]> = [
++  [/\$\{(?:CLAUDE|ZCODE)_PLUGIN_ROOT\}/g, "${PLUGIN_ROOT}"],
++  [/\$\{(?:CLAUDE|ZCODE)_PLUGIN_DATA\}/g, "${PLUGIN_DATA}"],
++];
++
++export interface AgentPluginsExportResult {
++  path: string;
++  skipped: Array<{ path: string; reason: string }>;
++}
++
++/** Agent Plugins §5.5 name: lower-case, `[a-z0-9.-]`, no `--` or `..`, at most 64 characters. */
++export function agentPluginsName(name: string): string {
++  return (
++    name
++      .toLowerCase()
++      .replace(/[^a-z0-9.]+/g, "-")
++      .replace(/\.{2,}/g, ".")
++      .replace(/-{2,}/g, "-")
++      .replace(/^[-.]+|[-.]+$/g, "")
++      .slice(0, 64)
++      .replace(/[-.]+$/g, "") || "plugin"
++  );
++}
++
++export function exportAgentPluginsPackage(input: {
++  rootPath: string;
++  targetDirectory: string;
++}): AgentPluginsExportResult {
++  const diagnostics: PluginDiagnostic[] = [];
++  const loaded = readPluginPackage(input.rootPath, diagnostics);
++  if (!loaded) {
++    throw new Error(diagnostics[0]?.message ?? `Not a plugin folder: ${input.rootPath}`);
++  }
++  const name = agentPluginsName(loaded.manifest.name);
++  const destination = join(input.targetDirectory, name);
++  if (existsSync(destination)) throw new Error(`${destination} already exists; choose another folder.`);
++  const skipped: AgentPluginsExportResult["skipped"] = [];
++
++  mkdirSync(destination, { recursive: true });
++  cpSync(loaded.rootPath, destination, {
++    recursive: true,
++    filter: (source) => {
++      const path = relative(loaded.rootPath, source);
++      if (!path) return true;
++      const [first] = path.split(sep);
++      if (first === ".git") return false;
++      if (first && MANIFEST_DIRECTORIES.has(first)) return false;
++      return !(REPLACED_FILES.has(path));
++    },
++  });
++
++  const manifest = loaded.manifest as unknown as Record<string, unknown>;
++  for (const key of NON_PORTABLE) {
++    if (manifest[key] !== undefined || isNonEmptyDirectory(join(loaded.rootPath, key))) {
++      skipped.push({ path: key, reason: `Agent Plugins has no ${key}; the files are kept but other clients ignore them.` });
++    }
++  }
++
++  const servers: Record<string, unknown> = {};
++  for (const [key, raw] of Object.entries(loadPluginMcpServerDefinitions({ diagnostics, loaded }))) {
++    if (!isRecord(raw)) continue;
++    const server: Record<string, unknown> = { ...raw };
++    for (const secret of ["headers", "auth", "oauth"] as const) {
++      if (server[secret] !== undefined) {
++        delete server[secret];
++        skipped.push({ path: `mcp.json#/mcpServers/${key}/${secret}`, reason: "Credentials are not exported; enter them again after installing." });
++      }
++    }
++    const type = typeof server.type === "string" ? server.type : typeof server.url === "string" ? "http" : "stdio";
++    server.type = type === "http" ? "streamable-http" : type;
++    servers[key] = withPortablePlaceholders(server);
++  }
++  if (Object.keys(servers).length > 0) {
++    writeJson(join(destination, "mcp.json"), { mcpServers: servers });
++  }
++
++  const fleet: Record<string, unknown> = {};
++  if (isRecord(manifest.fleet) && Array.isArray(manifest.fleet.views)) fleet.views = manifest.fleet.views;
++  if (isRecord(manifest.userConfig)) fleet.userConfig = manifest.userConfig;
++  const author = isRecord(manifest.author)
++    ? manifest.author
++    : typeof manifest.author === "string"
++      ? { name: manifest.author }
++      : undefined;
++  const repository = isRecord(manifest.repository) && typeof manifest.repository.url === "string"
++    ? manifest.repository.url
++    : typeof manifest.repository === "string"
++      ? manifest.repository
++      : undefined;
++  writeJson(join(destination, "plugin.json"), {
++    $schema: AGENT_PLUGINS_SCHEMA,
++    name,
++    ...(typeof manifest.version === "string" ? { version: manifest.version } : {}),
++    ...(typeof manifest.description === "string" ? { description: manifest.description } : {}),
++    ...(author ? { author } : {}),
++    ...(typeof manifest.homepage === "string" ? { homepage: manifest.homepage } : {}),
++    ...(repository ? { repository } : {}),
++    ...(typeof manifest.license === "string" ? { license: manifest.license } : {}),
++    ...(Array.isArray(manifest.keywords) ? { keywords: manifest.keywords.filter((k) => typeof k === "string") } : {}),
++    ...(Object.keys(fleet).length > 0 ? { extensions: { [FLEET_EXTENSION_NAMESPACE]: fleet } } : {}),
++  });
++  return { path: destination, skipped };
++}
++
++function withPortablePlaceholders(value: unknown): unknown {
++  if (typeof value === "string") {
++    return PLACEHOLDERS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
++  }
++  if (Array.isArray(value)) return value.map(withPortablePlaceholders);
++  if (isRecord(value)) {
++    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withPortablePlaceholders(item)]));
++  }
++  return value;
++}
++
++function isNonEmptyDirectory(path: string): boolean {
++  try {
++    return statSync(path).isDirectory() && readdirSync(path).length > 0;
++  } catch {
++    return false;
++  }
++}
++
++function writeJson(path: string, value: unknown): void {
++  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/index.ts b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+index e87fed7..8f1bc2f 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+@@ -112,6 +112,8 @@ export {
+ const ZCODE_MANIFEST_PATH = join(".zcode-plugin", "plugin.json");
+ const CLAUDE_MANIFEST_PATH = join(".claude-plugin", "plugin.json");
+ const CODEX_MANIFEST_PATH = join(".codex-plugin", "plugin.json");
++/** Agent Plugins 1.0.0 keeps the manifest at the package root. */
++const AGENT_PLUGINS_MANIFEST_PATH = "plugin.json";
+ const DEFAULT_VERSION = "0.0.0";
+ const FIRST_PLUGIN_PRIORITY = 1_000;
+ const PRIORITY_STEP = 10;
+@@ -416,6 +418,8 @@ function resolveEnabledComponents(input: {
+ }
+ 
+ const VIEW_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
++/** Namespace for Fleet-only data inside an Agent Plugins manifest's `extensions`. */
++export const FLEET_EXTENSION_NAMESPACE = "fleet.workbench";
+ 
+ /** `fleet.views[]` → validated view contributions; an invalid entry is dropped with a diagnostic. */
+ function parsePluginViews(
+@@ -423,7 +427,11 @@ function parsePluginViews(
+   mcpServerDefinitions: Record<string, unknown>,
+   diagnostics: PluginDiagnostic[],
+ ): NonNullable<PluginMetadata["views"]> {
+-  const fleet = loaded.manifest.fleet;
++  // Fleet manifests use `fleet.views`; an Agent Plugins package carries them under its
++  // reverse-domain `extensions` (§8), which other clients ignore.
++  const extensions = (loaded.manifest as { extensions?: unknown }).extensions;
++  const fromExtensions = isRecord(extensions) ? extensions[FLEET_EXTENSION_NAMESPACE] : undefined;
++  const fleet = isRecord(loaded.manifest.fleet) ? loaded.manifest.fleet : fromExtensions;
+   const declared = isRecord(fleet) && Array.isArray(fleet.views) ? fleet.views : [];
+   const views: NonNullable<PluginMetadata["views"]> = [];
+   const invalid = (message: string) =>
+@@ -1092,6 +1100,17 @@ function scanOfficialCache(
+   }
+ }
+ 
++/** Reads a plugin folder as the loader does (manifest + identity), for export and inspection. */
++export function readPluginPackage(
++  rootPath: string,
++  diagnostics: PluginDiagnostic[] = [],
++): LoadedPlugin | null {
++  return loadPlugin(
++    { defaultEnabled: false, marketplace: ZCODE_INLINE_PLUGIN_MARKETPLACE, rootPath: resolve(rootPath), source: "inline" },
++    diagnostics,
++  );
++}
++
+ function loadPlugin(
+   candidate: PluginCandidate,
+   diagnostics: PluginDiagnostic[],
+@@ -1141,7 +1160,9 @@ function findManifest(rootPath: string): string | null {
+     return claudePath;
+   }
+   const codexPath = join(rootPath, CODEX_MANIFEST_PATH);
+-  return fileExists(codexPath) ? codexPath : null;
++  if (fileExists(codexPath)) return codexPath;
++  const agentPluginsPath = join(rootPath, AGENT_PLUGINS_MANIFEST_PATH);
++  return fileExists(agentPluginsPath) ? agentPluginsPath : null;
+ }
+ 
+ function readManifest(path: string, diagnostics: PluginDiagnostic[]): PluginManifest | null {
+@@ -1198,3 +1219,9 @@ export {
+   OFFICIAL_MCP_REGISTRY_URL,
+ } from "./mcp-registry.js";
+ export { synthesizeSkillsMarketplace } from "./skills-repository.js";
++export {
++  agentPluginsName,
++  exportAgentPluginsPackage,
++  AGENT_PLUGINS_SCHEMA,
++  type AgentPluginsExportResult,
++} from "./agent-plugins-export.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts b/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
+index 1f49a9f..4f4e696 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
+@@ -2277,7 +2277,8 @@ function synthesizeSkillsRepository(
+ }
+ 
+ function findPluginManifestPath(rootPath: string): string | null {
+-  for (const candidate of [ZCODE_MANIFEST_PATH, CLAUDE_MANIFEST_PATH, CODEX_MANIFEST_PATH]) {
++  // Root plugin.json last: Agent Plugins 1.0.0 packages (OV-100 phase 5).
++  for (const candidate of [ZCODE_MANIFEST_PATH, CLAUDE_MANIFEST_PATH, CODEX_MANIFEST_PATH, "plugin.json"]) {
+     const path = join(rootPath, candidate);
+     if (fileExists(path)) return path;
+   }
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/mcp.ts b/apps/zcode-cli/packages/adapters/src/plugins/mcp.ts
+index 61b4378..86c2229 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/mcp.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/mcp.ts
+@@ -23,9 +23,12 @@ export function loadPluginMcpServerDefinitions(input: {
+   diagnostics: PluginDiagnostic[];
+   loaded: LoadedPlugin;
+ }): Record<string, unknown> {
++  // Agent Plugins 1.0.0 (OV-100 phase 5) declares servers in a root `mcp.json`; Claude/ZCode
++  // packages use `.mcp.json` and the manifest. All three load, later sources winning by name.
++  const fromAgentPlugins = loadMcpServersFromFile(join(input.loaded.rootPath, "mcp.json"), input);
+   const fromFile = loadMcpServersFromFile(join(input.loaded.rootPath, ".mcp.json"), input);
+   const fromManifest = loadMcpServersFromSpec(input.loaded.manifest.mcpServers, input);
+-  return { ...fromFile, ...fromManifest };
++  return { ...fromAgentPlugins, ...fromFile, ...fromManifest };
+ }
+ 
+ export function resolvePluginMcpServers(input: {
+@@ -64,6 +67,11 @@ export function resolvePluginMcpServers(input: {
+   return result;
+ }
+ 
++function resolvePluginRelativeCommand(command: string, rootPath: string): string {
++  if (!command.startsWith("./") && !command.startsWith("../")) return command;
++  return resolveInside(rootPath, command) ?? command;
++}
++
+ function toNamespacedServerName(loaded: LoadedPlugin, serverName: string): string {
+   return `plugin:${loaded.manifest.name}:${serverName}`;
+ }
+@@ -136,7 +144,12 @@ function normalizeMcpServersShape(
+     return {};
+   }
+   const servers = isRecord(value.mcpServers) ? value.mcpServers : value;
+-  return Object.fromEntries(Object.entries(servers).filter(([, config]) => isRecord(config)));
++  return Object.fromEntries(
++    Object.entries(servers)
++      .filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
++      // Agent Plugins names the streamable HTTP transport `streamable-http`; the runtime calls it http.
++      .map(([name, config]) => [name, config.type === "streamable-http" ? { ...config, type: "http" } : config]),
++  );
+ }
+ 
+ interface VariableContext {
+@@ -214,6 +227,8 @@ function resolveMcpServerConfig(
+         ZCODE_PROJECT_DIR: context.workingDirectory,
+         CLAUDE_PLUGIN_DATA: context.dataPath,
+         CLAUDE_PLUGIN_ROOT: context.loaded.rootPath,
++        PLUGIN_DATA: context.dataPath,
++        PLUGIN_ROOT: context.loaded.rootPath,
+         ...(isRecord(server.env) ? server.env : {}),
+       },
+       context,
+@@ -225,7 +240,11 @@ function resolveMcpServerConfig(
+     env[ZCODE_PLUGIN_ID_ENV_KEY] = context.loaded.id;
+     return {
+       type: "stdio",
+-      command: resolveTemplate(command, context, { allowSensitive: false }),
++      // Agent Plugins commands may be plugin-relative (`./bin/server`).
++      command: resolvePluginRelativeCommand(
++        resolveTemplate(command, context, { allowSensitive: false }),
++        context.loaded.rootPath,
++      ),
+       args: Array.isArray(server.args)
+         ? server.args
+             .filter((arg): arg is string => typeof arg === "string")
+@@ -390,9 +409,11 @@ function resolveTemplate(
+     switch (name) {
+       case "CLAUDE_PLUGIN_ROOT":
+       case "ZCODE_PLUGIN_ROOT":
++      case "PLUGIN_ROOT":
+         return context.loaded.rootPath;
+       case "CLAUDE_PLUGIN_DATA":
+       case "ZCODE_PLUGIN_DATA":
++      case "PLUGIN_DATA":
+         return context.dataPath;
+       case "CLAUDE_PROJECT_DIR":
+       case "ZCODE_PROJECT_DIR":
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/zip-source.ts b/apps/zcode-cli/packages/adapters/src/plugins/zip-source.ts
+index 85548e5..f51f31d 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/zip-source.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/zip-source.ts
+@@ -329,7 +329,8 @@ function hasPluginManifest(rootPath: string): boolean {
+   return (
+     fileExists(join(rootPath, ".zcode-plugin", "plugin.json")) ||
+     fileExists(join(rootPath, ".claude-plugin", "plugin.json")) ||
+-    fileExists(join(rootPath, ".codex-plugin", "plugin.json"))
++    fileExists(join(rootPath, ".codex-plugin", "plugin.json")) ||
++    fileExists(join(rootPath, "plugin.json"))
+   );
+ }
+ 
+diff --git a/apps/zcode-cli/packages/bootstrap/src/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+index 4804342..2a3d851 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+@@ -1,3 +1,4 @@
++import { exportAgentPluginsPackage, type AgentPluginsExportResult } from "@zcode/adapters/plugins";
+ import {
+   grantPluginSync,
+   readPluginGrantsSync,
+@@ -294,6 +295,15 @@ export function grantZCodePlugin(
+   grantPluginSync(pluginStorageRoot, plugin.id, plugin.grant.fingerprint);
+ }
+ 
++/** Writes an installed plugin as an Agent Plugins 1.0.0 package into a folder the person chose. */
++export function exportZCodePlugin(
++  options: ResolveZCodePluginsOptions & { plugin: string; targetDirectory: string },
++): AgentPluginsExportResult {
++  const plugin = resolveZCodePlugins(options).plugins.find((candidate) => candidate.id === options.plugin);
++  if (!plugin) throw new Error(`Plugin not found: ${options.plugin}`);
++  return exportAgentPluginsPackage({ rootPath: plugin.rootPath, targetDirectory: options.targetDirectory });
++}
++
+ export function revokeZCodePluginGrant(options: ResolveZCodePluginsOptions & { plugin: string }): void {
+   const { pluginStorageRoot } = resolvePluginContext(options);
+   revokePluginGrantSync(pluginStorageRoot, options.plugin);
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+index a60dde4..532bb75 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+@@ -2,6 +2,8 @@ import {
+   zcodePluginsConfigureParamsSchema,
+   zcodePluginsResetConfigParamsSchema,
+   zcodePluginsGrantParamsSchema,
++  zcodePluginsExportParamsSchema,
++  type ZCodePluginsExportResult,
+   zcodePluginsRevokeGrantParamsSchema,
+   zcodePluginsInstallParamsSchema,
+   zcodePluginsMarketplaceAddParamsSchema,
+@@ -43,6 +45,7 @@ import {
+   resolveZCodePlugins,
+   resetZCodePluginConfig,
+   grantZCodePlugin,
++  exportZCodePlugin,
+   revokeZCodePluginGrant,
+   restoreBuiltinPlugin as restoreBuiltinPluginCore,
+   setZCodePluginEnabled,
+@@ -484,6 +487,19 @@ export async function grantPlugin(
+   return { pluginId: params.pluginId, diagnostics: [] };
+ }
+ 
++export async function exportPlugin(
++  context: ZCodeProtocolAgentServerContext,
++  rawParams: unknown,
++): Promise<ZCodePluginsExportResult> {
++  const params = parseParams(zcodePluginsExportParamsSchema, rawParams);
++  return exportZCodePlugin({
++    logger: context.logger,
++    plugin: params.pluginId,
++    targetDirectory: params.targetDirectory,
++    workingDirectory: params.workspace.workspacePath,
++  });
++}
++
+ export async function revokePluginGrant(
+   context: ZCodeProtocolAgentServerContext,
+   rawParams: unknown,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
+index 372cc65..677c9ee 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts
+@@ -63,6 +63,7 @@ import {
+   removePluginMarketplace,
+   resetPluginConfig,
+   grantPlugin,
++  exportPlugin,
+   revokePluginGrant,
+   restoreBuiltinPlugin,
+   setPluginEnabled,
+@@ -710,6 +711,8 @@ export class ZCodeProtocolAgentServer {
+         return await grantPlugin(this.context, request.params);
+       case zcodeProtocolMethods.pluginsRevokeGrant:
+         return await revokePluginGrant(this.context, request.params);
++      case zcodeProtocolMethods.pluginsExport:
++        return await exportPlugin(this.context, request.params);
+       case zcodeProtocolMethods.pluginsViewRead:
+         return await readPluginView(this.context, request.params);
+       case zcodeProtocolMethods.pluginsViewCallTool:
+diff --git a/apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts b/apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts
+new file mode 100644
+index 0000000..f9a2d07
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts
+@@ -0,0 +1,99 @@
++import assert from "node:assert/strict";
++import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import os from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import { exportAgentPluginsPackage } from "@zcode/adapters/plugins";
++import { resolveZCodePlugins } from "../src/plugins.js";
++
++// OV-100 phase 5: Agent Plugins 1.0.0 packages (root plugin.json + mcp.json + skills/) load like
++// any plugin, and a Fleet plugin exports to that format without its credentials.
++
++async function paths(root: string, dirs: string[]) {
++  const workspace = join(root, "workspace");
++  await mkdir(workspace, { recursive: true });
++  const userConfigPath = join(root, "config.json");
++  await writeFile(userConfigPath, JSON.stringify({ storage: { dir: join(root, "storage") }, plugins: { dirs } }));
++  return { env: {}, officialPluginRoots: [], userConfigPath, workingDirectory: workspace };
++}
++
++test("an Agent Plugins package loads its mcp.json servers, skills and portable placeholders", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-agent-plugins-"));
++  try {
++    const pkg = join(root, "contract-review");
++    await mkdir(join(pkg, "skills", "risk-checklist"), { recursive: true });
++    await mkdir(join(pkg, "bin"), { recursive: true });
++    await writeFile(join(pkg, "plugin.json"), JSON.stringify({ $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "contract-review", version: "1.2.0" }));
++    await writeFile(
++      join(pkg, "mcp.json"),
++      JSON.stringify({
++        mcpServers: {
++          clauses: { type: "streamable-http", url: "https://mcp.example.com/clauses" },
++          redline: { type: "stdio", command: "./bin/redline", args: ["--data", "${PLUGIN_DATA}"] },
++        },
++      }),
++    );
++    await writeFile(join(pkg, "skills", "risk-checklist", "SKILL.md"), "---\nname: risk-checklist\ndescription: Risks\n---\n");
++    const outcome = resolveZCodePlugins(await paths(root, [pkg]));
++    const plugin = outcome.plugins.find((entry) => entry.name === "contract-review");
++    assert.ok(plugin, JSON.stringify(outcome.diagnostics));
++    assert.equal(plugin.version, "1.2.0");
++    assert.ok(plugin.skillCount > 0);
++    const clauses = outcome.mcpServers["plugin:contract-review:clauses"];
++    const redline = outcome.mcpServers["plugin:contract-review:redline"];
++    assert.equal(clauses?.type, "http");
++    assert.equal(redline?.type, "stdio");
++    assert.equal((redline as { command: string }).command, join(pkg, "bin", "redline"));
++    assert.equal((redline as { args: string[] }).args[1], plugin.dataPath);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("export writes an Agent Plugins package without credentials, and it loads back", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-agent-plugins-export-"));
++  try {
++    const source = join(root, "Source Tools");
++    await mkdir(join(source, ".claude-plugin"), { recursive: true });
++    await mkdir(join(source, "skills", "notes"), { recursive: true });
++    await mkdir(join(source, "hooks"), { recursive: true });
++    await writeFile(join(source, "hooks", "hooks.json"), "{}");
++    await writeFile(join(source, "skills", "notes", "SKILL.md"), "---\nname: notes\ndescription: Notes\n---\n");
++    await writeFile(
++      join(source, ".claude-plugin", "plugin.json"),
++      JSON.stringify({
++        name: "source-tools",
++        version: "2.0.0",
++        author: "Fleet Test",
++        mcpServers: {
++          api: { type: "http", url: "https://api.example.com/mcp", headers: { Authorization: "Bearer secret" } },
++          local: { command: "node", args: ["${CLAUDE_PLUGIN_ROOT}/server.js"] },
++        },
++        fleet: { views: [{ id: "main", title: "Main", server: "local", resource: "ui://local/main" }] },
++      }),
++    );
++    const out = join(root, "out");
++    await mkdir(out);
++    const result = exportAgentPluginsPackage({ rootPath: source, targetDirectory: out });
++    assert.equal(result.path, join(out, "source-tools"));
++    const manifest = JSON.parse(await readFile(join(result.path, "plugin.json"), "utf8"));
++    assert.equal(manifest.$schema, "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json");
++    assert.deepEqual(manifest.author, { name: "Fleet Test" });
++    assert.equal(manifest.extensions["fleet.workbench"].views[0].id, "main");
++    const mcp = JSON.parse(await readFile(join(result.path, "mcp.json"), "utf8"));
++    assert.equal(mcp.mcpServers.api.type, "streamable-http");
++    assert.equal(mcp.mcpServers.api.headers, undefined, "credentials never travel");
++    assert.deepEqual(mcp.mcpServers.local.args, ["${PLUGIN_ROOT}/server.js"]);
++    assert.ok(result.skipped.some((item) => item.path === "mcp.json#/mcpServers/api/headers"));
++    assert.ok(result.skipped.some((item) => item.path === "hooks"));
++    await assert.rejects(async () => exportAgentPluginsPackage({ rootPath: source, targetDirectory: out }), /already exists/);
++
++    const outcome = resolveZCodePlugins(await paths(root, [result.path]));
++    const reloaded = outcome.plugins.find((entry) => entry.name === "source-tools");
++    assert.ok(reloaded, JSON.stringify(outcome.diagnostics));
++    assert.deepEqual(reloaded.views?.map((view) => view.id), ["main"], "Fleet views survive the round trip");
++    assert.ok(reloaded.skillCount > 0);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/packages/services/src/plugins/pluginManagement.ts b/packages/services/src/plugins/pluginManagement.ts
+index ead1e26..daadd1d 100644
+--- a/packages/services/src/plugins/pluginManagement.ts
++++ b/packages/services/src/plugins/pluginManagement.ts
+@@ -13,6 +13,7 @@ import type {
+   ZCodePluginsConfigureResult,
+   ZCodePluginViewReadResult,
+   ZCodePluginViewCallToolResult,
++  ZCodePluginsExportResult,
+   ZCodePluginsCancelOperationResult,
+   ZCodePluginsDescribeResult,
+   ZCodePluginsInstallResult,
+@@ -40,6 +41,7 @@ import type {
+   ZCodeAgentRevokePluginGrantParams,
+   ZCodeAgentPluginViewTargetParams,
+   ZCodeAgentPluginViewCallToolParams,
++  ZCodeAgentExportPluginParams,
+   ZCodeAgentPluginViewParams,
+   ZCodeAgentRemovePluginMarketplaceParams,
+   ZCodeAgentRestoreBuiltinPluginParams,
+@@ -94,6 +96,8 @@ export interface IPluginManagementService {
+   revokePluginGrant(params: ZCodeAgentRevokePluginGrantParams): Promise<ZCodePluginsConfigureResult>;
+   /** OV-100 phase 4: read a plugin view and call its own server's tools on the workspace runtime. */
+   readPluginView(params: ZCodeAgentPluginViewTargetParams): Promise<ZCodePluginViewReadResult>;
++  /** OV-100 phase 5: write the plugin as an Agent Plugins 1.0.0 package. */
++  exportPlugin(params: ZCodeAgentExportPluginParams): Promise<ZCodePluginsExportResult>;
+   callPluginViewTool(params: ZCodeAgentPluginViewCallToolParams): Promise<ZCodePluginViewCallToolResult>;
+   validatePlugin(params: ZCodeAgentValidatePluginParams): Promise<ZCodePluginsValidateResult>;
+   describePlugin(params: ZCodeAgentDescribePluginParams): Promise<ZCodePluginsDescribeResult>;
+diff --git a/packages/services/src/plugins/pluginManagementService.ts b/packages/services/src/plugins/pluginManagementService.ts
+index 3d0d133..9cb357c 100644
+--- a/packages/services/src/plugins/pluginManagementService.ts
++++ b/packages/services/src/plugins/pluginManagementService.ts
+@@ -26,6 +26,7 @@ interface PluginManagementServiceDependencies {
+     | "grantPlugin"
+     | "revokePluginGrant"
+     | "readPluginView"
++    | "exportPlugin"
+     | "callPluginViewTool"
+     | "validatePlugin"
+     | "describePlugin"
+@@ -57,6 +58,7 @@ export function createPluginManagementService(
+     grantPlugin: (params) => agent.grantPlugin(params),
+     revokePluginGrant: (params) => agent.revokePluginGrant(params),
+     readPluginView: (params) => agent.readPluginView(params),
++    exportPlugin: (params) => agent.exportPlugin(params),
+     callPluginViewTool: (params) => agent.callPluginViewTool(params),
+     validatePlugin: (params) => agent.validatePlugin(params),
+     describePlugin: (params) => agent.describePlugin(params),
+diff --git a/packages/services/src/zcode-agent/zcodeAgent.ts b/packages/services/src/zcode-agent/zcodeAgent.ts
+index a6bed16..2084af3 100644
+--- a/packages/services/src/zcode-agent/zcodeAgent.ts
++++ b/packages/services/src/zcode-agent/zcodeAgent.ts
+@@ -40,6 +40,7 @@ import type {
+   ZCodePluginsConfigureResult,
+   ZCodePluginViewReadResult,
+   ZCodePluginViewCallToolResult,
++  ZCodePluginsExportResult,
+   ZCodePluginsDescribeResult,
+   ZCodePluginsValidateResult,
+   ZCodePluginsSetEnabledResult,
+@@ -118,6 +119,7 @@ import type {
+   ZCodeAgentRevokePluginGrantParams,
+   ZCodeAgentPluginViewTargetParams,
+   ZCodeAgentPluginViewCallToolParams,
++  ZCodeAgentExportPluginParams,
+   ZCodeAgentCreateAutomationParams,
+   ZCodeAgentDeleteAutomationRunParams,
+   ZCodeAgentDescribePluginParams,
+@@ -682,6 +684,7 @@ export interface IZCodeAgentService {
+   grantPlugin(params: ZCodeAgentGrantPluginParams): Promise<ZCodePluginsConfigureResult>;
+   revokePluginGrant(params: ZCodeAgentRevokePluginGrantParams): Promise<ZCodePluginsConfigureResult>;
+   readPluginView(params: ZCodeAgentPluginViewTargetParams): Promise<ZCodePluginViewReadResult>;
++  exportPlugin(params: ZCodeAgentExportPluginParams): Promise<ZCodePluginsExportResult>;
+   callPluginViewTool(params: ZCodeAgentPluginViewCallToolParams): Promise<ZCodePluginViewCallToolResult>;
+   validatePlugin(params: ZCodeAgentValidatePluginParams): Promise<ZCodePluginsValidateResult>;
+   describePlugin(params: ZCodeAgentDescribePluginParams): Promise<ZCodePluginsDescribeResult>;
+diff --git a/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts b/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
+index 04ca7eb..d9682c8 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
+@@ -96,6 +96,11 @@ export interface ZCodeAgentPluginViewCallToolParams extends ZCodeAgentPluginView
+   arguments?: Record<string, unknown>;
+ }
+ 
++export interface ZCodeAgentExportPluginParams extends ZCodeAgentWorkspaceTarget {
++  pluginId: string;
++  targetDirectory: string;
++}
++
+ export interface ZCodeAgentValidatePluginParams extends ZCodeAgentWorkspaceTarget {
+   marketplace?: string;
+   pluginName?: string;
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index e71da4e..c8bde48 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -48,6 +48,7 @@ import {
+   zcodeBrowserExecuteParamsSchema,
+   zcodePluginsConfigureResultSchema,
+   zcodePluginViewReadResultSchema,
++  zcodePluginsExportResultSchema,
+   zcodePluginViewCallToolResultSchema,
+   zcodePluginsInstallResultSchema,
+   zcodePluginsListResultSchema,
+@@ -165,6 +166,7 @@ import type {
+   ZCodeAgentRevokePluginGrantParams,
+   ZCodeAgentPluginViewTargetParams,
+   ZCodeAgentPluginViewCallToolParams,
++  ZCodeAgentExportPluginParams,
+   ZCodeAgentCreateSessionParams,
+   ZCodeAgentInstallPluginParams,
+   ZCodeAgentGenerateWorkspaceTextParams,
+@@ -4346,6 +4348,20 @@ export function createZCodeAgentService(
+       );
+     },
+ 
++    async exportPlugin(params: ZCodeAgentExportPluginParams) {
++      const client = await getPluginManagementClient();
++      return client.request(
++        zcodeProtocolMethods.pluginsExport,
++        {
++          workspace: buildWorkspaceRef(params),
++          pluginId: params.pluginId,
++          targetDirectory: params.targetDirectory,
++        },
++        zcodePluginsExportResultSchema,
++        { timeoutMs: PLUGIN_MANAGEMENT_REQUEST_TIMEOUT_MS },
++      );
++    },
++
+     // Views run on the workspace runtime, whose MCP pool the conversations of that workspace share.
+     async readPluginView(params: ZCodeAgentPluginViewTargetParams) {
+       const { client } = await getOrStartReadOnlyClient(params);
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index f620e81..8192fd2 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -3350,6 +3350,18 @@ export const zcodePluginsRevokeGrantParamsSchema = z
+   .strict();
+ export type ZCodePluginsRevokeGrantParams = z.infer<typeof zcodePluginsRevokeGrantParamsSchema>;
+ 
++export const zcodePluginsExportParamsSchema = z
++  .object({ workspace: zcodeWorkspaceRefSchema, pluginId: nonEmptyString, targetDirectory: nonEmptyString })
++  .strict();
++export type ZCodePluginsExportParams = z.infer<typeof zcodePluginsExportParamsSchema>;
++export const zcodePluginsExportResultSchema = z
++  .object({
++    path: z.string(),
++    skipped: z.array(z.object({ path: z.string(), reason: z.string() }).strict()),
++  })
++  .strict();
++export type ZCodePluginsExportResult = z.infer<typeof zcodePluginsExportResultSchema>;
++
+ export const zcodePluginViewReadParamsSchema = z
+   .object({ workspace: zcodeWorkspaceRefSchema, pluginId: nonEmptyString, viewId: nonEmptyString })
+   .strict();
+@@ -3759,6 +3771,7 @@ export const zcodeProtocolMethods = {
+   pluginsGrant: "plugins/grant",
+   pluginsRevokeGrant: "plugins/revokeGrant",
+   pluginsViewRead: "plugins/view/read",
++  pluginsExport: "plugins/export",
+   pluginsViewCallTool: "plugins/view/callTool",
+   pluginsValidate: "plugins/validate",
+   pluginsDescribe: "plugins/describe",
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 29aefa3..02712de 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -4505,6 +4505,9 @@ const enUS: Record<string, string> = {
+   "settings.plugins.grant.description": "This plugin comes from a third-party marketplace. Once allowed, the following run on your computer; its skills and commands work without approval. An update that changes them asks again.",
+   "settings.plugins.grant.mcp": "MCP servers: {names}",
+   "settings.plugins.grant.hooks": "Hooks: {hooks}",
++  "settings.plugins.export.action": "Export as Agent Plugins package…",
++  "settings.plugins.export.done": "Exported to {path}",
++  "settings.plugins.export.doneSkipped": "Exported to {path}. Not portable to other clients: {skipped}",
+   "settings.plugins.marketplaces.add": "Add marketplace",
+   "settings.plugins.marketplaces.update": "Update marketplace",
+   "settings.plugins.marketplaces.remove": "Remove marketplace",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index e3df6fb..0149cdf 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -4185,6 +4185,9 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.grant.description": "该插件来自第三方市场。允许后，它的以下内容会在你的电脑上运行；技能和命令无需授权即可使用。插件更新若改变这些内容，会再次询问。",
+   "settings.plugins.grant.mcp": "MCP 服务器：{names}",
+   "settings.plugins.grant.hooks": "钩子：{hooks}",
++  "settings.plugins.export.action": "导出为 Agent Plugins 包…",
++  "settings.plugins.export.done": "已导出到 {path}",
++  "settings.plugins.export.doneSkipped": "已导出到 {path}。其他客户端不支持、未包含的部分：{skipped}",
+   "settings.plugins.marketplaces.add": "添加插件市场",
+   "settings.plugins.marketplaces.update": "更新插件市场",
+   "settings.plugins.marketplaces.remove": "移除插件市场",
+diff --git a/packages/ui/src/settings/PluginsSection.tsx b/packages/ui/src/settings/PluginsSection.tsx
+index 79feea2..b8e8cf9 100644
+--- a/packages/ui/src/settings/PluginsSection.tsx
++++ b/packages/ui/src/settings/PluginsSection.tsx
+@@ -8,12 +8,14 @@ import {
+   Plus,
+   RefreshCw,
+   RotateCcw,
++  PackageOpen,
+   ShieldCheck,
+   ShieldOff,
+   Trash2,
+   UploadCloud,
+ } from "lucide-react";
+ import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
++import { useOptionalPlatform } from "@/hooks/usePlatform.js";
+ import { Button } from "@/components/ui/button.js";
+ import { toast } from "@/components/ui/toast.js";
+ import {
+@@ -196,6 +198,8 @@ function PluginList({
+   const grantPlugin = usePluginManagementStore((state) => state.grantPlugin);
+   const revokePluginGrant = usePluginManagementStore((state) => state.revokePluginGrant);
+   const confirmDialog = useConfirmDialog();
++  const platform = useOptionalPlatform();
++  const canExportPlugins = Boolean(platform?.canSelectFilePath);
+   const togglingPluginId = usePluginManagementStore((state) => state.togglingPluginId);
+   const operationId = usePluginManagementStore((state) => state.operationId);
+   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
+@@ -515,6 +519,34 @@ function PluginList({
+     await grantPlugin(plugin.id, plugin.grant.fingerprint, pluginManagementService);
+   };
+ 
++  // OV-100 phase 5: write the plugin as an Agent Plugins 1.0.0 package other clients install.
++  const handleExportPlugin = async (plugin: ZCodePluginInfo) => {
++    if (!platform || !target) return;
++    let targetDirectory: string | null = null;
++    try {
++      targetDirectory = await platform.selectDirectory();
++    } catch {
++      return;
++    }
++    if (!targetDirectory) return;
++    try {
++      const result = await pluginManagementService.exportPlugin({
++        workspacePath: target.workspacePath,
++        ...(target.workspaceIdentity ? { workspaceIdentity: target.workspaceIdentity } : {}),
++        pluginId: plugin.id,
++        targetDirectory,
++      });
++      toast(
++        intl.formatMessage(
++          { id: result.skipped.length > 0 ? "settings.plugins.export.doneSkipped" : "settings.plugins.export.done" },
++          { path: result.path, skipped: result.skipped.map((item) => item.path).join(", ") },
++        ),
++      );
++    } catch (error) {
++      toast(error instanceof Error ? error.message : String(error));
++    }
++  };
++
+   const renderPluginRows = (items: ZCodePluginInfo[]) => (
+     <div className="overflow-hidden rounded-xl bg-surface">
+       {items.map((plugin, index) => (
+@@ -621,6 +653,15 @@ function PluginList({
+                       })}
+                     </DropdownMenuItem>
+                   ) : null}
++                  {canExportPlugins ? (
++                    <DropdownMenuItem
++                      disabled={operationId !== null}
++                      onSelect={() => void handleExportPlugin(plugin)}
++                    >
++                      <PackageOpen className="size-4" aria-hidden="true" />
++                      {intl.formatMessage({ id: "settings.plugins.export.action" })}
++                    </DropdownMenuItem>
++                  ) : null}
+                   {plugin.grant?.required && plugin.grant.granted ? (
+                     <DropdownMenuItem
+                       disabled={operationId !== null}
+-- 
+2.54.0 (Apple Git-157)
+

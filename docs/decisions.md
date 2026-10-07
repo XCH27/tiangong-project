@@ -2942,3 +2942,12 @@ ZCode formats) map with narrow trust and per-plugin grants for MCP and hooks; Fl
 plugins declare contributions and resource permissions and run out of process; first-party
 features ship as built-in plugins; standalone Skills/MCP/commands/hooks remain manageable in one
 Settings → Plugins page whose views list every origin. This supersedes the "three catalogs" rule.
+
+### OV-101 — Carry the whole plan through before reporting (2026-10-07)
+
+The owner: do everything that follows, not one phase at a time with a report after each; stop only
+when the project work is done. Meaning: the remaining OV-100 phases and the OV-099 suite proceed
+without interim reviews; checkpoints for paid calls, credentials, deletion and publication still
+stop only the affected item. Under this instruction the OV-100 grant boundary (phase 3) shipped as
+a tightening: third-party MCP servers and hooks now ask once, existing installs were recorded as
+already allowed, and no previously working plugin stopped.

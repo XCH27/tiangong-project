@@ -17,7 +17,7 @@ R15 closes external distribution; R18 closes advanced/native-window layout.
 | ID | Capability | Status | Release / acceptance | Surfaces |
 |---|---|---|---|---|
 | CORE-11 | Panels, docking and layout | fixed-column sizing wired but not visually checked; registered/movable host not implemented | Early R15/R18 foundation (`specs/R18-right-workbench.md`), then R18 native-window closure / CORE-11-A,WB-001..003 | P-10 |
-| ORCH-03 | Component manager and Project suites | not implemented | Project-scoped right-tool foundation (`specs/R18-right-workbench.md`), before domain components / ORCH-03-A | P-48,P-56 |
+| ORCH-03 | Component manager and Project suites | plugin views (MCP Apps ui:// resources from the plugin's own MCP server) in the side pane wired but not visually checked; Project suites and right-tool registry not implemented | Project-scoped right-tool foundation (`specs/R18-right-workbench.md`), before domain components / ORCH-03-A | P-48,P-56 |
 <!-- /module-card -->
 
 ## Agent-authored native plugins

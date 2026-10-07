@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- The Plugin Market can add the official MCP Registry or any folder/repository of Skills as a
+  source, and their items install as ordinary plugins. Plugins from third-party marketplaces now
+  ask before their MCP servers or hooks first run (skills and commands work right away; plugins you
+  already had keep working). A plugin can add its own view to the side panel, and plugins can be
+  installed from, or exported as, Agent Plugins packages.
+
 - Settings → Plugins is now the one place to manage plugins, Skills, MCP servers, commands and
   hooks: the four separate settings pages became tabs on it (old links still open the right tab),
   and the person's own items are labelled Custom. The Plugin Market can filter by what a package

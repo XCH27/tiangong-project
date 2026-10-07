@@ -284,3 +284,11 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0175 | [0175-plugin-settings-views.patch](0175-plugin-settings-views.patch) | `30a79d03e141918ebff9e47177f8c1ac8e45662f` |
 
 | 0176 | [0176-market-content-filters.patch](0176-market-content-filters.patch) | `983ee0c9638eb8cb4a0aab30f758b4734b475556` |
+
+| 0177 | [0177-catalog-sources.patch](0177-catalog-sources.patch) | `0a63c7586c127929e294f1d1df365677c20836d2` |
+
+| 0178 | [0178-plugin-grants.patch](0178-plugin-grants.patch) | `0bc291f573f0ad883fd5aa813bb34698f328b0c3` |
+
+| 0179 | [0179-plugin-views.patch](0179-plugin-views.patch) | `9df068232afeefab1881977365ca25fbfd8181f9` |
+
+| 0180 | [0180-agent-plugins-format.patch](0180-agent-plugins-format.patch) | `32160d1d8a196adeb75e31eb080de38b36d61892` |

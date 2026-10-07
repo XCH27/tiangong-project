@@ -37,9 +37,9 @@ manifest schema or workflow executor.
 | ID | Capability | Status | Release / acceptance | Surfaces |
 |---|---|---|---|---|
 | ORCH-04 | Agent tool registry and MCP | not implemented | R4,R6 / ORCH-04-A | P-48,P-56 |
-| ORCH-10 | Skill marketplace and loadout distribution | not implemented | R15 / ORCH-10-A | P-56,P-57 |
-| ORCH-11 | Component marketplace and lifecycle | not implemented | R15 / ORCH-11-A | P-56,P-58 |
-| ORCH-12 | MCP server marketplace and connector registry | not implemented | R15 / ORCH-12-A | P-56,P-59 |
+| ORCH-10 | Skill marketplace and loadout distribution | Skill repositories (folders or git repos of SKILL.md) install as one-skill plugins wired but not visually checked; compatibility, provenance and Project composition not implemented | R15 / ORCH-10-A | P-56,P-57 |
+| ORCH-11 | Component marketplace and lifecycle | per-plugin approval of third-party MCP servers and hooks (re-asked on surface change), Agent Plugins 1.0.0 import/export and plugin views wired but not visually checked; signed provenance, rollback and isolation beyond subprocesses not implemented | R15 / ORCH-11-A | P-56,P-58 |
+| ORCH-12 | MCP server marketplace and connector registry | official MCP Registry as a catalog source (one-server plugins, secrets as sensitive user config) wired but not visually checked; health/revocation detail and keychain credentials not implemented | R15 / ORCH-12-A | P-56,P-59 |
 <!-- /module-card -->
 
 ## Closed loop
@@ -72,6 +72,16 @@ one installable unit, typed views, two trust tiers, standards-compatible content
    tools) and resource permissions (tools, model use by type, network domains, file scope,
    storage, connection use, host operations — dify `Permission`, Cindy manifest v3); the backend
    runs out of process and UI renders in host surfaces with Fleet theme tokens.
+   *Implemented contribution:* `fleet.views[]` (or `extensions["fleet.workbench"].views` in an
+   Agent Plugins package) names one of the plugin's MCP servers and a `ui://` resource. The view is
+   an MCP Apps view (SEP-1865, `mcp-apps` 2026-01-26): the workspace runtime reads the resource and
+   proxies `tools/call` only to that server, so the view and an Agent in a conversation call the
+   same operations (`bootstrap/src/zcode-protocol/plugin-views.ts`). The renderer shows it as a
+   Project-wide side-pane tab in an opaque-origin iframe under the MCP Apps default CSP plus the
+   resource's declared domains, answers `ui/initialize` with Fleet theme tokens, and supports
+   `tools/call`, `ui/open-link` and `ping`; `ui/message` and model-context updates are not yet
+   supported (`ui/src/app-shell/PluginViewPane.tsx`). Other slots (pages, settings, executors,
+   providers) remain open.
 3. **First-party features are built-in plugins** using the same contribution API (OpenClaw
    `extensions/`, Paseo built-ins): Browser Use and the Fleet guide now; the Coding Workbench
    ([OV-099](orchestration.md#coding-workbench-suite-ov-099)) next. Extraction to an installable
@@ -88,9 +98,28 @@ one installable unit, typed views, two trust tiers, standards-compatible content
 5. **Catalog sources are adapters with provenance** — Fleet curated catalog, Claude/ZCode-format
    marketplaces (existing), the official MCP Registry, Agent Skills indexes and the ACP Registry
    (executors). Presence in a catalog is never trust; local folders and archives always install.
+   *Implemented:* an `mcp-registry` source pages `GET /v0.1/servers?version=latest` and turns
+   each active server into a `strict:false` one-server entry (npm, then PyPI, then hosted HTTP/SSE,
+   then OCI); required secrets become sensitive `userConfig` used only in env and headers, URL
+   placeholders become non-sensitive config, and a secret command argument skips that package
+   (`adapters/src/plugins/mcp-registry.ts`). A folder or repository with `SKILL.md` folders but no
+   marketplace manifest lists each skill as a one-skill plugin, unless the folder is itself a
+   plugin (`skills-repository.ts`). Agent Plugins 1.0.0 packages (root `plugin.json`, `mcp.json`,
+   `skills/`, `${PLUGIN_ROOT}`/`${PLUGIN_DATA}`) install, and any plugin exports to that format
+   without `headers`/`auth`/`oauth`, reporting hooks, commands and agents as not portable
+   (`agent-plugins-export.ts`). Catalog groups over 60 entries start collapsed.
 6. **Grants are per plugin, enablement per primitive, scope global or Project.** Revocation reaches
    resident Sessions (DOM-02). An update that changes declared permissions, tools, hooks, network
    domains or credential use asks again.
+   *Implemented for executable surface:* a package installed from a third-party marketplace keeps
+   its skills and commands, but its MCP servers and hooks run only while the person has allowed a
+   fingerprint of exactly those declarations (`plugin-grants.json` beside the install record,
+   `bootstrap/src/app/plugin-grants.ts`). Built-in, official and person-declared folders need no
+   grant; Project-declared roots stay withheld (DOM-01). The first discovery without a grant store
+   records enabled third-party packages as existing installs, and install creates the store first,
+   so upgrading stops nothing that worked. Settings rows show *Needs approval* with a review dialog
+   naming the MCP servers and hook commands, and a revoke action. Network-domain and model-use
+   permissions for app plugins remain open.
 
 Rejected: separate Skill, MCP and plugin stores (cherry-studio, Cindy SkillHub) — three places to
 look and three lifecycles for one package; hiding MCP entirely (Cindy) — Fleet keeps power-user

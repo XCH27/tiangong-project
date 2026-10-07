@@ -4256,6 +4256,15 @@ CLI by hand in five duplicated kind unions plus profile, template, logo and help
 | Separate pages or hubs per primitive | cherry-studio `src/renderer/routes/settings/{mcp,skills,prompts}` + resource catalog; Cindy `docs/product-rules/core-product-principles.md` (Core owns runtime, permissions, SkillHub and plugin market mechanisms; Skill = how work is done; plugin = sandboxed mini-app for human–Agent interaction), `docs/dev-rules/plugin-security-and-authoring.md` (manifest v3 direct capability declarations, install receipts, official id prefixes) | Skill hub and plugin market both on one Core mechanism |
 | UI plugins with client and server entries | Paseo `docs/plugins.md` (daemon RPCs, app surfaces, panels, command center, slash commands, timeline items, header buttons, composer pills, themes, settings; server in subprocess; "trust every plugin"; built-ins always active) | host UI contribution points |
 
+Catalog source intake (2026-10-07, OV-100 phase 2):
+
+| Source | Inspected | Mechanism adopted |
+|---|---|---|
+| MCP Registry | `mcp-registry` `bf4e88cbe8d1` `docs/reference/api/{generic,official}-registry-api.md`, `server-json/generic-server-json.md`; one live page of `GET /v0.1/servers?version=latest&limit=3` matched the documented `{servers, metadata.nextCursor}` shape; a three-page live sample converted 294/300 (237 HTTP, 49 npm, 4 PyPI, 2 SSE, 2 OCI; the rest deprecated or without a runnable package) | opaque cursor paging; npm → PyPI → hosted → OCI; secrets only in env/headers; non-active status skipped |
+| Registry consumers | whole collection searched: no cloned client calls the registry API (hits are specification links); cherry-studio `src/renderer/pages/settings/McpSettings/McpMarketList.tsx` links external markets and `utils.ts:ensureServerTrusted` stores `isTrusted`/`trustedAt` and asks before first use of an externally sourced server | registry adapter written to the published contract; first-use trust carried into phase 3 |
+| Agent Skills | `agentskills` `69ef37e` `docs/client-implementation/adding-skills-support.mdx`: defines skill folders and local discovery (`.agents/skills/`, `.claude/skills/`), no remote index | a repository of `SKILL.md` folders is the catalog; each folder installs as a one-skill plugin |
+| ACP Registry | `agentclientprotocol/registry` `a949fb7afffd` `FORMAT.md`, `agent.schema.json`, `claude-acp`/`kimi` entries: `registry.json` with `binary` (per-platform archive + sha256), `npx`, `uvx`; preview channel never in `registry.json` | executor catalog for OV-099 connections |
+
 Fleet today (review profile, 2026-10-07): Settings has Plugins (tabs Plugins/MCP/Skills), separate
 MCP, Skills, Commands and Hooks pages showing the same items, and the workspace has a separate
 Plugin Market; Skills/MCP lists group by source plugin and show "Installed 0" above built-in items;
