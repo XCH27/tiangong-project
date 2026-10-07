@@ -2917,3 +2917,15 @@ one-time account-suspension warning when it is added (Antigravity Additional Ter
 it out of core, openclaw's Google guide warns). This narrows OV-096. The change is prepared but not
 applied: the session's permission classifier refused editing the refusal tests, so it waits in the
 candidate stash until the owner grants that permission or applies it.
+
+### OV-099 — CLI connections and orchestration as a Coding Workbench suite (2026-10-07)
+
+The owner's direction: CLI connections overlap with subscription and API connections because the
+CLIs carry their own subscriptions and keys; the reason to add CLIs is to give Fleet the effects of
+CLI-management software (Orca, Paseo, Agent Orchestrator, cc-switch, paperclip…) for coding users.
+Build the functions into Fleet first, then split separable parts into installable plugins step by
+step, keeping one largest working closed loop. Adopted refinement (design in
+[Orchestration](modules/orchestration.md#coding-workbench-suite-ov-099)): separate who pays
+(accounts/keys), which model (connections) and who runs the loop (Fleet's Pi loop or a vendor CLI
+harness); implement the suite as first-party built-in plugins through the same contribution points
+an installed plugin will use, so later extraction moves code without changing behaviour.

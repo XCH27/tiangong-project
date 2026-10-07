@@ -205,3 +205,43 @@ canvas and dual Kahn validation adopted from the owner-collected external review
 - **Failure:** Expired target becomes unavailable; approving a stale/replaced request is rejected. Reconnection cannot duplicate actionable items or replay decisions.
 - **Proof:** ORCH-07-A — Two Sessions request approval; navigate, deny one, revoke the other, restart and inspect the inbox. Counts and actions agree with the native permission state. Planned regression/probe target relative to `app/`: `packages/shared/src/protocol/__tests__/fleet-orch-07.test.ts`. After adding the target, run from `app/`: `bun test packages/shared/src/protocol/__tests__/fleet-orch-07.test.ts`; apply the isolated-profile rule for configuration writes.
 - **Reference:** Craft approval/timeline primitives; no independent inbox task store. Source locks and limits: [reference registry](../references.md#bounded-source-review--2026-09-21).
+
+## Coding Workbench suite (OV-099)
+
+**Why the overlap disappears.** Fleet today shows a CLI as one connection that bundles three
+things. Split them, as Cindy, AionUi and paperclip effectively do:
+
+| Layer | Owner | Examples |
+|---|---|---|
+| Who pays | Provider/account owner (Model settings) | API keys, Sign in with ChatGPT, plans, a CLI's own login |
+| Which model | Connection catalog | Claude, GPT, GLM, Kimi… on a connection |
+| Who runs the loop | Harness | Fleet's Pi loop, or Claude Code, Codex, Kimi, Goose, Droid… through ACP/SDK/app-server |
+
+A harness run names a connection: "own login" (the CLI's subscription, as now) or a Fleet connection
+the harness can speak (Anthropic-compatible env for Claude Code — AionCore `cc_switch/provider_env.rs`,
+claude-code-router; Responses/Messages bridges — Cindy `packages/*-bridge`; ACP `providers/set` where
+implemented). Model settings keeps accounts and keys; harnesses leave the connection list for the
+suite's own page, which shows each harness's install, login and usable connections.
+
+**Contribution points the suite needs** (added to the [plugin contribution table](components.md#one-package-declared-contributions)
+when implemented): harness provider (detect, version, login state, model list, launch protocol;
+data from the official ACP Registry snapshot with Fleet overrides — agent-orchestrator
+`authprobe`/`modelcatalog`, Paseo `acp-provider-catalog.ts`); CLI configuration writer (MCP, Skills,
+prompts, provider — cc-switch); session runtime (chat via ACP/SDK first, terminal/PTY later with a
+durable handoff — agent-orchestrator); status producer into one host-owned store with derived
+display status (orca `agent-status-store.md`, agent-orchestrator); task source (GitHub, Linear… —
+orca, multica); orchestration tools callable by agents (paseo MCP tools, `orca orchestration
+worker-start`); main page and right tools (existing contribution rows).
+
+**Build order, one closed loop first.** Coding Workbench loop: detect/install a CLI from the
+registry → sign in or bind a Fleet connection → start a task in an isolated worktree (EXEC-07) in
+chat mode → Host approvals → diff review → commit/PR → usage and cost attributed to task, harness and
+account. Then: parallel multi-run and compare (openchamber), board with assignment and wake
+(multica, paperclip heartbeats), team roles with task board and mailbox (AionCore), local gateway
+for outside CLIs with usage accounting (cc-switch proxy, cockpit Local Access, CLIProxyAPI),
+terminal mode and remote control. Each stage ships as built-in plugins; extraction to installable
+packages follows once the contribution API is proven by them.
+
+**Stays in core.** Accounts, credentials, connections and quota; Session, permissions, admission
+and usage ledger; the plugin host. A plugin uses these through host operations and never owns a
+second credential store or Session authority.
