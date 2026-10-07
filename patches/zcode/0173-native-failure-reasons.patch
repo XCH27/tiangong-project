@@ -1,0 +1,464 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude-errors.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude-errors.ts
+new file mode 100644
+index 0000000..781ce32
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude-errors.ts
+@@ -0,0 +1,66 @@
++import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
++
++type RateLimitInfo = Extract<SDKMessage, { type: "rate_limit_event" }>["rate_limit_info"];
++type AssistantFrame = Extract<SDKMessage, { type: "assistant" }>;
++
++/**
++ * Status the Host failure classifier understands for each SDK assistant error type. The CLI has
++ * already retried transient failures (`system/api_retry`); Fleet only classifies the final one.
++ */
++const STATUS: Readonly<Record<string, number>> = {
++  authentication_failed: 401,
++  oauth_org_not_allowed: 403,
++  account_on_hold: 403,
++  verification_required: 403,
++  billing_error: 402,
++  rate_limit: 429,
++  overloaded: 529,
++  server_error: 500,
++  invalid_request: 400,
++  model_not_found: 404,
++};
++
++export interface NativeClaudeError extends Error {
++  nativeError: string;
++  statusCode?: number;
++  responseHeaders?: Record<string, string>;
++}
++
++/** The CLI's own explanation, e.g. "Invalid API key · Fix external API key". */
++export function claudeAssistantErrorText(frame: AssistantFrame): string {
++  const content = frame.message?.content;
++  const text = Array.isArray(content)
++    ? content.map((block) => (block.type === "text" ? block.text : "")).join("").trim()
++    : "";
++  return text || `Native Claude request failed (${frame.error})`;
++}
++
++/**
++ * A typed failure: the reason text stays the CLI's, the status follows the SDK error type (the
++ * reported HTTP status wins where it is more specific, e.g. 403 or 529), and a rejected allowance
++ * window supplies the reset as `retry-after`.
++ */
++export function nativeClaudeError(
++  type: string,
++  message: string,
++  apiStatus: number | undefined,
++  rateLimit?: RateLimitInfo,
++): NativeClaudeError {
++  const mapped = STATUS[type];
++  const statusCode =
++    type === "billing_error"
++      ? 402
++      : apiStatus && (apiStatus >= 500 || apiStatus === 403 || mapped === undefined)
++        ? apiStatus
++        : (mapped ?? apiStatus);
++  const resetsAt = rateLimit?.status === "rejected" ? rateLimit.resetsAt : undefined;
++  const retryAfter =
++    type === "rate_limit" && typeof resetsAt === "number"
++      ? Math.max(0, Math.ceil(resetsAt - Date.now() / 1000))
++      : undefined;
++  return Object.assign(new Error(message), {
++    nativeError: type,
++    ...(statusCode !== undefined ? { statusCode } : {}),
++    ...(retryAfter !== undefined ? { responseHeaders: { "retry-after": String(retryAfter) } } : {}),
++  });
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
+index 51fa7a8..c6688d3 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
+@@ -4,6 +4,7 @@ import { claudeNativeEnvironment } from "./claude-environment.js";
+ import { resolveClaudeNativeExecutable } from "./claude-executable.js";
+ import { canResumeClaude, claudeContinuation } from "./claude-continuation.js";
+ import { requireClaudeSubscriptionAccount } from "./claude-inspect.js";
++import { claudeAssistantErrorText, nativeClaudeError } from "./claude-errors.js";
+ import { isDeepStrictEqual } from "node:util";
+ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+ import {
+@@ -49,6 +50,9 @@ export function createClaudeNativeAgentPort(
+       let admission = 0;
+       let pendingFinal: ModelResult | undefined;
+       let completedSessionId: string | undefined;
++      let rateLimit: Extract<SDKMessage, { type: "rate_limit_event" }>["rate_limit_info"] | undefined;
++      let assistantError: Error | undefined;
++      let failed = false;
+       let running: Promise<void> | undefined;
+       let nativeProcess: ChildProcessWithoutNullStreams | undefined;
+       let processClosed: Promise<void> | undefined;
+@@ -225,12 +229,22 @@ export function createClaudeNativeAgentPort(
+             native?.close();
+             controller.abort();
+             promptReady.resolve();
+-            if (!closed) events.push(error instanceof Error ? error : new Error(String(error)));
++            // The SDK throws after an error result; keep the typed failure already reported.
++            if (!closed && !failed) events.push(error instanceof Error ? error : new Error(String(error)));
+           }
+         })();
+       };
+       function consume(frame: SDKMessage) {
+-        if (closed) return;
++        if (closed || failed) return;
++        if (frame.type === "rate_limit_event") {
++          rateLimit = frame.rate_limit_info;
++          return;
++        }
++        // A failed request ends in a synthetic assistant frame (no stream events) with a typed error.
++        if (frame.type === "assistant" && frame.error) {
++          assistantError = nativeClaudeError(frame.error, claudeAssistantErrorText(frame), undefined, rateLimit);
++          return;
++        }
+         const observed = stream.accept(frame);
+         if (observed.text) events.push({ type: "text_delta", text: observed.text });
+         if (observed.result) {
+@@ -250,11 +264,19 @@ export function createClaudeNativeAgentPort(
+         }
+         if (frame.type === "result") {
+           if (frame.subtype !== "success" || frame.is_error) {
++            failed = true;
++            const apiStatus = (frame as { api_error_status?: number | null }).api_error_status ?? undefined;
++            const reason =
++              "errors" in frame && frame.errors.length
++                ? frame.errors.join("; ")
++                : "result" in frame && typeof frame.result === "string" && frame.result
++                  ? frame.result
++                  : `Native Claude execution failed (${frame.subtype})`;
++            const typed = assistantError as ReturnType<typeof nativeClaudeError> | undefined;
+             events.push(
+-              new Error(
+-                "Native Claude execution failed: " +
+-                  ("errors" in frame ? frame.errors.join("; ") : frame.subtype),
+-              ),
++              typed
++                ? nativeClaudeError(typed.nativeError, typed.message, apiStatus, rateLimit)
++                : Object.assign(new Error(reason), apiStatus ? { statusCode: apiStatus } : {}),
+             );
+             return;
+           }
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/codex-errors.ts b/apps/zcode-cli/packages/adapters/src/native-agent/codex-errors.ts
+new file mode 100644
+index 0000000..a8bb510
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/codex-errors.ts
+@@ -0,0 +1,44 @@
++/**
++ * Codex app-server `error` notification -> typed failure. The message stays Codex's own
++ * (TurnError.message plus additionalDetails); the status lets the Host classifier tell an
++ * exhausted allowance or expired login from a server fault. Variants follow
++ * codex-rs/app-server-protocol/schema/typescript/v2/CodexErrorInfo.ts.
++ */
++const STATUS: Readonly<Record<string, number>> = {
++  usageLimitExceeded: 429,
++  rateLimitExceeded: 429,
++  serverOverloaded: 529,
++  unauthorized: 401,
++  badRequest: 400,
++  contextWindowExceeded: 400,
++  internalServerError: 500,
++  cyberPolicy: 403,
++  misalignmentPolicyViolation: 403,
++};
++
++export interface NativeCodexError extends Error {
++  nativeError: string;
++  statusCode?: number;
++}
++
++export function nativeCodexError(params: unknown): NativeCodexError {
++  const error = (params as { error?: Record<string, unknown> } | undefined)?.error ?? {};
++  const info = error.codexErrorInfo;
++  const kind =
++    typeof info === "string"
++      ? info
++      : info && typeof info === "object"
++        ? (Object.keys(info)[0] ?? "other")
++        : "other";
++  const nested =
++    info && typeof info === "object" ? (Object.values(info)[0] as { httpStatusCode?: unknown } | undefined) : undefined;
++  const httpStatus = typeof nested?.httpStatusCode === "number" ? nested.httpStatusCode : undefined;
++  const statusCode = STATUS[kind] ?? httpStatus;
++  const message = [error.message, error.additionalDetails]
++    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
++    .join(" — ");
++  return Object.assign(new Error(message || "Native Codex execution failed"), {
++    nativeError: kind,
++    ...(statusCode !== undefined ? { statusCode } : {}),
++  });
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/codex-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/codex-turn.ts
+index 06b8c0e..bea6d78 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/codex-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/codex-turn.ts
+@@ -1,3 +1,4 @@
++import { nativeCodexError } from "./codex-errors.js";
+ import { codexEventObject as object, codexUsage } from "./codex-event-contract.js";
+ import { isDeepStrictEqual } from "node:util";
+ import type { Model, ModelResult, NativeAgentPort, NativeAgentToolReceipt } from "@zcode/contracts";
+@@ -192,7 +193,7 @@ export function createCodexNativeAgentPort(options: CodexClientOptions = {}): Na
+           }
+           if (method === "error" && !value.willRetry) {
+             options.onDiagnostic?.(JSON.stringify(value));
+-            throw new Error("Native Codex execution failed");
++            throw nativeCodexError(value);
+           }
+         } catch (error) {
+           fail(error);
+diff --git a/apps/zcode-cli/packages/core/test/claude-native-errors.test.ts b/apps/zcode-cli/packages/core/test/claude-native-errors.test.ts
+new file mode 100644
+index 0000000..ef17793
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/claude-native-errors.test.ts
+@@ -0,0 +1,102 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { createServer } from "node:http";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { execFileSync } from "node:child_process";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++import { createClaudeNativeAgentPort } from "../../adapters/src/native-agent/claude.js";
++import { resolveClaudeNativeExecutable } from "../../adapters/src/native-agent/claude-executable.js";
++import { classifyModelFailure } from "../../adapters/src/model/failure-classifier.js";
++
++const nativeExecutable = resolveClaudeNativeExecutable(process.env.FLEET_CLAUDE_TEST_CLI);
++execFileSync(nativeExecutable, ["--version"], { stdio: "ignore", timeout: 15000 });
++
++// A failed native request ends with an assistant frame carrying the SDK's typed `error` and a
++// result with `is_error` and `api_error_status`. The person must see the CLI's own reason, and the
++// Host classifier must receive a status it understands, instead of an internal stream error.
++async function failingTurn(status: number, body: unknown, headers: Record<string, string> = {}) {
++  const profile = await mkdtemp(join(tmpdir(), "fleet-claude-native-error-"));
++  let hits = 0;
++  const server = createServer(async (req, res) => {
++    for await (const _chunk of req) {
++      // drain
++    }
++    if (!req.url?.split("?")[0]?.endsWith("/messages")) {
++      res.writeHead(200, { "content-type": "application/json" });
++      res.end("{}");
++      return;
++    }
++    hits++;
++    res.writeHead(status, { "content-type": "application/json", ...headers });
++    res.end(JSON.stringify(body));
++  });
++  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++  const address = server.address();
++  assert.ok(address && typeof address === "object");
++  const port = createClaudeNativeAgentPort({
++    env: {
++      ANTHROPIC_API_KEY: "synthetic-native-test",
++      ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}`,
++      CLAUDE_CONFIG_DIR: profile,
++      CLAUDE_CODE_MAX_RETRIES: "0",
++    },
++  });
++  const f = await fixture(undefined, true, {
++    nativeExecutor: { kind: "claude", executable: nativeExecutable },
++    deps: { nativeAgentPort: port },
++  });
++  try {
++    let caught: any;
++    await f.runtime.executeTurn("hello").catch((error) => {
++      caught = error;
++    });
++    assert.ok(caught, "the turn must fail");
++    let cause = caught;
++    const chain: any[] = [];
++    while (cause && chain.length < 8) {
++      chain.push(cause);
++      cause = cause.cause;
++    }
++    return { chain, text: chain.map((error) => error.message).join(" | "), hits };
++  } finally {
++    await f.close();
++    server.close();
++    await rm(profile, { recursive: true, force: true });
++  }
++}
++
++const native = (chain: any[]) => chain.find((error) => error.nativeError);
++
++test("an invalid key surfaces the CLI's reason as an authentication failure", { timeout: 60000 }, async () => {
++  const r = await failingTurn(401, { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } });
++  assert.match(r.text, /Invalid API key/);
++  assert.doesNotMatch(r.text, /no matching request stream|execution failed: success/);
++  const error = native(r.chain);
++  assert.equal(error?.nativeError, "authentication_failed");
++  assert.equal(classifyModelFailure(error).reason, "auth_failed");
++});
++
++test("low credit is a billing failure, not an unknown error", { timeout: 60000 }, async () => {
++  const r = await failingTurn(400, {
++    type: "error",
++    error: { type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API." },
++  });
++  assert.match(r.text, /Credit balance is too low/);
++  assert.equal(native(r.chain)?.nativeError, "billing_error");
++  assert.equal(native(r.chain)?.statusCode, 402);
++});
++
++test("a rate limit keeps its status so the Host can wait instead of failing blindly", { timeout: 60000 }, async () => {
++  const r = await failingTurn(
++    429,
++    { type: "error", error: { type: "rate_limit_error", message: "Rate limited" } },
++    { "retry-after": "0" },
++  );
++  assert.match(r.text, /Rate limited/);
++  const error = native(r.chain);
++  assert.equal(error?.nativeError, "rate_limit");
++  assert.equal(classifyModelFailure(error).reason, "rate_limited");
++  assert.equal(r.hits, 1, "Fleet must not re-send a failed native request on its own");
++});
+diff --git a/apps/zcode-cli/packages/core/test/codex-native-errors.test.ts b/apps/zcode-cli/packages/core/test/codex-native-errors.test.ts
+new file mode 100644
+index 0000000..ca5f300
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/codex-native-errors.test.ts
+@@ -0,0 +1,123 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { createServer } from "node:http";
++import { mkdtemp, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fixture } from "./helpers/pi-runtime-fixture.js";
++import { createCodexNativeAgentPort } from "../../adapters/src/native-agent/codex-turn.js";
++import { resolveCodexNativeExecutable } from "../../adapters/src/native-agent/codex-executable.js";
++import { classifyModelFailure } from "../../adapters/src/model/failure-classifier.js";
++
++const executable = resolveCodexNativeExecutable(process.env.FLEET_CODEX_TEST_CLI);
++
++// Codex reports a final failure as an `error` notification carrying TurnError {message,
++// codexErrorInfo}. The person must see Codex's message and the Host classifier a status it knows.
++async function failingTurn(status: number, body: unknown) {
++  assert.ok(executable, "Build and select the scoped Codex binary before this test");
++  const profile = await mkdtemp(join(tmpdir(), "fleet-codex-native-error-"));
++  const payload = Buffer.from(
++    JSON.stringify({
++      email: "fixture@example.invalid",
++      sub: "fixture-user",
++      "https://api.openai.com/auth": {
++        chatgpt_account_id: "fixture-workspace",
++        chatgpt_user_id: "fixture-user",
++        chatgpt_plan_type: "pro",
++      },
++      exp: Math.floor(Date.now() / 1000) + 3600,
++    }),
++  ).toString("base64url");
++  await writeFile(
++    join(profile, "auth.json"),
++    JSON.stringify({
++      auth_mode: "chatgpt",
++      OPENAI_API_KEY: null,
++      tokens: {
++        id_token: `e30.${payload}.fixture`,
++        access_token: "synthetic-native-token",
++        refresh_token: "synthetic-refresh",
++        account_id: "fixture-workspace",
++      },
++      last_refresh: new Date().toISOString(),
++    }),
++    { mode: 0o600 },
++  );
++  let inference = 0;
++  const server = createServer(async (req, res) => {
++    for await (const _chunk of req) {
++      // drain
++    }
++    if (req.url?.includes("accounts/check")) {
++      res.writeHead(200, { "content-type": "application/json" });
++      res.end(JSON.stringify({ accounts: [{ id: "fixture-workspace", plan_type: "pro", workspace_backend_origin: "https://chatgpt.com", account_routing_override: "NO_CONSTRAINT" }] }));
++      return;
++    }
++    if (req.method !== "POST" || !req.url?.includes("responses")) {
++      res.writeHead(200, { "content-type": "application/json" });
++      res.end(JSON.stringify({ models: [], data: [] }));
++      return;
++    }
++    inference++;
++    res.writeHead(status, { "content-type": "application/json" });
++    res.end(JSON.stringify(body));
++  });
++  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++  const address = server.address();
++  assert.ok(address && typeof address === "object");
++  const base = `http://127.0.0.1:${address.port}`;
++  let diagnostics = "";
++  const port = createCodexNativeAgentPort({
++    executable,
++    configDir: profile,
++    onDiagnostic: (chunk) => {
++      diagnostics = (diagnostics + chunk).slice(-16384);
++    },
++    args: [
++      "app-server", "--listen", "stdio://", "--host-tools-json", '["fleet.Probe"]',
++      "-c", `openai_base_url="${base}"`, "-c", `chatgpt_base_url="${base}"`,
++    ],
++  });
++  const f = await fixture(undefined, true, {
++    nativeExecutor: { kind: "codex", executable, configDir: profile },
++    config: {
++      toolAllowlist: ["Probe"],
++      modelSelection: { providerId: "fixture", modelId: "gpt-6-sol", options: { reasoningLevel: "high" } } as never,
++    },
++    deps: { nativeAgentPort: port },
++  });
++  try {
++    let caught: any;
++    await f.runtime.executeTurn("hello").catch((error) => {
++      caught = error;
++    });
++    assert.ok(caught, `the turn must fail\n${diagnostics}`);
++    const chain: any[] = [];
++    for (let cause = caught; cause && chain.length < 8; cause = cause.cause) chain.push(cause);
++    return { chain, text: chain.map((error) => error.message).join(" | "), inference, diagnostics };
++  } finally {
++    await f.close();
++    server.close();
++    await rm(profile, { recursive: true, force: true });
++  }
++}
++
++const native = (chain: any[]) => chain.find((error) => error.nativeError);
++
++test("an exhausted ChatGPT allowance reaches the person and the Host as a rate limit", { timeout: 120000 }, async () => {
++  const r = await failingTurn(429, {
++    error: { type: "usage_limit_reached", message: "The usage limit has been reached", plan_type: "pro", resets_in_seconds: 3600 },
++  });
++  assert.doesNotMatch(r.text, /^Turn execution failed \| Native Codex execution failed$/, r.diagnostics);
++  const error = native(r.chain);
++  assert.ok(error, `typed error missing: ${r.text}\nDIAG ${r.diagnostics.slice(-1500)}`);
++  assert.equal(classifyModelFailure(error).reason, "rate_limited");
++  assert.match(error.message, /limit/i);
++});
++
++test("a rejected ChatGPT login is an authentication failure", { timeout: 120000 }, async () => {
++  const r = await failingTurn(401, { error: { message: "Your authentication token has expired.", type: "invalid_request_error", code: "token_expired" } });
++  const error = native(r.chain);
++  assert.ok(error, `typed error missing: ${r.text}\nDIAG ${r.diagnostics.slice(-1500)}`);
++  assert.equal(classifyModelFailure(error).reason, "auth_failed");
++});
+diff --git a/package.json b/package.json
+index 2c3a4b0..c827a7b 100644
+--- a/package.json
++++ b/package.json
+@@ -60,9 +60,9 @@
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+-    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-accounts.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts",
++    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/claude-native-errors.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-accounts.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+-    "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts",
++    "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts apps/zcode-cli/packages/core/test/codex-native-errors.test.ts",
+     "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliAccountList.browser.test.tsx __nativeAccountListTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/providerDetailFeedback.browser.test.tsx __providerFeedbackTests --desktop-styles",
+     "test:chatgpt-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/chatgptConnection.browser.test.tsx __chatgptConnectionTests --desktop-styles",
+     "test:model-settings-tool-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/modelSettingsTool.browser.test.tsx __modelSettingsToolTests --desktop-styles",

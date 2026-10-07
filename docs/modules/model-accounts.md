@@ -61,6 +61,19 @@ its account store; nothing else rewrites it.
 
 CodeBuddy's current failure is genuine (`session/new` → `Authentication required`, category auth).
 
+## Native failure reasons (candidate 0173)
+
+Probed against the real Claude Code CLI with a loopback API: after its own `system/api_retry`
+attempts, a failed request ends in an assistant frame with the SDK's typed `error`
+(`authentication_failed`, `billing_error`, `rate_limit`, `server_error`…) and an `is_error`
+result carrying `api_error_status`. Fleet raised "Native assistant frame has no matching request
+stream" for every case. Codex `error` notifications carry `TurnError {message, codexErrorInfo}`;
+Fleet reported only "Native Codex execution failed". Both executors now raise the CLI's own text
+with a status the Host classifier understands (401 auth, 402 billing, 429 with reset from a rejected
+`rate_limit_event`, 403/529/5xx kept), and never re-send the failed native request themselves
+(`claude-native-errors.test.ts`, `codex-native-errors.test.ts`). Live `rate_limit_event` and Codex
+`account/rateLimits/updated` do not yet update the displayed allowance.
+
 ## Interface
 
 Each account is ZCode's original plan card (`PlanStatusCardSurface` with the shared allowance

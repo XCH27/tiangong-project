@@ -4126,3 +4126,100 @@ Candidate 0159 added Gemini CLI (`gemini --acp`; retired in 0160 at the owner's 
 `hermes acp`, all per Paseo `packages/app/src/data/acp-provider-catalog.ts` (d831c7b) and
 hermes_cli/main.py. The local `gemini` symlink points to a missing binary and Qwen Code is not
 installed, so these profiles are source-derived and untested here.
+
+## Community integration survey: subscriptions, CLI management, CLI frontends and remote control (2026-10-06)
+
+Owner direction: judge integrations by what current open-source projects actually ship, across the
+whole collected set, not by vendor pages alone. All 74 `源码参考/latest/software` projects plus
+`software/paseo` were fingerprinted for route markers (client IDs, OAuth/device endpoints, plan
+endpoints, ACP/app-server launches) and five themes; the leading implementations per theme were
+read in source. Pins are the checkout tips on 2026-10-06 (orca `40f9e7a3`, paseo `d831c7b`,
+multica `b4ca5b4`, omnigent `27f9bf1`, openchamber `e302062`, herdr `e35f393`, harnessrouter
+`6e05aef`, CLIProxyAPI `a4acc9f`, cc-switch `5c573f1`, hermes-agent `e1fdf003`, opencode
+`907b3bc`, openclaw `58962d7f`, Kun `ebce7f6`, cindy `cd3921a`). Evidence level: source
+inspection; nothing below is a Fleet delivery status.
+
+**Subscription routes in community cores.** Codex OAuth with the public Codex CLI client
+(`app_EMoamEEZ73f0CkXaXp7hrann`): codex, opencode, hermes, openclaw, cockpit-tools, CLIProxyAPI,
+pi-mono and ~15 more. GitHub Copilot device login to `api.githubcopilot.com`: hermes (VS Code
+client, direct token, Copilot headers), opencode (own GitHub app `Ov23li8tweQw6odWQebz`, live
+`/models`), goose, cc-switch, cherry-studio, openclaw; pi-ai (Fleet's dependency) exchanges via
+`copilot_internal/v2/token`, which hermes documents as 404 for some accounts. xAI SuperGrok OAuth
+(public Grok-CLI client `b1a00492…`, device code at `auth.x.ai`): opencode core, hermes (warns xAI
+may return 403 for some tiers), Kun, cindy, pi-mono, CLIProxyAPI. Qwen OAuth (qwen-code, hermes),
+MiniMax OAuth (hermes, openclaw, cindy), Kimi OAuth (kimi-code, pi-mono), OpenRouter PKCE (hermes,
+goose, openclaw, pi-mono), Nous Portal (hermes). Anthropic OAuth "routes as Claude Code" and bills
+extra usage only (hermes docs). Antigravity: account tools (cockpit-tools, CLIProxyAPI, CodexBar,
+orca) support it; hermes keeps it in a third-party plugin catalog and openclaw's Google guide cites
+the terms forbidding it. Plan endpoints (Z.ai/Zhipu, Kimi, Volcengine Ark, DashScope coding,
+MiniMax, StepFun step plan): cc-switch, hermes, Kun, cindy, goose, openclaw. Fleet lacks Qwen,
+MiniMax, Kimi and OpenRouter OAuth, StepFun/Ark plan presets and most plan allowance readers;
+Copilot/xAI/Antigravity are held by `route-policy.ts` (OV-096) pending OV-098.
+
+**Allowance readers.** CodexBar documents a reader per provider (50+; `docs/<provider>.md`):
+Kimi (`kimi-auth` JWT, weekly + 5 h), OpenCode Go (usage API, local SQLite), Copilot (internal
+usage API), Grok (CLI billing RPC), Gemini (quota API with Gemini CLI credentials), z.ai, MiniMax,
+Alibaba coding/token plan, StepFun, Kiro, Qoder. Many use browser cookies; Fleet should prefer API
+tokens and official CLI credentials. AIUsage, cockpit-tools and CPA-Manager-Plus add account
+pools, health and cost views.
+
+**CLI management.** orca keeps per-CLI accounts and usage (`src/main/{claude,codex,cursor,grok}-accounts`,
+`claude-usage`, `codex-usage`) for ~20 CLIs. cc-switch writes each CLI's own configuration
+(Claude settings/plugins/MCP, Codex `config.toml`, Gemini, Grok, Hermes, OpenCode, OpenClaw, Pi,
+MiniMax Code) and syncs MCP and prompts. omnigent's harness journey set (launch, needs-auth before
+launch, model/effort from the harness's catalog, approval cards, resume, steer, render, cleanup,
+disconnect classes; `feature-map/native-harnesses.md`) is a usable acceptance matrix for Fleet's
+native executors.
+
+**CLIs connecting into an application.** (1) Local proxy: cc-switch `src-tauri/src/proxy`
+(provider router, failover, circuit breaker, model mapping, thinking/cache rectifiers, usage) and
+CLIProxyAPI (OpenAI/Claude/Gemini/Grok endpoints over OAuth account pools, round-robin, management
+API, Go SDK); the CLI's base URL points at the local endpoint. (2) Agent task API: harnessrouter's
+Unified Harness Protocol (versioned spec, OpenAPI, conformance suite; OpenAI Responses-compatible
+tasks with sessions, streaming, files, artifacts, cancellation); paseo's daemon WebSocket protocol
+and transport-neutral agent tool catalog with an MCP adapter. (3) Native protocols inward: paseo
+drives Claude Agent SDK, Codex app-server, Copilot ACP, OpenCode server and Pi; multica passes MCP
+servers through the ACP session instead of editing CLI config.
+
+**Frontends and team orchestration.** Per-task Git worktrees off a shared bare cache (multica,
+orca, Kun, openchamber multi-run); issue/board assignment with WebSocket wake plus poll fallback
+(multica) and task providers GitHub/GitLab/Gitea/Bitbucket/Azure DevOps/Jira/Linear (orca);
+multi-agent rooms with peer, coordinator and directed modes and owner-adopted proposal cards (Kun);
+mixed harnesses in one session with cross-review and policies for approval, spend and tools
+(omnigent); up to five models on one task then Fusion (openchamber); agents driving the host
+through a socket API to spawn panes and wait on each other (herdr). Status ownership: the execution
+host owns one status store and every reader subscribes (orca `docs/reference/agent-status-store.md`).
+
+**Remote and phone control.** LAN mobile web UI (`http://<lan-ip>:6767`, omnigent) with Cloudflare
+quick tunnel or Tailscale; E2E relay with QR pairing (paseo: Curve25519 + NaCl box, zero-knowledge,
+relay off until pairing consent, self-hostable; openchamber Private Relay, revocable; orca: phone
+and desktop both dial out to relay cells, opaque E2EE splice, APNs/FCM push gateway authenticated by
+the desktop's X25519 key); native Expo apps (orca, paseo, openchamber); terminal persistence across
+SSH loss (herdr). Chat channels: openclaw (Telegram, WhatsApp, Slack, Signal, Matrix, Teams, Feishu,
+LINE, Discord, iMessage, SMS… plus `/pair` device codes), hermes (personal WeChat through Tencent's
+official iLink Bot API `ilinkai.weixin.qq.com`, QQ bot, Yuanbao, Signal, WhatsApp Cloud), AionUi
+(Telegram, Lark, DingTalk, WeChat). Hosted relays and push gateways are external services under the
+owner checkpoint; LAN, user-run tunnels and official bot APIs are not.
+
+### Account, model and invocation comparison against Fleet (2026-10-06)
+
+Added to the collection on 2026-10-06 (owner direction, `intake/upstream` + `latest/software`
+aliases): paperclip `03cf6a6ecb0c`, ComposioHQ agent-orchestrator `c7f447385f9b`,
+claude-code-router `f2e01bfe0c01`, vibe-kanban `d5cbb5380fa0`. Also read: AionCore `4a707fc`,
+Octop `eb28011`, craft-agents-oss v0.14.0 `73bd9c2`, ACP spec `302e6f7`, installed Claude Agent SDK
+0.3.289. Source inspection only.
+
+| Aspect | Community mechanism (source) | Fleet today | Gap |
+|---|---|---|---|
+| Credential at rest | Keychain/DPAPI/secret-tool key, 0600 key-file fallback, AES-256-GCM, fail closed (Kun `kun/src/security/secret-store.ts`); password-manager sources via user's own `op`/Bitwarden (hermes `agent/secret_sources`); proxy-side substitution so agents see dummies (codex `network-proxy/src/credential_broker`) | key derived from platform/home/username (`credentialCipherProvider.ts`, PRI-02) | OS-keychain key with migration |
+| Token ownership | App-owned profile is canonical after a one-time empty-profile seed; rejected refresh asks re-auth, never reuses CLI token (openclaw `docs/concepts/oauth.md`); dead refresh tokens quarantined (hermes) | per-account official CLI homes (avoids token sink) | — (keep) |
+| Multi-credential routing | OAuth > token > key order, lastUsed round robin, session stickiness, user pins, subscription + API-key backup, model fallbacks for current turn only (openclaw `model-failover.md`); per-provider fill_first/round_robin/random/least_used (hermes `credential_pool.py`); round robin pools (CLIProxyAPI); local gateway with pool health, routing rules, aliases, issued keys (cockpit-tools `codex_local_access_*`) | Codex/ChatGPT accounts, quota auto-switch at 98 %, shared throttle until reset | strategy choice, API-key backup, model fallback chain |
+| Failure classes | 30 s/1 m/5 m escalating cooldown, model-scoped rate limits, 10-min billing disable, broad rate-limit text bucket, 529 overloaded, retryable 402 windows (openclaw); reset time parsed from free text, jittered backoff (hermes `retry_utils.py`); typed quota waits and poisoned-session recovery (paperclip `docs/adapters/claude-local.md`); SDK error types `authentication_failed`, `oauth_org_not_allowed`, `account_on_hold`, `verification_required`, `billing_error`, `rate_limit`… (Claude Agent SDK) | account failure memory, provider reset throttle; typed Claude/Codex native failures (0173) | escalating/model-scoped cooldown, reset parsing, API-key backup |
+| Live allowance | Claude `rate_limit_event` (status, resetsAt, five_hour/seven_day/opus/sonnet/overage, utilization); Codex `account/rateLimits/updated`, `thread/tokenUsage/updated` (paseo uses); readers: Kimi `GET api.kimi.com/coding/v1/usages`, OpenCode Go `GET opencode.ai/zen/go/v1/usage` (orca `src/main/rate-limits`), 50+ in CodexBar docs | polled Claude/Codex native allowance; API-key plan readers for OpenCode Go, MiniMax Token Plan, Kimi Code and DeepSeek/Moonshot/OpenRouter/SiliconFlow balances (`apiKeyPlanUsage.ts`) | live native events; Alibaba Coding Plan, Qwen/MiMo Token Plan, StepFun readers (Z.ai/Zhipu added 0174); Kimi/OpenCode/CodeBuddy/Copilot/Grok CLI allowance |
+| CLI login state | Adapter-specific bounded status commands with classifiers (`claude auth status`, `gh auth status`, `kiro whoami --format json`, `kilo auth list`…) and credential-file presence (agent-orchestrator `adapters/agent/authprobe`) | ACP initialize/authMethods, Claude/Codex inspection | — (comparable) |
+| CLI model lists | Bounded per-CLI list commands, sign-in guard before browser-opening commands (agent-orchestrator `modelcatalog/catalog.go`: `opencode/grok/cursor/agy models`, `kimi provider list --json`, `auggie models list --json`…) | ACP config options, app-server `model/list`, SDK `supportedModels` | — (comparable) |
+| Explicit test | Test Environment: CLI present, cwd, auth mode, live hello probe (paperclip); test draft before save (Octop) | “permissions verified on first request” | user-triggered live probe |
+| Harness × model | Claude Code on Anthropic-compatible endpoints via env (AionCore `cc_switch/provider_env.rs`, cc-switch, claude-code-router); Claude Code ↔ Responses and Codex ↔ Messages/Chat loopback bridges (cindy `packages/*-bridge`); ACP unstable `providers/set` {apiType, baseUrl, headers} (goose, qwen-code) | Claude executor = Anthropic login, Codex = ChatGPT | run vendor harnesses on Fleet connections |
+| Executor controls | Codex `turn/steer`, `turn/interrupt`, fork/rollback/compact (paseo); SDK `interrupt`, `setModel`, `setMaxThinkingTokens`, `getContextUsage` | Codex turn/start only; Claude via AbortController | Guide/Stop on native protocols, true context usage |
+| Roles | primary / utilityModel (titles, summaries) / decisionModel with local ONNX classifiers, no chat fallback (openclaw `decision-models.md`) | ordinary/page/vision/decision (chat allowed, OV-097) | optional utility role |
+| Catalog breadth | Ark (+coding plan), StepFun (+Step Plan), Qianfan, Hunyuan, ModelScope, PPIO, Ollama/LM Studio, Vertex, Bedrock, Azure (AionUi, cc-switch, hermes, CodexBar); CLIs Droid, Augment, Amp, Kiro, Qoder, Trae, MiniMax Code, MiMo Code, dsh, Goose, Kilo (agent-orchestrator, paperclip, multica) | 68 templates (0174 adds Volcengine Ark plans, Tencent Token Plan, Qianfan, StepFun, ModelScope, PPIO) | Hunyuan, 01, InfiniAI, Ctyun, local Ollama/LM Studio, Vertex, Bedrock, Azure; listed CLIs |

@@ -52,6 +52,24 @@ Wan, Veo, Hailuo, FLUX hosts) are not implemented; see [Media](media.md).
 | Cherry Studio (`packages/provider-registry`, AGPL) | Generated registry (937 models), capability enum incl. image/video generation, id normalisation, union merge, per-provider overrides | Design only; no data or code copied |
 | Pi AI 1.0.2 (`models.generated.js`) | Static per-provider catalog with `thinkingLevelMap`, image catalog | Data source for the snapshot |
 
+## Plan and vendor templates (candidate 0174)
+
+Anthropic-compatible templates added from cc-switch `5c573f1` presets, with referral parameters
+removed and official key pages (PPIO's checked against its docs): Volcengine Ark Coding Plan
+(`ark.cn-beijing.volces.com/api/coding`) and Agent Plan (`…/api/plan`, both `ark-code-latest`),
+Tencent Cloud Token Plan (`api.lkeap.cloud.tencent.com/plan/anthropic`, `tc-code-latest`), Baidu
+Qianfan Coding Plan (`qianfan.baidubce.com/anthropic/coding`, `qianfan-code-latest`), StepFun Step
+Plan CN/global (`api.stepfun.com|ai/step_plan`), ModelScope (`api-inference.modelscope.cn`) and PPIO
+(`api.ppio.com/anthropic`). Built-in revision 35, 68 templates. Card names carry the brand. Keyless
+local OpenAI-compatible servers (Ollama, LM Studio) are not added: the complete-config rule allows a
+missing key only for local classifiers, so they need a validation and transport change first.
+
+Z.ai / BigModel Coding Plan connections (`zai-api`, `fleet-zai-coding-*`, `bigmodel-api`; not the
+pay-as-you-go templates on the same hosts) read `GET /api/monitor/usage/quota/limit` with the saved
+key: `TOKENS_LIMIT`/`CREDIT_LIMIT` become plan windows, `TIME_LIMIT` the MCP lane (one minute marks
+the monthly quota), counts override the rounded percentage, and a five-hour reset further than five
+hours is dropped (CodexBar `Plugins/zai.js`). Malformed entries leave the reading unavailable.
+
 ## Open
 
 - Refreshing between releases would mean fetching models.dev at runtime (an external service:

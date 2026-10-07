@@ -5,6 +5,13 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Claude Code and Codex failures now show the CLI's own reason (invalid key, low credit, usage
+  limit, expired login) instead of an internal stream error, and reach the Host as auth, billing or
+  rate-limit failures. Z.ai / BigModel Coding Plan shows its 5-hour, weekly and MCP allowance. New
+  templates: Volcengine Ark Coding/Agent Plan, Tencent Cloud Token Plan, Baidu Qianfan Coding Plan,
+  StepFun Step Plan, ModelScope and PPIO. A whole-collection survey of account, model and
+  invocation mechanisms (with four newly cloned references) is recorded in References.
+
 - Stop no longer claims a file write was cancelled when it actually finished: a changing tool gets
   1.5 s to report what happened, otherwise its result is marked unknown (RECOVERY-01). Plugins
   declared only by a Project's own configuration can no longer run hooks around the Project hook
