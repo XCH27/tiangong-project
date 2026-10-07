@@ -2904,3 +2904,16 @@ Classifier routes stay first, then API/plan chat routes, then official CLIs (eac
 CLI session). Automatic choice runs once, on the first message of a new conversation that is still
 on the standard tier; later turns, manual picks, failures and an unset tier keep the offered model.
 No new Session, credential, catalog or preference authority is added.
+
+### OV-098 — Follow community practice for subscription routes (2026-10-06)
+
+The owner points out that Hermes, OpenCode and other projects connect subscriptions Fleet refused,
+and asks that integrations be judged by what open-source projects actually ship, not by vendor
+pages alone. Source evidence (References, community integration survey): GitHub Copilot device
+login and the public Grok-CLI OAuth client are in the cores of opencode, hermes, openclaw, goose and
+cc-switch; Codex OAuth with the public Codex CLI client is in about twenty projects. Owner's
+choice: restore GitHub Copilot and xAI SuperGrok subscription routes; restore Antigravity with a
+one-time account-suspension warning when it is added (Antigravity Additional Terms §6; hermes keeps
+it out of core, openclaw's Google guide warns). This narrows OV-096. The change is prepared but not
+applied: the session's permission classifier refused editing the refusal tests, so it waits in the
+candidate stash until the owner grants that permission or applies it.
