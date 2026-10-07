@@ -57,7 +57,12 @@ one installable unit, typed views, two trust tiers, standards-compatible content
    and install. Listings carry categories derived from their contents — Skills, Tools (MCP), Apps
    (pages and panels), Executors (CLI agents), Connections — and the market filters by them
    (lobehub Discover, dify categories, Codex/OpenClaw single plugin store). A listing may have
-   several categories. A single Skill from a Skills index or a server from the MCP Registry is
+   several categories. Catalog entries rarely declare contents (none of the official or sampled
+   Claude-format marketplace entries do), so the backend inspects packages already on disk
+   (bundled, a folder inside the cloned marketplace, a local directory) and caches the result by
+   package root and manifest time; a remote package is *unknown* until described or installed and
+   appears only under All. Filters exist today for Skills, MCP, Commands, Subagents and Hooks; Apps,
+   Executors and Connections arrive with the app-plugin contribution API (phase 4). A single Skill from a Skills index or a server from the MCP Registry is
    installed as a one-primitive plugin, so lifecycle, provenance and removal stay one path.
 2. **Two trust tiers** (OpenClaw native vs bundles). *Content plugins* — Agent Plugins, Claude,
    Codex, Cursor and ZCode packages — map Skills, MCP declarations, commands, prompts and subagent
@@ -74,9 +79,12 @@ one installable unit, typed views, two trust tiers, standards-compatible content
 4. **Primitives stay manageable on their own.** A person can create or import a Skill, MCP server,
    command or hook without any plugin (Claude Code, Codex, ZCode). Settings → Plugins is the single
    management page with views *Installed plugins · Skills · MCP · Commands · Hooks*; every view
-   lists all origins (from a plugin, mine, Project) grouped with consistent counts. The separate
-   MCP, Skills, Commands and Hooks settings entries become links into these views. Subagents keep
-   their own page (OV-088).
+   lists the person's own items as *Custom* and plugin-provided items grouped by plugin, with the
+   same scope menu and counts. The former MCP, Skills, Commands and Hooks settings sections remain
+   routable aliases (`sidebarAliasOf` in `settingsPageConfig.ts`) that open this page on their view,
+   so existing links such as the workspace hook review banner keep working. All views read one
+   shared plugin store keyed by host, Project and scope, so each embedded view must load it with
+   the page's target. Subagents keep their own page (OV-088).
 5. **Catalog sources are adapters with provenance** — Fleet curated catalog, Claude/ZCode-format
    marketplaces (existing), the official MCP Registry, Agent Skills indexes and the ACP Registry
    (executors). Presence in a catalog is never trust; local folders and archives always install.

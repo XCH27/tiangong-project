@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Settings → Plugins is now the one place to manage plugins, Skills, MCP servers, commands and
+  hooks: the four separate settings pages became tabs on it (old links still open the right tab),
+  and the person's own items are labelled Custom. The Plugin Market can filter by what a package
+  contains, and no longer shows the internal Node REPL host.
+
 - Claude Code and Codex failures now show the CLI's own reason (invalid key, low credit, usage
   limit, expired login) instead of an internal stream error, and reach the Host as auth, billing or
   rate-limit failures. Z.ai / BigModel Coding Plan shows its 5-hour, weekly and MCP allowance. New

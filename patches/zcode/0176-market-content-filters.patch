@@ -1,0 +1,546 @@
+From bf981424cf8bd01f5cd5cab6c511dbb9bb02143e Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 11:03:43 -0700
+Subject: [PATCH] Plugin Market filters by what packages contain; own items are
+ labelled Custom (OV-100)
+
+Catalog entries rarely declare their contents (none of the official or
+sampled reference marketplace entries do), so packages already on disk are
+inspected and cached by root and manifest time; remote packages stay unknown
+and appear only under All. Settings views label the person's own Skills, MCP
+servers, commands and hooks Custom instead of Installed. The internal
+node_repl host is hidden from the Market as it already was from Settings and
+the catalog count.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../packages/adapters/src/plugins/index.ts    |  1 +
+ .../adapters/src/plugins/marketplace.ts       | 71 +++++++++++++++++++
+ .../packages/bootstrap/src/plugins.ts         | 30 +++++++-
+ .../test/plugin-market-content-kinds.test.ts  | 53 ++++++++++++++
+ packages/ui/src/i18n/locales/en-US.ts         |  9 +--
+ packages/ui/src/i18n/locales/zh-CN.ts         | 11 +--
+ .../ui/src/settings/PluginStoreListView.tsx   | 61 ++++++++++++++--
+ .../settings/pluginCapabilityProjection.ts    |  8 ++-
+ .../ui/src/settings/pluginStoreListing.ts     | 23 ++++++
+ packages/ui/test/pluginSettingsViews.test.ts  | 16 +++++
+ 10 files changed, 267 insertions(+), 16 deletions(-)
+ create mode 100644 apps/zcode-cli/packages/bootstrap/test/plugin-market-content-kinds.test.ts
+
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/index.ts b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+index 8da2f9c..7a8604e 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+@@ -63,6 +63,7 @@ import type {
+ export {
+   addMarketplace,
+   describeMarketplacePlugin,
++  inferLocalMarketplacePluginComponentKinds,
+   ensureDefaultPluginMarketplaces,
+   ensureMarketplaceManifestAvailable,
+   getPluginDataDir,
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts b/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
+index e3f701c..361227f 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
+@@ -829,6 +829,77 @@ export async function describeMarketplacePlugin(input: {
+   }
+ }
+ 
++const localComponentKindsCache = new Map<string, { stamp: string; kinds: string[] }>();
++
++/**
++ * Component kinds of a catalog entry whose package is already on disk (bundled, a folder inside the
++ * cloned marketplace, or a local directory), for browsing filters. Remote sources return undefined:
++ * their contents are unknown until described or installed, which is not the same as "none".
++ */
++export function inferLocalMarketplacePluginComponentKinds(input: {
++  entry: PluginMarketplaceEntry;
++  manifest?: PluginMarketplaceManifest | null;
++  marketplace: string;
++  storageRoot: string;
++}): string[] | undefined {
++  const rootPath = resolveLocalPluginSourceRootSync(input);
++  if (!rootPath) return undefined;
++  const manifestPath = getMarketplaceManifestPath(input.storageRoot, input.marketplace);
++  let stamp: string;
++  try {
++    stamp = `${statSync(rootPath).mtimeMs}:${existsSync(manifestPath) ? statSync(manifestPath).mtimeMs : 0}`;
++  } catch {
++    return undefined;
++  }
++  const cached = localComponentKindsCache.get(rootPath);
++  if (cached?.stamp === stamp) return cached.kinds;
++  const read = readComponentsAtRoot({
++    diagnostics: [],
++    entry: input.entry,
++    marketplace: input.marketplace,
++    rootPath,
++  });
++  const kinds = read.components.filter((group) => group.items.length > 0).map((group) => group.kind);
++  localComponentKindsCache.set(rootPath, { stamp, kinds });
++  return kinds;
++}
++
++/** The on-disk branches of resolvePluginSourceRoot; never clones or downloads. */
++function resolveLocalPluginSourceRootSync(input: {
++  entry: PluginMarketplaceEntry;
++  manifest?: PluginMarketplaceManifest | null;
++  marketplace: string;
++  storageRoot: string;
++}): string | null {
++  const source = input.entry.source;
++  if (source === "filesystem" || source === "sea") {
++    const cachePath = input.entry.cachePath;
++    if (cachePath && directoryExists(cachePath)) return cachePath;
++    const computed = getPluginCacheDir(
++      input.storageRoot,
++      input.marketplace,
++      input.entry.name,
++      input.entry.version ?? DEFAULT_VERSION,
++    );
++    return directoryExists(computed) ? computed : null;
++  }
++  if (typeof source === "string") {
++    const marketplaceDir = dirname(getMarketplaceManifestPath(input.storageRoot, input.marketplace));
++    const manifest =
++      input.manifest ?? loadMarketplaceManifestSync(input.storageRoot, input.marketplace);
++    const local = resolveInside(
++      resolveMarketplacePluginBaseDir(marketplaceDir, manifest),
++      source.replace(/^\.\//, ""),
++    );
++    return local && directoryExists(local) ? local : null;
++  }
++  if (isRecord(source) && source.source === "directory" && typeof source.path === "string") {
++    const path = resolve(source.path);
++    return directoryExists(path) ? path : null;
++  }
++  return null;
++}
++
+ /** 读插件根目录的 manifest（失败按 null 降级），再交给纯枚举器列出组件名称+描述。 */
+ function readComponentsAtRoot(input: {
+   diagnostics: PluginValidationDiagnostic[];
+diff --git a/apps/zcode-cli/packages/bootstrap/src/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+index 5673997..4d5fdab 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+@@ -17,6 +17,7 @@ import {
+   addMarketplace,
+   comparePluginUpdate,
+   describeMarketplacePlugin,
++  inferLocalMarketplacePluginComponentKinds,
+   ensureDefaultPluginMarketplaces,
+   discoverNodePluginsSync,
+   ensureMarketplaceManifestAvailable,
+@@ -297,6 +298,7 @@ export function getZCodePluginsOverview(
+   const catalogs: Array<{
+     summary: ZCodeMarketplaceSummaryData;
+     entries: PluginMarketplaceEntry[];
++    manifest: ReturnType<typeof loadMarketplaceManifestSync>;
+   }> = [];
+   for (const { record, useCachedManifest } of effectiveMarketplaces) {
+     // Marketplace source 只来自 User/Host 配置。只有目标 Host 已经通过显式 refresh/install
+@@ -312,6 +314,7 @@ export function getZCodePluginsOverview(
+         countVisibleMarketplacePlugins(record.id, manifest?.plugins),
+       ),
+       entries: manifest?.plugins ?? [],
++      manifest,
+     });
+   }
+ 
+@@ -324,7 +327,10 @@ export function getZCodePluginsOverview(
+   const listingByPluginId = new Map<string, PluginStoreListing>();
+   const availablePlugins = catalogs.flatMap((catalog) =>
+     catalog.entries.map((entry) => {
+-      const data = toAvailablePluginData(entry, catalog.summary.id, installedIds);
++      const data = toAvailablePluginData(entry, catalog.summary.id, installedIds, {
++        manifest: catalog.manifest,
++        storageRoot: pluginStorageRoot,
++      });
+       latestPinByPluginId.set(data.id, {
+         ...(entry.version ? { version: entry.version } : {}),
+         ...(readPluginSourceIdentityPin(entry.source)
+@@ -1201,8 +1207,28 @@ function toAvailablePluginData(
+   entry: PluginMarketplaceEntry,
+   marketplace: string,
+   installedIds: ReadonlySet<string>,
++  local?: {
++    manifest: ReturnType<typeof loadMarketplaceManifestSync>;
++    storageRoot: string;
++  },
+ ): ZCodeAvailablePluginData {
+   const id = `${entry.name}@${marketplace}`;
++  // Catalog entries rarely declare their contents; read them from packages already on disk.
++  // Absent means unknown (a remote package not yet described), not "contains nothing".
++  const declared = inferComponentTypes(entry.raw);
++  const inspected = local
++    ? inferLocalMarketplacePluginComponentKinds({
++        entry,
++        manifest: local.manifest,
++        marketplace,
++        storageRoot: local.storageRoot,
++      })
++    : undefined;
++  const componentTypes = inspected
++    ? [...new Set([...declared, ...inspected])]
++    : declared.length > 0
++      ? declared
++      : undefined;
+   return {
+     id,
+     name: entry.name,
+@@ -1210,7 +1236,7 @@ function toAvailablePluginData(
+     ...(entry.description ? { description: entry.description } : {}),
+     ...(entry.version ? { version: entry.version } : {}),
+     installed: installedIds.has(id),
+-    componentTypes: inferComponentTypes(entry.raw),
++    ...(componentTypes ? { componentTypes } : {}),
+     ...(entry.listing ? { listing: entry.listing } : {}),
+   };
+ }
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-market-content-kinds.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-market-content-kinds.test.ts
+new file mode 100644
+index 0000000..7abd775
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-market-content-kinds.test.ts
+@@ -0,0 +1,53 @@
++import assert from "node:assert/strict";
++import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import os from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import { inferLocalMarketplacePluginComponentKinds } from "@zcode/adapters/plugins";
++
++// OV-100: Market filters read what a package contains. Catalog entries rarely declare contents, so
++// packages already on disk are inspected; remote packages stay unknown instead of "contains nothing".
++test("a marketplace package on disk reports its contents; a remote one stays unknown", async () => {
++  const storageRoot = await mkdtemp(join(os.tmpdir(), "fleet-market-kinds-"));
++  try {
++    const marketplaceDir = join(storageRoot, "marketplaces", "local-market");
++    const pluginRoot = join(marketplaceDir, "plugins", "writer");
++    await mkdir(join(pluginRoot, "skills", "draft"), { recursive: true });
++    await writeFile(
++      join(pluginRoot, "skills", "draft", "SKILL.md"),
++      "---\nname: draft\ndescription: Draft text\n---\nBody\n",
++    );
++    const manifest = {
++      name: "local-market",
++      plugins: [
++        { name: "writer", source: "./plugins/writer" },
++        { name: "remote", source: { source: "github", repo: "example/remote" } },
++      ],
++    };
++    await writeFile(join(marketplaceDir, "marketplace.json"), JSON.stringify(manifest));
++    const entry = (name: string) => {
++      const raw = manifest.plugins.find((plugin) => plugin.name === name)!;
++      return { name, source: raw.source, raw } as never;
++    };
++
++    assert.deepEqual(
++      inferLocalMarketplacePluginComponentKinds({ entry: entry("writer"), marketplace: "local-market", storageRoot }),
++      ["skill"],
++    );
++    assert.equal(
++      inferLocalMarketplacePluginComponentKinds({ entry: entry("remote"), marketplace: "local-market", storageRoot }),
++      undefined,
++      "an undownloaded package is unknown, not empty",
++    );
++
++    // A new top-level component folder changes the package root, so the cached answer is replaced.
++    await mkdir(join(pluginRoot, "commands"));
++    await writeFile(join(pluginRoot, "commands", "outline.md"), "---\ndescription: Outline\n---\nBody\n");
++    assert.deepEqual(
++      inferLocalMarketplacePluginComponentKinds({ entry: entry("writer"), marketplace: "local-market", storageRoot }),
++      ["command", "skill"],
++    );
++  } finally {
++    await rm(storageRoot, { recursive: true, force: true });
++  }
++});
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 715ff95..0376f83 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -4382,7 +4382,7 @@ const enUS: Record<string, string> = {
+   "settings.search.clear": "Clear search",
+   "settings.plugin.plugins.installed": "Installed",
+   "settings.plugin.plugins.builtIn": "Built-in",
+-  "settings.plugin.mcp.installed": "Installed",
++  "settings.plugin.mcp.installed": "Custom",
+   "settings.plugin.mcp.plugins": "Plugins",
+   "settings.plugin.mcp.pluginsDescription": "MCPs provided by installed plugins",
+   "settings.plugin.mcp.needsAttention": "Needs Attention",
+@@ -4398,12 +4398,12 @@ const enUS: Record<string, string> = {
+   "settings.plugin.mcp.newServer": "New MCP server",
+   "settings.plugin.mcp.searchEmpty": "No MCP servers match your search",
+   "settings.plugin.skills.emptyInstalledTitle": "No skills installed",
+-  "settings.plugin.skills.installed": "Installed",
++  "settings.plugin.skills.installed": "Custom",
+   "settings.plugin.skills.emptyInstalledDescription":
+     "Create a skill or import one from an external agent.",
+   "settings.plugin.skills.newSkill": "New skill",
+   "settings.plugin.skills.searchEmpty": "No skills match your search",
+-  "settings.plugin.commands.installed": "Installed",
++  "settings.plugin.commands.installed": "Custom",
+   "settings.plugin.commands.emptyInstalledTitle": "No commands installed",
+   "settings.plugin.commands.emptyInstalledDescription":
+     "Create a command or import one from an external agent.",
+@@ -4430,6 +4430,7 @@ const enUS: Record<string, string> = {
+   "settings.plugins.store.manageInstalled": "Manage installed",
+   "settings.plugins.store.segment.public": "Public",
+   "settings.plugins.store.segment.personal": "Personal",
++  "settings.plugins.store.content.all": "All",
+   "settings.plugins.store.featured": "Featured",
+   "settings.plugins.store.category.developerTools": "Developer Tools",
+   "settings.plugins.store.category.productivity": "Productivity",
+@@ -4765,7 +4766,7 @@ const enUS: Record<string, string> = {
+   "settings.hooks.group.configured": "Configured hooks",
+   "settings.hooks.group.compatibility": "Available to import",
+   "settings.hooks.group.plugins": "Plugin hooks",
+-  "settings.hooks.group.installed": "Installed",
++  "settings.hooks.group.installed": "Custom",
+   "settings.hooks.group.legacy": "Legacy",
+   "settings.hooks.import": "Import",
+   "settings.hooks.imported": "Hook imported",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index f1f5369..aac15ea 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -4071,7 +4071,7 @@ const zhCN: Record<string, string> = {
+   "settings.search.clear": "清空搜索",
+   "settings.plugin.plugins.installed": "已安装",
+   "settings.plugin.plugins.builtIn": "内置",
+-  "settings.plugin.mcp.installed": "已安装",
++  "settings.plugin.mcp.installed": "自定义",
+   "settings.plugin.mcp.plugins": "插件",
+   "settings.plugin.mcp.pluginsDescription": "这些 MCP 来自已安装的插件",
+   "settings.plugin.mcp.needsAttention": "需要处理",
+@@ -4086,11 +4086,11 @@ const zhCN: Record<string, string> = {
+   "settings.plugin.mcp.newServer": "新建 MCP 服务器",
+   "settings.plugin.mcp.searchEmpty": "没有匹配的 MCP 服务器",
+   "settings.plugin.skills.emptyInstalledTitle": "尚未安装技能",
+-  "settings.plugin.skills.installed": "已安装",
++  "settings.plugin.skills.installed": "自定义",
+   "settings.plugin.skills.emptyInstalledDescription": "新建技能，或从外部 Agent 导入已有技能。",
+   "settings.plugin.skills.newSkill": "新建技能",
+   "settings.plugin.skills.searchEmpty": "没有匹配的技能",
+-  "settings.plugin.commands.installed": "已安装",
++  "settings.plugin.commands.installed": "自定义",
+   "settings.plugin.commands.emptyInstalledTitle": "尚未安装命令",
+   "settings.plugin.commands.emptyInstalledDescription": "新建命令，或从外部 Agent 导入已有命令。",
+   "settings.plugin.commands.searchEmpty": "没有匹配的命令",
+@@ -4113,6 +4113,7 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.store.manageInstalled": "管理已安装",
+   "settings.plugins.store.segment.public": "公开",
+   "settings.plugins.store.segment.personal": "个人",
++  "settings.plugins.store.content.all": "全部",
+   "settings.plugins.store.featured": "Featured",
+   "settings.plugins.store.category.developerTools": "开发者工具",
+   "settings.plugins.store.category.productivity": "生产力",
+@@ -4146,7 +4147,7 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.store.section.skills": "技能",
+   "settings.plugins.store.section.commands": "命令",
+   "settings.plugins.store.section.agents": "子智能体",
+-  "settings.plugins.store.section.hooks": "Hooks",
++  "settings.plugins.store.section.hooks": "钩子",
+   "settings.plugins.store.info.title": "信息",
+   "settings.plugins.store.info.developer": "开发者",
+   "settings.plugins.store.info.category": "类别",
+@@ -4430,7 +4431,7 @@ const zhCN: Record<string, string> = {
+   "settings.hooks.group.configured": "已配置 Hook",
+   "settings.hooks.group.compatibility": "可导入 Hook",
+   "settings.hooks.group.plugins": "插件 Hook",
+-  "settings.hooks.group.installed": "已安装",
++  "settings.hooks.group.installed": "自定义",
+   "settings.hooks.group.legacy": "旧版",
+   "settings.hooks.import": "导入",
+   "settings.hooks.imported": "Hook 已导入",
+diff --git a/packages/ui/src/settings/PluginStoreListView.tsx b/packages/ui/src/settings/PluginStoreListView.tsx
+index a8d741c..bd31da1 100644
+--- a/packages/ui/src/settings/PluginStoreListView.tsx
++++ b/packages/ui/src/settings/PluginStoreListView.tsx
+@@ -21,11 +21,23 @@ import {
+   selectFeaturedItems,
+   sortInstalledStripItems,
+   sortPersonalMarketplaceGroups,
++  STORE_CONTENT_KINDS,
++  storeItemContentKinds,
+   storeItemMatches,
++  type StoreContentKind,
+   type PersonalMarketplaceGroup,
+   type StorePluginItem,
+ } from "@/settings/pluginStoreListing.js";
+ import { resolveMarketplaceDisplayName } from "@/settings/pluginSourceLabel.js";
++import { INTERNAL_RUNTIME_HOST_PLUGIN_ID } from "@/settings/pluginCapabilityProjection.js";
++
++const STORE_CONTENT_KIND_LABEL_IDS: Record<StoreContentKind, string> = {
++  skill: "settings.plugins.store.section.skills",
++  mcp: "settings.plugins.store.section.mcp",
++  command: "settings.plugins.store.section.commands",
++  agent: "settings.plugins.store.section.agents",
++  hook: "settings.plugins.store.section.hooks",
++};
+ 
+ // 分类/市场分组手动收起后的展示数量；默认完整展示，避免较少的插件又被自动隐藏。
+ const CATEGORY_VISIBLE_LIMIT = 6;
+@@ -61,20 +73,41 @@ export function PluginStoreListView({
+   const modeOrder = isOfficeMode ? order?.work : order?.code;
+   const keyword = query.trim().toLowerCase();
+   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
++  const [contentKind, setContentKind] = useState<StoreContentKind | null>(null);
+   // 旧版会话恢复入口退出市场；统一过滤所有浏览投影，旧缓存/精选也不能重新露出。
+   // 完整 ID 只命中官方插件，插件管理页继续使用原始条目管理已有安装。
+-  const items = useMemo(
+-    () => allItems.filter((item) => item.id !== RETIRED_STORE_PLUGIN_ID),
++  const browsableItems = useMemo(
++    () =>
++      allItems.filter(
++        (item) => item.id !== RETIRED_STORE_PLUGIN_ID && item.id !== INTERNAL_RUNTIME_HOST_PLUGIN_ID,
++      ),
+     [allItems],
+   );
++  // OV-100: content filters offer only kinds some listing actually has; unknown contents stay in All.
++  const availableContentKinds = useMemo(() => {
++    const present = new Set<string>();
++    for (const item of browsableItems) {
++      for (const kind of storeItemContentKinds(item) ?? []) present.add(kind);
++    }
++    return STORE_CONTENT_KINDS.filter((kind) => present.has(kind));
++  }, [browsableItems]);
++  const activeContentKind =
++    contentKind && availableContentKinds.includes(contentKind) ? contentKind : null;
++  const items = useMemo(
++    () =>
++      activeContentKind
++        ? browsableItems.filter((item) => storeItemContentKinds(item)?.has(activeContentKind))
++        : browsableItems,
++    [activeContentKind, browsableItems],
++  );
+ 
+   const installedItems = useMemo(
+     () =>
+       sortInstalledStripItems(
+-        items.filter((item) => item.installed),
++        browsableItems.filter((item) => item.installed),
+         locale,
+       ),
+-    [items, locale],
++    [browsableItems, locale],
+   );
+   const publicItems = useMemo(
+     () => items.filter((item) => isPublicStoreMarketplaceId(item.marketplace)),
+@@ -247,6 +280,26 @@ export function PluginStoreListView({
+           })}
+           onClick={() => onSegmentChange("personal")}
+         />
++        {availableContentKinds.length > 0 ? (
++          <>
++            <div className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
++            <SegmentPill
++              active={activeContentKind === null}
++              testId="plugin-store-content-all"
++              label={intl.formatMessage({ id: "settings.plugins.store.content.all" })}
++              onClick={() => setContentKind(null)}
++            />
++            {availableContentKinds.map((kind) => (
++              <SegmentPill
++                key={kind}
++                active={activeContentKind === kind}
++                testId={`plugin-store-content-${kind}`}
++                label={intl.formatMessage({ id: STORE_CONTENT_KIND_LABEL_IDS[kind] })}
++                onClick={() => setContentKind(kind)}
++              />
++            ))}
++          </>
++        ) : null}
+       </div>
+ 
+       {keyword ? (
+diff --git a/packages/ui/src/settings/pluginCapabilityProjection.ts b/packages/ui/src/settings/pluginCapabilityProjection.ts
+index b3a8a01..f6291e2 100644
+--- a/packages/ui/src/settings/pluginCapabilityProjection.ts
++++ b/packages/ui/src/settings/pluginCapabilityProjection.ts
+@@ -33,6 +33,12 @@ interface PluginSettingsGroups {
+  * 设置页只展示已物化的插件；Agent 为保留目标 Host 配置而返回的 missing 投影不能
+  * 进入 Installed / Built-in，否则会出现“已安装分组 + 未安装状态”的矛盾行。
+  */
++/**
++ * Browser Use and Computer Use's shared node_repl host: kept in the official catalog so it installs,
++ * but never listed on its own (Settings, Market and the backend's catalog count agree).
++ */
++export const INTERNAL_RUNTIME_HOST_PLUGIN_ID = "node-repl-host@zcode-plugins-official";
++
+ export function partitionPluginsForSettings(
+   plugins: readonly ZCodePluginInfo[],
+   builtInPluginIds: ReadonlySet<string>,
+@@ -41,7 +47,7 @@ export function partitionPluginsForSettings(
+   // 若在设置里单列开关，用户会误以为它是可独立停用的功能，并让两项能力同时失效。
+   const materializedPlugins = plugins.filter(
+     (plugin) =>
+-      plugin.packageStatus !== "missing" && plugin.id !== "node-repl-host@zcode-plugins-official",
++      plugin.packageStatus !== "missing" && plugin.id !== INTERNAL_RUNTIME_HOST_PLUGIN_ID,
+   );
+   return {
+     installed: materializedPlugins.filter((plugin) => !builtInPluginIds.has(plugin.id)),
+diff --git a/packages/ui/src/settings/pluginStoreListing.ts b/packages/ui/src/settings/pluginStoreListing.ts
+index 3da0115..b1ea396 100644
+--- a/packages/ui/src/settings/pluginStoreListing.ts
++++ b/packages/ui/src/settings/pluginStoreListing.ts
+@@ -344,6 +344,29 @@ export function groupItemsByCategory(
+   return [...groups.entries()].map(([category, items]) => ({ category, items }));
+ }
+ 
++/** Market filters by what a package contains (OV-100), in the detail view's section order. */
++export const STORE_CONTENT_KINDS = ["skill", "mcp", "command", "agent", "hook"] as const;
++export type StoreContentKind = (typeof STORE_CONTENT_KINDS)[number];
++
++/**
++ * What a listing contains, from the installed runtime inventory or the catalog projection. Null
++ * means unknown (a remote package not yet described); such items appear only under "All".
++ */
++export function storeItemContentKinds(item: StorePluginItem): ReadonlySet<string> | null {
++  const kinds = new Set<string>();
++  let known = false;
++  if (item.info?.components) {
++    known = true;
++    for (const group of item.info.components) if (group.items.length > 0) kinds.add(group.kind);
++  }
++  for (const declared of [item.installedMeta?.componentTypes, item.summary?.componentTypes]) {
++    if (!declared) continue;
++    known = true;
++    for (const kind of declared) kinds.add(kind);
++  }
++  return known ? kinds : null;
++}
++
+ export function storeItemMatches(item: StorePluginItem, keyword: string, locale: string): boolean {
+   return pluginSearchMatches(
+     keyword,
+diff --git a/packages/ui/test/pluginSettingsViews.test.ts b/packages/ui/test/pluginSettingsViews.test.ts
+index 467d35c..5dd0230 100644
+--- a/packages/ui/test/pluginSettingsViews.test.ts
++++ b/packages/ui/test/pluginSettingsViews.test.ts
+@@ -25,3 +25,19 @@ test("plugin primitives are views of the one Plugins page, not separate sidebar
+   }
+   assert.equal(settingsSidebarSection("general", settingsSections), "general");
+ });
++
++test("Market content filters treat undescribed packages as unknown, not empty", async () => {
++  const { storeItemContentKinds } = await import("../src/settings/pluginStoreListing.js");
++  const base = { id: "a@m", name: "a", marketplace: "m", installed: false, restorable: false, orphaned: false };
++  assert.equal(storeItemContentKinds(base), null);
++  assert.deepEqual(
++    [...(storeItemContentKinds({ ...base, summary: { ...base, componentTypes: ["skill", "mcp"] } } as never) ?? [])],
++    ["skill", "mcp"],
++  );
++  const installed = storeItemContentKinds({
++    ...base,
++    installed: true,
++    info: { components: [{ kind: "hook", items: [{ name: "pre" }] }, { kind: "agent", items: [] }] },
++  } as never);
++  assert.deepEqual([...(installed ?? [])], ["hook"], "empty groups do not count");
++});
+-- 
+2.54.0 (Apple Git-157)
+

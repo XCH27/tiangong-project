@@ -280,3 +280,7 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0173 | [0173-native-failure-reasons.patch](0173-native-failure-reasons.patch) | `7843eb6ff996507cfff6589963843b84fa3a6edc` |
 
 | 0174 | [0174-plan-allowance-templates.patch](0174-plan-allowance-templates.patch) | `0bc781e57804f30f75809fdd3b699f5b9ede2813` |
+
+| 0175 | [0175-plugin-settings-views.patch](0175-plugin-settings-views.patch) | `30a79d03e141918ebff9e47177f8c1ac8e45662f` |
+
+| 0176 | [0176-market-content-filters.patch](0176-market-content-filters.patch) | `983ee0c9638eb8cb4a0aab30f758b4734b475556` |
