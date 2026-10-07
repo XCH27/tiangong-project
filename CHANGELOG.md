@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Stop no longer claims a file write was cancelled when it actually finished: a changing tool gets
+  1.5 s to report what happened, otherwise its result is marked unknown (RECOVERY-01). Plugins
+  declared only by a Project's own configuration can no longer run hooks around the Project hook
+  trust review, and a plugin disabled or uninstalled in Settings stops running hooks in
+  conversations that are already open (DOM-01/02).
+
 - Any chat model, including an official CLI, can now be the decision model (classifiers first,
   CLIs last); its answers must pass the same checks as a classifier's. New conversations set to
   自动选择 start on the standard-tier model, and the first message may move them to the fast or

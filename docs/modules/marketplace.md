@@ -162,8 +162,12 @@ references scaffolding/validation guides that were not found in the candidate/up
 claiming Agent authoring works. The creator UI currently requires the official Skill ID.
 
 Keep the existing dependency resolution, ZIP digest/path protections and atomic activation rollback. Settings Skill, command and subagent readers must use the CLI's `ZCODE_STORAGE_DIR` precedence, and local UI user roots must honor the existing desktop-home override; otherwise a scoped runtime and its settings can show different cached plugins. Opening the candidate store must only read its local inventory; the inherited automatic ZCode CDN refresh is retired. Explicit Refresh retains the original marketplace command and third-party source identity. The shared node_repl host remains in runtime inventory but is not a separate settings switch; Browser/Computer Use own the visible controls. The Browser Use content package keeps its identity and MIT author attribution while its visible Fleet wording is versioned with its seeded manifest. This is not a Fleet-owned or fully independent catalog.
-Close these concrete gaps before expanding the catalog: `adapters/src/plugins/index.ts:366` allows
-third-party hooks; installation defaults to enabled (`bootstrap/src/plugins.ts:733`) without a
+Inline roots declared only by Project configuration keep skills, commands and MCP but their hooks are
+withheld with `plugin_project_hooks_withheld`, so they cannot bypass workspace-hook trust (DOM-01).
+Resident Sessions re-check the shared plugin configuration/install record before each plugin hook and
+skip withdrawn ones (DOM-02); resident MCP and Skill withdrawal remain open.
+Close these concrete gaps before expanding the catalog: `adapters/src/plugins/index.ts` allows
+installed third-party hooks; installation defaults to enabled (`bootstrap/src/plugins.ts:733`) without a
 per-package capability grant review. Desktop uninstall now passes the existing `keepData: true`
 policy, removes activation/configuration and optional package cache, and preserves plugin user
 data. The original confirmation names that distinction; no extra control was added. CLI explicit

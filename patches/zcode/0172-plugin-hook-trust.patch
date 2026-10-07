@@ -1,0 +1,673 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/index.ts b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+index a7d9975..8da2f9c 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+@@ -192,13 +192,22 @@ export class NodePluginAdapter implements PluginPort {
+       // 未启用插件的内置 MCP 就会在管理页完全不可见。这里先读取声明名给 UI 只读展示，
+       // 实际 runtime 注入仍只使用 enabled 分支解析出的 component.mcpServers。
+       const mcpServerDefinitions = loadPluginMcpServerDefinitions({ diagnostics, loaded });
+-      const hooksRunnable = canRunPluginHooks(loaded);
++      const hooksRunnable = canRunPluginHooks(candidate);
+       const hookInspection = inspectPluginHooks({
+         dataPath,
+         diagnostics,
+         loaded,
+         runnable: hooksRunnable,
+       });
++      if (!hooksRunnable && hookInspection.details.length > 0) {
++        diagnostics.push({
++          code: "plugin_project_hooks_withheld",
++          message: `Hooks of ${loaded.id} were not run: the plugin is declared only by this Project's configuration. Install it from Plugins, or list its folder in your user configuration, to allow its hooks.`,
++          path: loaded.rootPath,
++          pluginId: loaded.id,
++          severity: "warning",
++        });
++      }
+       const component = enabled
+         ? resolveEnabledComponents({
+             dataPath,
+@@ -242,16 +251,22 @@ export class NodePluginAdapter implements PluginPort {
+   }
+ 
+   private resolveCandidates(
+-    request: Pick<PluginDiscoverRequest, "config" | "officialPluginRoots" | "storageRoot">,
++    request: Pick<
++      PluginDiscoverRequest,
++      "config" | "officialPluginRoots" | "projectDeclaredRoots" | "storageRoot"
++    >,
+     diagnostics: PluginDiagnostic[],
+     options?: PluginAbortOptions,
+   ): PluginCandidate[] {
+     const candidates: PluginCandidate[] = [];
++    const projectDeclared = new Set((request.projectDeclaredRoots ?? []).map((root) => resolve(root)));
+     for (const rootPath of request.config.dirs) {
++      const resolvedRoot = resolve(rootPath);
+       candidates.push({
+         defaultEnabled: true,
+         marketplace: ZCODE_INLINE_PLUGIN_MARKETPLACE,
+-        rootPath: resolve(rootPath),
++        ...(projectDeclared.has(resolvedRoot) ? { projectDeclared: true } : {}),
++        rootPath: resolvedRoot,
+         source: "inline",
+       });
+     }
+@@ -372,11 +387,10 @@ function resolveEnabledComponents(input: {
+   };
+ }
+ 
+-function canRunPluginHooks(_loaded: LoadedPlugin): boolean {
+-  // 三方 marketplace 插件 hook 默认放行（与内置/官方一致）。
+-  // 上限：放弃了「仅官方可执行 hook」的信任边界，三方插件 hook 会直接执行；
+-  // 升级路径：需要逐插件 trust（如 user config 白名单）时，把判断收回这里。
+-  return true;
++function canRunPluginHooks(candidate: PluginCandidate): boolean {
++  // 用户安装/声明的插件 hook 默认放行（与内置/官方一致）。只由 Project 配置声明的 inline 根
++  // 不放行：Project 直写的 hook 要过工作区 hook 信任审查，插件声明不能成为绕过它的通道（DOM-01）。
++  return !candidate.projectDeclared;
+ }
+ 
+ function warnUnsupportedComponents(loaded: LoadedPlugin, diagnostics: PluginDiagnostic[]): void {
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/types.ts b/apps/zcode-cli/packages/adapters/src/plugins/types.ts
+index a8ed7cf..b6e9674 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/types.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/types.ts
+@@ -11,6 +11,8 @@ import type {
+ 
+ export interface PluginCandidate {
+   defaultEnabled: boolean;
++  /** Declared only by Project configuration: hooks are withheld (DOM-01). */
++  projectDeclared?: boolean;
+   marketplace: string;
+   rootPath: string;
+   source: PluginSource;
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+index 222bcb7..9d379ab 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/create-app.ts
+@@ -68,6 +68,7 @@ import {
+   readSessionModelSelection,
+ } from "./session-store.js";
+ import { createWorkflowFacade } from "./workflow-facade.js";
++import { createPluginAvailability } from "./plugin-availability.js";
+ import { createInputFacade } from "./input-facade.js";
+ import { createPluginFacadeForApp } from "./plugin-facade.js";
+ import { resolvePluginRuntimeFeatures } from "./plugin-runtime-features.js";
+@@ -109,7 +110,9 @@ import {
+   markMcpAdapterInitialized,
+   markRuntimeConstructed,
+   markStorageAdaptersInitialized,
++  discoverAppPlugins,
+   resolveStartupPlugins,
++  startupPluginStorageRoot,
+   startAppStartup,
+ } from "./startup-marks.js";
+ 
+@@ -223,6 +226,37 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+       startupTimer,
+       workingDirectory,
+     });
++    const pluginStorageRoot = startupPluginStorageRoot({ cliStorageRoot, options });
++    const pluginAvailability = createPluginAvailability({
++      discover: () =>
++        discoverAppPlugins({
++          configResult: resolveEffectiveConfigResult(
++            createConfig({
++              env: options.env,
++              projectConfigPath: options.projectConfigPath,
++              workingDirectory,
++              workspaceIdentity: options.runtimeConfig?.memory?.workspaceIdentity,
++              skipUserConfig: options.skipUserConfig,
++              userConfigPath: options.userConfigPath,
++              cliOverrides: createConfigCliOverrides(options),
++            }),
++            options,
++          ),
++          env: options.env,
++          logger,
++          options,
++          pluginStorageRoot,
++          workingDirectory,
++        }),
++      logger,
++      pluginStorageRoot,
++      // Workspace-scope plugin writes land in `<workspace>/.zcode/config.json`, which may not exist yet.
++      watchedConfigPaths: [
++        configResult.sources.user.path,
++        ...configResult.sources.project.paths,
++        join(workingDirectory, ".zcode", "config.json"),
++      ],
++    });
+     // 随 CLI 内置的技能包（dynamic-workflows 等）：不属于任何插件，用户无法停用或卸载。
+     const bundledSkillRoots = await resolveBundledSkillRoots({ cliStorageRoot, logger });
+     const pluginSubagentProfiles = loadPluginAgentProfiles({
+@@ -767,6 +801,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
+       executionPort,
+       workspaceHookAdmission: workspaceHookRuntimeSecurity?.admission,
+       workspaceHookSnapshot: workspaceHookRuntimeSecurity?.snapshot,
++      pluginAvailability,
+       browserControlPort,
+       fileSystemPort,
+       httpClientPort,
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts b/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts
+new file mode 100644
+index 0000000..88a0c32
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/plugin-availability.ts
+@@ -0,0 +1,57 @@
++import { statSync } from "node:fs";
++import { join } from "node:path";
++import type { PluginAvailabilityPort } from "@zcode/core";
++import type { Logger, PluginLoadOutcome } from "@zcode/contracts";
++
++/**
++ * Whether a plugin a resident Session started with has since been disabled or uninstalled (DOM-02).
++ * Plugin settings are written by a separate management process, so the shared owner is the plugin
++ * configuration on disk. Each check compares the user/Project configuration and the install record;
++ * only when one changed does it rerun the app's own discovery. A running turn is not interrupted,
++ * nothing is added back to the Session, and a failed rediscovery withholds plugin hooks.
++ */
++export function createPluginAvailability(input: {
++  discover: () => PluginLoadOutcome;
++  logger?: Logger;
++  pluginStorageRoot: string;
++  watchedConfigPaths: Array<string | undefined>;
++}): PluginAvailabilityPort {
++  const watched = [
++    ...input.watchedConfigPaths.filter((path): path is string => Boolean(path)),
++    join(input.pluginStorageRoot, "installed_plugins.json"),
++  ];
++  const signature = () =>
++    watched
++      .map((path) => {
++        try {
++          const stat = statSync(path);
++          return `${stat.mtimeMs}:${stat.size}`;
++        } catch {
++          return "missing";
++        }
++      })
++      .join("|");
++  let seen = signature();
++  let enabled: Set<string> | undefined;
++  return {
++    isWithdrawn(pluginId) {
++      const current = signature();
++      if (current !== seen) {
++        seen = current;
++        try {
++          enabled = new Set(
++            input.discover().plugins.filter((plugin) => plugin.enabled).map((plugin) => plugin.id),
++          );
++        } catch (error) {
++          enabled = new Set();
++          input.logger?.warn("Plugin rediscovery failed; plugin hooks are withheld", {
++            error: error instanceof Error ? error.message : String(error),
++            event: "plugin.availability.rediscovery_failed",
++            module: "bootstrap.plugins",
++          });
++        }
++      }
++      return enabled ? !enabled.has(pluginId) : false;
++    },
++  };
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/project-plugin-roots.ts b/apps/zcode-cli/packages/bootstrap/src/app/project-plugin-roots.ts
+new file mode 100644
+index 0000000..6f223c3
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/src/app/project-plugin-roots.ts
+@@ -0,0 +1,8 @@
++import { resolve } from "node:path";
++import type { ConfigResult } from "@zcode/adapters/config";
++
++/** Inline plugin roots that only Project configuration declares; their hooks are withheld (DOM-01). */
++export function projectDeclaredPluginRoots(configResult: ConfigResult): string[] {
++  const user = new Set(configResult.sources.plugins.dirs.user.map((root) => resolve(root)));
++  return configResult.sources.plugins.dirs.workspace.filter((root) => !user.has(resolve(root)));
++}
+diff --git a/apps/zcode-cli/packages/bootstrap/src/app/startup-marks.ts b/apps/zcode-cli/packages/bootstrap/src/app/startup-marks.ts
+index 28ad172..078a60e 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/app/startup-marks.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/app/startup-marks.ts
+@@ -5,6 +5,7 @@ import type { Logger, McpServerConfig, PluginLoadOutcome } from "@zcode/contract
+ import type { StartupTimer } from "../startup-logging.js";
+ import { resolveOfficialPluginRoots } from "./bundled-plugins.js";
+ import { DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS } from "./official-plugin-definitions.js";
++import { projectDeclaredPluginRoots } from "./project-plugin-roots.js";
+ import { getPluginStorageRoot } from "./paths.js";
+ import type { ZCodeAppOptions } from "./types.js";
+ 
+@@ -17,25 +18,8 @@ export function resolveStartupPlugins(input: {
+   startupTimer: StartupTimer;
+   workingDirectory: string;
+ }): PluginLoadOutcome {
+-  const pluginStorageRoot =
+-    input.options.pluginStorageRoot ?? getPluginStorageRoot(input.cliStorageRoot);
+-  const pluginOutcome = discoverNodePluginsSync({
+-    config: input.configResult.config.plugins,
+-    env: input.env ?? process.env,
+-    officialPluginRoots: resolveOfficialPluginRoots({
+-      extraRoots: input.options.officialPluginRoots,
+-      logger: input.logger,
+-      storageRoot: pluginStorageRoot,
+-      suppressedBuiltins: new Set(input.configResult.config.plugins.suppressedBuiltins),
+-    }),
+-    // defaultEnabled 的 official plugin (如 skill-creator) 只有在这里
+-    // 把名单传给 discoverNodePluginsSync 才会真正默认开启。CLI 子命令路径
+-    // (resolveZCodePlugins) 和应用启动路径都要传，否则 `/skill skill-creator` 在会话里
+-    // 报 "Skill not found: skill-creator"，但 `zcode plugins list` 却显示它是 enabled。
+-    officialPluginsEnabledByDefault: DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS,
+-    storageRoot: pluginStorageRoot,
+-    workingDirectory: input.workingDirectory,
+-  });
++  const pluginStorageRoot = startupPluginStorageRoot(input);
++  const pluginOutcome = discoverAppPlugins({ ...input, pluginStorageRoot });
+   input.startupTimer.mark("ZCode plugins resolved", {
+     context: {
+       commandRootCount: pluginOutcome.commandRoots.length,
+@@ -57,6 +41,42 @@ export function resolveStartupPlugins(input: {
+   return pluginOutcome;
+ }
+ 
++export function startupPluginStorageRoot(input: {
++  cliStorageRoot: string;
++  options: Pick<ZCodeAppOptions, "pluginStorageRoot">;
++}): string {
++  return input.options.pluginStorageRoot ?? getPluginStorageRoot(input.cliStorageRoot);
++}
++
++/** The app's plugin discovery, shared by startup and the resident withdrawal check (DOM-02). */
++export function discoverAppPlugins(input: {
++  configResult: ConfigResult;
++  env?: NodeJS.ProcessEnv;
++  logger?: Logger;
++  options: Pick<ZCodeAppOptions, "officialPluginRoots">;
++  pluginStorageRoot: string;
++  workingDirectory: string;
++}): PluginLoadOutcome {
++  return discoverNodePluginsSync({
++    config: input.configResult.config.plugins,
++    env: input.env ?? process.env,
++    officialPluginRoots: resolveOfficialPluginRoots({
++      extraRoots: input.options.officialPluginRoots,
++      logger: input.logger,
++      storageRoot: input.pluginStorageRoot,
++      suppressedBuiltins: new Set(input.configResult.config.plugins.suppressedBuiltins),
++    }),
++    // defaultEnabled 的 official plugin (如 skill-creator) 只有在这里
++    // 把名单传给 discoverNodePluginsSync 才会真正默认开启。CLI 子命令路径
++    // (resolveZCodePlugins) 和应用启动路径都要传，否则 `/skill skill-creator` 在会话里
++    // 报 "Skill not found: skill-creator"，但 `zcode plugins list` 却显示它是 enabled。
++    officialPluginsEnabledByDefault: DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS,
++    projectDeclaredRoots: projectDeclaredPluginRoots(input.configResult),
++    storageRoot: input.pluginStorageRoot,
++    workingDirectory: input.workingDirectory,
++  });
++}
++
+ export function startAppStartup(input: {
+   hasInjectedModelAdapter: boolean;
+   resume: boolean;
+diff --git a/apps/zcode-cli/packages/bootstrap/src/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+index 8fcd68d..5673997 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+@@ -56,6 +56,7 @@ import {
+   OFFICIAL_NODE_REPL_HOST_PLUGIN_NAME,
+   OFFICIAL_PLUGIN_DEFINITIONS,
+ } from "./app/official-plugin-definitions.js";
++import { projectDeclaredPluginRoots } from "./app/project-plugin-roots.js";
+ import { getCliStorageRoot, getPluginStorageRoot } from "./app/paths.js";
+ import { withPluginStorageLock } from "./lib/plugin-storage-lock.js";
+ 
+@@ -261,6 +262,7 @@ export function resolveZCodePlugins(options: ResolveZCodePluginsOptions = {}): P
+       suppressedBuiltins: new Set(configResult.config.plugins.suppressedBuiltins),
+     }),
+     officialPluginsEnabledByDefault: DEFAULT_ENABLED_OFFICIAL_PLUGIN_IDS,
++    projectDeclaredRoots: projectDeclaredPluginRoots(configResult),
+     storageRoot: pluginStorageRoot,
+     workingDirectory,
+   });
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts
+new file mode 100644
+index 0000000..bfd8d61
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts
+@@ -0,0 +1,44 @@
++import assert from "node:assert/strict";
++import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import os from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import { createPluginAvailability } from "../src/app/plugin-availability.js";
++import { resolveZCodePlugins, setZCodePluginEnabled } from "../src/plugins.js";
++
++// DOM-02: Settings writes plugin state from a separate management process. A resident Session's
++// check must notice that write through the shared configuration, in both scopes.
++test("a resident Session notices a plugin disabled through the shared configuration", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-availability-"));
++  try {
++    const workspace = join(root, "workspace");
++    const plugin = join(root, "plugin");
++    const userConfigPath = join(root, "user/config.json");
++    const pluginStorageRoot = join(root, "storage/cli/plugins");
++    for (const dir of [workspace, join(root, "user"), join(plugin, ".zcode-plugin")])
++      await mkdir(dir, { recursive: true });
++    await writeFile(join(plugin, ".zcode-plugin/plugin.json"), JSON.stringify({ name: "shared", version: "1.0.0" }));
++    await writeFile(
++      userConfigPath,
++      JSON.stringify({ storage: { dir: join(root, "storage") }, plugins: { dirs: [plugin] } }),
++    );
++    const paths = { env: {}, officialPluginRoots: [], pluginStorageRoot, userConfigPath, workingDirectory: workspace };
++    const id = resolveZCodePlugins(paths).plugins.find((entry) => entry.name === "shared")!.id;
++    const availability = createPluginAvailability({
++      discover: () => resolveZCodePlugins(paths),
++      pluginStorageRoot,
++      watchedConfigPaths: [userConfigPath, join(workspace, ".zcode", "config.json")],
++    });
++    assert.equal(availability.isWithdrawn(id, workspace), false, "unchanged configuration keeps startup state");
++
++    await setZCodePluginEnabled({ ...paths, enabled: false, plugin: id });
++    assert.equal(availability.isWithdrawn(id, workspace), true, "user-scope disable is seen");
++    await setZCodePluginEnabled({ ...paths, enabled: true, plugin: id });
++    assert.equal(availability.isWithdrawn(id, workspace), false, "re-enable is seen");
++
++    await setZCodePluginEnabled({ ...paths, enabled: false, plugin: id, scope: "workspace" });
++    assert.equal(availability.isWithdrawn(id, workspace), true, "a new Project configuration file is seen");
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts b/apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts
+new file mode 100644
+index 0000000..8a59235
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts
+@@ -0,0 +1,89 @@
++import assert from "node:assert/strict";
++import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import os from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import { resolveZCodePlugins } from "../src/plugins.js";
++
++// DOM-01: a Project's own hook declarations wait for workspace-hook trust. An inline plugin root
++// declared only by the same Project must not run its hooks around that review, while its skills
++// still load. The same folder listed in the user's configuration keeps its hooks.
++async function fixture() {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-project-plugin-hooks-"));
++  const workspace = join(root, "workspace");
++  const plugin = join(root, "project-plugin");
++  const userConfigPath = join(root, "user/config.json");
++  const projectConfigPath = join(workspace, ".zcode/config.json");
++  for (const dir of [
++    join(workspace, ".zcode"),
++    join(root, "user"),
++    join(plugin, ".zcode-plugin"),
++    join(plugin, "hooks"),
++    join(plugin, "skills/fixture"),
++  ])
++    await mkdir(dir, { recursive: true });
++  await writeFile(
++    join(plugin, ".zcode-plugin/plugin.json"),
++    JSON.stringify({ name: "project-plugin", version: "1.0.0", skills: "./skills" }),
++  );
++  await writeFile(
++    join(plugin, "skills/fixture/SKILL.md"),
++    "---\nname: project-fixture\ndescription: Project plugin skill\n---\nBody.",
++  );
++  await writeFile(
++    join(plugin, "hooks/hooks.json"),
++    JSON.stringify({
++      hooks: {
++        UserPromptSubmit: [{ hooks: [{ type: "command", command: "touch marker" }] }],
++      },
++    }),
++  );
++  const resolve = async (userDirs: string[]) => {
++    await writeFile(
++      userConfigPath,
++      JSON.stringify({ storage: { dir: join(root, "storage") }, plugins: { dirs: userDirs } }),
++    );
++    await writeFile(projectConfigPath, JSON.stringify({ plugins: { dirs: [plugin] } }));
++    return resolveZCodePlugins({
++      env: {},
++      officialPluginRoots: [],
++      pluginStorageRoot: join(root, "storage/cli/plugins"),
++      projectConfigPath,
++      userConfigPath,
++      workingDirectory: workspace,
++    });
++  };
++  return { plugin, resolve, close: () => rm(root, { recursive: true, force: true }) };
++}
++
++const hookCount = (hooks: Record<string, Array<{ hooks: unknown[] }> | undefined>) =>
++  Object.values(hooks).reduce((sum, matchers) => sum + (matchers ?? []).reduce((n, m) => n + m.hooks.length, 0), 0);
++
++test("hooks of a plugin declared only by the Project are withheld; its skills still load", async () => {
++  const f = await fixture();
++  try {
++    const outcome = await f.resolve([]);
++    const plugin = outcome.plugins.find((entry) => entry.name === "project-plugin");
++    assert.equal(plugin?.enabled, true);
++    assert.equal(hookCount(outcome.hooks as never), 0, "no runnable hook reaches the runner");
++    assert.ok(outcome.skillRoots.some((root) => root.path.startsWith(f.plugin)));
++    assert.ok(
++      outcome.diagnostics.some(
++        (diagnostic) => diagnostic.code === "plugin_project_hooks_withheld" && diagnostic.pluginId === plugin?.id,
++      ),
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("the same folder declared in the user configuration keeps its hooks", async () => {
++  const f = await fixture();
++  try {
++    const outcome = await f.resolve([f.plugin]);
++    assert.equal(hookCount(outcome.hooks as never), 1);
++    assert.ok(!outcome.diagnostics.some((diagnostic) => diagnostic.code === "plugin_project_hooks_withheld"));
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/apps/zcode-cli/packages/contracts/src/plugins/index.ts b/apps/zcode-cli/packages/contracts/src/plugins/index.ts
+index 048f6d5..71d7026 100644
+--- a/apps/zcode-cli/packages/contracts/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/contracts/src/plugins/index.ts
+@@ -39,6 +39,7 @@ export type PluginDiagnosticCode =
+   | "plugin_hook_read_failed"
+   | "plugin_hook_invalid"
+   | "plugin_hook_unsupported_event"
++  | "plugin_project_hooks_withheld"
+   | "plugin_dependency_invalid"
+   | "plugin_dependency_missing"
+   | "plugin_dependency_cycle"
+@@ -264,6 +265,12 @@ export interface PluginDiscoverRequest {
+   // 默认空集合, 现有 plugin (含 ios-simulator/android-emulator 这种重负载) 行为不变。
+   officialPluginsEnabledByDefault?: ReadonlySet<string>;
+   officialPluginRoots?: string[];
++  /**
++   * Inline plugin roots declared only by Project configuration. Their skills, commands and MCP
++   * servers load, but their hooks do not run: Project hooks are executable code that must pass the
++   * workspace-hook trust review, and a Project-declared plugin cannot bypass it (DOM-01).
++   */
++  projectDeclaredRoots?: string[];
+   storageRoot: string;
+   trace?: TraceContext;
+   workingDirectory: string;
+diff --git a/apps/zcode-cli/packages/core/src/hooks/configured-runner.ts b/apps/zcode-cli/packages/core/src/hooks/configured-runner.ts
+index b616337..73913fb 100644
+--- a/apps/zcode-cli/packages/core/src/hooks/configured-runner.ts
++++ b/apps/zcode-cli/packages/core/src/hooks/configured-runner.ts
+@@ -52,8 +52,17 @@ function createHookRegistrationsForMatcher(
+ ): HookRegistration[] {
+   return matcherConfig.hooks.flatMap((hook, hookIndex) => {
+     if (hook.enabled === false) return [];
++    const pluginId = hook.plugin?.id;
+     return [
+       createHookRegistration({
++        ...(pluginId && options.isPluginWithdrawn
++          ? {
++              admission: () =>
++                options.isPluginWithdrawn?.(pluginId)
++                  ? { allowed: false, reasonCode: "plugin_withdrawn", skipLifecycle: true }
++                  : { allowed: true },
++            }
++          : {}),
+         event,
+         hook,
+         hookIndex,
+diff --git a/apps/zcode-cli/packages/core/src/hooks/types.ts b/apps/zcode-cli/packages/core/src/hooks/types.ts
+index 017dde1..658e84e 100644
+--- a/apps/zcode-cli/packages/core/src/hooks/types.ts
++++ b/apps/zcode-cli/packages/core/src/hooks/types.ts
+@@ -97,6 +97,8 @@ export interface ConfiguredHookRunnerOptions {
+   emitEvent?: (event: SessionEvent) => Promise<void>;
+   executionPort: ExecutionPort;
+   getWorkingDirectory: () => string;
++  /** True once the plugin was disabled or uninstalled after this runner was built (DOM-02). */
++  isPluginWithdrawn?: (pluginId: string) => boolean;
+   logger?: Logger;
+   workspaceHookAdmission?: WorkspaceHookRuntimeAdmissionPort;
+   workspaceHookSnapshot?: WorkspaceHookBundleSnapshot;
+diff --git a/apps/zcode-cli/packages/core/src/index.ts b/apps/zcode-cli/packages/core/src/index.ts
+index c5e4d4a..bc73c77 100644
+--- a/apps/zcode-cli/packages/core/src/index.ts
++++ b/apps/zcode-cli/packages/core/src/index.ts
+@@ -145,6 +145,7 @@ export type {
+   ActiveTurnInfo,
+   AgentRuntimeConfig,
+   AgentRuntimeDeps,
++  PluginAvailabilityPort,
+   ConversationRewindResult,
+   ExecuteTurnOptions,
+   ModelExecutionContext,
+diff --git a/apps/zcode-cli/packages/core/src/runtime.ts b/apps/zcode-cli/packages/core/src/runtime.ts
+index b3f9b02..faa6e71 100644
+--- a/apps/zcode-cli/packages/core/src/runtime.ts
++++ b/apps/zcode-cli/packages/core/src/runtime.ts
+@@ -12,6 +12,7 @@ export type {
+   ActiveTurnInfo,
+   AgentRuntimeConfig,
+   AgentRuntimeDeps,
++  PluginAvailabilityPort,
+   ConversationRewindResult,
+   ExecuteTurnOptions,
+   ModelExecutionContext,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
+index 9b3666e..8dadecc 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/runtime-tools.ts
+@@ -106,6 +106,12 @@ function createRuntimeHookRunner(
+           },
+           executionPort: deps.executionPort,
+           getWorkingDirectory: () => runtime.workingDirectory,
++          ...(deps.pluginAvailability
++            ? {
++                isPluginWithdrawn: (pluginId: string) =>
++                  deps.pluginAvailability?.isWithdrawn(pluginId, runtime.workingDirectory) ?? false,
++              }
++            : {}),
+           logger: runtime.logger,
+           workspaceHookAdmission: deps.workspaceHookAdmission,
+           workspaceHookSnapshot: deps.workspaceHookSnapshot,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/types.ts b/apps/zcode-cli/packages/core/src/runtime/types.ts
+index 864a142..2ba2cb4 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/types.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/types.ts
+@@ -312,6 +312,10 @@ export interface MemoryRuntimeConfig {
+   workspaceIdentity?: string;
+ }
+ 
++export interface PluginAvailabilityPort {
++  isWithdrawn(pluginId: string, workingDirectory: string): boolean;
++}
++
+ export interface AgentRuntimeDeps {
+   nativeAgentPort?: NativeAgentPort;
+   agentTelemetry?: AgentExecutionTelemetryPort;
+@@ -334,6 +338,8 @@ export interface AgentRuntimeDeps {
+   hookRunner?: HookRunner;
+   workspaceHookAdmission?: WorkspaceHookRuntimeAdmissionPort;
+   workspaceHookSnapshot?: WorkspaceHookBundleSnapshot;
++  /** Current plugin withdrawals; resident plugin hooks consult it before each dispatch (DOM-02). */
++  pluginAvailability?: PluginAvailabilityPort;
+   executionPort?: ExecutionPort;
+   /** browser-use 控制端口；透传到 ToolExecutionContext.browserControlPort 供 node_repl 使用。 */
+   browserControlPort?: BrowserControlPort;
+diff --git a/apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts b/apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts
+new file mode 100644
+index 0000000..374aced
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts
+@@ -0,0 +1,54 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++
++// DOM-02: a resident Session keeps its startup plugin outcome. Withdrawing the plugin in Settings
++// must stop its hooks from running in that Session's later turns, without touching other plugins.
++test("a plugin disabled after a Session started no longer runs its hooks in later turns", async () => {
++  const withdrawn = new Set<string>();
++  const commands: string[] = [];
++  const plugin = (id: string) => ({ id, name: id, dataPath: "/tmp/fleet-plugin-data", rootPath: "/tmp/fleet-plugin-root" });
++  const f = await fixture(undefined, false, {
++    config: {
++      hooks: {
++        enabled: true,
++        maxOutputBytes: 10_000,
++        timeoutMs: 5_000,
++        events: {
++          UserPromptSubmit: [
++            {
++              hooks: [
++                { type: "command", command: "withdrawn-plugin-hook", plugin: plugin("gone@market") },
++                { type: "command", command: "kept-plugin-hook", plugin: plugin("kept@market") },
++                { type: "command", command: "user-hook" },
++              ],
++            },
++          ],
++        },
++      },
++    } as never,
++    deps: {
++      executionPort: {
++        async run(request: { command: { command: string } }) {
++          commands.push(request.command.command);
++          return { exitCode: 0, stdout: "", stderr: "", durationMs: 1, truncated: false } as never;
++        },
++      } as never,
++      pluginAvailability: {
++        isWithdrawn: (pluginId: string) => withdrawn.has(pluginId),
++      },
++    },
++  });
++  try {
++    f.steps.push(() => reply("first"));
++    await f.runtime.executeTurn("first turn");
++    assert.deepEqual(commands.sort(), ["kept-plugin-hook", "user-hook", "withdrawn-plugin-hook"]);
++    commands.length = 0;
++    withdrawn.add("gone@market");
++    f.steps.push(() => reply("second"));
++    await f.runtime.executeTurn("second turn");
++    assert.deepEqual(commands.sort(), ["kept-plugin-hook", "user-hook"]);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/package.json b/package.json
+index f7b4a82..2c3a4b0 100644
+--- a/package.json
++++ b/package.json
+@@ -78,7 +78,7 @@
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+-    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",

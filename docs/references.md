@@ -3864,8 +3864,8 @@ These are not equivalent to the product capabilities still absent. Source-only f
 | API-03 | P1 | Credential-pool stop marker is lost between runner normalization and workflow recovery | actual installed ModelAdapter failure + executed policy inspection for all3formats; driver redrive code inspected, full long-running workflow not launched; full trigger, exact paths, recovery and source lineage in `api` evidence. |
 | API-04 | P1 | Changing a discovered model ID forges provider facts for the new ID | real ProviderRuntime/Facade/Node repository/Registry and cold reopen with synthetic directory transport; no provider HTTP/inference; full trigger, exact paths, recovery and source lineage in `api` evidence. |
 | API-05 | P1 | Deleting and recreating an API connection can resurrect old provider observations | real ProviderRuntime persistence/Registry, delete/recreate/manual add with synthetic keys; full trigger, exact paths, recovery and source lineage in `api` evidence. |
-| DOM-01 | P1 | Unadmitted Project inline plugin hooks run on first input/cold materialization outside direct-hook trust | Actual bootstrap/Host/Pi/SQLite and reviewed local Node marker: plugin hooks2, direct hooks0, ordinary tool denied; `plugin-proof` narrows opening-only claim. |
-| DOM-02 | P1 | Resident future turns retain disabled plugin hooks | Actual owner disable succeeded/UI flagfalse; next input added marker3, cold recreation added0. Skill/MCP/uninstall branches remain resource-specific source evidence; removed files may fail. |
+| DOM-01 | P1 | Unadmitted Project inline plugin hooks run on first input/cold materialization outside direct-hook trust — corrected in candidate 0172: Project-only inline roots load without runnable hooks (`project-plugin-hooks.test.ts`, fails before the fix) | Actual bootstrap/Host/Pi/SQLite and reviewed local Node marker: plugin hooks2, direct hooks0, ordinary tool denied; `plugin-proof` narrows opening-only claim. |
+| DOM-02 | P1 | Resident future turns retain disabled plugin hooks — hooks corrected in candidate 0172: each plugin hook re-checks the shared configuration written by the management process (`plugin-hook-withdrawal.test.ts`, `plugin-availability.test.ts`); resident MCP/Skill withdrawal remain open | Actual owner disable succeeded/UI flagfalse; next input added marker3, cold recreation added0. Skill/MCP/uninstall branches remain resource-specific source evidence; removed files may fail. |
 | DOM-12 | P1 | Expected revision is not held through native atomic publication | actual native NodeFileSystemAdapter fixture plus caller source trace; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
 | DOM-20 | P1 | atomic:true file save silently degrades to destructive direct rewrite after publication failure | actual native adapter with narrowly scoped fault injection; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
 | K-01 | P1 | Background Agent Stop waits for artifact/notification publication before requesting cancellation | real_runner_and_registry_with_scripted_child; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
@@ -4021,9 +4021,11 @@ The correction restores original invalidation, carrying only uncertainty barrier
 positions across closure. This retraction and the failing/passing countercase are retained in the
 workflow evidence; reading one replay branch was insufficient to define the whole feature.
 
-The independent entered-rename Stop fixture still shows a file may commit after the turn has
-settled cancelled without a late effect receipt (RECOVERY-01). This inherited generic executor
-settlement gap is explicitly pending; no rollback or no-effect claim follows from cancellation.
+The entered-rename Stop fixture showed a file committing after the turn had settled cancelled,
+recorded as "cancelled before the file operation completed" (RECOVERY-01). Candidate 0171 gives a
+mutating tool 1.5 s after Stop to settle; a commit inside it is recorded as completed, and a tool
+still running is recorded unknown with its late outcome logged (`stop-late-effect.test.ts`). The
+late outcome is a log record, not yet a durable Session receipt; no rollback claim follows.
 Background after-commit acknowledgement loss, cold Stop-plan reconstruction, general native
 termination, paid/provider effects, plugin withdrawal, request budgets, scheduler/Goal and other
 receipt failures remain separate indexed work. Source, real local execution, staged executable,

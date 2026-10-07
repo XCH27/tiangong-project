@@ -272,3 +272,7 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0169 | [0169-follow-login-turns.patch](0169-follow-login-turns.patch) | `c18b924fcbf5f924801a42dcf0083fefeaf32cce` |
 
 | 0170 | [0170-automatic-model-tiers.patch](0170-automatic-model-tiers.patch) | `3d64e1ba497d158f0cda004241f0dc06f271e315` |
+
+| 0171 | [0171-stop-late-effect.patch](0171-stop-late-effect.patch) | `a6b4e9cfd6dd8f080643424d5ee88d24ffc93b8b` |
+
+| 0172 | [0172-plugin-hook-trust.patch](0172-plugin-hook-trust.patch) | `d2b3413105a5e0f4b8eeb5573977afe55c7caab4` |

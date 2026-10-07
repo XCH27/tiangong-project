@@ -40,10 +40,10 @@ catalogue observations from renamed or recreated identities. These repair nine o
 they do not close the kernel or promote delivery status. Independent cross-review also corrected
 partial-read hashes, per-profile lock partitioning, masked staging errors and complete-Read freshness.
 
-1. Retain late executor outcomes after Stop: an entered file rename can still commit after the turn
-   settles, so a cancelled tool is not proof of no effect (RECOVERY-01). Complete unknown/committed
-   outcome recovery without replay or rollback assumptions. Prove Project executable trust plus
-   future-turn plugin/Skill/MCP withdrawal (DOM-01/02). Preserve the new cancellation retry plan and
+1. Late executor outcomes after Stop are recorded truthfully within a 1.5 s grace or as unknown
+   (RECOVERY-01, candidate 0171); persist the late outcome as a durable Session receipt rather than
+   a log line. Project-only plugin hooks are withheld and resident plugin hooks honour withdrawal
+   (DOM-01/02, candidate 0172); finish resident Skill/MCP withdrawal. Preserve the new cancellation retry plan and
    workflow uncertainty guards while testing acknowledgement loss and cold reconstruction.
 2. Keep discovery and inference auth aligned (API-02). Preserve returned-ID observations separately
    from personal model renames; connection deletion clears both exact layers, while recommendation
