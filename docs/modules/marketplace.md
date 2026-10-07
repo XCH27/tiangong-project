@@ -48,15 +48,46 @@ Discover → inspect contents/dependencies/risk → verify source, license, inte
 → approve scoped grants → stage/install → health check → activate → observe → update/rollback/
 uninstall.
 
-## Three catalog views
+## Organisation of plugins, Skills and MCP (OV-100)
 
-- **Skill market:** reusable instructions, prompts, examples, triggers, model/context requirements
-  and quality fixtures; no executable side effect by itself.
-- **Component market:** a transparent bundle of panels, native commands, skills, subagents, MCP
-  servers, knowledge defaults, hooks and rules; every primitive remains independently inspectable
-  and removable. Components use Fleet's design system and additive left/right host slots.
-- **MCP market:** server transport, tool/resource/prompt schemas, auth method, data domains, read/write
-  effects, health and per-tool grants; removing a server revokes its tools immediately.
+Chosen after the [source comparison](../references.md#plugin-skill-mcp-and-marketplace-organisation-comparison-2026-10-07):
+one installable unit, typed views, two trust tiers, standards-compatible content.
+
+1. **One thing to install: the plugin.** The workspace Plugin Market is the only place to discover
+   and install. Listings carry categories derived from their contents — Skills, Tools (MCP), Apps
+   (pages and panels), Executors (CLI agents), Connections — and the market filters by them
+   (lobehub Discover, dify categories, Codex/OpenClaw single plugin store). A listing may have
+   several categories. A single Skill from a Skills index or a server from the MCP Registry is
+   installed as a one-primitive plugin, so lifecycle, provenance and removal stay one path.
+2. **Two trust tiers** (OpenClaw native vs bundles). *Content plugins* — Agent Plugins, Claude,
+   Codex, Cursor and ZCode packages — map Skills, MCP declarations, commands, prompts and subagent
+   definitions into Fleet; they run no host code in-process, and their MCP servers and hooks need
+   a grant before first use. *App plugins* are Fleet-native: the manifest declares contributions
+   (pages, right tools, settings, executors, providers, task sources, status producers, Agent
+   tools) and resource permissions (tools, model use by type, network domains, file scope,
+   storage, connection use, host operations — dify `Permission`, Cindy manifest v3); the backend
+   runs out of process and UI renders in host surfaces with Fleet theme tokens.
+3. **First-party features are built-in plugins** using the same contribution API (OpenClaw
+   `extensions/`, Paseo built-ins): Browser Use and the Fleet guide now; the Coding Workbench
+   ([OV-099](orchestration.md#coding-workbench-suite-ov-099)) next. Extraction to an installable
+   package later moves code without changing behaviour.
+4. **Primitives stay manageable on their own.** A person can create or import a Skill, MCP server,
+   command or hook without any plugin (Claude Code, Codex, ZCode). Settings → Plugins is the single
+   management page with views *Installed plugins · Skills · MCP · Commands · Hooks*; every view
+   lists all origins (from a plugin, mine, Project) grouped with consistent counts. The separate
+   MCP, Skills, Commands and Hooks settings entries become links into these views. Subagents keep
+   their own page (OV-088).
+5. **Catalog sources are adapters with provenance** — Fleet curated catalog, Claude/ZCode-format
+   marketplaces (existing), the official MCP Registry, Agent Skills indexes and the ACP Registry
+   (executors). Presence in a catalog is never trust; local folders and archives always install.
+6. **Grants are per plugin, enablement per primitive, scope global or Project.** Revocation reaches
+   resident Sessions (DOM-02). An update that changes declared permissions, tools, hooks, network
+   domains or credential use asks again.
+
+Rejected: separate Skill, MCP and plugin stores (cherry-studio, Cindy SkillHub) — three places to
+look and three lifecycles for one package; hiding MCP entirely (Cindy) — Fleet keeps power-user
+control. Core keeps accounts, connections, credentials, Sessions, permissions, the usage ledger and
+the plugin host; a plugin reaches them only through host operations.
 
 ## Frontend and backend contract
 
@@ -510,9 +541,9 @@ The implementation must still pass the source/license/same-task/deletion tests i
 
 #### Fleet decisions
 
-1. **Three catalogs, one package model.** Skill, Plugin and MCP catalogs have distinct detail and
-   risk views, but share `MarketplacePackage`, `Manifest`, `CapabilityGrant`, `InstallReceipt`,
-   `UpdatePlan` and `UninstallReceipt` contracts.
+1. **One market, typed views, one package model** (superseded by [OV-100](#organisation-of-plugins-skills-and-mcp-ov-100)):
+   Skills, Tools (MCP) and Apps are category views over one `MarketplacePackage`, `Manifest`,
+   `CapabilityGrant`, `InstallReceipt`, `UpdatePlan` and `UninstallReceipt` model.
 2. **Bundle is a projection.** A plugin may contain skills, subagents, MCP servers, hooks and rules,
    but every contained primitive is separately inspectable, permissioned, versioned and removable.
 3. **Trust before discovery.** Catalog ranking never outranks signature/provenance/license,

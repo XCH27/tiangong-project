@@ -2929,3 +2929,16 @@ step, keeping one largest working closed loop. Adopted refinement (design in
 (accounts/keys), which model (connections) and who runs the loop (Fleet's Pi loop or a vendor CLI
 harness); implement the suite as first-party built-in plugins through the same contribution points
 an installed plugin will use, so later extraction moves code without changing behaviour.
+
+### OV-100 — One plugin market, typed views, two trust tiers (2026-10-07)
+
+The owner asks for the best organisation of plugins, Skills, MCP and their markets after studying
+how open-source projects do it, then to rectify code and documents; the plugin foundation itself
+needs rework. Decision ([Marketplace](modules/marketplace.md#organisation-of-plugins-skills-and-mcp-ov-100),
+evidence in [References](references.md#plugin-skill-mcp-and-marketplace-organisation-comparison-2026-10-07)):
+the plugin is the only installable unit; one Plugin Market filters by derived categories (Skills,
+Tools/MCP, Apps, Executors, Connections); content plugins (Agent Plugins, Claude, Codex, Cursor,
+ZCode formats) map with narrow trust and per-plugin grants for MCP and hooks; Fleet-native app
+plugins declare contributions and resource permissions and run out of process; first-party
+features ship as built-in plugins; standalone Skills/MCP/commands/hooks remain manageable in one
+Settings → Plugins page whose views list every origin. This supersedes the "three catalogs" rule.

@@ -4244,3 +4244,19 @@ docs `antigravity.google/docs/ide/extensions`), Anthropic's `claude-acp`, OpenAI
 vendor-published GitHub Copilot CLI, Grok Build, CodeBuddy, Qwen Code, Kimi, Gemini, Goose, Factory
 Droid, Auggie, Kilo, Cline, Devin, Junie, Mistral Vibe, MiniMax Code and others. Fleet adds each ACP
 CLI by hand in five duplicated kind unions plus profile, template, logo and help entries.
+
+### Plugin, Skill, MCP and marketplace organisation comparison (2026-10-07)
+
+| Pattern | Source evidence | Mechanism |
+|---|---|---|
+| Plugin is the only distribution unit; Skills, MCP, hooks, commands inside; primitives may also live standalone | Codex `codex-rs/core-plugins/src/manifest.rs` (skills, mcp_servers, apps, hooks, commands, `interface` listing metadata; Legacy and AgentPlugin formats; curated `openai-curated` marketplace); ZCode `29628c9` settings (separate Plugins store + Skills/MCP/Commands/Hooks sections, Claude-format marketplaces) | one store; local primitives keep their own pages |
+| Open package standards | Agent Plugins v1.0.0 via harnessrouter `protocol/versions/2026-09-28/plugins.md` (`plugin.json` + `mcp.json` + `skills/`, defers skills to Agent Skills); Agent Skills; MCP Registry; ACP Registry `a949fb7afffd` | content-only packages; no UI |
+| Everything is a plugin; first-party features ship as bundled plugins; foreign formats map with narrower trust | OpenClaw `docs/plugins/architecture.md` (typed capability registration: providers, CLI backends, speech, search, media, channels, migration), `bundles.md` (Agent Plugins/Codex/Claude/Cursor bundles = content packs, narrower trust than native), `manifest.md` (static ownership, activation planner, setup, `uiCapabilities`, dashboard, themes, `mcpServers` declared without loading code) | two trust tiers; manifest-first lazy activation |
+| One marketplace, typed categories, declared resource permissions, isolated runtime | dify `api/core/plugin/entities/plugin.py` (categories Tool, Model, Extension, AgentStrategy, Datasource, Trigger; permissions tool/model by type/node/endpoint/storage quota; plugin daemon with reverse invocation); lobehub `src/store/discover/slices` (one Discover hub: assistant, group agent, MCP, model, plugin, provider, skill) | category is a view, not a separate store |
+| Separate pages or hubs per primitive | cherry-studio `src/renderer/routes/settings/{mcp,skills,prompts}` + resource catalog; Cindy `docs/product-rules/core-product-principles.md` (Core owns runtime, permissions, SkillHub and plugin market mechanisms; Skill = how work is done; plugin = sandboxed mini-app for human–Agent interaction), `docs/dev-rules/plugin-security-and-authoring.md` (manifest v3 direct capability declarations, install receipts, official id prefixes) | Skill hub and plugin market both on one Core mechanism |
+| UI plugins with client and server entries | Paseo `docs/plugins.md` (daemon RPCs, app surfaces, panels, command center, slash commands, timeline items, header buttons, composer pills, themes, settings; server in subprocess; "trust every plugin"; built-ins always active) | host UI contribution points |
+
+Fleet today (review profile, 2026-10-07): Settings has Plugins (tabs Plugins/MCP/Skills), separate
+MCP, Skills, Commands and Hooks pages showing the same items, and the workspace has a separate
+Plugin Market; Skills/MCP lists group by source plugin and show "Installed 0" above built-in items;
+installed third-party hooks run by default (`adapters/src/plugins/index.ts`, DOM-01/02 history).
