@@ -4223,3 +4223,24 @@ Octop `eb28011`, craft-agents-oss v0.14.0 `73bd9c2`, ACP spec `302e6f7`, install
 | Executor controls | Codex `turn/steer`, `turn/interrupt`, fork/rollback/compact (paseo); SDK `interrupt`, `setModel`, `setMaxThinkingTokens`, `getContextUsage` | Codex turn/start only; Claude via AbortController | Guide/Stop on native protocols, true context usage |
 | Roles | primary / utilityModel (titles, summaries) / decisionModel with local ONNX classifiers, no chat fallback (openclaw `decision-models.md`) | ordinary/page/vision/decision (chat allowed, OV-097) | optional utility role |
 | Catalog breadth | Ark (+coding plan), StepFun (+Step Plan), Qianfan, Hunyuan, ModelScope, PPIO, Ollama/LM Studio, Vertex, Bedrock, Azure (AionUi, cc-switch, hermes, CodexBar); CLIs Droid, Augment, Amp, Kiro, Qoder, Trae, MiniMax Code, MiMo Code, dsh, Goose, Kilo (agent-orchestrator, paperclip, multica) | 68 templates (0174 adds Volcengine Ark plans, Tencent Token Plan, Qianfan, StepFun, ModelScope, PPIO) | Hunyuan, 01, InfiniAI, Ctyun, local Ollama/LM Studio, Vertex, Bedrock, Azure; listed CLIs |
+
+### CLI connection, orchestration and frontend comparison (2026-10-07)
+
+Added: official ACP Registry `agentclientprotocol/registry` `a949fb7afffd` (Apache-2.0; per-agent
+`agent.json` with binary archives + sha256, npx or uvx distribution, args, icon, licence; a
+quarantine list; agents must support Agent Auth or Terminal Auth, `AUTHENTICATION.md`).
+
+| Project | CLIs and protocol | Orchestration | Frontend |
+|---|---|---|---|
+| AionUi/AionCore | everything over ACP (dialects, launch policy, npx cache repair, custom-agent probe); auto-detect; Claude Code env from cc-switch's active provider | Team mode: role prompts, task board, mailbox, scheduler, per-member runtime, MCP team tools, crash detection (`crates/aionui-team`) | chat per agent + team panel; WebUI and IM bots |
+| Paseo | Claude Agent SDK, Codex app-server, OpenCode server, Pi; ~40 ACP agents from a pinned catalog (`packages/app/src/data/acp-provider-catalog.ts`, mirrors the registry) | daemon owns lifecycle; agent-to-agent tools via MCP; skills paseo/advisor/committee/handoff; cron | timeline chat, terminals, multi-host, mobile |
+| Agent Orchestrator | ~35 adapters; per session either TUI (native PTY, tmux fallback) or Chat (ACP, Codex app-server) with durable handoff; detached per-session hosts survive daemon restart | worktree per session, kanban, SCM/CI observer, autoreview; display status derived at read time, never injected into a blocked session | Electron + Expo + `ao` CLI; terminal WebSocket + SSE |
+| Orca | ~20 CLIs in PTYs per worktree; managed hooks + OSC + structured sessions for status | `orca orchestration worker-start --agent` callable by agents; configured executable aliases; task providers | terminal panes, dashboard, mobile companion |
+| paperclip | headless adapters (claude/codex/kimi ACP where available, opencode, cursor, gemini, grok, pi, hermes local/gateway, openclaw gateway, process, http) | heartbeats on timer/assignment/on-demand/automation, coalesced; org chart, budgets, approvals | issue/company dashboards, live run transcripts |
+| Fleet | Claude Agent SDK and Codex app-server with Host tools; 9 ACP profiles (`acp-profiles.ts`) | Fleet subagents and Goals; worktree/board not implemented (EXEC-07) | CLI is a connection in the same conversation UI |
+
+The registry lists Google LLC's own `antigravity-acp` (`agy_acp_server.par` from `dl.google.com`,
+docs `antigravity.google/docs/ide/extensions`), Anthropic's `claude-acp`, OpenAI's `codex-acp`, and
+vendor-published GitHub Copilot CLI, Grok Build, CodeBuddy, Qwen Code, Kimi, Gemini, Goose, Factory
+Droid, Auggie, Kilo, Cline, Devin, Junie, Mistral Vibe, MiniMax Code and others. Fleet adds each ACP
+CLI by hand in five duplicated kind unions plus profile, template, logo and help entries.
