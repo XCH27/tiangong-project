@@ -1,0 +1,144 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts b/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
+index 065d670..51fa7a8 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/claude.ts
+@@ -210,6 +210,7 @@ export function createClaudeNativeAgentPort(
+             const account = await native!.accountInfo();
+             if (
+               request.model.nativeExecutor?.accountId &&
++              !request.model.nativeExecutor.followLogin &&
+               account.email !== request.model.nativeExecutor.accountId
+             )
+               throw new Error(
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/codex-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/codex-turn.ts
+index 343bffd..06b8c0e 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/codex-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/codex-turn.ts
+@@ -7,6 +7,10 @@ import { codexInput, codexToolContent } from "./codex-content.js";
+ import { NativeEvents } from "./native-events.js";
+ import { canResumeCodex, codexContinuation } from "./codex-continuation.js";
+ 
++/** A connection that follows the CLI's default login runs on whatever account is signed in (the Host adopts it). */
++const fencedAccount = (request: { model: { nativeExecutor?: { accountId?: string; followLogin?: boolean } } }) =>
++  request.model.nativeExecutor?.followLogin ? undefined : request.model.nativeExecutor?.accountId;
++
+ /** One official native loop; dynamic calls wait for the Host's committed, admitted receipts. */
+ export function createCodexNativeAgentPort(options: CodexClientOptions = {}): NativeAgentPort {
+   return {
+@@ -224,7 +228,7 @@ export function createCodexNativeAgentPort(options: CodexClientOptions = {}): Na
+             !isDeepStrictEqual([...initialized.fleetHostToolScope.tools].sort(), [...scope].sort())
+           )
+             throw new Error("Native Codex cannot enforce this Host tool scope");
+-          await readCodexNativeIdentity(client, access.accountId);
++          await readCodexNativeIdentity(client, fencedAccount(request));
+           if (closed || request.signal.aborted) throw new Error("Native Codex turn stopped");
+           const created = object(
+             await client.request(request.continuation ? "thread/resume" : "thread/start", {
+@@ -343,7 +347,7 @@ export function createCodexNativeAgentPort(options: CodexClientOptions = {}): Na
+         async admitNextStep() {
+           if (closed || request.signal.aborted) throw new Error("Native Codex turn stopped");
+           if (client)
+-            await readCodexNativeIdentity(client, request.model.nativeExecutor?.accountId);
++            await readCodexNativeIdentity(client, fencedAccount(request));
+           if (closed || request.signal.aborted) throw new Error("Native Codex turn stopped");
+           admission++;
+           reply();
+@@ -370,7 +374,7 @@ export function createCodexNativeAgentPort(options: CodexClientOptions = {}): Na
+               });
+               try {
+                 await reader.initialize();
+-                await readCodexNativeIdentity(reader, request.model.nativeExecutor?.accountId);
++                await readCodexNativeIdentity(reader, fencedAccount(request));
+                 checkpoint = await codexContinuation(reader, threadId, executorVersion);
+               } finally {
+                 await reader.close();
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+index f4d00b7..0cda5be 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/model.ts
+@@ -30,6 +30,7 @@ export function createNativeAgentModel(
+               : resolveAcpExecutable(access.provider, access.executable),
+       configDir: access.configDir,
+       accountId: access.accountId,
++      ...(access.configDir ? {} : { followLogin: true }),
+     },
+     providerId: providerId as ModelProviderId,
+     modelId: modelId as ModelId,
+diff --git a/apps/zcode-cli/packages/contracts/src/model/model.ts b/apps/zcode-cli/packages/contracts/src/model/model.ts
+index 0c83574..485c88c 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/model.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/model.ts
+@@ -49,6 +49,12 @@ export interface Model {
+     executable?: string;
+     configDir?: string;
+     accountId?: string;
++    /**
++     * The connection follows the CLI's own default login: an outside switch (Cockpit Tools, a
++     * terminal login) is adopted by the Host, so a turn runs on the current login instead of
++     * failing its account check. Fleet-owned homes never follow.
++     */
++    followLogin?: boolean;
+   };
+   readonly providerId: ModelProviderId;
+   readonly modelId: ModelId;
+diff --git a/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts b/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
+index 2d25565..6c6143e 100644
+--- a/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
++++ b/apps/zcode-cli/packages/core/test/codex-native-turn.test.ts
+@@ -13,7 +13,11 @@ import { createCodexNativeAgentPort } from "../../adapters/src/native-agent/code
+ import { resolveCodexNativeExecutable } from "../../adapters/src/native-agent/codex-executable.js";
+ 
+ const executable = resolveCodexNativeExecutable(process.env.FLEET_CODEX_TEST_CLI);
+-async function nativeFixture(modelId = "gpt-6-sol", contextWindow?: number) {
++async function nativeFixture(
++  modelId = "gpt-6-sol",
++  contextWindow?: number,
++  executor: { accountId?: string; followLogin?: boolean } = {},
++) {
+   assert.ok(executable, "Build and select the scoped Codex binary before this test");
+   const profile = await mkdtemp(join(tmpdir(), "fleet-codex-native-"));
+   const payload = Buffer.from(
+@@ -237,7 +241,7 @@ async function nativeFixture(modelId = "gpt-6-sol", contextWindow?: number) {
+     },
+   };
+   const f = await fixture(undefined, true, {
+-    nativeExecutor: { kind: "codex", executable, configDir: profile },
++    nativeExecutor: { kind: "codex", executable, configDir: profile, ...executor },
+     config: {
+       toolAllowlist: ["Probe"],
+       modelSelection: {
+@@ -429,3 +433,34 @@ test(
+     }
+   },
+ );
++
++test(
++  "a CLI login switched outside Fleet fails a Fleet-home turn but a followed default login runs on it",
++  { timeout: 90000 },
++  async () => {
++    // The fixture's signed-in identity differs from this saved one, as after a Cockpit Tools switch.
++    const pinned = await nativeFixture(undefined, undefined, { accountId: "codex:previous-account" });
++    try {
++      await assert.rejects(
++        pinned.f.runtime.executeTurn("Use Probe once and complete this local task."),
++        (error: Error) => /account changed/i.test(String((error.cause as Error | undefined)?.message ?? error.message)),
++      );
++      assert.equal(pinned.f.effects, 0);
++    } finally {
++      await pinned.close();
++    }
++    const followed = await nativeFixture(undefined, undefined, {
++      accountId: "codex:previous-account",
++      followLogin: true,
++    });
++    try {
++      await followed.f.runtime.executeTurn("Use Probe once and complete this local task.");
++      followed.assertTransport();
++      assert.equal(followed.f.effects, 1);
++    } catch (error) {
++      throw new Error(followed.diagnostics(), { cause: error });
++    } finally {
++      await followed.close();
++    }
++  },
++);

@@ -13,7 +13,7 @@ this contract does not create a credential or model authority.
 
 | ID | Capability | Status | Release / acceptance | Surfaces |
 |---|---|---|---|---|
-| INTEL-03 | Model routing and capability negotiation | candidate API/native model evidence and endpoint/credential binding wired but not visually checked; optional Host classifier wired but not visually checked; full automatic routing not implemented | R17 / INTEL-03-A | P-30 |
+| INTEL-03 | Model routing and capability negotiation | candidate API/native model evidence and endpoint/credential binding wired but not visually checked; optional Host decision model (classifier or chat lane) and first-turn automatic tier choice wired but not visually checked; per-turn/phase routing not implemented | R17 / INTEL-03-A | P-30 |
 <!-- /module-card -->
 
 ## Source entry points
@@ -73,7 +73,7 @@ introduced by this comparison.
 
 Defaults use the existing Host model-preference owner and scoped composer preference; no new page,
 configuration service or Session store. New ordinary conversations can follow the last choice,
-use a fixed model or automatically select an executable model. `newConversationModelPolicy` lives
+use a fixed model or start on the automatic standard tier ([tiers](model-decisions.md#first-consumers-and-quantitative-suite)). `newConversationModelPolicy` lives
 in the existing versioned Personal owner; scoped recent choices retain the original composer owner.
 Projects prefer their own recent choice, then this policy. Existing drafts/Sessions remain explicit.
 A page assistant validates saved choices against the same directory; inactive or unavailable fixed choices cannot override the executable fallback.

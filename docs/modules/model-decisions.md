@@ -26,7 +26,7 @@ Backend availability, calibration and per-platform latency still need their own 
 |---|---|---|
 | Main conversation | Existing chat model/draft/Session choice | Explicit human choice remains authoritative |
 | Planning / execution | Opt-in phase-specific chat choices through the existing preference owner | Different from classification and named child-agent defaults |
-| Auxiliary decisions | Optional classifier choice through the existing Provider/preference owners | Only classifier-eligible routes; no reasoning slider or chat generation endpoint |
+| Auxiliary decisions | Optional decision model through the existing Provider/preference owners | Classifiers first, then API/plan chat routes, then official CLIs; a chat route answers only through the classifier answer contract (OV-097) |
 | Child agents | Existing Subagents settings and runtime | Reuse named roles instead of duplicating their configuration |
 | Quantitative prediction | Domain model/features/dataset and backtest run | Not an ordinal score or sentiment probability |
 
@@ -35,7 +35,20 @@ uses existing Personal/Provider persistence, catalogs and keys. Native System On
 compatible gateway classifiers stay separate from chat; a declared dual-operation model retains
 both lanes. TypeSafe and local Laya presets add no running service or dependency. Laya has no
 OpenAI model-directory endpoint; its preset catalog is not a verified server/model entitlement.
-Automatic routing, phase handoff and the quantitative plugin remain separate unfinished consumers.
+Under OV-097 an ordinary chat model may serve the same port (`adapters/src/model/decision-chat.ts`):
+the questions go out as one JSON request, and the reply passes only if it has the classifier shape:
+offered labels, a probability for every label summing to one with the choice most probable, and
+scores inside the rubric. Anything else is an error result with no answers. The chat lane keeps the
+binding fingerprint, admission ticket, Stop signal, usage receipt and ten-second budget.
+
+The second consumer is the automatic new-conversation default. Personal `automaticTiers` holds
+optional fast/standard/deep models validated by the existing preference writer; the standard model
+is the default a new conversation opens with. On the first message only, and only while the
+conversation is still on the standard model, `turn-model.ts` asks the decision model one `tier`
+choice over the first 6000 characters, and switches to fast or deep when that tier is set and
+executable. Later turns, manual picks, execution-scoped selections, an off decision model, errors,
+timeouts and unset tiers keep the offered model; the outcome is logged as `model.automatic_choice`.
+Phase handoff and the quantitative plugin remain separate unfinished consumers.
 
 ## Request and receipt contract
 
@@ -168,6 +181,11 @@ truncated responses, raw served-model/cost facts and zero retries with synthetic
 Inputs are bounded to 8 KiB/16 questions. Bindings expire in five minutes; the total HTTP/admission
 budget is ten seconds. No classifier schema reaches the main model until optional tool discovery.
 A durable unknown intent fences replay; it never automatically resubmits uncertain inference.
+`decision-chat.test.ts` checks the chat answer contract (unoffered labels, wrong mass, a choice
+that is not the most probable, missing labels or questions, out-of-rubric scores, prose), the chat
+lane over the real Provider registry with an authored model, and tier routing (deep, fast, manual
+pick untouched, decision off); `automatic-model.test.ts` checks first-turn-only routing and
+failure fallback in the runtime. No live provider has been asked a tier question yet.
 Renderer/default-policy fixtures check CAS, withdrawal, old service receipts, languages/themes and
 narrow forms. Paid providers, loaded local weights, other platforms and Chinese/domain quality
 still need their own proof. Judge total cost/latency and accepted task quality,

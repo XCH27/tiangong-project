@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Any chat model, including an official CLI, can now be the decision model (classifiers first,
+  CLIs last); its answers must pass the same checks as a classifier's. New conversations set to
+  自动选择 start on the standard-tier model, and the first message may move them to the fast or
+  deep tier; later turns, manual picks and failures never switch (OV-097).
+
 - Claude subscription works again through the official Claude Code (single account): Anthropic
   counts Agent SDK apps as plan usage; only token reuse is banned. Signed-out ACP CLIs (CodeBuddy,
   Cursor, OpenCode…) can sign in from Fleet through their own login methods. ACP models show their

@@ -266,3 +266,9 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0166 | [0166-vendor-compliant-routes.patch](0166-vendor-compliant-routes.patch) | `36d443026dd85c33ca1787f50f2a518047dd6582` |
 
 | 0167 | [0167-claude-hosted-acp-signin.patch](0167-claude-hosted-acp-signin.patch) | `4a8ff8772e4c813330468a5b1f25e88fc36be23f` |
+
+| 0168 | [0168-models-dev-catalog.patch](0168-models-dev-catalog.patch) | `dc4371ef2b35e1ad63b1c04b258a2a03f42f11ca` |
+
+| 0169 | [0169-follow-login-turns.patch](0169-follow-login-turns.patch) | `c18b924fcbf5f924801a42dcf0083fefeaf32cce` |
+
+| 0170 | [0170-automatic-model-tiers.patch](0170-automatic-model-tiers.patch) | `3d64e1ba497d158f0cda004241f0dc06f271e315` |

@@ -2892,3 +2892,15 @@ permitted alternative (one owner: `packages/provider/src/route-policy.ts`). Flee
 reads or writes another product's credentials (Cockpit Tools' account switch does; Anthropic forbids
 it). Claude keeps one sign-in with no automatic rotation (plan limits assume ordinary, individual
 use); ChatGPT keeps OpenAI's documented multi-account registrations, auto-switch default off.
+
+### OV-097 — Chat decision models and automatic first-turn tiers (2026-10-06)
+
+The owner wants an ordinary chat model, including an official-CLI route, to be selectable as the
+auxiliary decision model, and wants the automatic new-conversation default to choose between
+configured fast, standard and deep models. This narrows OV-087 without merging operations: a chat
+model may answer typed decision questions only through the classifier answer contract (offered
+labels, complete distributions, rubric scores), and an invalid answer is an error, never a guess.
+Classifier routes stay first, then API/plan chat routes, then official CLIs (each decision starts a
+CLI session). Automatic choice runs once, on the first message of a new conversation that is still
+on the standard tier; later turns, manual picks, failures and an unset tier keep the offered model.
+No new Session, credential, catalog or preference authority is added.
