@@ -88,6 +88,56 @@ class CandidateGateTests(unittest.TestCase):
             gate.verify(self.repo, self.patches)
         self.assertEqual((self.repo / ".git/index").read_bytes(), before)
 
+    def test_reconstructs_fresh_checkout_and_refuses_a_second_application(self):
+        (self.repo / "original.txt").write_text("original\n")
+        before = (self.repo / ".git/index").read_bytes()
+        count, tree = gate.reconstruct(self.repo, self.patches)
+        self.assertEqual(count, 1)
+        self.assertEqual((self.repo / "original.txt").read_text(), "declared correction\n")
+        self.assertEqual(gate.verify(self.repo, self.patches), (count, tree))
+        self.assertEqual((self.repo / ".git/index").read_bytes(), before)
+        with self.assertRaisesRegex(ValueError, "changes or local files"):
+            gate.reconstruct(self.repo, self.patches)
+
+    def test_reconstruction_rejects_tracked_untracked_and_ignored_local_work(self):
+        for kind in ("tracked", "untracked", "ignored"):
+            with self.subTest(kind=kind):
+                (self.repo / "original.txt").write_text("original\n")
+                if kind == "tracked":
+                    target = self.repo / "original.txt"
+                    target.write_text("owner work\n")
+                else:
+                    target = self.repo / "profile.txt"
+                    target.write_text("owner data\n")
+                    if kind == "ignored":
+                        (self.repo / ".git/info/exclude").write_text("profile.txt\n")
+                contents = target.read_bytes()
+                with self.assertRaisesRegex(ValueError, "changes or local files"):
+                    gate.reconstruct(self.repo, self.patches)
+                self.assertEqual(target.read_bytes(), contents)
+                if kind != "tracked":
+                    target.unlink()
+
+    def test_reconstruction_rejects_another_base_before_mutating(self):
+        (self.repo / "original.txt").write_text("original\n")
+        with patch.object(gate, "BASE", "0" * 40):
+            with self.assertRaisesRegex(ValueError, "exact ZCode base"):
+                gate.reconstruct(self.repo, self.patches)
+        self.assertEqual((self.repo / "original.txt").read_text(), "original\n")
+
+    def test_reconstruction_preflights_all_patches_before_applying_the_first(self):
+        (self.repo / "original.txt").write_text("original\n")
+        invalid = "0002-invalid.patch"
+        (self.patches / invalid).write_text(
+            (self.patches / self.name).read_text().replace("-original", "-absent")
+        )
+        self.readme([self.name, invalid])
+        before = (self.repo / ".git/index").read_bytes()
+        with self.assertRaises(subprocess.CalledProcessError):
+            gate.reconstruct(self.repo, self.patches)
+        self.assertEqual((self.repo / "original.txt").read_text(), "original\n")
+        self.assertEqual((self.repo / ".git/index").read_bytes(), before)
+
 
 if __name__ == "__main__":
     unittest.main()

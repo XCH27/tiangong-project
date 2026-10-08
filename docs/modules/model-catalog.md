@@ -48,7 +48,7 @@ Wan, Veo, Hailuo, FLUX hosts) are not implemented; see [Media](media.md).
 
 | Project | Mechanism | Taken |
 |---|---|---|
-| OpenCode (`packages/core/src/models-dev.ts`) | models.dev `api.json`: build snapshot, disk cache (5 min), hourly refresh | Catalog shape and host-scoped entries; no network refresh yet |
+| OpenCode (`packages/core/src/models-dev.ts`) | models.dev `api.json`: build snapshot, disk cache (5 min), hourly refresh | Catalog shape and host-scoped entries; the candidate Host also has a daily refresh, described below |
 | Cherry Studio (`packages/provider-registry`, AGPL) | Generated registry (937 models), capability enum incl. image/video generation, id normalisation, union merge, per-provider overrides | Design only; no data or code copied |
 | Pi AI 1.0.2 (`models.generated.js`) | Static per-provider catalog with `thinkingLevelMap`, image catalog | Data source for the snapshot |
 
@@ -72,7 +72,10 @@ hours is dropped (CodexBar `Plugins/zai.js`). Malformed entries leave the readin
 
 ## Open
 
-- Refreshing between releases would mean fetching models.dev at runtime (an external service:
-  owner checkpoint). Until then the snapshot follows pi-ai upgrades; a test fails when they drift.
+- The candidate already starts `modelCatalogRefresh.ts` from `services/src/node.ts`: it reads
+  models.dev when the shared cache is absent or older than one day and retains prior data on
+  failure. This is an implemented external request, not an offline-only snapshot. Its default
+  refresh policy and external-service acceptance still need reconciliation under the owner
+  checkpoint; this repair does not silently enable, disable or approve that service.
 - Per-model reasoning levels for ACP CLIs (OpenCode applies one session list to every model).
 - Media transports beyond OpenAI and xAI.

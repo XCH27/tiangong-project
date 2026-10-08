@@ -120,9 +120,9 @@ stays interrupted/failed and returned tools are not newly dispatched. The same o
 live V4, cold usage restoration and the compatible Session counter. Only missing saved text/reasoning
 suffixes enter the original stream-row path; no second output or accounting owner is introduced.
 No-finish failures retain unknown consumption rather than fabricating a report.
-The final handler boundary reloads project rules and rechecks the original registry entity/handler
-after input resolution, hooks and permission waits. Remembered rule updates compare their observed
-rules inside the existing SQLite write; conflict or revocation cannot be overridden by old approval.
+The final handler boundary reloads Project rules and checks the original registry entity/handler.
+A new Ask after automatic Allow needs fresh approval; existing approval stays bound to the exact
+input. Deny wins; remembered rule writes compare SQLite rules, so stale approval cannot undo revocation.
 Guide admission now persists the input before publishing its event or exposing it to Pi. A failed
 write rejects the caller without executing a ghost input. If Stop or turn settlement wins during a
 slow save, the committed input uses the existing ordinary queue with its original model/account

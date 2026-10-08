@@ -18,13 +18,16 @@ actual model-facing projection. Correct demonstrated context defects before addi
 first page assistant consumes that verified boundary afterward. Audit remains part of every unit;
 critical regressions interrupt it, while unrelated expansion waits.
 
-The owner's latest correction keeps the kernel as the current repair priority. First close
+Reconciliation of the named Claude and Codex histories keeps the kernel as the current repair priority. First close
 admission/permission/effect/recovery failures in the Pi and native execution paths; then prove
 subscription identity, login and model requests through those paths, including routing the
-Antigravity executor's effects through Host tools and ordinary-account ChatGPT login. Measure the actual model-facing
+permitted native executors' effects through Host tools and ordinary-account ChatGPT login. Measure the actual model-facing
 projection before claiming lightness. Existing page/default/filter changes are integration work in
 progress, not an exit from this gate. Do not expand feature pages, media UI or plugins while these
-kernel proofs are incomplete.
+kernel proofs are incomplete. Preserve the later Terminal access and two-market decisions (OV-103)
+while repairing their existing paths; earlier Craft-only or whole-runtime replacement proposals
+are historical evidence, not instructions to restart the product. The next complete product proof
+remains a contextual page operation and then a native document suite, not a coding-only fork.
 
 ### Source-comparison repair order
 
@@ -87,8 +90,9 @@ permission to replace authorities, add dependencies or migrate user data.
 
 Documentation and source reviews accompany these deliveries; they are not an unbounded preliminary
 phase. Build independence, credential scope and platform portability are checked from delivery 1,
-not postponed until packaging. The retained Craft full-suite execution gap stays a retained-branch
-finding, not a blocker for unrelated ZCode work. Existing data/migration and production-dependency
+not postponed until packaging. Retained Craft has both a full-suite execution gap and a clean-clone mismatch between its
+committed delta ledger and uncommitted source; its independent CI remains strict. These are
+retained-branch findings, not candidate runtime evidence or blockers for unrelated ZCode work. Existing data/migration and production-dependency
 checkpoints still apply when an actual operation reaches them.
 
 ### Open baseline workflows
@@ -97,7 +101,7 @@ This is the coverage checklist for the delivery order above, not a parallel queu
 
 | Unit | Remaining outcome and closure | Contract |
 |---|---|---|
-| Connections and subscriptions | Correct single/multi-account login, saved identity, discovery, protocol, default/disabled state, CC Switch deduplication and exact-account requests through restart. Configured is not tested. Keep subscription/API/CLI access distinct; prove each advertised route. Primary personally handles OV-043. Native multi-account needs a real second Claude/Codex sign-in and owner look; `text-foreground-subtle` contrast (3.93:1 Zai Light) awaits a design-system decision. Model catalog: decide runtime models.dev refresh (external service), per-model ACP reasoning levels, and media transports beyond OpenAI/xAI. From the [community comparison](docs/references.md#account-model-and-invocation-comparison-against-fleet-2026-10-06), Terminal access tab with installed-state detection is wired (candidate 0183, OV-103). Then, in order: live native allowance (`rate_limit_event`, `account/rateLimits/updated`); escalating and model-scoped cooldowns with subscription→API-key backup; user-triggered live connection test; Claude Code/Codex harnesses on Fleet's Anthropic/Responses-compatible connections; keyless local servers; Kimi/OpenCode/CodeBuddy/Copilot/Grok CLI allowance; OS-keychain credential key (PRI-02, security checkpoint); OV-098 route restore (stashed, awaiting the owner's tool permission); Antigravity through Google's official `antigravity-acp` server instead of Fleet's own wire. | [Model connection](docs/modules/models.md#model-connection-correction) |
+| Connections and subscriptions | Correct single/multi-account login, saved identity, discovery, protocol, default/disabled state, CC Switch deduplication and exact-account requests through restart. Configured is not tested. Keep subscription/API/CLI access distinct; prove each advertised route. Primary personally handles OV-043. Native multi-account needs a real second Claude/Codex sign-in and owner look; `text-foreground-subtle` contrast (3.93:1 Zai Light) awaits a design-system decision. Model catalog: reconcile the default policy and acceptance of the already wired models.dev refresh (external service), per-model ACP reasoning levels, and media transports beyond OpenAI/xAI. From the [community comparison](docs/references.md#account-model-and-invocation-comparison-against-fleet-2026-10-06), Terminal access tab with installed-state detection is wired (candidate 0183, OV-103). Then, in order: live native allowance (`rate_limit_event`, `account/rateLimits/updated`); escalating and model-scoped cooldowns with subscription→API-key backup; user-triggered live connection test; Claude Code/Codex harnesses on Fleet's Anthropic/Responses-compatible connections; keyless local servers; Kimi/OpenCode/CodeBuddy/Copilot/Grok CLI allowance; OS-keychain credential key (PRI-02, security checkpoint); OV-098 route restore (stashed, awaiting the owner's tool permission); Antigravity through Google's official `antigravity-acp` server instead of Fleet's own wire. | [Model connection](docs/modules/models.md#model-connection-correction) |
 | Composer and execution | Accept scoped ordinary/Project new-chat defaults and the direct searchable model list; complete automatic evidenced effort, supported Fast, stable model/account intent, queue/guide/stop, retry and restart. Selection changes apply to later input; current work and accepted queued inputs retain their binding. The optional configured Decide path has local Host/receipt proof; complete live/owner acceptance and automatic/staged consumers under the [typed-decision contract](docs/modules/model-decisions.md). | [Models](docs/modules/models.md#new-conversation-model-defaults), [Agent core](docs/modules/agent-core.md#kernel-target-under-ov-036), [Context](docs/modules/context.md) |
 | Context and allowance | Original Token ring structure; current model's last served account; independently scoped windows, stale/unknown readings, membership term and account-bound reset. Finish actual source attribution and live failover/restart acceptance. No fabricated weighted quota pool. | [Context meter](docs/modules/context.md#candidate-context-ring-preservation), [quota](docs/modules/context.md#subscription-allowance-acquisition-and-display) |
 | Usage and cost | One ledger with request/attempt/account/model/engine/project attribution; cache classes, API price coverage, Other, historical timezone and retention truth. Complete Project view, outcome-aware Agent customization and a simple subscription-value/API-price comparison with correctable sourced plan price. Retired billing-period allocation and the old account price row do not return implicitly. | [Economics register](docs/capabilities.md#intelligence-economics-and-memory), [Context](docs/modules/context.md) |

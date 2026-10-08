@@ -5,6 +5,17 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Repair execution boundaries without changing the selected Host: native account mismatches
+  refuse before inference instead of charging the wrong identity; a rule tightened from Allow
+  to Ask cannot inherit the old automatic allowance. Workflow Stop cancels only that run's world
+  commands, preserves late results and reports unconfirmed outcomes as interrupted.
+- Plugin exports sanitize declared MCP files and credential-bearing configuration as well as the
+  generated manifest. Same-name MCP ownership conflicts are explicit; plugin views cannot reuse
+  another package's connection after enable/disable or a concurrent connection change.
+- Candidate CI reconstructs the exact source recipe with its locked toolchain, separately from
+  retained Craft verification. Repair the new lint failures and stale catalog/price test contracts;
+  reconcile current account/catalog/plugin documentation without resetting either implementation.
+
 - Add provider has a third tab, Terminal access, listing the terminal CLIs with whether each is
   built in, installed (with version) or missing; they connect with their own sign-in, with no URL
   or key. Standalone Skills have their own Skill market beside the Plugin market, which keeps

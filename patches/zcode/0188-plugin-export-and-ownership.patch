@@ -1,0 +1,1990 @@
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/config-identity.ts b/apps/zcode-cli/packages/adapters/src/mcp/config-identity.ts
+new file mode 100644
+index 0000000..eca2897
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/mcp/config-identity.ts
+@@ -0,0 +1,11 @@
++/** 与连接池原有 key 相同的规范化：可选字段缺席和显式 undefined 表示同一配置。 */
++export function mcpConfigIdentity(value: unknown): string {
++  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
++  if (Array.isArray(value)) return `[${value.map(mcpConfigIdentity).join(",")}]`;
++  const record = value as Record<string, unknown>;
++  return `{${Object.keys(record)
++    .toSorted()
++    .filter((key) => record[key] !== undefined)
++    .map((key) => `${JSON.stringify(key)}:${mcpConfigIdentity(record[key])}`)
++    .join(",")}}`;
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/index.ts b/apps/zcode-cli/packages/adapters/src/mcp/index.ts
+index c24aeee..2631fb5 100644
+--- a/apps/zcode-cli/packages/adapters/src/mcp/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/mcp/index.ts
+@@ -1,6 +1,7 @@
+ import { randomUUID } from "node:crypto";
+ import { resolve } from "node:path";
+ import { isDeepStrictEqual } from "node:util";
++import { mcpConfigIdentity } from "./config-identity.js";
+ import {
+   Client,
+   ClientCredentialsProvider,
+@@ -150,6 +151,7 @@ interface McpServerRecord {
+   abortController?: AbortController;
+   connecting?: Promise<McpServerStatus>;
+   config: McpServerConfig;
++  configIdentity: string;
+   status: McpServerStatus;
+   tools: McpToolDescriptor[];
+   transport?: McpTransport;
+@@ -304,6 +306,7 @@ class NodeMcpAdapter implements McpPort {
+     config: McpServerConfig,
+     options: McpConnectOptions = {},
+   ): Promise<McpServerStatus> {
++    const configIdentity = mcpConfigIdentity(config);
+     const startedAt = Date.now();
+     const timeoutMs = config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+     const generation = this.nextConnectionGeneration(name);
+@@ -320,7 +323,7 @@ class NodeMcpAdapter implements McpPort {
+ 
+     if (config.enabled === false) {
+       const status = this.createStatus(config, "disabled");
+-      this.records.set(name, { config, status, tools: [] });
++      this.records.set(name, { config, configIdentity, status, tools: [] });
+       this.logger?.info("MCP server connection skipped", {
+         durationMs: Date.now() - startedAt,
+         event: "mcp.server.connect.skipped",
+@@ -347,6 +350,7 @@ class NodeMcpAdapter implements McpPort {
+     const record: McpServerRecord = {
+       abortController,
+       config,
++      configIdentity,
+       status: connectingStatus,
+       tools: [],
+     };
+@@ -379,6 +383,7 @@ class NodeMcpAdapter implements McpPort {
+     const status = this.createStatus(record.config, "disconnected");
+     this.records.set(name, {
+       config: record.config,
++      configIdentity: record.configIdentity,
+       status,
+       tools: [],
+     });
+@@ -441,6 +446,7 @@ class NodeMcpAdapter implements McpPort {
+     options: McpCallToolOptions = {},
+   ): Promise<McpToolCallResult> {
+     const initialRecord = this.records.get(request.serverName);
++    this.assertExpectedConfiguration(request.serverName, options.expectedServerConfig);
+     const timeoutMs =
+       options.timeoutMs ?? initialRecord?.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+     const deadline = createMcpDeadline(timeoutMs);
+@@ -458,6 +464,7 @@ class NodeMcpAdapter implements McpPort {
+     // 这里在调用前对已断连的 record 重连一次；server 进程内状态（如 REPL 变量）不可恢复，
+     // 但工具本身恢复可用。
+     const disconnected = this.records.get(request.serverName);
++    this.assertExpectedConfiguration(request.serverName, options.expectedServerConfig);
+     if (disconnected && disconnected.status.status === "disconnected") {
+       await waitWithinMcpDeadline(
+         this.reconnectForCall(request.serverName, disconnected.config),
+@@ -468,6 +475,7 @@ class NodeMcpAdapter implements McpPort {
+     }
+ 
+     const record = this.records.get(request.serverName);
++    this.assertExpectedConfiguration(request.serverName, options.expectedServerConfig);
+     if (!record?.client || record.status.status !== "connected") {
+       throw new Error(`MCP server is not connected: ${request.serverName}`);
+     }
+@@ -480,6 +488,13 @@ class NodeMcpAdapter implements McpPort {
+         options.signal,
+       );
+     } catch (error) {
++      // 请求已发出时保留它本来的错误；配置变更只阻止后续重试，不能改写成“从未派发”。
++      if (
++        options.expectedServerConfig &&
++        this.records.get(request.serverName)?.configIdentity !==
++          mcpConfigIdentity(options.expectedServerConfig)
++      )
++        throw error;
+       // 连接建立后 token 过期、被撤销或 scope 不足时，
+       // 过去这些认证错误原样冒泡，用户看到裸错误且永远不会自愈——OAuth 自愈只存在于
+       // startup connect 路径。现在运行期与建连期共用同一套 Phase 2 → Phase 1 编排。
+@@ -492,6 +507,7 @@ class NodeMcpAdapter implements McpPort {
+           deadline,
+           timeoutMessage,
+           trigger,
++          expectedServerConfig: options.expectedServerConfig,
+           ...(options.signal ? { signal: options.signal } : {}),
+         });
+       }
+@@ -515,6 +531,7 @@ class NodeMcpAdapter implements McpPort {
+         throw error;
+       }
+       const revived = this.records.get(request.serverName);
++      this.assertExpectedConfiguration(request.serverName, options.expectedServerConfig);
+       if (!revived?.client || revived.status.status !== "connected") throw error;
+       return await this.callToolOnClient(
+         revived.client,
+@@ -535,13 +552,21 @@ class NodeMcpAdapter implements McpPort {
+     options: McpCallToolOptions = {},
+   ): Promise<McpReadResourceResult> {
+     const initialRecord = this.records.get(serverName);
+-    const timeoutMs = options.timeoutMs ?? initialRecord?.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
++    this.assertExpectedConfiguration(serverName, options.expectedServerConfig);
++    const timeoutMs =
++      options.timeoutMs ?? initialRecord?.config.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+     const deadline = createMcpDeadline(timeoutMs);
+     const timeoutMessage = `MCP resource ${serverName} ${uri} timed out after ${timeoutMs}ms`;
+     if (initialRecord?.connecting) {
+-      await waitWithinMcpDeadline(initialRecord.connecting, deadline, timeoutMessage, options.signal);
++      await waitWithinMcpDeadline(
++        initialRecord.connecting,
++        deadline,
++        timeoutMessage,
++        options.signal,
++      );
+     }
+     const disconnected = this.records.get(serverName);
++    this.assertExpectedConfiguration(serverName, options.expectedServerConfig);
+     if (disconnected && disconnected.status.status === "disconnected") {
+       await waitWithinMcpDeadline(
+         this.reconnectForCall(serverName, disconnected.config),
+@@ -551,6 +576,7 @@ class NodeMcpAdapter implements McpPort {
+       );
+     }
+     const record = this.records.get(serverName);
++    this.assertExpectedConfiguration(serverName, options.expectedServerConfig);
+     if (!record?.client || record.status.status !== "connected") {
+       throw new Error(`MCP server is not connected: ${serverName}`);
+     }
+@@ -561,6 +587,12 @@ class NodeMcpAdapter implements McpPort {
+     return { contents: (result.contents ?? []) as McpReadResourceResult["contents"] };
+   }
+ 
++  /** 异步连接/恢复之后重查完整配置；旧 view 不能借同名的新连接执行到另一个包。 */
++  private assertExpectedConfiguration(name: string, expected?: McpServerConfig): void {
++    if (expected && this.records.get(name)?.configIdentity !== mcpConfigIdentity(expected))
++      throw new Error(`MCP server configuration changed before dispatch: ${name}`);
++  }
++
+   /** 连接期诊断按 server 保存；tool call request id 继续按 span 隔离。 */
+   private rememberServerResponse(
+     serverName: string,
+@@ -730,7 +762,7 @@ class NodeMcpAdapter implements McpPort {
+         {
+           name: request.toolName,
+           arguments: request.arguments ?? {},
+-          ...((request.trace || request.runtimeScope || request.workspaceKey || request.workspacePath)
++          ...(request.trace || request.runtimeScope || request.workspaceKey || request.workspacePath
+             ? { _meta: mcpRequestMeta(request) }
+             : {}),
+         },
+@@ -825,6 +857,7 @@ class NodeMcpAdapter implements McpPort {
+     signal?: AbortSignal;
+     timeoutMessage: string;
+     trigger: InteractiveAuthorizationTrigger;
++    expectedServerConfig?: McpServerConfig;
+   }): Promise<McpToolCallResult> {
+     const { record, request } = input;
+     const config = record.config;
+@@ -858,6 +891,7 @@ class NodeMcpAdapter implements McpPort {
+     }
+ 
+     const revived = this.records.get(request.serverName);
++    this.assertExpectedConfiguration(request.serverName, input.expectedServerConfig);
+     if (!revived?.client || revived.status.status !== "connected") throw input.error;
+     return await this.callToolOnClient(
+       revived.client,
+@@ -892,6 +926,7 @@ class NodeMcpAdapter implements McpPort {
+     const recoveryRecord: McpServerRecord = {
+       abortController,
+       config: input.config,
++      configIdentity: input.record.configIdentity,
+       status: this.createStatus(input.config, "connecting", {
+         toolCount: input.record.tools.length,
+       }),
+@@ -1046,6 +1081,7 @@ class NodeMcpAdapter implements McpPort {
+     workingDirectory?: string;
+     oauthAuthorizationAttempted?: boolean;
+   }): Promise<McpServerStatus> {
++    const configIdentity = mcpConfigIdentity(input.config);
+     const {
+       config,
+       generation,
+@@ -1138,6 +1174,7 @@ class NodeMcpAdapter implements McpPort {
+       this.records.set(name, {
+         client,
+         config,
++        configIdentity,
+         status,
+         tools,
+         transport,
+@@ -1423,7 +1460,12 @@ class NodeMcpAdapter implements McpPort {
+     if (!this.isCurrentConnection(name, generation)) {
+       return this.records.get(name)?.status ?? status;
+     }
+-    this.records.set(name, { config, status, tools: [] });
++    this.records.set(name, {
++      config,
++      configIdentity: mcpConfigIdentity(config),
++      status,
++      tools: [],
++    });
+     this.logger?.warn("MCP server connection failed", {
+       ...this.connectionContext,
+       connectDurationMs,
+diff --git a/apps/zcode-cli/packages/adapters/src/mcp/pool.ts b/apps/zcode-cli/packages/adapters/src/mcp/pool.ts
+index 31d75db..4008c4b 100644
+--- a/apps/zcode-cli/packages/adapters/src/mcp/pool.ts
++++ b/apps/zcode-cli/packages/adapters/src/mcp/pool.ts
+@@ -12,6 +12,7 @@ import type {
+   McpToolDescriptor,
+ } from "@zcode/contracts";
+ import type { McpTelemetryTracker } from "./telemetry.js";
++import { mcpConfigIdentity } from "./config-identity.js";
+ 
+ const DEFAULT_IDLE_GRACE_MS = 30_000;
+ 
+@@ -44,6 +45,7 @@ export interface McpConnectionPool {
+ 
+ interface PoolEntry {
+   adapter: McpPort;
++  configIdentity: string;
+   closeTimer?: ReturnType<typeof setTimeout>;
+   connectionContext: McpConnectionContext;
+   connecting: Promise<McpServerStatus>;
+@@ -168,10 +170,14 @@ export function createMcpConnectionPool(options: McpConnectionPoolOptions): McpC
+     let leaseClosed = false;
+     let sessionStartupReported = false;
+ 
+-    const requireEntry = (serverName: string): PoolEntry => {
++    const requireEntry = (serverName: string, expected?: McpServerConfig): PoolEntry => {
+       const key = leased.get(serverName);
+       const entry = key ? entries.get(key) : undefined;
+       if (!entry) throw new Error(`MCP server is not leased by this session: ${serverName}`);
++      // connect 的 await 期间，同一 lease 的名字可能已绑定到另一个插件；最后派发不能
++      // 再凭名字挑选新 owner。只校验，不重试可能已经执行过的请求。
++      if (expected && entry.configIdentity !== mcpConfigIdentity(expected))
++        throw new Error(`MCP server configuration changed before dispatch: ${serverName}`);
+       return entry;
+     };
+ 
+@@ -202,6 +208,7 @@ export function createMcpConnectionPool(options: McpConnectionPoolOptions): McpC
+       config: McpServerConfig,
+       connectOptions: McpConnectOptions = {},
+     ): Promise<McpServerStatus> => {
++      const configIdentity = mcpConfigIdentity(config);
+       const key = connectionKey({
+         config,
+         connectOptions,
+@@ -242,6 +249,7 @@ export function createMcpConnectionPool(options: McpConnectionPoolOptions): McpC
+         });
+         entry = {
+           adapter,
++          configIdentity,
+           connectionContext,
+           connecting: adapter.connectServer(serverName, config, connectOptions),
+           key,
+@@ -337,11 +345,15 @@ export function createMcpConnectionPool(options: McpConnectionPoolOptions): McpC
+         request: McpCallToolRequest,
+         callOptions?: McpCallToolOptions,
+       ): Promise<McpToolCallResult> {
+-        return await requireEntry(request.serverName).adapter.callTool(request, callOptions);
++        return await requireEntry(
++          request.serverName,
++          callOptions?.expectedServerConfig,
++        ).adapter.callTool(request, callOptions);
+       },
+       async readResource(serverName: string, uri: string, callOptions?: McpCallToolOptions) {
+-        const adapter = requireEntry(serverName).adapter;
+-        if (!adapter.readResource) throw new Error(`MCP resources are not supported: ${serverName}`);
++        const adapter = requireEntry(serverName, callOptions?.expectedServerConfig).adapter;
++        if (!adapter.readResource)
++          throw new Error(`MCP resources are not supported: ${serverName}`);
+         return await adapter.readResource(serverName, uri, callOptions);
+       },
+       async close(): Promise<void> {
+@@ -454,16 +466,5 @@ function connectionKey(input: {
+     input.config.isolation === "workspace"
+       ? (resolveWorkspaceKey(input.connectOptions) ?? "")
+       : input.leaseId;
+-  return [input.serverName, scope, stableStringify(input.config)].join("\u0000");
+-}
+-
+-function stableStringify(value: unknown): string {
+-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+-  const record = value as Record<string, unknown>;
+-  return `{${Object.keys(record)
+-    .toSorted()
+-    .filter((key) => record[key] !== undefined)
+-    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+-    .join(",")}}`;
++  return [input.serverName, scope, mcpConfigIdentity(input.config)].join("\u0000");
+ }
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export-config.ts b/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export-config.ts
+new file mode 100644
+index 0000000..aecd36f
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export-config.ts
+@@ -0,0 +1,154 @@
++import { lstatSync, readFileSync } from "node:fs";
++import { isAbsolute, join, relative, sep } from "node:path";
++import type { PluginDiagnostic } from "@zcode/contracts";
++import { isNotFoundError, isRecord, resolveInside } from "./helpers.js";
++import { loadPluginMcpServerDefinitions } from "./mcp.js";
++import type { LoadedPlugin } from "./types.js";
++
++export interface ExportOmission {
++  path: string;
++  reason: string;
++}
++
++const ENVIRONMENT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
++const PLACEHOLDER = /^(?:\$\{(?:[A-Za-z_][A-Za-z0-9_]*|user_config\.[A-Za-z_][A-Za-z0-9_.-]*)\})+$/;
++const CREDENTIAL_FIELDS = ["headers", "auth", "oauth"] as const;
++
++/** 先检查包内每一层，不能让被声明的配置 symlink 在脱敏前读取包外内容。 */
++export function assertUnlinkedPackagePath(root: string, path: string): void {
++  const rel = relative(root, path);
++  if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`))
++    throw new Error("Export configuration path escapes the plugin package");
++  let current = root;
++  for (const segment of rel.split(sep).filter(Boolean)) {
++    current = join(current, segment);
++    if (lstatSync(current).isSymbolicLink())
++      throw new Error(`Cannot export a symbolic link as plugin configuration: ${rel}`);
++  }
++}
++
++export function planExportConfiguration(loaded: LoadedPlugin, skipped: ExportOmission[]) {
++  const diagnostics: PluginDiagnostic[] = [];
++  const sourceFiles = new Map<string, unknown>();
++  const declaredFiles = new Set<string>();
++  const collectDeclaredFiles = (spec: unknown): void => {
++    if (Array.isArray(spec)) {
++      spec.forEach(collectDeclaredFiles);
++      return;
++    }
++    if (typeof spec !== "string") return;
++    const path = resolveInside(loaded.rootPath, spec);
++    if (path) declaredFiles.add(path);
++  };
++  collectDeclaredFiles(loaded.manifest.mcpServers);
++  const definitions = loadPluginMcpServerDefinitions({
++    loaded,
++    diagnostics,
++    sourceFiles,
++    readFile: (path) => {
++      try {
++        assertUnlinkedPackagePath(loaded.rootPath, path);
++        return readFileSync(path, "utf8");
++      } catch (error) {
++        if (isNotFoundError(error) && declaredFiles.has(path))
++          throw new Error(
++            `Declared MCP configuration is missing: ${relative(loaded.rootPath, path)}`,
++          );
++        throw error;
++      }
++    },
++  });
++  if (diagnostics.some((item) => item.severity === "error"))
++    throw new Error(
++      `Cannot export MCP configuration: ${diagnostics.map((item) => item.message).join("; ")}`,
++    );
++  const servers = sanitizeServers(definitions, "mcp.json#/mcpServers", skipped);
++  const files = new Map<string, unknown>();
++  for (const [path, raw] of sourceFiles) {
++    if (!isRecord(raw)) continue;
++    const label = relative(loaded.rootPath, path);
++    files.set(
++      path,
++      isRecord(raw.mcpServers)
++        ? { ...raw, mcpServers: sanitizeServers(raw.mcpServers, `${label}#/mcpServers`, skipped) }
++        : sanitizeServers(raw, `${label}#`, skipped),
++    );
++  }
++  const userConfig = isRecord(loaded.manifest.userConfig)
++    ? Object.fromEntries(
++        Object.entries(loaded.manifest.userConfig).map(([key, option]) => {
++          if (!isRecord(option) || option.sensitive !== true || !("default" in option))
++            return [key, option];
++          const { default: _removed, ...rest } = option;
++          skipped.push({
++            path: `plugin.json#/extensions/fleet.workbench/userConfig/${key}/default`,
++            reason: "Sensitive default omitted; supply it after installing.",
++          });
++          return [key, rest];
++        }),
++      )
++    : undefined;
++  return { servers, files, userConfig };
++}
++
++function sanitizeServers(raw: Record<string, unknown>, path: string, skipped: ExportOmission[]) {
++  return Object.fromEntries(
++    Object.entries(raw).map(([key, value]) => {
++      if (!isRecord(value)) return [key, value];
++      const server = { ...value };
++      for (const field of CREDENTIAL_FIELDS) {
++        if (!(field in server)) continue;
++        delete server[field];
++        skipped.push({
++          path: `${path}/${key}/${field}`,
++          reason: "Credential configuration omitted; supply it after installing.",
++        });
++      }
++      if (isRecord(server.env)) {
++        // env 没有可靠的敏感字段类型，不能仅凭 API_KEY 等名字猜测。保留变量表达式，
++        // 字面值变成同名占位符，连普通运行常量也明确要求接收者重新配置。
++        server.env = Object.fromEntries(
++          Object.entries(server.env).flatMap(([name, value]) => {
++            if (typeof value === "string" && PLACEHOLDER.test(value)) return [[name, value]];
++            skipped.push({
++              path: `${path}/${key}/env/${name}`,
++              reason: "Literal environment value omitted; supply this variable after installing.",
++            });
++            return ENVIRONMENT_NAME.test(name) ? [[name, `\${${name}}`]] : [];
++          }),
++        );
++      }
++      return [key, server];
++    }),
++  );
++}
++
++/** Templates remain useful instructions, while actual .env profiles never travel. */
++export function sanitizeEnvTemplate(
++  contents: string,
++  path: string,
++  skipped: ExportOmission[],
++): string | undefined {
++  const result: string[] = [];
++  const omissions: ExportOmission[] = [];
++  for (const line of contents.split(/\r?\n/)) {
++    if (!line.trim() || line.trimStart().startsWith("#")) {
++      result.push(line);
++      continue;
++    }
++    const match = /^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)$/.exec(line);
++    if (!match) return undefined;
++    const value = match[4]!.trim();
++    const unquoted = /^(['"])(.*)\1$/.exec(value)?.[2] ?? value;
++    if (PLACEHOLDER.test(unquoted)) result.push(line);
++    else {
++      result.push(`${match[1]}${match[2]}${match[3]}\${${match[2]}}`);
++      omissions.push({
++        path: `${path}#${match[2]}`,
++        reason: "Template value replaced by a variable placeholder; supply it after installing.",
++      });
++    }
++  }
++  skipped.push(...omissions);
++  return result.join("\n");
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export.ts b/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export.ts
+index 7645203..2384a03 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/agent-plugins-export.ts
+@@ -1,22 +1,48 @@
+-import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+-import { join, relative, sep } from "node:path";
++import {
++  cpSync,
++  existsSync,
++  lstatSync,
++  mkdirSync,
++  mkdtempSync,
++  readFileSync,
++  readdirSync,
++  realpathSync,
++  renameSync,
++  rmSync,
++  statSync,
++  writeFileSync,
++} from "node:fs";
++import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+ import type { PluginDiagnostic } from "@zcode/contracts";
+ import { isRecord } from "./helpers.js";
+-import { loadPluginMcpServerDefinitions } from "./mcp.js";
++import {
++  assertUnlinkedPackagePath,
++  planExportConfiguration,
++  sanitizeEnvTemplate,
++} from "./agent-plugins-export-config.js";
+ import { FLEET_EXTENSION_NAMESPACE, readPluginPackage } from "./index.js";
+ 
+ /**
+  * Export a plugin as an Agent Plugins 1.0.0 package (OV-100 phase 5): root `plugin.json`,
+  * `mcp.json` and the package files, so it installs into any Agent Plugins client. Format:
+  * harnessrouter `protocol/versions/2026-09-28/plugins.md` §1, §2.2 and §5 (export rules).
+- * Credentials (`headers`, `auth`, `oauth`) never travel; what Agent Plugins has no place for is
+- * reported as skipped, and Fleet-only data rides in `extensions["fleet.workbench"]`.
++ * Declared credential carriers are sanitized and reported; this is not a secret scanner for
++ * arbitrary source code or prose. Fleet-only data rides in `extensions["fleet.workbench"]`.
+  */
+ 
+ export const AGENT_PLUGINS_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
+ const MANIFEST_DIRECTORIES = new Set([".zcode-plugin", ".claude-plugin", ".codex-plugin"]);
+ const REPLACED_FILES = new Set(["plugin.json", "mcp.json", ".mcp.json"]);
+-const NON_PORTABLE = ["hooks", "commands", "agents", "lspServers", "outputStyles", "channels", "settings"] as const;
++const ENV_TEMPLATES = new Set([".env.example", ".env.sample", ".env.template"]);
++const NON_PORTABLE = [
++  "hooks",
++  "commands",
++  "agents",
++  "lspServers",
++  "outputStyles",
++  "channels",
++  "settings",
++] as const;
+ const PLACEHOLDERS: Array<[RegExp, string]> = [
+   [/\$\{(?:CLAUDE|ZCODE)_PLUGIN_ROOT\}/g, "${PLUGIN_ROOT}"],
+   [/\$\{(?:CLAUDE|ZCODE)_PLUGIN_DATA\}/g, "${PLUGIN_DATA}"],
+@@ -46,67 +72,83 @@ export function exportAgentPluginsPackage(input: {
+   targetDirectory: string;
+ }): AgentPluginsExportResult {
+   const diagnostics: PluginDiagnostic[] = [];
+-  const loaded = readPluginPackage(input.rootPath, diagnostics);
++  const root = realpathSync(input.rootPath);
++  for (const path of [
++    "plugin.json",
++    ...[...MANIFEST_DIRECTORIES].map((dir) => join(dir, "plugin.json")),
++  ]) {
++    const manifest = join(root, path);
++    if (existsSync(manifest)) assertUnlinkedPackagePath(root, manifest);
++  }
++  const loaded = readPluginPackage(root, diagnostics);
+   if (!loaded) {
+     throw new Error(diagnostics[0]?.message ?? `Not a plugin folder: ${input.rootPath}`);
+   }
+   const name = agentPluginsName(loaded.manifest.name);
+   const destination = join(input.targetDirectory, name);
+-  if (existsSync(destination)) throw new Error(`${destination} already exists; choose another folder.`);
++  if (existsSync(destination))
++    throw new Error(`${destination} already exists; choose another folder.`);
++  const destinationRelative = relative(root, destination);
++  if (
++    !isAbsolute(destinationRelative) &&
++    destinationRelative !== ".." &&
++    !destinationRelative.startsWith(`..${sep}`)
++  )
++    throw new Error("Choose an export directory outside the plugin package.");
++  // 目标父级也可能是 symlink；仅检查字符串前缀会把 staging 建进源包并递归复制自身。
++  const targetDirectory = resolveExportDirectory(input.targetDirectory);
++  const canonicalRelative = relative(root, join(targetDirectory, name));
++  if (
++    !isAbsolute(canonicalRelative) &&
++    canonicalRelative !== ".." &&
++    !canonicalRelative.startsWith(`..${sep}`)
++  )
++    throw new Error("Choose an export directory outside the plugin package.");
+   const skipped: AgentPluginsExportResult["skipped"] = [];
+-
+-  mkdirSync(destination, { recursive: true });
+-  cpSync(loaded.rootPath, destination, {
+-    recursive: true,
+-    filter: (source) => {
+-      const path = relative(loaded.rootPath, source);
+-      if (!path) return true;
+-      const [first] = path.split(sep);
+-      if (first === ".git") return false;
+-      if (first && MANIFEST_DIRECTORIES.has(first)) return false;
+-      return !(REPLACED_FILES.has(path));
+-    },
+-  });
++  // 原实现先拷贝整个包，只清理新 mcp.json；自定义配置原文件和 .env 仍泄出。
++  // 先用 loader 的同一读取路径规划脱敏，再排除原文件并写入处理后的副本。
++  const configuration = planExportConfiguration(loaded, skipped);
+ 
+   const manifest = loaded.manifest as unknown as Record<string, unknown>;
+   for (const key of NON_PORTABLE) {
+     if (manifest[key] !== undefined || isNonEmptyDirectory(join(loaded.rootPath, key))) {
+-      skipped.push({ path: key, reason: `Agent Plugins has no ${key}; the files are kept but other clients ignore them.` });
++      skipped.push({
++        path: key,
++        reason: `Agent Plugins has no ${key}; the files are kept but other clients ignore them.`,
++      });
+     }
+   }
+ 
+   const servers: Record<string, unknown> = {};
+-  for (const [key, raw] of Object.entries(loadPluginMcpServerDefinitions({ diagnostics, loaded }))) {
++  for (const [key, raw] of Object.entries(configuration.servers)) {
+     if (!isRecord(raw)) continue;
+     const server: Record<string, unknown> = { ...raw };
+-    for (const secret of ["headers", "auth", "oauth"] as const) {
+-      if (server[secret] !== undefined) {
+-        delete server[secret];
+-        skipped.push({ path: `mcp.json#/mcpServers/${key}/${secret}`, reason: "Credentials are not exported; enter them again after installing." });
+-      }
+-    }
+-    const type = typeof server.type === "string" ? server.type : typeof server.url === "string" ? "http" : "stdio";
++    const type =
++      typeof server.type === "string"
++        ? server.type
++        : typeof server.url === "string"
++          ? "http"
++          : "stdio";
+     server.type = type === "http" ? "streamable-http" : type;
+     servers[key] = withPortablePlaceholders(server);
+   }
+-  if (Object.keys(servers).length > 0) {
+-    writeJson(join(destination, "mcp.json"), { mcpServers: servers });
+-  }
+ 
+   const fleet: Record<string, unknown> = {};
+-  if (isRecord(manifest.fleet) && Array.isArray(manifest.fleet.views)) fleet.views = manifest.fleet.views;
+-  if (isRecord(manifest.userConfig)) fleet.userConfig = manifest.userConfig;
++  if (isRecord(manifest.fleet) && Array.isArray(manifest.fleet.views))
++    fleet.views = manifest.fleet.views;
++  if (configuration.userConfig) fleet.userConfig = configuration.userConfig;
+   const author = isRecord(manifest.author)
+     ? manifest.author
+     : typeof manifest.author === "string"
+       ? { name: manifest.author }
+       : undefined;
+-  const repository = isRecord(manifest.repository) && typeof manifest.repository.url === "string"
+-    ? manifest.repository.url
+-    : typeof manifest.repository === "string"
+-      ? manifest.repository
+-      : undefined;
+-  writeJson(join(destination, "plugin.json"), {
++  const repository =
++    isRecord(manifest.repository) && typeof manifest.repository.url === "string"
++      ? manifest.repository.url
++      : typeof manifest.repository === "string"
++        ? manifest.repository
++        : undefined;
++  const portableManifest = {
+     $schema: AGENT_PLUGINS_SCHEMA,
+     name,
+     ...(typeof manifest.version === "string" ? { version: manifest.version } : {}),
+@@ -115,19 +157,91 @@ export function exportAgentPluginsPackage(input: {
+     ...(typeof manifest.homepage === "string" ? { homepage: manifest.homepage } : {}),
+     ...(repository ? { repository } : {}),
+     ...(typeof manifest.license === "string" ? { license: manifest.license } : {}),
+-    ...(Array.isArray(manifest.keywords) ? { keywords: manifest.keywords.filter((k) => typeof k === "string") } : {}),
+-    ...(Object.keys(fleet).length > 0 ? { extensions: { [FLEET_EXTENSION_NAMESPACE]: fleet } } : {}),
+-  });
++    ...(Array.isArray(manifest.keywords)
++      ? { keywords: manifest.keywords.filter((k) => typeof k === "string") }
++      : {}),
++    ...(Object.keys(fleet).length > 0
++      ? { extensions: { [FLEET_EXTENSION_NAMESPACE]: fleet } }
++      : {}),
++  };
++  mkdirSync(targetDirectory, { recursive: true });
++  const staging = mkdtempSync(join(targetDirectory, ".plugin-export-"));
++  try {
++    const templates = new Map<string, string>();
++    cpSync(root, staging, {
++      recursive: true,
++      filter: (source) => {
++        const path = relative(root, source);
++        if (!path) return true;
++        if (lstatSync(source).isSymbolicLink()) {
++          skipped.push({
++            path,
++            reason: "Symbolic link omitted; only package-owned regular files are exported.",
++          });
++          return false;
++        }
++        const [first] = path.split(sep);
++        if (
++          first === ".git" ||
++          (first && MANIFEST_DIRECTORIES.has(first)) ||
++          REPLACED_FILES.has(path)
++        )
++          return false;
++        if (configuration.files.has(source)) return false;
++        const name = basename(path);
++        if (name === ".env" || name.startsWith(".env.")) {
++          if (ENV_TEMPLATES.has(name) && lstatSync(source).isFile()) {
++            const template = sanitizeEnvTemplate(readFileSync(source, "utf8"), path, skipped);
++            if (template !== undefined) {
++              templates.set(path, template);
++              return false;
++            }
++          }
++          skipped.push({
++            path,
++            reason:
++              "Local environment file omitted; recreate it after installing. Unparsed templates are omitted too.",
++          });
++          return false;
++        }
++        return true;
++      },
++    });
++    for (const [source, value] of configuration.files) {
++      const path = relative(root, source);
++      const [first] = path.split(sep);
++      if (REPLACED_FILES.has(path) || (first && MANIFEST_DIRECTORIES.has(first))) continue;
++      writeJson(join(staging, path), withPortablePlaceholders(value));
++    }
++    for (const [path, value] of templates) {
++      mkdirSync(dirname(join(staging, path)), { recursive: true });
++      writeFileSync(join(staging, path), value);
++    }
++    if (Object.keys(servers).length > 0)
++      writeJson(join(staging, "mcp.json"), { mcpServers: servers });
++    writeJson(join(staging, "plugin.json"), portableManifest);
++    if (existsSync(destination))
++      throw new Error(`${destination} already exists; choose another folder.`);
++    renameSync(staging, join(targetDirectory, name));
++  } catch (error) {
++    rmSync(staging, { recursive: true, force: true });
++    throw error;
++  }
+   return { path: destination, skipped };
+ }
+ 
+ function withPortablePlaceholders(value: unknown): unknown {
+   if (typeof value === "string") {
+-    return PLACEHOLDERS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
++    return PLACEHOLDERS.reduce(
++      (text, [pattern, replacement]) => text.replace(pattern, replacement),
++      value,
++    );
+   }
+   if (Array.isArray(value)) return value.map(withPortablePlaceholders);
+   if (isRecord(value)) {
+-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withPortablePlaceholders(item)]));
++    return Object.fromEntries(
++      Object.entries(value).map(([key, item]) => [key, withPortablePlaceholders(item)]),
++    );
+   }
+   return value;
+ }
+@@ -141,5 +255,18 @@ function isNonEmptyDirectory(path: string): boolean {
+ }
+ 
+ function writeJson(path: string, value: unknown): void {
++  mkdirSync(dirname(path), { recursive: true });
+   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+ }
++
++function resolveExportDirectory(path: string): string {
++  let ancestor = resolve(path);
++  const remaining: string[] = [];
++  while (!existsSync(ancestor)) {
++    remaining.unshift(basename(ancestor));
++    const parent = dirname(ancestor);
++    if (parent === ancestor) throw new Error("Export directory has no existing parent");
++    ancestor = parent;
++  }
++  return join(realpathSync(ancestor), ...remaining);
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/index.ts b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+index 8f1bc2f..301478e 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/index.ts
+@@ -47,6 +47,7 @@ import {
+ } from "./helpers.js";
+ import { scanSkillFilesUnderRootSync } from "../skills/scan.js";
+ import { loadPluginMcpServerDefinitions, resolvePluginMcpServers } from "./mcp.js";
++import { withholdConflictingPluginMcpServers } from "./mcp-ownership.js";
+ import { listPluginHookSources } from "./hook-sources.js";
+ import { enumeratePluginComponents } from "./plugin-components.js";
+ import {
+@@ -118,12 +119,7 @@ const DEFAULT_VERSION = "0.0.0";
+ const FIRST_PLUGIN_PRIORITY = 1_000;
+ const PRIORITY_STEP = 10;
+ const PLUGIN_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+-const UNSUPPORTED_COMPONENT_KEYS = [
+-  "channels",
+-  "lspServers",
+-  "outputStyles",
+-  "settings",
+-] as const;
++const UNSUPPORTED_COMPONENT_KEYS = ["channels", "lspServers", "outputStyles", "settings"] as const;
+ const SUPPORTED_HOOK_EVENTS = new Set<string>(Object.values(HookEventNameValue));
+ 
+ interface PluginHookInspection {
+@@ -266,6 +262,7 @@ export class NodePluginAdapter implements PluginPort {
+       );
+     }
+ 
++    withholdConflictingPluginMcpServers(plugins, mcpServers, diagnostics);
+     return {
+       commandRoots,
+       diagnostics,
+@@ -285,7 +282,9 @@ export class NodePluginAdapter implements PluginPort {
+     options?: PluginAbortOptions,
+   ): PluginCandidate[] {
+     const candidates: PluginCandidate[] = [];
+-    const projectDeclared = new Set((request.projectDeclaredRoots ?? []).map((root) => resolve(root)));
++    const projectDeclared = new Set(
++      (request.projectDeclaredRoots ?? []).map((root) => resolve(root)),
++    );
+     for (const rootPath of request.config.dirs) {
+       const resolvedRoot = resolve(rootPath);
+       candidates.push({
+@@ -459,7 +458,9 @@ function parsePluginViews(
+     }
+     const titleI18n = isRecord(view.title_i18n)
+       ? Object.fromEntries(
+-          Object.entries(view.title_i18n).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
++          Object.entries(view.title_i18n).filter(
++            (entry): entry is [string, string] => typeof entry[1] === "string",
++          ),
+         )
+       : undefined;
+     views.push({
+@@ -493,7 +494,8 @@ function resolvePluginGrant(input: {
+   const fingerprint = pluginSurfaceFingerprint(input.mcpServerDefinitions, input.hookDetails);
+   const required =
+     input.candidate.source === "cache" && !isOfficialMarketplaceId(input.loaded.marketplace);
+-  const granted = !required || input.grants === undefined || input.grants[input.loaded.id] === fingerprint;
++  const granted =
++    !required || input.grants === undefined || input.grants[input.loaded.id] === fingerprint;
+   return { fingerprint, granted, required };
+ }
+ 
+@@ -1106,7 +1108,12 @@ export function readPluginPackage(
+   diagnostics: PluginDiagnostic[] = [],
+ ): LoadedPlugin | null {
+   return loadPlugin(
+-    { defaultEnabled: false, marketplace: ZCODE_INLINE_PLUGIN_MARKETPLACE, rootPath: resolve(rootPath), source: "inline" },
++    {
++      defaultEnabled: false,
++      marketplace: ZCODE_INLINE_PLUGIN_MARKETPLACE,
++      rootPath: resolve(rootPath),
++      source: "inline",
++    },
+     diagnostics,
+   );
+ }
+@@ -1171,8 +1178,18 @@ function readManifest(path: string, diagnostics: PluginDiagnostic[]): PluginMani
+     if (!isRecord(parsed)) throw new Error("Manifest must be a JSON object");
+     const name = typeof parsed.name === "string" ? parsed.name.trim() : "";
+     if (!PLUGIN_NAME_PATTERN.test(name)) throw new Error(`Invalid plugin name: ${name}`);
++    const extension = isRecord(parsed.extensions)
++      ? parsed.extensions[FLEET_EXTENSION_NAMESPACE]
++      : undefined;
++    // 导出将 Fleet 配置放入标准扩展；读回时仍归一到同一个 manifest owner，
++    // 否则非敏感默认值虽保存在包里，MCP 的 user_config 占位符却无法恢复。
++    const fleet = isRecord(extension) ? extension : undefined;
+     return {
+       ...parsed,
++      ...(!isRecord(parsed.fleet) && fleet ? { fleet } : {}),
++      ...(!isRecord(parsed.userConfig) && isRecord(fleet?.userConfig)
++        ? { userConfig: fleet.userConfig }
++        : {}),
+       name,
+       version: typeof parsed.version === "string" ? parsed.version : DEFAULT_VERSION,
+     } as PluginManifest;
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/mcp-ownership.ts b/apps/zcode-cli/packages/adapters/src/plugins/mcp-ownership.ts
+new file mode 100644
+index 0000000..2906392
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/plugins/mcp-ownership.ts
+@@ -0,0 +1,35 @@
++import type { PluginDiagnostic, PluginLoadOutcome, PluginMetadata } from "@zcode/contracts";
++
++/** 保留旧工具名称和权限规则，但绝不让不同完整插件 id 静默覆盖同一个 MCP 名称。 */
++export function withholdConflictingPluginMcpServers(
++  plugins: PluginMetadata[],
++  servers: PluginLoadOutcome["mcpServers"],
++  diagnostics: PluginDiagnostic[],
++): void {
++  const owners = new Map<string, PluginMetadata[]>();
++  for (const plugin of plugins) {
++    for (const server of plugin.mcpServerNames) {
++      const entries = owners.get(server) ?? [];
++      entries.push(plugin);
++      owners.set(server, entries);
++    }
++  }
++  for (const [server, claimants] of owners) {
++    if (claimants.length < 2) continue;
++    delete servers[server];
++    const ids = claimants
++      .map((plugin) => plugin.id)
++      .sort()
++      .join(", ");
++    for (const plugin of claimants) {
++      plugin.mcpServerNames = plugin.mcpServerNames.filter((name) => name !== server);
++      diagnostics.push({
++        code: "plugin_mcp_server_disabled",
++        severity: "error",
++        pluginId: plugin.id,
++        path: plugin.rootPath,
++        message: `MCP server name conflict: ${server} belongs to multiple plugins (${ids}). Disable one conflicting plugin or use distinct server names.`,
++      });
++    }
++  }
++}
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/mcp.ts b/apps/zcode-cli/packages/adapters/src/plugins/mcp.ts
+index 86c2229..8fdc12e 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/mcp.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/mcp.ts
+@@ -19,10 +19,17 @@ const SUPPORTED_MCP_TYPES = new Set(["stdio", "http", "sse"]);
+ const TEMPLATE_PATTERN = /\$\{([^}]+)\}/g;
+ const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+ 
+-export function loadPluginMcpServerDefinitions(input: {
++interface PluginMcpDefinitionInput {
+   diagnostics: PluginDiagnostic[];
+   loaded: LoadedPlugin;
+-}): Record<string, unknown> {
++  /** Export uses the same parser but retains each source to sanitize copied configurations. */
++  sourceFiles?: Map<string, unknown>;
++  readFile?: (path: string) => string;
++}
++
++export function loadPluginMcpServerDefinitions(
++  input: PluginMcpDefinitionInput,
++): Record<string, unknown> {
+   // Agent Plugins 1.0.0 (OV-100 phase 5) declares servers in a root `mcp.json`; Claude/ZCode
+   // packages use `.mcp.json` and the manifest. All three load, later sources winning by name.
+   const fromAgentPlugins = loadMcpServersFromFile(join(input.loaded.rootPath, "mcp.json"), input);
+@@ -78,10 +85,7 @@ function toNamespacedServerName(loaded: LoadedPlugin, serverName: string): strin
+ 
+ function loadMcpServersFromSpec(
+   spec: unknown,
+-  input: {
+-    diagnostics: PluginDiagnostic[];
+-    loaded: LoadedPlugin;
+-  },
++  input: PluginMcpDefinitionInput,
+ ): Record<string, unknown> {
+   if (spec === undefined) return {};
+   if (typeof spec === "string") {
+@@ -106,13 +110,14 @@ function loadMcpServersFromSpec(
+ 
+ function loadMcpServersFromFile(
+   path: string,
+-  input: {
+-    diagnostics: PluginDiagnostic[];
+-    loaded: LoadedPlugin;
+-  },
++  input: PluginMcpDefinitionInput,
+ ): Record<string, unknown> {
+   try {
+-    return normalizeMcpServersShape(JSON.parse(readFileSync(path, "utf8")), input);
++    const raw: unknown = JSON.parse(
++      input.readFile ? input.readFile(path) : readFileSync(path, "utf8"),
++    );
++    input.sourceFiles?.set(path, raw);
++    return normalizeMcpServersShape(raw, input);
+   } catch (error) {
+     if (isNotFoundError(error)) return {};
+     input.diagnostics.push({
+@@ -148,7 +153,10 @@ function normalizeMcpServersShape(
+     Object.entries(servers)
+       .filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
+       // Agent Plugins names the streamable HTTP transport `streamable-http`; the runtime calls it http.
+-      .map(([name, config]) => [name, config.type === "streamable-http" ? { ...config, type: "http" } : config]),
++      .map(([name, config]) => [
++        name,
++        config.type === "streamable-http" ? { ...config, type: "http" } : config,
++      ]),
+   );
+ }
+ 
+@@ -454,7 +462,6 @@ function resolveTemplate(
+       return envValue;
+     }
+     if (options.allowSensitive && ENVIRONMENT_VARIABLE_NAME_PATTERN.test(name)) {
+-
+       // token。只在敏感 sink 解析，避免 secret 被展开到 args、URL 或其它可见字段。
+       const envValue = context.env[name];
+       if (envValue === undefined)
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugin-views.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugin-views.ts
+index 33581e2..5a5d560 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugin-views.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugin-views.ts
+@@ -38,8 +38,11 @@ export async function readPluginView(
+   const target = await connectViewServer(context, params.workspace, params.pluginId, params.viewId);
+   const readResource = target.port.readResource;
+   if (!readResource) throw new Error("This Fleet runtime cannot read MCP resources.");
+-  const result = await readResource.call(target.port, target.serverName, target.resource);
+-  const content = result.contents.find((item) => item.uri === target.resource) ?? result.contents[0];
++  const result = await readResource.call(target.port, target.serverName, target.resource, {
++    expectedServerConfig: target.config,
++  });
++  const content =
++    result.contents.find((item) => item.uri === target.resource) ?? result.contents[0];
+   if (!content) throw new Error(`The plugin returned no view for ${target.resource}.`);
+   if (content.mimeType && !content.mimeType.startsWith("text/html")) {
+     throw new Error(`The plugin view is ${content.mimeType}, not ${MCP_APP_MIME}.`);
+@@ -58,8 +61,12 @@ export async function readPluginView(
+     ...(csp
+       ? {
+           csp: {
+-            ...(stringList(csp.connectDomains) ? { connectDomains: stringList(csp.connectDomains) } : {}),
+-            ...(stringList(csp.resourceDomains) ? { resourceDomains: stringList(csp.resourceDomains) } : {}),
++            ...(stringList(csp.connectDomains)
++              ? { connectDomains: stringList(csp.connectDomains) }
++              : {}),
++            ...(stringList(csp.resourceDomains)
++              ? { resourceDomains: stringList(csp.resourceDomains) }
++              : {}),
+           },
+         }
+       : {}),
+@@ -73,16 +80,23 @@ export async function callPluginViewTool(
+ ): Promise<ZCodePluginViewCallToolResult> {
+   const params = parseParams(zcodePluginViewCallToolParamsSchema, rawParams);
+   const target = await connectViewServer(context, params.workspace, params.pluginId, params.viewId);
+-  const result = await target.port.callTool({
+-    serverName: target.serverName,
+-    toolName: params.tool,
+-    arguments: params.arguments ?? {},
+-    workspacePath: params.workspace.workspacePath,
+-    ...(params.workspace.workspaceIdentity ? { workspaceIdentity: params.workspace.workspaceIdentity } : {}),
+-  });
++  const result = await target.port.callTool(
++    {
++      serverName: target.serverName,
++      toolName: params.tool,
++      arguments: params.arguments ?? {},
++      workspacePath: params.workspace.workspacePath,
++      ...(params.workspace.workspaceIdentity
++        ? { workspaceIdentity: params.workspace.workspaceIdentity }
++        : {}),
++    },
++    { expectedServerConfig: target.config },
++  );
+   return zcodePluginViewCallToolResultSchema.parse({
+     content: result.content,
+-    ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
++    ...(result.structuredContent !== undefined
++      ? { structuredContent: result.structuredContent }
++      : {}),
+     ...(result.isError !== undefined ? { isError: result.isError } : {}),
+   });
+ }
+@@ -100,28 +114,43 @@ async function connectViewServer(
+   if (!plugin) throw new Error(`Plugin not found: ${pluginId}`);
+   const view = plugin.views?.find((candidate) => candidate.id === viewId);
+   if (!view) throw new Error(`Plugin ${pluginId} has no view ${viewId}.`);
+-  if (!plugin.enabled) throw new Error(`Enable ${plugin.name} in Settings → Plugins to open this view.`);
++  if (!plugin.enabled)
++    throw new Error(`Enable ${plugin.name} in Settings → Plugins to open this view.`);
+   if (plugin.grant && !plugin.grant.granted) {
+     throw new Error(`Allow ${plugin.name} in Settings → Plugins to open this view.`);
+   }
+   const serverName = `plugin:${plugin.name}:${view.server}`;
++  // 同名市场插件曾覆盖全局 server map；必须验证当前完整插件自己的可运行集合，
++  // 否则已有 connected 状态会让 view 绕过冲突撤回，调用另一个包的数据。
++  if (!plugin.mcpServerNames.includes(serverName)) {
++    throw new Error(
++      `The view's server ${view.server} is unavailable or conflicting for ${pluginId}; see the plugin's diagnostics.`,
++    );
++  }
+   const config: McpServerConfig | undefined = outcome.mcpServers[serverName];
+-  if (!config) throw new Error(`The view's server ${view.server} could not be started; see the plugin's diagnostics.`);
+-  const status = (await port.status())[serverName];
+-  if (status?.status !== "connected") {
+-    const connected = await port.connectServer(serverName, config, { workingDirectory: workspace.workspacePath });
+-    if (connected.status !== "connected") {
+-      throw new Error(connected.error ?? `The view's server ${view.server} did not connect.`);
+-    }
++  if (!config)
++    throw new Error(
++      `The view's server ${view.server} could not be started; see the plugin's diagnostics.`,
++    );
++  // 生产 MCP pool 以名称、完整配置和 scope 复用连接。每次提交当前配置，才能在
++  // 冲突解除后换回正确 owner；只检查 connected 会继续复用前一个包的进程。
++  const connected = await port.connectServer(serverName, config, {
++    workingDirectory: workspace.workspacePath,
++  });
++  if (connected.status !== "connected") {
++    throw new Error(connected.error ?? `The view's server ${view.server} did not connect.`);
+   }
+-  return { port, resource: view.resource, serverName };
++  return { port, resource: view.resource, serverName, config };
+ }
+ 
+ function discover(
+   context: ZCodeProtocolAgentServerContext,
+   workspace: { workspacePath: string; workspaceKey?: string },
+ ): PluginLoadOutcome {
+-  const configResult = createConfig({ env: context.deps.env, workingDirectory: workspace.workspacePath });
++  const configResult = createConfig({
++    env: context.deps.env,
++    workingDirectory: workspace.workspacePath,
++  });
+   const cliStorageRoot = getCliStorageRoot(resolvePath(configResult.config.storage.dir));
+   return resolveStartupPlugins({
+     cliStorageRoot,
+@@ -143,5 +172,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
+ }
+ 
+ function stringList(value: unknown): string[] | undefined {
+-  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
++  return Array.isArray(value) && value.every((item) => typeof item === "string")
++    ? value
++    : undefined;
+ }
+diff --git a/apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts b/apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts
+index f9a2d07..245f10a 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts
+@@ -1,5 +1,5 @@
+ import assert from "node:assert/strict";
+-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+ import os from "node:os";
+ import { join } from "node:path";
+ import test from "node:test";
+@@ -13,7 +13,10 @@ async function paths(root: string, dirs: string[]) {
+   const workspace = join(root, "workspace");
+   await mkdir(workspace, { recursive: true });
+   const userConfigPath = join(root, "config.json");
+-  await writeFile(userConfigPath, JSON.stringify({ storage: { dir: join(root, "storage") }, plugins: { dirs } }));
++  await writeFile(
++    userConfigPath,
++    JSON.stringify({ storage: { dir: join(root, "storage") }, plugins: { dirs } }),
++  );
+   return { env: {}, officialPluginRoots: [], userConfigPath, workingDirectory: workspace };
+ }
+ 
+@@ -23,17 +26,34 @@ test("an Agent Plugins package loads its mcp.json servers, skills and portable p
+     const pkg = join(root, "contract-review");
+     await mkdir(join(pkg, "skills", "risk-checklist"), { recursive: true });
+     await mkdir(join(pkg, "bin"), { recursive: true });
+-    await writeFile(join(pkg, "plugin.json"), JSON.stringify({ $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "contract-review", version: "1.2.0" }));
++    await writeFile(
++      join(pkg, "plugin.json"),
++      JSON.stringify({
++        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
++        name: "contract-review",
++        version: "1.2.0",
++        userConfig: { mode: { default: "root-value" } },
++        extensions: { "fleet.workbench": { userConfig: { mode: { default: "extension-value" } } } },
++      }),
++    );
+     await writeFile(
+       join(pkg, "mcp.json"),
+       JSON.stringify({
+         mcpServers: {
+           clauses: { type: "streamable-http", url: "https://mcp.example.com/clauses" },
+-          redline: { type: "stdio", command: "./bin/redline", args: ["--data", "${PLUGIN_DATA}"] },
++          redline: {
++            type: "stdio",
++            command: "./bin/redline",
++            args: ["--data", "${PLUGIN_DATA}"],
++            env: { MODE: "${user_config.mode}" },
++          },
+         },
+       }),
+     );
+-    await writeFile(join(pkg, "skills", "risk-checklist", "SKILL.md"), "---\nname: risk-checklist\ndescription: Risks\n---\n");
++    await writeFile(
++      join(pkg, "skills", "risk-checklist", "SKILL.md"),
++      "---\nname: risk-checklist\ndescription: Risks\n---\n",
++    );
+     const outcome = resolveZCodePlugins(await paths(root, [pkg]));
+     const plugin = outcome.plugins.find((entry) => entry.name === "contract-review");
+     assert.ok(plugin, JSON.stringify(outcome.diagnostics));
+@@ -45,6 +65,11 @@ test("an Agent Plugins package loads its mcp.json servers, skills and portable p
+     assert.equal(redline?.type, "stdio");
+     assert.equal((redline as { command: string }).command, join(pkg, "bin", "redline"));
+     assert.equal((redline as { args: string[] }).args[1], plugin.dataPath);
++    assert.equal(
++      (redline as { env: Record<string, string> }).env.MODE,
++      "root-value",
++      "root format keeps priority over a portable extension",
++    );
+   } finally {
+     await rm(root, { recursive: true, force: true });
+   }
+@@ -58,7 +83,10 @@ test("export writes an Agent Plugins package without credentials, and it loads b
+     await mkdir(join(source, "skills", "notes"), { recursive: true });
+     await mkdir(join(source, "hooks"), { recursive: true });
+     await writeFile(join(source, "hooks", "hooks.json"), "{}");
+-    await writeFile(join(source, "skills", "notes", "SKILL.md"), "---\nname: notes\ndescription: Notes\n---\n");
++    await writeFile(
++      join(source, "skills", "notes", "SKILL.md"),
++      "---\nname: notes\ndescription: Notes\n---\n",
++    );
+     await writeFile(
+       join(source, ".claude-plugin", "plugin.json"),
+       JSON.stringify({
+@@ -66,10 +94,16 @@ test("export writes an Agent Plugins package without credentials, and it loads b
+         version: "2.0.0",
+         author: "Fleet Test",
+         mcpServers: {
+-          api: { type: "http", url: "https://api.example.com/mcp", headers: { Authorization: "Bearer secret" } },
++          api: {
++            type: "http",
++            url: "https://api.example.com/mcp",
++            headers: { Authorization: "Bearer secret" },
++          },
+           local: { command: "node", args: ["${CLAUDE_PLUGIN_ROOT}/server.js"] },
+         },
+-        fleet: { views: [{ id: "main", title: "Main", server: "local", resource: "ui://local/main" }] },
++        fleet: {
++          views: [{ id: "main", title: "Main", server: "local", resource: "ui://local/main" }],
++        },
+       }),
+     );
+     const out = join(root, "out");
+@@ -86,14 +120,259 @@ test("export writes an Agent Plugins package without credentials, and it loads b
+     assert.deepEqual(mcp.mcpServers.local.args, ["${PLUGIN_ROOT}/server.js"]);
+     assert.ok(result.skipped.some((item) => item.path === "mcp.json#/mcpServers/api/headers"));
+     assert.ok(result.skipped.some((item) => item.path === "hooks"));
+-    await assert.rejects(async () => exportAgentPluginsPackage({ rootPath: source, targetDirectory: out }), /already exists/);
++    await assert.rejects(
++      async () => exportAgentPluginsPackage({ rootPath: source, targetDirectory: out }),
++      /already exists/,
++    );
+ 
+     const outcome = resolveZCodePlugins(await paths(root, [result.path]));
+     const reloaded = outcome.plugins.find((entry) => entry.name === "source-tools");
+     assert.ok(reloaded, JSON.stringify(outcome.diagnostics));
+-    assert.deepEqual(reloaded.views?.map((view) => view.id), ["main"], "Fleet views survive the round trip");
++    assert.deepEqual(
++      reloaded.views?.map((view) => view.id),
++      ["main"],
++      "Fleet views survive the round trip",
++    );
+     assert.ok(reloaded.skillCount > 0);
+   } finally {
+     await rm(root, { recursive: true, force: true });
+   }
+ });
++
++test("export sanitizes every declared credential carrier while retaining executable content", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-export-secrets-"));
++  try {
++    const source = join(root, "source");
++    for (const path of [".claude-plugin", "config", "skills/notes", "bin"])
++      await mkdir(join(source, path), { recursive: true });
++    const secret = "SYNTHETIC-CREDENTIAL-DO-NOT-EXPORT";
++    const remote = {
++      type: "http",
++      url: "https://example.invalid/mcp",
++      headers: { Authorization: secret },
++      oauth: { clientSecret: secret },
++    };
++    await writeFile(join(source, "mcp.json"), JSON.stringify({ mcpServers: { root: remote } }));
++    await writeFile(join(source, ".mcp.json"), JSON.stringify({ mcpServers: { hidden: remote } }));
++    const custom = JSON.stringify({
++      description: "Keep this metadata",
++      mcpServers: { custom: remote },
++    });
++    await writeFile(join(source, "config", "custom.json"), custom);
++    await writeFile(
++      join(source, ".claude-plugin", "plugin.json"),
++      JSON.stringify({
++        name: "safe-export",
++        mcpServers: [
++          "./config/custom.json",
++          {
++            inline: { ...remote, auth: { token: secret } },
++            local: {
++              command: "node",
++              args: ["${PLUGIN_ROOT}/bin/server.mjs"],
++              env: {
++                API_KEY: secret,
++                MODE: "production",
++                INHERITED_KEY: "${EXTERNAL_KEY}",
++                DATA: "${PLUGIN_DATA}",
++                CONFIGURED_MODE: "${user_config.mode}",
++                SENSITIVE: "${user_config.key}",
++                DB_URL: `postgres://user:${secret}@\${DB_HOST}/db`,
++                TOKEN: `${secret}\${SUFFIX}`,
++                FALLBACK: `\${TOKEN:-${secret}}`,
++              },
++            },
++          },
++        ],
++        userConfig: {
++          key: { sensitive: true, default: secret },
++          mode: { sensitive: false, default: "production" },
++        },
++      }),
++    );
++    await writeFile(join(source, ".env"), `API_KEY=${secret}\n`);
++    await writeFile(join(source, ".env.local"), `API_KEY=${secret}\n`);
++    await writeFile(
++      join(source, ".env.example"),
++      `# Supply your key\nAPI_KEY=${secret}\nMODE=production\nTOKEN="${secret}\${SUFFIX}"\nFALLBACK=\${TOKEN:-${secret}}\nINHERITED="\${INHERITED}"\n`,
++    );
++    const script = "console.log('ordinary script');\n";
++    await writeFile(join(source, "bin", "server.mjs"), script);
++    await writeFile(
++      join(source, "skills", "notes", "SKILL.md"),
++      "---\nname: notes\ndescription: Notes\n---\nUseful content\n",
++    );
++    const result = exportAgentPluginsPackage({
++      rootPath: source,
++      targetDirectory: join(root, "out"),
++    });
++    for (const path of await readdir(result.path, { recursive: true, withFileTypes: true })) {
++      if (!path.isFile()) continue;
++      assert.equal(
++        (await readFile(join(path.parentPath, path.name), "utf8")).includes(secret),
++        false,
++        path.name,
++      );
++    }
++    const exported = JSON.parse(await readFile(join(result.path, "mcp.json"), "utf8"));
++    assert.deepEqual(Object.keys(exported.mcpServers).sort(), [
++      "custom",
++      "hidden",
++      "inline",
++      "local",
++      "root",
++    ]);
++    assert.deepEqual(exported.mcpServers.local.env, {
++      API_KEY: "${API_KEY}",
++      MODE: "${MODE}",
++      INHERITED_KEY: "${EXTERNAL_KEY}",
++      DATA: "${PLUGIN_DATA}",
++      CONFIGURED_MODE: "${user_config.mode}",
++      SENSITIVE: "${user_config.key}",
++      DB_URL: "${DB_URL}",
++      TOKEN: "${TOKEN}",
++      FALLBACK: "${FALLBACK}",
++    });
++    assert.deepEqual(exported.mcpServers.local.args, ["${PLUGIN_ROOT}/bin/server.mjs"]);
++    const exportedCustom = JSON.parse(
++      await readFile(join(result.path, "config", "custom.json"), "utf8"),
++    );
++    assert.equal(exportedCustom.description, "Keep this metadata");
++    assert.equal(exportedCustom.mcpServers.custom.url, remote.url);
++    assert.equal(exportedCustom.mcpServers.custom.headers, undefined);
++    const manifest = JSON.parse(await readFile(join(result.path, "plugin.json"), "utf8"));
++    assert.equal(manifest.extensions["fleet.workbench"].userConfig.key.default, undefined);
++    assert.equal(manifest.extensions["fleet.workbench"].userConfig.mode.default, "production");
++    assert.equal(await readFile(join(result.path, "bin", "server.mjs"), "utf8"), script);
++    assert.match(
++      await readFile(join(result.path, "skills", "notes", "SKILL.md"), "utf8"),
++      /Useful content/,
++    );
++    assert.match(
++      await readFile(join(result.path, ".env.example"), "utf8"),
++      /API_KEY=\$\{API_KEY\}/,
++    );
++    assert.match(
++      await readFile(join(result.path, ".env.example"), "utf8"),
++      /INHERITED="\$\{INHERITED\}"/,
++    );
++    assert.ok(result.skipped.some((item) => item.path === ".env"));
++    assert.ok(result.skipped.some((item) => item.path.includes("/env/MODE")));
++    assert.equal(
++      await readFile(join(source, "config", "custom.json"), "utf8"),
++      custom,
++      "source stays unchanged",
++    );
++    const reloadPaths = await paths(root, [result.path]);
++    const env = {
++      API_KEY: "reentered",
++      MODE: "production",
++      EXTERNAL_KEY: "reentered",
++      DB_URL: "reentered",
++      TOKEN: "reentered",
++      FALLBACK: "reentered",
++    };
++    const unconfigured = resolveZCodePlugins({ ...reloadPaths, env });
++    assert.equal(
++      unconfigured.plugins.find((plugin) => plugin.name === "safe-export")?.userConfig?.key
++        ?.default,
++      undefined,
++    );
++    assert.equal(
++      unconfigured.mcpServers["plugin:safe-export:local"],
++      undefined,
++      "omitted sensitive defaults cannot silently authorize a connection",
++    );
++    assert.ok(
++      unconfigured.diagnostics.some((item) =>
++        item.message.includes("Missing plugin user_config value: key"),
++      ),
++    );
++    const configuration = JSON.parse(await readFile(reloadPaths.userConfigPath, "utf8"));
++    configuration.plugins.options = { "safe-export@inline": { key: "reentered" } };
++    await writeFile(reloadPaths.userConfigPath, JSON.stringify(configuration));
++    const reloaded = resolveZCodePlugins({ ...reloadPaths, env });
++    const local = reloaded.mcpServers["plugin:safe-export:local"];
++    assert.ok(local?.type === "stdio", JSON.stringify(reloaded.diagnostics));
++    assert.equal(local.env?.MODE, "production", "literal env purpose can be configured again");
++    assert.equal(
++      local.env?.CONFIGURED_MODE,
++      "production",
++      "non-sensitive defaults survive export and import",
++    );
++    assert.equal(
++      local.env?.SENSITIVE,
++      "reentered",
++      "sensitive configuration is supplied by the recipient",
++    );
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("malformed referenced MCP configuration refuses export without publishing a partial package", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-export-invalid-"));
++  try {
++    const source = join(root, "source");
++    await mkdir(source);
++    await writeFile(
++      join(source, "plugin.json"),
++      JSON.stringify({ name: "broken", mcpServers: "./config.json" }),
++    );
++    await writeFile(join(source, "config.json"), "{broken");
++    assert.throws(
++      () => exportAgentPluginsPackage({ rootPath: source, targetDirectory: join(root, "out") }),
++      /MCP|config/,
++    );
++    await assert.rejects(readFile(join(root, "out", "broken", "plugin.json")), { code: "ENOENT" });
++    await rm(join(source, "config.json"));
++    assert.throws(
++      () => exportAgentPluginsPackage({ rootPath: source, targetDirectory: join(root, "out") }),
++      /configuration is missing/,
++    );
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test("export never carries a package symlink or follows a linked MCP configuration", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-export-link-"));
++  try {
++    const source = join(root, "source");
++    await mkdir(source);
++    await writeFile(join(source, "plugin.json"), JSON.stringify({ name: "linked" }));
++    await writeFile(join(root, "external.json"), JSON.stringify({ mcpServers: {} }));
++    await symlink(join(root, "external.json"), join(source, "linked.json"));
++    const result = exportAgentPluginsPackage({
++      rootPath: source,
++      targetDirectory: join(root, "out"),
++    });
++    assert.ok(result.skipped.some((item) => item.path === "linked.json"));
++    assert.deepEqual(await readdir(result.path), ["plugin.json"]);
++    await writeFile(
++      join(source, "plugin.json"),
++      JSON.stringify({ name: "linked-config", mcpServers: "./linked.json" }),
++    );
++    assert.throws(
++      () => exportAgentPluginsPackage({ rootPath: source, targetDirectory: join(root, "out") }),
++      /symlink|symbolic/i,
++    );
++    await writeFile(join(source, "plugin.json"), JSON.stringify({ name: "linked" }));
++    await symlink(source, join(root, "destination-link"), "dir");
++    assert.throws(
++      () =>
++        exportAgentPluginsPackage({
++          rootPath: source,
++          targetDirectory: join(root, "destination-link", "new-folder"),
++        }),
++      /outside the plugin/,
++    );
++    assert.deepEqual(
++      (await readdir(source)).sort(),
++      ["linked.json", "plugin.json"],
++      "refusal does not create staging inside source",
++    );
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts
+index c9114b6..0e68e3d 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts
+@@ -1,61 +1,351 @@
+ import assert from "node:assert/strict";
+-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import os from "node:os";
+ import { join, resolve } from "node:path";
+ import test from "node:test";
+-import { createMcpAdapter } from "@zcode/adapters/mcp";
++import { createMcpAdapter, createMcpAdapterConnectionPool } from "@zcode/adapters/mcp";
++import { addMarketplace } from "@zcode/adapters/plugins";
+ import { callPluginViewTool, readPluginView } from "../src/zcode-protocol/plugin-views.js";
+-import { resolveZCodePlugins, setZCodePluginEnabled } from "../src/plugins.js";
++import {
++  grantZCodePlugin,
++  installZCodeMarketplacePlugin,
++  resolveZCodePlugins,
++  setZCodePluginEnabled,
++} from "../src/plugins.js";
+ 
+ // OV-100 phase 4: a plugin view is an MCP Apps ui:// resource of the plugin's own server; the view
+ // reaches that server only through the host, and a disabled plugin's view does not run.
+-test("a plugin view is read from its own MCP server and calls that server's tools", { timeout: 60000 }, async () => {
+-  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-view-"));
+-  const previousHome = process.env.HOME;
+-  const mcpPort = createMcpAdapter();
++test(
++  "a plugin view is read from its own MCP server and calls that server's tools",
++  { timeout: 60000 },
++  async () => {
++    const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-view-"));
++    const previousHome = process.env.HOME;
++    const mcpPort = createMcpAdapter();
++    try {
++      const home = join(root, "home");
++      const workspace = join(root, "workspace");
++      const plugin = join(root, "counter-plugin");
++      for (const dir of [workspace, join(home, ".zcode", "cli"), join(plugin, ".zcode-plugin")])
++        await mkdir(dir, { recursive: true });
++      const server = resolve(import.meta.dirname, "fixtures/plugin-view/server.mjs");
++      await writeFile(
++        join(plugin, ".zcode-plugin", "plugin.json"),
++        JSON.stringify({
++          name: "counter",
++          version: "1.0.0",
++          mcpServers: { counter: { command: process.execPath, args: [server] } },
++          fleet: {
++            views: [
++              { id: "main", title: "Counter", server: "counter", resource: "ui://counter/main" },
++              { id: "Bad View", server: "missing", resource: "x" },
++            ],
++          },
++        }),
++      );
++      const userConfigPath = join(home, ".zcode", "cli", "config.json");
++      await writeFile(
++        userConfigPath,
++        JSON.stringify({ storage: { dir: join(root, "storage") }, plugins: { dirs: [plugin] } }),
++      );
++      process.env.HOME = home;
++
++      const paths = {
++        env: {},
++        officialPluginRoots: [],
++        userConfigPath,
++        workingDirectory: workspace,
++      };
++      const discovered = resolveZCodePlugins(paths);
++      const info = discovered.plugins.find((entry) => entry.name === "counter")!;
++      assert.deepEqual(
++        info.views?.map((view) => view.id),
++        ["main"],
++        "invalid views are dropped",
++      );
++      assert.ok(
++        discovered.diagnostics.some((diagnostic) => diagnostic.code === "plugin_view_invalid"),
++      );
++
++      const context = { deps: { env: process.env, mcpPort }, logger: undefined } as never;
++      const ref = { workspacePath: workspace, workspaceKey: workspace };
++      const view = await readPluginView(context, {
++        workspace: ref,
++        pluginId: info.id,
++        viewId: "main",
++      });
++      assert.match(view.html, /ui\/initialize/);
++      assert.equal(view.prefersBorder, false);
++
++      const first = await callPluginViewTool(context, {
++        workspace: ref,
++        pluginId: info.id,
++        viewId: "main",
++        tool: "increment",
++      });
++      const second = await callPluginViewTool(context, {
++        workspace: ref,
++        pluginId: info.id,
++        viewId: "main",
++        tool: "increment",
++      });
++      assert.deepEqual(
++        [first.structuredContent, second.structuredContent],
++        [{ value: 1 }, { value: 2 }],
++      );
++
++      await setZCodePluginEnabled({ ...paths, enabled: false, plugin: info.id });
++      await assert.rejects(
++        readPluginView(context, { workspace: ref, pluginId: info.id, viewId: "main" }),
++        /Enable counter/,
++      );
++    } finally {
++      process.env.HOME = previousHome;
++      await mcpPort.close();
++      await rm(root, { recursive: true, force: true });
++    }
++  },
++);
++
++test("MCP dispatch bindings preserve equivalent optional configuration and reject a changed owner", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-view-config-"));
++  const pool = createMcpAdapterConnectionPool({ idleGraceMs: 0 });
++  const ports = [createMcpAdapter(), pool.acquireLease({ leaseId: "protocol-settings" })];
+   try {
+-    const home = join(root, "home");
+-    const workspace = join(root, "workspace");
+-    const plugin = join(root, "counter-plugin");
+-    for (const dir of [workspace, join(home, ".zcode", "cli"), join(plugin, ".zcode-plugin")]) await mkdir(dir, { recursive: true });
+-    const server = resolve(import.meta.dirname, "fixtures/plugin-view/server.mjs");
+-    await writeFile(
+-      join(plugin, ".zcode-plugin", "plugin.json"),
+-      JSON.stringify({
+-        name: "counter",
+-        version: "1.0.0",
+-        mcpServers: { counter: { command: process.execPath, args: [server] } },
+-        fleet: { views: [{ id: "main", title: "Counter", server: "counter", resource: "ui://counter/main" }, { id: "Bad View", server: "missing", resource: "x" }] },
+-      }),
+-    );
+-    const userConfigPath = join(home, ".zcode", "cli", "config.json");
+-    await writeFile(userConfigPath, JSON.stringify({ storage: { dir: join(root, "storage") }, plugins: { dirs: [plugin] } }));
+-    process.env.HOME = home;
+-
+-    const paths = { env: {}, officialPluginRoots: [], userConfigPath, workingDirectory: workspace };
+-    const discovered = resolveZCodePlugins(paths);
+-    const info = discovered.plugins.find((entry) => entry.name === "counter")!;
+-    assert.deepEqual(info.views?.map((view) => view.id), ["main"], "invalid views are dropped");
+-    assert.ok(discovered.diagnostics.some((diagnostic) => diagnostic.code === "plugin_view_invalid"));
+-
+-    const context = { deps: { env: process.env, mcpPort }, logger: undefined } as never;
+-    const ref = { workspacePath: workspace, workspaceKey: workspace };
+-    const view = await readPluginView(context, { workspace: ref, pluginId: info.id, viewId: "main" });
+-    assert.match(view.html, /ui\/initialize/);
+-    assert.equal(view.prefersBorder, false);
+-
+-    const first = await callPluginViewTool(context, { workspace: ref, pluginId: info.id, viewId: "main", tool: "increment" });
+-    const second = await callPluginViewTool(context, { workspace: ref, pluginId: info.id, viewId: "main", tool: "increment" });
+-    assert.deepEqual([first.structuredContent, second.structuredContent], [{ value: 1 }, { value: 2 }]);
+-
+-    await setZCodePluginEnabled({ ...paths, enabled: false, plugin: info.id });
+-    await assert.rejects(
+-      readPluginView(context, { workspace: ref, pluginId: info.id, viewId: "main" }),
+-      /Enable counter/,
+-    );
++    for (const [index, port] of ports.entries()) {
++      const data = join(root, String(index));
++      const config = {
++        type: "stdio" as const,
++        command: process.execPath,
++        args: [resolve(import.meta.dirname, "fixtures/plugin-view/server.mjs")],
++        env: { ZCODE_PLUGIN_DATA: data },
++      };
++      const equivalent = { ...config, enabled: undefined };
++      const request = { serverName: "counter", toolName: "increment", arguments: {} };
++      assert.equal((await port.connectServer("counter", config)).status, "connected");
++      assert.deepEqual(
++        (await port.callTool(request, { expectedServerConfig: equivalent })).structuredContent,
++        { value: 1 },
++      );
++      assert.ok(
++        (
++          await port.readResource!("counter", "ui://counter/main", {
++            expectedServerConfig: equivalent,
++          })
++        ).contents.length,
++      );
++      assert.equal((await port.connectServer("counter", equivalent)).status, "connected");
++      assert.deepEqual(
++        (await port.callTool(request, { expectedServerConfig: config })).structuredContent,
++        { value: 2 },
++      );
++      const changed = { ...config, env: { ZCODE_PLUGIN_DATA: join(root, "different-owner") } };
++      await assert.rejects(
++        port.callTool(request, { expectedServerConfig: changed }),
++        /configuration changed/i,
++      );
++      await assert.rejects(
++        port.readResource!("counter", "ui://counter/main", { expectedServerConfig: changed }),
++        /configuration changed/i,
++      );
++      assert.equal(JSON.parse(await readFile(join(data, "counter.json"), "utf8")).value, 2);
++      // Configuration objects are caller-owned; changing one later cannot relabel its old client.
++      config.env.ZCODE_PLUGIN_DATA = join(root, "mutated-owner");
++      await assert.rejects(
++        port.callTool(request, { expectedServerConfig: config }),
++        /configuration changed/i,
++      );
++      await assert.rejects(
++        port.readResource!("counter", "ui://counter/main", { expectedServerConfig: config }),
++        /configuration changed/i,
++      );
++      assert.equal(JSON.parse(await readFile(join(data, "counter.json"), "utf8")).value, 2);
++    }
+   } finally {
+-    process.env.HOME = previousHome;
+-    await mcpPort.close();
++    await Promise.all(ports.map((port) => port.close()));
++    await pool.close();
+     await rm(root, { recursive: true, force: true });
+   }
+ });
++
++test(
++  "same-name MCP ownership conflicts refuse views, including a previously connected owner",
++  { timeout: 60000 },
++  async () => {
++    const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-view-owners-"));
++    const previousHome = process.env.ZCODE_HOME;
++    const pool = createMcpAdapterConnectionPool({ idleGraceMs: 0 });
++    const mcpPort = pool.acquireLease({ leaseId: "protocol-settings" });
++    try {
++      process.env.ZCODE_HOME = join(root, "profile");
++      const workspace = join(root, "workspace");
++      const userConfigPath = join(root, "profile", "cli", "config.json");
++      const pluginStorageRoot = join(root, "storage", "cli", "plugins");
++      await mkdir(join(root, "profile", "cli"), { recursive: true });
++      await mkdir(workspace);
++      await writeFile(userConfigPath, JSON.stringify({ storage: { dir: join(root, "storage") } }));
++      const paths = {
++        env: {},
++        officialPluginRoots: [],
++        workingDirectory: workspace,
++        userConfigPath,
++        pluginStorageRoot,
++      };
++      const server = resolve(import.meta.dirname, "fixtures/plugin-view/server.mjs");
++      for (const marketName of ["market-a", "market-b"]) {
++        const market = join(root, marketName);
++        const plugin = join(market, "counter");
++        await mkdir(join(market, ".claude-plugin"), { recursive: true });
++        await mkdir(join(plugin, ".claude-plugin"), { recursive: true });
++        await writeFile(
++          join(market, ".claude-plugin", "marketplace.json"),
++          JSON.stringify({ name: marketName, plugins: [{ name: "counter", source: "./counter" }] }),
++        );
++        await writeFile(
++          join(plugin, ".claude-plugin", "plugin.json"),
++          JSON.stringify({
++            name: "counter",
++            version: "1.0.0",
++            mcpServers: {
++              shared: { command: process.execPath, args: [server] },
++              [marketName]: { command: process.execPath, args: [server] },
++            },
++            fleet: {
++              views: [
++                { id: "shared", title: "Shared", server: "shared", resource: "ui://counter/main" },
++                {
++                  id: "unique",
++                  title: "Unique",
++                  server: marketName,
++                  resource: "ui://counter/main",
++                },
++              ],
++            },
++          }),
++        );
++        await addMarketplace({
++          source: { source: "directory", path: market },
++          storageRoot: pluginStorageRoot,
++        });
++        await installZCodeMarketplacePlugin({
++          ...paths,
++          marketplace: marketName,
++          pluginName: "counter",
++        });
++        const info = resolveZCodePlugins(paths).plugins.find(
++          (item) => item.id === `counter@${marketName}`,
++        )!;
++        grantZCodePlugin({ ...paths, plugin: info.id, fingerprint: info.grant!.fingerprint });
++      }
++      const context = { deps: { env: process.env, mcpPort }, logger: undefined } as never;
++      const target = (pluginId: string, viewId = "shared") => ({
++        workspace: { workspacePath: workspace, workspaceKey: workspace },
++        pluginId,
++        viewId,
++      });
++      const call = (pluginId: string, viewId = "shared") =>
++        callPluginViewTool(context, { ...target(pluginId, viewId), tool: "increment" });
++      const a = "counter@market-a",
++        b = "counter@market-b";
++      const count = async (id: string) => {
++        const plugin = resolveZCodePlugins(paths).plugins.find((item) => item.id === id)!;
++        return JSON.parse(await readFile(join(plugin.dataPath, "counter.json"), "utf8")).value;
++      };
++      await setZCodePluginEnabled({ ...paths, plugin: b, enabled: false });
++      assert.deepEqual((await call(a)).structuredContent, { value: 1 });
++      await setZCodePluginEnabled({ ...paths, plugin: b, enabled: true });
++      const conflicting = resolveZCodePlugins(paths);
++      assert.equal(conflicting.mcpServers["plugin:counter:shared"], undefined);
++      for (const id of [a, b]) {
++        assert.ok(
++          conflicting.diagnostics.some(
++            (item) => item.pluginId === id && /conflict/i.test(item.message),
++          ),
++        );
++        assert.ok(
++          !conflicting.plugins
++            .find((item) => item.id === id)!
++            .mcpServerNames.includes("plugin:counter:shared"),
++        );
++        await assert.rejects(call(id), /conflict|ambiguous/i);
++        await assert.rejects(readPluginView(context, target(id)), /conflict|ambiguous/i);
++      }
++      assert.equal(await count(a), 1);
++      await assert.rejects(count(b), { code: "ENOENT" });
++      assert.deepEqual((await call(a, "unique")).structuredContent, { value: 2 });
++      assert.deepEqual((await call(b, "unique")).structuredContent, { value: 1 });
++      // B must replace A's old connected configuration; then A must recover its own data again.
++      await setZCodePluginEnabled({ ...paths, plugin: a, enabled: false });
++      assert.deepEqual((await call(b)).structuredContent, { value: 2 });
++      assert.equal(await count(a), 2);
++      await setZCodePluginEnabled({ ...paths, plugin: b, enabled: false });
++      await setZCodePluginEnabled({ ...paths, plugin: a, enabled: true });
++      assert.deepEqual((await call(a)).structuredContent, { value: 3 });
++      assert.equal(await count(b), 2);
++
++      // Stretch only the connect-await boundary; both sides still use real local MCP processes.
++      const connectedA = Promise.withResolvers<void>();
++      const releaseConnection = Promise.withResolvers<void>();
++      let delayA = true;
++      const delayedPort = {
++        ...mcpPort,
++        async connectServer(...args: Parameters<typeof mcpPort.connectServer>) {
++          const result = await mcpPort.connectServer(...args);
++          if (delayA && args[1].type === "stdio" && args[1].env?.ZCODE_PLUGIN_ID === a) {
++            delayA = false;
++            connectedA.resolve();
++            await releaseConnection.promise;
++          }
++          return result;
++        },
++      };
++      const delayedContext = {
++        deps: { env: process.env, mcpPort: delayedPort },
++        logger: undefined,
++      } as never;
++      const stale = callPluginViewTool(delayedContext, { ...target(a), tool: "increment" });
++      const rejected = assert.rejects(stale, /configuration changed/i);
++      await connectedA.promise;
++      await setZCodePluginEnabled({ ...paths, plugin: a, enabled: false });
++      await setZCodePluginEnabled({ ...paths, plugin: b, enabled: true });
++      assert.deepEqual((await call(b)).structuredContent, { value: 3 });
++      releaseConnection.resolve();
++      await rejected;
++      assert.equal(await count(a), 3);
++      assert.equal(await count(b), 3, "the old A request must not increment B");
++
++      // Once dispatched, returning the original result must not cancel/replay a completed effect.
++      const dispatchedA = Promise.withResolvers<void>();
++      const releaseResult = Promise.withResolvers<void>();
++      const acceptedPort = {
++        ...mcpPort,
++        async callTool(...args: Parameters<typeof mcpPort.callTool>) {
++          const result = await mcpPort.callTool(...args);
++          dispatchedA.resolve();
++          await releaseResult.promise;
++          return result;
++        },
++      };
++      await setZCodePluginEnabled({ ...paths, plugin: b, enabled: false });
++      await setZCodePluginEnabled({ ...paths, plugin: a, enabled: true });
++      const accepted = callPluginViewTool(
++        { deps: { env: process.env, mcpPort: acceptedPort } } as never,
++        { ...target(a), tool: "increment" },
++      );
++      await dispatchedA.promise;
++      await setZCodePluginEnabled({ ...paths, plugin: a, enabled: false });
++      await setZCodePluginEnabled({ ...paths, plugin: b, enabled: true });
++      assert.deepEqual((await call(b)).structuredContent, { value: 4 });
++      releaseResult.resolve();
++      assert.deepEqual((await accepted).structuredContent, { value: 4 });
++      assert.equal(await count(a), 4);
++      assert.equal(await count(b), 4);
++    } finally {
++      if (previousHome === undefined) delete process.env.ZCODE_HOME;
++      else process.env.ZCODE_HOME = previousHome;
++      await mcpPort.close();
++      await pool.close();
++      await rm(root, { recursive: true, force: true });
++    }
++  },
++);
+diff --git a/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts b/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
+index c3b44cb..5b8aede 100644
+--- a/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
++++ b/apps/zcode-cli/packages/contracts/src/interfaces/mcp.port.ts
+@@ -247,6 +247,8 @@ export interface McpCallToolRequest {
+ export interface McpCallToolOptions {
+   signal?: AbortSignal;
+   timeoutMs?: number;
++  /** Host-only dispatch binding; never serialize this configuration into MCP requests or UI events. */
++  expectedServerConfig?: McpServerConfig;
+ }
+ 
+ /**
+diff --git a/apps/zcode-cli/specs/plugin-boundaries.md b/apps/zcode-cli/specs/plugin-boundaries.md
+new file mode 100644
+index 0000000..d538810
+--- /dev/null
++++ b/apps/zcode-cli/specs/plugin-boundaries.md
+@@ -0,0 +1,82 @@
++# Plugin export and MCP ownership boundaries
++
++The existing plugin adapter owns package discovery and export. The installation record and
++per-plugin grants keep their existing owners. This change adds no store, grant, dependency or
++migration; it corrects two reproduced crossings of those boundaries.
++
++## Export
++
++`exportAgentPluginsPackage` produces a portable package without carrying configuration credentials.
++It reads only package files, never resolved user configuration or environment values. Standard
++`mcp.json` / `.mcp.json`, inline declarations and manifest-referenced MCP files share the same
++discovery and sanitization rules. Referenced files are rewritten with sanitized declarations;
++their other fields, executable files, Skills and ordinary assets remain available.
++
++- Omit server `headers`, `auth` and `oauth`, reporting every omission.
++- Preserve environment placeholders; replace literal MCP environment values with same-name
++  placeholders and report that the recipient must supply them. Field names cannot prove that an
++  arbitrary literal is not a credential. Preserve non-sensitive `userConfig` defaults and remove
++  defaults explicitly marked sensitive.
++- Import the existing `fleet.workbench` extension's `userConfig` into the ordinary manifest view;
++  explicit root-format fields keep priority. Sensitive values omitted by export remain missing
++  until the recipient configures them through the existing options owner.
++- Omit local `.env` and its variants with an explicit skipped-file reason. Preserve parseable
++  `.env.example`, `.env.sample` and `.env.template` as templates with variable placeholders; omit
++  unparseable templates with a reason. Only pure variable expressions may remain verbatim in env
++  values; mixed literal-and-variable credentials are replaced too. Do not claim to scan arbitrary
++  executable code or document prose for secrets.
++- Reject unreadable/malformed declared MCP sources before writing a destination. Never follow a
++  package symlink to copy outside content or overwrite an existing destination. Failure must not
++  leave a partially copied package containing raw credentials.
++
++```text
++package sources → existing MCP parser → sanitized export plan → copy safe assets / write configs
++```
++
++Acceptance uses synthetic credentials in inline, root and custom-path configurations, literal env
++and sensitive defaults. Verify the whole exported tree has no marker, ordinary fields/scripts/Skills
++survive, placeholders remain, and source bytes do not change. Test malformed-source failure and
++symlinks without reading a real profile.
++
++## MCP ownership
++
++The public MCP name stays `plugin:<plugin-name>:<server-key>` for compatibility with existing tool
++names, permissions, official integrations and Skills. Discovery compares the full `name@marketplace`
++owners before publishing runnable servers. Different owners claiming the same public MCP name
++cause an explicit diagnostic and remove that name from every claimant's runnable metadata and the
++combined runtime configuration. Other servers and package content remain available.
++
++A view resolves its server from its own plugin's current runnable metadata before using the shared
++MCP port. A previously connected name cannot bypass a current collision, disable or grant failure.
++Removing the conflict restores the original name. No ambiguous alias is redirected to another
++plugin; no permission rule is renamed or migrated. A connection is refreshed from the currently
++owned configuration so an older connected process cannot receive another package's calls.
++The existing MCP port carries an optional Host-only expected configuration to the pool/adapter's
++last dispatch check, including connection/recovery awaits. It is never sent over UI or MCP wire
++formats. If a shared lease changed owners while a view was connecting, the old request refuses
++instead of reaching the replacement. Calls without this option keep their behavior. An operation
++already dispatched returns its own result; changing availability never cancels and replays it.
++Equality uses the connection pool's existing canonical configuration representation, so omitted
++optional fields and explicit `undefined` remain equivalent.
++The canonical identity is frozen on the existing connection record, not recomputed from the
++caller's mutable configuration object after connection.
++
++```text
++discover packages → full-owner collision check → publish runnable names → view validates owner
++                                                                    → connect current config → call
++```
++
++Acceptance installs two real local-market packages with the same plugin name and MCP key. Verify
++both calls refuse without writing either data directory, including A connected before B is enabled.
++Disable/remove the conflict and verify each remaining owner can recover under its original name.
++Distinct server keys coexist and modify only their owning package's data. Existing official server
++names and ordinary one-plugin flows remain unchanged. Resident Agent MCP/Skill withdrawal remains
++the separately recorded lifecycle gap; this correction covers discovery and the view dispatch path.
++
++## Source basis
++
++ZCode `29628c9` supplies the existing namespace, discovery and MCP connection ownership. Agent
++Plugins 1.0.0 / HarnessRouter `protocol/versions/2026-09-28/plugins.md` supplies the portable package
++and credential-omission contract. Its latest inspected HEAD `822550ea8847d056ca789a2bb6977890a4276c5c`
++has the same contract bytes as retained latest-source `6e05aef5dc2bb25faf202130398e1509a880e166`.
++No reference checkout or pin is changed.

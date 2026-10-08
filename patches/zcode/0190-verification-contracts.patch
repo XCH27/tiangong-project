@@ -1,0 +1,1153 @@
+diff --git a/harness/verification/README.md b/harness/verification/README.md
+new file mode 100644
+index 0000000..ae40b94
+--- /dev/null
++++ b/harness/verification/README.md
+@@ -0,0 +1,25 @@
++# Verification maintenance contract
++
++The existing root pre-push gate remains authoritative. A passing local typecheck does not
++replace lint, source reconstruction, runtime tests or platform release verification.
++
++## Behavior-preserving module splits
++
++- `apiKeyPlanUsage.ts` owns credential selection, request routing and the revision-scoped
++  cache. Its pure response parsers live in `apiKeyPlanUsageParsers.ts` and remain exported
++  from the original entry. No endpoint, account policy, payload interpretation, timeout,
++  cache or returned status changes with this extraction.
++- `pluginManagementStore.ts` remains the only plugin view state owner. Grant/revoke actions
++  are assembled in `pluginManagementStoreGrants.ts` using its existing `set`/`get` and
++  `runWorkspaceOperation`; no second store, service writer or loading lifecycle is added.
++
++Grant/revoke event order stays:
++
++```text
++store action → runWorkspaceOperation captures workspace/identity/scope
++             → existing service operation → existing scoped reload → existing store
++```
++
++The same failure, context-change and operation-version guards apply to desktop and web.
++No persistence format or migration changes. Existing parser/request tests, grant/revoke
++scope and failure tests, typecheck, lint and architecture checks verify the extraction.
+diff --git a/package.json b/package.json
+index c827a7b..7def681 100644
+--- a/package.json
++++ b/package.json
+@@ -48,7 +48,7 @@
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/api-key-plan-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+-    "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts",
++    "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-grants.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/pluginManagementGrants.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-knowledge.test.ts packages/services/test/openrouter-catalog-metadata.test.ts packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+diff --git a/packages/services/src/model-provider/apiKeyPlanUsage.ts b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+index d92a035..30877d1 100644
+--- a/packages/services/src/model-provider/apiKeyPlanUsage.ts
++++ b/packages/services/src/model-provider/apiKeyPlanUsage.ts
+@@ -1,12 +1,28 @@
++import {
++  parseOpenCodeGoUsage,
++  parseMiniMaxTokenPlanUsage,
++  parseKimiCodeUsage,
++  parseZaiCodingPlanUsage,
++  parseDeepSeekBalance,
++  parseMoonshotBalance,
++  parseOpenRouterKey,
++  parseSiliconFlowBalance,
++} from "./apiKeyPlanUsageParsers.js";
++export {
++  parseOpenCodeGoUsage,
++  parseMiniMaxTokenPlanUsage,
++  parseKimiCodeUsage,
++  parseZaiCodingPlanUsage,
++  parseDeepSeekBalance,
++  parseMoonshotBalance,
++  parseOpenRouterKey,
++  parseSiliconFlowBalance,
++} from "./apiKeyPlanUsageParsers.js";
+ import { createHash } from "node:crypto";
+ import { getEnabledApiKeys, type ProviderSettingsFacade } from "@zcode/provider";
+ import { apiKeyPlanRoute, type ApiKeyPlanRoute } from "@zcode/shared";
+ import type { SubscriptionAccountsView } from "./subscriptionConnectionTypes.js";
+-import type {
+-  SubscriptionUsageBalance,
+-  SubscriptionUsageResult,
+-  SubscriptionUsageWindow,
+-} from "./subscriptionUsage.js";
++import type { SubscriptionUsageResult } from "./subscriptionUsage.js";
+ 
+ /**
+  * 用 API Key 购买的套餐（OpenCode Go、MiniMax Token Plan、Kimi Code）此前没有额度读取，设置页只能看到密钥。
+@@ -19,300 +35,6 @@ export { apiKeyPlanRoute, type ApiKeyPlanRoute };
+ const READ_TIMEOUT_MS = 15_000;
+ const CACHE_MS = 60_000;
+ 
+-function record(value: unknown): Record<string, unknown> | undefined {
+-  return value !== null && typeof value === "object" && !Array.isArray(value)
+-    ? (value as Record<string, unknown>)
+-    : undefined;
+-}
+-function finite(value: unknown): number | undefined {
+-  const parsed = typeof value === "string" && value.trim() ? Number(value) : value;
+-  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
+-}
+-function clampPercent(value: number): number {
+-  return Math.min(100, Math.max(0, value));
+-}
+-
+-const OPENCODE_GO_WINDOWS = [
+-  ["rolling", 300],
+-  ["weekly", 10_080],
+-  ["monthly", 43_200],
+-] as const;
+-
+-/** OpenCode Go `/zen/go/v1/usage`：usage.{rolling,weekly,monthly}.{percent,resetsAt}。 */
+-export function parseOpenCodeGoUsage(payload: unknown, observedAt: number): SubscriptionUsageResult {
+-  const usage = record(record(payload)?.usage);
+-  const windows: SubscriptionUsageWindow[] = [];
+-  for (const [key, windowMinutes] of OPENCODE_GO_WINDOWS) {
+-    const row = record(usage?.[key]);
+-    const percent = finite(row?.percent);
+-    if (percent === undefined || percent < 0 || percent > 100) continue;
+-    const reset = typeof row?.resetsAt === "string" ? Date.parse(row.resetsAt) : NaN;
+-    windows.push({
+-      id: `default:${key}`,
+-      usedPercent: percent,
+-      windowMinutes,
+-      ...(Number.isFinite(reset) ? { resetAt: reset } : {}),
+-    });
+-  }
+-  return windows.length
+-    ? { status: "available", source: "OpenCode Go", observedAt, windows, plan: "Go" }
+-    : { status: "unavailable", unavailableReason: "no-provider-data" };
+-}
+-
+-/** MiniMax `/v1/token_plan/remains`：每个模型的 5 小时与每周窗口，优先使用剩余百分比。 */
+-export function parseMiniMaxTokenPlanUsage(
+-  payload: unknown,
+-  observedAt: number,
+-): SubscriptionUsageResult {
+-  const body = record(payload);
+-  const status = finite(record(body?.base_resp)?.status_code);
+-  // 非 0 表示该密钥没有有效 Token Plan；这是"不支持"，不是额度为 0。
+-  if (status !== undefined && status !== 0) return { status: "unsupported" };
+-  const rows = Array.isArray(body?.model_remains) ? body.model_remains.slice(0, 32) : [];
+-  const windows: SubscriptionUsageWindow[] = [];
+-  const used = (remainingPercent: unknown, total: unknown, usedCount: unknown) => {
+-    const remaining = finite(remainingPercent);
+-    if (remaining !== undefined) return clampPercent(100 - remaining);
+-    const all = finite(total);
+-    const spent = finite(usedCount);
+-    return all !== undefined && all > 0 && spent !== undefined ? clampPercent((spent / all) * 100) : undefined;
+-  };
+-  for (const raw of rows) {
+-    const row = record(raw);
+-    if (!row) continue;
+-    const name = typeof row.model_name === "string" && row.model_name.trim() ? row.model_name.trim().slice(0, 64) : "Token Plan";
+-    const interval = used(
+-      row.current_interval_remaining_percent,
+-      row.current_interval_total_count,
+-      row.current_interval_usage_count,
+-    );
+-    const intervalEnd = finite(row.end_time);
+-    if (interval !== undefined)
+-      windows.push({
+-        id: `${name}:interval`,
+-        usedPercent: interval,
+-        windowMinutes: 300,
+-        ...(intervalEnd && intervalEnd > 0 ? { resetAt: intervalEnd } : {}),
+-      });
+-    const weekly = used(
+-      row.current_weekly_remaining_percent,
+-      row.current_weekly_total_count,
+-      row.current_weekly_usage_count,
+-    );
+-    const weeklyEnd = finite(row.weekly_end_time);
+-    if (weekly !== undefined)
+-      windows.push({
+-        id: `${name}:weekly`,
+-        usedPercent: weekly,
+-        windowMinutes: 10_080,
+-        ...(weeklyEnd && weeklyEnd > 0 ? { resetAt: weeklyEnd } : {}),
+-      });
+-  }
+-  return windows.length
+-    ? { status: "available", source: "MiniMax Token Plan", observedAt, windows }
+-    : { status: "unavailable", unavailableReason: "no-provider-data" };
+-}
+-
+-const KIMI_POOLS = [
+-  ["limit_5h", "session", 300],
+-  ["limit_7d", "weekly", 10_080],
+-  ["limit_month_total", "monthly", 43_200],
+-] as const;
+-
+-function kimiCounts(detail: Record<string, unknown> | undefined) {
+-  const limit = finite(detail?.limit);
+-  if (limit === undefined || limit <= 0) return undefined;
+-  const used = finite(detail?.used);
+-  if (used !== undefined && used >= 0) return { used, limit };
+-  const remaining = finite(detail?.remaining);
+-  return remaining !== undefined && remaining >= 0 && remaining <= limit
+-    ? { used: limit - remaining, limit }
+-    : undefined;
+-}
+-function kimiReset(value: unknown): number | undefined {
+-  const parsed = typeof value === "string" ? Date.parse(value) : NaN;
+-  return Number.isFinite(parsed) ? parsed : undefined;
+-}
+-function kimiWindowMinutes(window: Record<string, unknown> | undefined): number | undefined {
+-  const duration = finite(window?.duration);
+-  if (duration === undefined || duration <= 0) return undefined;
+-  const unit = String(window?.timeUnit ?? "").toUpperCase();
+-  return unit.includes("DAY") ? duration * 1440 : unit.includes("HOUR") ? duration * 60 : unit.includes("MINUTE") ? duration : undefined;
+-}
+-
+-/**
+- * Kimi Code `/coding/v1/usages`（官方 kimi-code packages/oauth/src/managed-usage.ts、CodexBar）：
+- * 优先 usages.limit_5h/limit_7d/limit_month_total 的 used_ratio；旧响应的 usage（每周）与
+- * limits[]（短窗口）计数作回退。比例为 0 而计数显示已使用时，按 CodexBar 视为占位值、改用计数。
+- */
+-export function parseKimiCodeUsage(payload: unknown, observedAt: number): SubscriptionUsageResult {
+-  const body = record(payload);
+-  const pools = record(body?.usages);
+-  const weeklyDetail = record(body?.usage);
+-  const firstLimit = record(Array.isArray(body?.limits) ? body.limits[0] : undefined);
+-  const sessionDetail = record(firstLimit?.detail);
+-  const counted = (detail: Record<string, unknown> | undefined) => {
+-    const counts = kimiCounts(detail);
+-    return counts ? clampPercent((counts.used / counts.limit) * 100) : undefined;
+-  };
+-  const windows: SubscriptionUsageWindow[] = [];
+-  for (const [key, name, minutes] of KIMI_POOLS) {
+-    const pool = record(pools?.[key]);
+-    const ratio = finite(pool?.used_ratio);
+-    const detail = name === "weekly" ? weeklyDetail : name === "session" ? sessionDetail : undefined;
+-    const fallback = counted(detail);
+-    const placeholder = ratio === 0 && !pools?.limit_month_total && (fallback ?? 0) > 0;
+-    const fromRatio = ratio !== undefined && ratio >= 0 && !placeholder;
+-    const usedPercent = fromRatio ? Math.min(1, ratio) * 100 : fallback;
+-    if (usedPercent === undefined) continue;
+-    const reset = kimiReset(
+-      fromRatio ? pool?.reset_time : (detail?.resetTime ?? detail?.reset_time ?? detail?.resetAt),
+-    );
+-    // 计数回退时，短窗口的时长以响应里 limits[0].window 为准。
+-    const windowMinutes =
+-      !fromRatio && name === "session" ? (kimiWindowMinutes(record(firstLimit?.window)) ?? minutes) : minutes;
+-    windows.push({ id: `default:${name}`, usedPercent, windowMinutes, ...(reset ? { resetAt: reset } : {}) });
+-  }
+-  return windows.length
+-    ? { status: "available", source: "Kimi Code", observedAt, windows }
+-    : { status: "unavailable", unavailableReason: "no-provider-data" };
+-}
+-
+-const ZAI_UNIT_MINUTES: Readonly<Record<number, number>> = { 1: 1440, 3: 60, 5: 1, 6: 10_080 };
+-
+-function zaiWindowName(minutes: number): string {
+-  return minutes === 300 ? "five_hour" : minutes === 10_080 ? "weekly" : minutes === 43_200 ? "monthly" : `${minutes}m`;
+-}
+-
+-/**
+- * Z.ai / BigModel Coding Plan `GET /api/monitor/usage/quota/limit`: data.limits[] of TOKENS_LIMIT /
+- * CREDIT_LIMIT (plan windows) and TIME_LIMIT (MCP). Field semantics follow CodexBar
+- * `Plugins/zai.js`: integer unit/number/percentage, unit 1=day 3=hour 5=minute 6=week, counts
+- * override the rounded percentage, `TIME_LIMIT` 1 minute marks the monthly MCP quota, and a
+- * five-hour reset further than five hours away is dropped rather than guessed.
+- */
+-export function parseZaiCodingPlanUsage(payload: unknown, observedAt: number): SubscriptionUsageResult {
+-  const data = record(record(payload)?.data);
+-  const limits = Array.isArray(data?.limits) ? data.limits : [];
+-  const windows: SubscriptionUsageWindow[] = [];
+-  for (const raw of limits) {
+-    const row = record(raw);
+-    const type = row?.type;
+-    if (type !== "TOKENS_LIMIT" && type !== "CREDIT_LIMIT" && type !== "TIME_LIMIT") continue;
+-    const unit = row?.unit;
+-    const number = row?.number;
+-    const percentage = row?.percentage;
+-    if (!Number.isInteger(unit) || !Number.isInteger(number) || !Number.isInteger(percentage))
+-      return { status: "unavailable", unavailableReason: "no-provider-data" };
+-    const usage = Number.isInteger(row?.usage) ? (row!.usage as number) : undefined;
+-    const current = Number.isInteger(row?.currentValue) ? (row!.currentValue as number) : undefined;
+-    const remaining = Number.isInteger(row?.remaining) ? (row!.remaining as number) : undefined;
+-    let percent = percentage as number;
+-    if (usage !== undefined && usage > 0) {
+-      const used =
+-        remaining !== undefined ? Math.max(usage - remaining, current ?? usage - remaining) : current;
+-      if (used !== undefined) percent = (Math.max(0, Math.min(usage, used)) / usage) * 100;
+-    }
+-    const mcpMonthly = type === "TIME_LIMIT" && unit === 5 && number === 1;
+-    const multiplier = ZAI_UNIT_MINUTES[unit as number];
+-    const windowMinutes = mcpMonthly
+-      ? 43_200
+-      : (number as number) > 0 && multiplier
+-        ? (number as number) * multiplier
+-        : undefined;
+-    if (windowMinutes === undefined) continue;
+-    const reset = Number.isInteger(row?.nextResetTime) ? (row!.nextResetTime as number) : undefined;
+-    const plausibleReset =
+-      reset !== undefined && !(type !== "TIME_LIMIT" && windowMinutes === 300 && reset > observedAt + 301 * 60_000);
+-    windows.push({
+-      id: type === "TIME_LIMIT" ? `MCP:${zaiWindowName(windowMinutes)}` : `default:${zaiWindowName(windowMinutes)}`,
+-      usedPercent: clampPercent(percent),
+-      windowMinutes,
+-      ...(plausibleReset ? { resetAt: reset } : {}),
+-    });
+-  }
+-  const plan = [data?.planName, data?.plan, data?.plan_type, data?.packageName, data?.level].find(
+-    (value): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= 128,
+-  );
+-  return windows.length
+-    ? { status: "available", source: "Z.ai Coding Plan", observedAt, windows, ...(plan ? { plan } : {}) }
+-    : { status: "unavailable", unavailableReason: "no-provider-data" };
+-}
+-
+-const balanceResult = (
+-  source: string,
+-  observedAt: number,
+-  balances: SubscriptionUsageBalance[],
+-  windows: SubscriptionUsageWindow[] = [],
+-): SubscriptionUsageResult =>
+-  balances.length || windows.length
+-    ? { status: "available", source, observedAt, windows, balances }
+-    : { status: "unavailable", unavailableReason: "no-provider-data" };
+-
+-/** DeepSeek `GET /user/balance`：balance_infos[].{currency,total_balance}（官方文档；CodexBar 同）。 */
+-export function parseDeepSeekBalance(payload: unknown, observedAt: number): SubscriptionUsageResult {
+-  const rows = Array.isArray(record(payload)?.balance_infos) ? (record(payload)!.balance_infos as unknown[]) : [];
+-  const balances = rows.flatMap((raw): SubscriptionUsageBalance[] => {
+-    const row = record(raw);
+-    const amount = finite(row?.total_balance);
+-    const currency = typeof row?.currency === "string" ? row.currency.toUpperCase() : undefined;
+-    return amount === undefined || !currency ? [] : [{ id: `balance:${currency}`, kind: "balance", amount, currency }];
+-  });
+-  return balanceResult("DeepSeek", observedAt, balances);
+-}
+-
+-/** Moonshot `GET /v1/users/me/balance`：data.available_balance；.cn 为人民币，.ai 为美元（CodexBar moonshot 插件）。 */
+-export function parseMoonshotBalance(payload: unknown, observedAt: number, currency: string): SubscriptionUsageResult {
+-  const body = record(payload);
+-  if (body?.status === false || (finite(body?.code) ?? 0) !== 0) return { status: "unavailable" };
+-  const amount = finite(record(body?.data)?.available_balance);
+-  return balanceResult(
+-    "Moonshot",
+-    observedAt,
+-    amount === undefined ? [] : [{ id: "balance", kind: "balance", amount, currency }],
+-  );
+-}
+-
+-const OPENROUTER_RESET_MINUTES: Record<string, number> = { daily: 1440, weekly: 10_080, monthly: 43_200 };
+-
+-/**
+- * OpenRouter `GET /api/v1/key`（当前密钥）：有上限时给出剩余额度与使用比例窗口；无上限时只给已用金额。
+- * 账户总余额 `/credits` 需要管理密钥，不在此读取。
+- */
+-export function parseOpenRouterKey(payload: unknown, observedAt: number): SubscriptionUsageResult {
+-  const data = record(record(payload)?.data);
+-  const usage = finite(data?.usage);
+-  const limit = finite(data?.limit);
+-  const remaining = finite(data?.limit_remaining);
+-  const balances: SubscriptionUsageBalance[] = [];
+-  const windows: SubscriptionUsageWindow[] = [];
+-  if (limit !== undefined && limit > 0) {
+-    if (remaining !== undefined) balances.push({ id: "key-remaining", kind: "remaining", amount: remaining, currency: "USD", limit });
+-    if (remaining !== undefined || usage !== undefined) {
+-      const minutes = typeof data?.limit_reset === "string" ? OPENROUTER_RESET_MINUTES[data.limit_reset] : undefined;
+-      windows.push({
+-        id: "default:key-limit",
+-        usedPercent: clampPercent((((remaining !== undefined ? limit - remaining : usage) ?? 0) / limit) * 100),
+-        ...(minutes ? { windowMinutes: minutes } : {}),
+-      });
+-    }
+-  } else if (usage !== undefined) {
+-    balances.push({ id: "key-spent", kind: "spent", amount: usage, currency: "USD" });
+-  }
+-  return balanceResult("OpenRouter", observedAt, balances, windows);
+-}
+-
+-/** SiliconFlow `GET /v1/user/info`：data.totalBalance；.cn 为人民币，.com 为美元。 */
+-export function parseSiliconFlowBalance(payload: unknown, observedAt: number, currency: string): SubscriptionUsageResult {
+-  const data = record(record(payload)?.data);
+-  const amount = finite(data?.totalBalance) ?? finite(data?.balance);
+-  return balanceResult(
+-    "SiliconFlow",
+-    observedAt,
+-    amount === undefined ? [] : [{ id: "balance", kind: "balance", amount, currency }],
+-  );
+-}
+-
+ /** CodexBar codeAPIUsageEndpoint：…/coding → …/coding/v1/usages。 */
+ function kimiUsageUrl(baseUrl: string): string {
+   const url = new URL(baseUrl);
+@@ -335,15 +57,15 @@ export async function readApiKeyPlanUsage(
+         ? kimiUsageUrl(baseUrl)
+         : route === "zai-coding-plan"
+           ? `${origin}/api/monitor/usage/quota/limit`
+-        : route === "deepseek-balance"
+-          ? "https://api.deepseek.com/user/balance"
+-          : route === "moonshot-balance"
+-            ? `${origin}/v1/users/me/balance`
+-            : route === "openrouter-key"
+-              ? "https://openrouter.ai/api/v1/key"
+-              : route === "siliconflow-balance"
+-                ? `${origin}/v1/user/info`
+-                : `${origin}/v1/token_plan/remains`;
++          : route === "deepseek-balance"
++            ? "https://api.deepseek.com/user/balance"
++            : route === "moonshot-balance"
++              ? `${origin}/v1/users/me/balance`
++              : route === "openrouter-key"
++                ? "https://openrouter.ai/api/v1/key"
++                : route === "siliconflow-balance"
++                  ? `${origin}/v1/user/info`
++                  : `${origin}/v1/token_plan/remains`;
+   try {
+     const response = await fetcher(url, {
+       method: "GET",
+@@ -397,13 +119,20 @@ export function createApiKeyPlanUsageReader(
+ ) {
+   const cache = new Map<
+     string,
+-    { revision: string; value?: SubscriptionUsageResult; pending?: Promise<SubscriptionUsageResult> }
++    {
++      revision: string;
++      value?: SubscriptionUsageResult;
++      pending?: Promise<SubscriptionUsageResult>;
++    }
+   >();
+   const scope = (id: string) => {
+     const provider = facade.getView().providers.find((entry) => entry.providerId === id);
+     const config = provider?.effectiveConfig;
+     if (config?.access?.type !== "api-key") return undefined;
+-    const route = apiKeyPlanRoute({ templateId: provider?.templateId, baseUrl: config.api?.baseUrl });
++    const route = apiKeyPlanRoute({
++      templateId: provider?.templateId,
++      baseUrl: config.api?.baseUrl,
++    });
+     const apiKey = getEnabledApiKeys(config.access)[0];
+     if (!route || !apiKey || !config.api?.baseUrl) return undefined;
+     const fingerprint = createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+@@ -418,7 +147,11 @@ export function createApiKeyPlanUsageReader(
+     accounts(id: string): SubscriptionAccountsView | undefined {
+       const current = scope(id);
+       return current
+-        ? { accounts: [{ id: "api-key", label: "API Key", active: true }], autoSwitch: false, revision: current.revision }
++        ? {
++            accounts: [{ id: "api-key", label: "API Key", active: true }],
++            autoSwitch: false,
++            revision: current.revision,
++          }
+         : undefined;
+     },
+     async read(id: string, refresh = false): Promise<SubscriptionUsageResult> {
+@@ -437,7 +170,13 @@ export function createApiKeyPlanUsageReader(
+       if (!refresh && entry.value && (entry.value.refreshAfter ?? 0) > now()) return entry.value;
+       const active = entry;
+       const request = (async () => {
+-        const value = await readApiKeyPlanUsage(current.route, current.apiKey, current.baseUrl, fetcher, now);
++        const value = await readApiKeyPlanUsage(
++          current.route,
++          current.apiKey,
++          current.baseUrl,
++          fetcher,
++          now,
++        );
+         // 读取期间密钥被修改：迟到的结果不能发布到新密钥上。
+         if (scope(id)?.revision !== active.revision || cache.get(id) !== active)
+           return { status: "unavailable" as const, ...scoped };
+diff --git a/packages/services/src/model-provider/apiKeyPlanUsageParsers.ts b/packages/services/src/model-provider/apiKeyPlanUsageParsers.ts
+new file mode 100644
+index 0000000..77c6bee
+--- /dev/null
++++ b/packages/services/src/model-provider/apiKeyPlanUsageParsers.ts
+@@ -0,0 +1,375 @@
++import type {
++  SubscriptionUsageBalance,
++  SubscriptionUsageResult,
++  SubscriptionUsageWindow,
++} from "./subscriptionUsage.js";
++
++// 将纯解析与请求/缓存分开，保留原入口导出和全部厂商字段语义。
++function record(value: unknown): Record<string, unknown> | undefined {
++  return value !== null && typeof value === "object" && !Array.isArray(value)
++    ? (value as Record<string, unknown>)
++    : undefined;
++}
++function finite(value: unknown): number | undefined {
++  const parsed = typeof value === "string" && value.trim() ? Number(value) : value;
++  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
++}
++function clampPercent(value: number): number {
++  return Math.min(100, Math.max(0, value));
++}
++
++const OPENCODE_GO_WINDOWS = [
++  ["rolling", 300],
++  ["weekly", 10_080],
++  ["monthly", 43_200],
++] as const;
++
++/** OpenCode Go `/zen/go/v1/usage`：usage.{rolling,weekly,monthly}.{percent,resetsAt}。 */
++export function parseOpenCodeGoUsage(
++  payload: unknown,
++  observedAt: number,
++): SubscriptionUsageResult {
++  const usage = record(record(payload)?.usage);
++  const windows: SubscriptionUsageWindow[] = [];
++  for (const [key, windowMinutes] of OPENCODE_GO_WINDOWS) {
++    const row = record(usage?.[key]);
++    const percent = finite(row?.percent);
++    if (percent === undefined || percent < 0 || percent > 100) continue;
++    const reset = typeof row?.resetsAt === "string" ? Date.parse(row.resetsAt) : NaN;
++    windows.push({
++      id: `default:${key}`,
++      usedPercent: percent,
++      windowMinutes,
++      ...(Number.isFinite(reset) ? { resetAt: reset } : {}),
++    });
++  }
++  return windows.length
++    ? { status: "available", source: "OpenCode Go", observedAt, windows, plan: "Go" }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++}
++
++/** MiniMax `/v1/token_plan/remains`：每个模型的 5 小时与每周窗口，优先使用剩余百分比。 */
++export function parseMiniMaxTokenPlanUsage(
++  payload: unknown,
++  observedAt: number,
++): SubscriptionUsageResult {
++  const body = record(payload);
++  const status = finite(record(body?.base_resp)?.status_code);
++  // 非 0 表示该密钥没有有效 Token Plan；这是"不支持"，不是额度为 0。
++  if (status !== undefined && status !== 0) return { status: "unsupported" };
++  const rows = Array.isArray(body?.model_remains) ? body.model_remains.slice(0, 32) : [];
++  const windows: SubscriptionUsageWindow[] = [];
++  const used = (remainingPercent: unknown, total: unknown, usedCount: unknown) => {
++    const remaining = finite(remainingPercent);
++    if (remaining !== undefined) return clampPercent(100 - remaining);
++    const all = finite(total);
++    const spent = finite(usedCount);
++    return all !== undefined && all > 0 && spent !== undefined
++      ? clampPercent((spent / all) * 100)
++      : undefined;
++  };
++  for (const raw of rows) {
++    const row = record(raw);
++    if (!row) continue;
++    const name =
++      typeof row.model_name === "string" && row.model_name.trim()
++        ? row.model_name.trim().slice(0, 64)
++        : "Token Plan";
++    const interval = used(
++      row.current_interval_remaining_percent,
++      row.current_interval_total_count,
++      row.current_interval_usage_count,
++    );
++    const intervalEnd = finite(row.end_time);
++    if (interval !== undefined)
++      windows.push({
++        id: `${name}:interval`,
++        usedPercent: interval,
++        windowMinutes: 300,
++        ...(intervalEnd && intervalEnd > 0 ? { resetAt: intervalEnd } : {}),
++      });
++    const weekly = used(
++      row.current_weekly_remaining_percent,
++      row.current_weekly_total_count,
++      row.current_weekly_usage_count,
++    );
++    const weeklyEnd = finite(row.weekly_end_time);
++    if (weekly !== undefined)
++      windows.push({
++        id: `${name}:weekly`,
++        usedPercent: weekly,
++        windowMinutes: 10_080,
++        ...(weeklyEnd && weeklyEnd > 0 ? { resetAt: weeklyEnd } : {}),
++      });
++  }
++  return windows.length
++    ? { status: "available", source: "MiniMax Token Plan", observedAt, windows }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++}
++
++const KIMI_POOLS = [
++  ["limit_5h", "session", 300],
++  ["limit_7d", "weekly", 10_080],
++  ["limit_month_total", "monthly", 43_200],
++] as const;
++
++function kimiCounts(detail: Record<string, unknown> | undefined) {
++  const limit = finite(detail?.limit);
++  if (limit === undefined || limit <= 0) return undefined;
++  const used = finite(detail?.used);
++  if (used !== undefined && used >= 0) return { used, limit };
++  const remaining = finite(detail?.remaining);
++  return remaining !== undefined && remaining >= 0 && remaining <= limit
++    ? { used: limit - remaining, limit }
++    : undefined;
++}
++function kimiReset(value: unknown): number | undefined {
++  const parsed = typeof value === "string" ? Date.parse(value) : NaN;
++  return Number.isFinite(parsed) ? parsed : undefined;
++}
++function kimiWindowMinutes(window: Record<string, unknown> | undefined): number | undefined {
++  const duration = finite(window?.duration);
++  if (duration === undefined || duration <= 0) return undefined;
++  const unit = String(window?.timeUnit ?? "").toUpperCase();
++  return unit.includes("DAY")
++    ? duration * 1440
++    : unit.includes("HOUR")
++      ? duration * 60
++      : unit.includes("MINUTE")
++        ? duration
++        : undefined;
++}
++
++/**
++ * Kimi Code `/coding/v1/usages`（官方 kimi-code packages/oauth/src/managed-usage.ts、CodexBar）：
++ * 优先 usages.limit_5h/limit_7d/limit_month_total 的 used_ratio；旧响应的 usage（每周）与
++ * limits[]（短窗口）计数作回退。比例为 0 而计数显示已使用时，按 CodexBar 视为占位值、改用计数。
++ */
++export function parseKimiCodeUsage(payload: unknown, observedAt: number): SubscriptionUsageResult {
++  const body = record(payload);
++  const pools = record(body?.usages);
++  const weeklyDetail = record(body?.usage);
++  const firstLimit = record(Array.isArray(body?.limits) ? body.limits[0] : undefined);
++  const sessionDetail = record(firstLimit?.detail);
++  const counted = (detail: Record<string, unknown> | undefined) => {
++    const counts = kimiCounts(detail);
++    return counts ? clampPercent((counts.used / counts.limit) * 100) : undefined;
++  };
++  const windows: SubscriptionUsageWindow[] = [];
++  for (const [key, name, minutes] of KIMI_POOLS) {
++    const pool = record(pools?.[key]);
++    const ratio = finite(pool?.used_ratio);
++    const detail =
++      name === "weekly" ? weeklyDetail : name === "session" ? sessionDetail : undefined;
++    const fallback = counted(detail);
++    const placeholder = ratio === 0 && !pools?.limit_month_total && (fallback ?? 0) > 0;
++    const fromRatio = ratio !== undefined && ratio >= 0 && !placeholder;
++    const usedPercent = fromRatio ? Math.min(1, ratio) * 100 : fallback;
++    if (usedPercent === undefined) continue;
++    const reset = kimiReset(
++      fromRatio ? pool?.reset_time : (detail?.resetTime ?? detail?.reset_time ?? detail?.resetAt),
++    );
++    // 计数回退时，短窗口的时长以响应里 limits[0].window 为准。
++    const windowMinutes =
++      !fromRatio && name === "session"
++        ? (kimiWindowMinutes(record(firstLimit?.window)) ?? minutes)
++        : minutes;
++    windows.push({
++      id: `default:${name}`,
++      usedPercent,
++      windowMinutes,
++      ...(reset ? { resetAt: reset } : {}),
++    });
++  }
++  return windows.length
++    ? { status: "available", source: "Kimi Code", observedAt, windows }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++}
++
++const ZAI_UNIT_MINUTES: Readonly<Record<number, number>> = { 1: 1440, 3: 60, 5: 1, 6: 10_080 };
++
++function zaiWindowName(minutes: number): string {
++  return minutes === 300
++    ? "five_hour"
++    : minutes === 10_080
++      ? "weekly"
++      : minutes === 43_200
++        ? "monthly"
++        : `${minutes}m`;
++}
++
++/**
++ * Z.ai / BigModel Coding Plan `GET /api/monitor/usage/quota/limit`: data.limits[] of TOKENS_LIMIT /
++ * CREDIT_LIMIT (plan windows) and TIME_LIMIT (MCP). Field semantics follow CodexBar
++ * `Plugins/zai.js`: integer unit/number/percentage, unit 1=day 3=hour 5=minute 6=week, counts
++ * override the rounded percentage, `TIME_LIMIT` 1 minute marks the monthly MCP quota, and a
++ * five-hour reset further than five hours away is dropped rather than guessed.
++ */
++export function parseZaiCodingPlanUsage(
++  payload: unknown,
++  observedAt: number,
++): SubscriptionUsageResult {
++  const data = record(record(payload)?.data);
++  const limits = Array.isArray(data?.limits) ? data.limits : [];
++  const windows: SubscriptionUsageWindow[] = [];
++  for (const raw of limits) {
++    const row = record(raw);
++    const type = row?.type;
++    if (type !== "TOKENS_LIMIT" && type !== "CREDIT_LIMIT" && type !== "TIME_LIMIT") continue;
++    const unit = row?.unit;
++    const number = row?.number;
++    const percentage = row?.percentage;
++    if (!Number.isInteger(unit) || !Number.isInteger(number) || !Number.isInteger(percentage))
++      return { status: "unavailable", unavailableReason: "no-provider-data" };
++    const usage = Number.isInteger(row?.usage) ? (row!.usage as number) : undefined;
++    const current = Number.isInteger(row?.currentValue) ? (row!.currentValue as number) : undefined;
++    const remaining = Number.isInteger(row?.remaining) ? (row!.remaining as number) : undefined;
++    let percent = percentage as number;
++    if (usage !== undefined && usage > 0) {
++      const used =
++        remaining !== undefined
++          ? Math.max(usage - remaining, current ?? usage - remaining)
++          : current;
++      if (used !== undefined) percent = (Math.max(0, Math.min(usage, used)) / usage) * 100;
++    }
++    const mcpMonthly = type === "TIME_LIMIT" && unit === 5 && number === 1;
++    const multiplier = ZAI_UNIT_MINUTES[unit as number];
++    const windowMinutes = mcpMonthly
++      ? 43_200
++      : (number as number) > 0 && multiplier
++        ? (number as number) * multiplier
++        : undefined;
++    if (windowMinutes === undefined) continue;
++    const reset = Number.isInteger(row?.nextResetTime) ? (row!.nextResetTime as number) : undefined;
++    const plausibleReset =
++      reset !== undefined &&
++      !(type !== "TIME_LIMIT" && windowMinutes === 300 && reset > observedAt + 301 * 60_000);
++    windows.push({
++      id:
++        type === "TIME_LIMIT"
++          ? `MCP:${zaiWindowName(windowMinutes)}`
++          : `default:${zaiWindowName(windowMinutes)}`,
++      usedPercent: clampPercent(percent),
++      windowMinutes,
++      ...(plausibleReset ? { resetAt: reset } : {}),
++    });
++  }
++  const plan = [data?.planName, data?.plan, data?.plan_type, data?.packageName, data?.level].find(
++    (value): value is string =>
++      typeof value === "string" && value.trim().length > 0 && value.length <= 128,
++  );
++  return windows.length
++    ? {
++        status: "available",
++        source: "Z.ai Coding Plan",
++        observedAt,
++        windows,
++        ...(plan ? { plan } : {}),
++      }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++}
++
++const balanceResult = (
++  source: string,
++  observedAt: number,
++  balances: SubscriptionUsageBalance[],
++  windows: SubscriptionUsageWindow[] = [],
++): SubscriptionUsageResult =>
++  balances.length || windows.length
++    ? { status: "available", source, observedAt, windows, balances }
++    : { status: "unavailable", unavailableReason: "no-provider-data" };
++
++/** DeepSeek `GET /user/balance`：balance_infos[].{currency,total_balance}（官方文档；CodexBar 同）。 */
++export function parseDeepSeekBalance(
++  payload: unknown,
++  observedAt: number,
++): SubscriptionUsageResult {
++  const rows = Array.isArray(record(payload)?.balance_infos)
++    ? (record(payload)!.balance_infos as unknown[])
++    : [];
++  const balances = rows.flatMap((raw): SubscriptionUsageBalance[] => {
++    const row = record(raw);
++    const amount = finite(row?.total_balance);
++    const currency = typeof row?.currency === "string" ? row.currency.toUpperCase() : undefined;
++    return amount === undefined || !currency
++      ? []
++      : [{ id: `balance:${currency}`, kind: "balance", amount, currency }];
++  });
++  return balanceResult("DeepSeek", observedAt, balances);
++}
++
++/** Moonshot `GET /v1/users/me/balance`：data.available_balance；.cn 为人民币，.ai 为美元（CodexBar moonshot 插件）。 */
++export function parseMoonshotBalance(
++  payload: unknown,
++  observedAt: number,
++  currency: string,
++): SubscriptionUsageResult {
++  const body = record(payload);
++  if (body?.status === false || (finite(body?.code) ?? 0) !== 0) return { status: "unavailable" };
++  const amount = finite(record(body?.data)?.available_balance);
++  return balanceResult(
++    "Moonshot",
++    observedAt,
++    amount === undefined ? [] : [{ id: "balance", kind: "balance", amount, currency }],
++  );
++}
++
++const OPENROUTER_RESET_MINUTES: Record<string, number> = {
++  daily: 1440,
++  weekly: 10_080,
++  monthly: 43_200,
++};
++
++/**
++ * OpenRouter `GET /api/v1/key`（当前密钥）：有上限时给出剩余额度与使用比例窗口；无上限时只给已用金额。
++ * 账户总余额 `/credits` 需要管理密钥，不在此读取。
++ */
++export function parseOpenRouterKey(payload: unknown, observedAt: number): SubscriptionUsageResult {
++  const data = record(record(payload)?.data);
++  const usage = finite(data?.usage);
++  const limit = finite(data?.limit);
++  const remaining = finite(data?.limit_remaining);
++  const balances: SubscriptionUsageBalance[] = [];
++  const windows: SubscriptionUsageWindow[] = [];
++  if (limit !== undefined && limit > 0) {
++    if (remaining !== undefined)
++      balances.push({
++        id: "key-remaining",
++        kind: "remaining",
++        amount: remaining,
++        currency: "USD",
++        limit,
++      });
++    if (remaining !== undefined || usage !== undefined) {
++      const minutes =
++        typeof data?.limit_reset === "string"
++          ? OPENROUTER_RESET_MINUTES[data.limit_reset]
++          : undefined;
++      windows.push({
++        id: "default:key-limit",
++        usedPercent: clampPercent(
++          (((remaining !== undefined ? limit - remaining : usage) ?? 0) / limit) * 100,
++        ),
++        ...(minutes ? { windowMinutes: minutes } : {}),
++      });
++    }
++  } else if (usage !== undefined) {
++    balances.push({ id: "key-spent", kind: "spent", amount: usage, currency: "USD" });
++  }
++  return balanceResult("OpenRouter", observedAt, balances, windows);
++}
++
++/** SiliconFlow `GET /v1/user/info`：data.totalBalance；.cn 为人民币，.com 为美元。 */
++export function parseSiliconFlowBalance(
++  payload: unknown,
++  observedAt: number,
++  currency: string,
++): SubscriptionUsageResult {
++  const data = record(record(payload)?.data);
++  const amount = finite(data?.totalBalance) ?? finite(data?.balance);
++  return balanceResult(
++    "SiliconFlow",
++    observedAt,
++    amount === undefined ? [] : [{ id: "balance", kind: "balance", amount, currency }],
++  );
++}
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index f387524..5f6849a 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -39,7 +39,7 @@ const family = (id: string) => vendors.find((vendor) => vendor.id === `vendor:${
+ test("Claude subscription is a native CLI route without invented API credentials or static models", () => {
+   const template = templates.find((entry) => entry.templateId === "fleet-claude-native")!;
+   assert.ok(template);
+-  assert.equal(template.catalog?.serviceNameMap?.["en-US"], "Claude");
++  assert.equal(template.catalog?.serviceNameMap?.["en-US"], "Claude Code");
+   assert.equal(template.config.access?.type, "native-cli");
+   assert.equal(template.config.api, undefined);
+   assert.deepEqual(providerSetupConfig(template, newProviderSetupDraft(template)), {});
+@@ -299,12 +299,16 @@ test("Grok subscription and xAI API remain distinct under one vendor", () => {
+   );
+ });
+ 
+-test("subscription/API sections distinguish fixed-fee Coding Plan from usage-billed Qwen Token Plan", () => {
++test("subscription/API/terminal sections preserve all templates and their distinct execution routes", () => {
+   const subscription = templates.filter(
+     (item) => providerConnectionCategory(item) === "subscription",
+   );
+   const api = templates.filter((item) => providerConnectionCategory(item) === "api");
+-  assert.equal(subscription.length + api.length, templates.length);
++  const terminal = templates.filter((item) => providerConnectionCategory(item) === "terminal");
++  assert.equal(subscription.length + api.length + terminal.length, templates.length);
++  assert.ok(terminal.length > 0);
++  assert.ok(terminal.every((item) => item.config.access?.type === "native-cli"));
++  assert.ok([...subscription, ...api].every((item) => item.config.access?.type !== "native-cli"));
+   assert.ok(subscription.some((item) => item.templateId === "fleet-openai-codex"));
+   assert.ok(api.some((item) => item.templateId === "openai"));
+   assert.ok(subscription.some((item) => item.templateId === "fleet-minimax-token-plan"));
+@@ -313,28 +317,29 @@ test("subscription/API sections distinguish fixed-fee Coding Plan from usage-bil
+   assert.ok(subscription.some((item) => item.templateId === "fleet-qwen-coding-plan"));
+   assert.ok(api.some((item) => item.templateId === "fleet-qwen-token-plan-cn"));
+   assert.ok(api.some((item) => item.templateId === "fleet-qwen-token-plan"));
+-  for (const category of [subscription, api]) {
++  for (const category of [subscription, api, terminal]) {
+     const vendors = groupProviderTemplates(category, "en-US");
+     assert.equal(vendors.flatMap((vendor) => vendor.templates).length, category.length);
+   }
+ });
+ 
+ test("filtered intake uses product names and logos without replacing vendor identity or login routes", () => {
+-  const section = (category: "subscription" | "api") =>
++  const section = (category: "subscription" | "api" | "terminal") =>
+     groupProviderTemplates(
+       templates.filter((t) => providerConnectionCategory(t) === category),
+       "en-US",
+     );
+   const subscriptions = section("subscription");
+   const api = section("api");
++  const terminal = section("terminal");
+   const grok = subscriptions.find((g) => g.id === "vendor:xai")!;
+-  assert.equal(grok.label, "xAI");
++  assert.equal(grok.label, "Grok");
+   // The Grok CLI-client OAuth route is retained for saved data but restricted; the official Grok
+   // Build CLI is the offered route under the same vendor and logo.
+-  assert.deepEqual(grok.templates.map((t) => t.templateId).sort(), ["fleet-grok-native", "fleet-xai"]);
++  assert.deepEqual(grok.templates.map((t) => t.templateId), ["fleet-xai"]);
+   const xaiOAuth = grok.templates.find((t) => t.templateId === "fleet-xai")!;
+   assert.equal(connectionRouteRestriction(xaiOAuth.config.access), "impersonated-client");
+-  const grokCli = grok.templates.find((t) => t.templateId === "fleet-grok-native")!;
++  const grokCli = terminal.find((g) => g.id === "vendor:xai")!.templates.find((t) => t.templateId === "fleet-grok-native")!;
+   assert.equal(connectionRouteRestriction(grokCli.config.access), undefined);
+   assert.equal(grokCli.config.logo?.key, "grok");
+   assert.equal(grokCli.catalog?.vendorId, "xai");
+@@ -343,9 +348,10 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   assert.equal(xai.templates[0]?.config.logo?.key, "xai");
+   assert.equal(subscriptions.find((g) => g.id === "vendor:openai")?.label, "ChatGPT");
+   assert.equal(api.find((g) => g.id === "vendor:openai")?.label, "OpenAI");
+-  // Kimi Code（API Key）与 Kimi Code CLI 同属一个厂商卡片，由服务选择区分。
+-  assert.equal(subscriptions.find((g) => g.id === "vendor:kimi")?.label, "Kimi");
+-  assert.equal(subscriptions.find((g) => g.id === "vendor:opencode")?.label, "OpenCode");
++  // OV-103 将 CLI 移至独立终端页；订阅页继续显示产品名，而不是公司或执行器名。
++  assert.equal(subscriptions.find((g) => g.id === "vendor:kimi")?.label, "Kimi Code");
++  assert.equal(subscriptions.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Go");
++  assert.equal(terminal.find((g) => g.id === "vendor:kimi")?.label, "Kimi Code CLI");
+   assert.equal(api.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Zen");
+ });
+ 
+diff --git a/packages/services/test/usage-price-directory.test.ts b/packages/services/test/usage-price-directory.test.ts
+index 6b498ed..f5701db 100644
+--- a/packages/services/test/usage-price-directory.test.ts
++++ b/packages/services/test/usage-price-directory.test.ts
+@@ -148,13 +148,31 @@ test("DeepSeek's explicitly retained legacy names share the current Flash schedu
+   );
+ });
+ 
+-test("chat API presets resolve their vendor while decision-only presets remain unpriced", async () => {
++test("priced presets resolve their route while unsourced plan/gateway aliases remain explicitly unpriced", async () => {
+   const builtin = JSON.parse(
+     await readFile(new URL("../../../config/provider/zcode-builtin.json", import.meta.url), "utf8"),
+   );
++  // 新套餐/网关的接入合同不等于按 token 定价证据；不能为了满足目录测试借用原厂价格。
++  // 精确列举目前没有价格路由证据的预设，新出现的缺口仍会让下面的覆盖检查失败。
++  const unpricedPresets = new Set([
++    "fleet-volcengine-coding-plan", "fleet-volcengine-agent-plan", "fleet-tencent-token-plan",
++    "fleet-qianfan-coding-plan", "fleet-stepfun-step-plan-cn", "fleet-stepfun-step-plan",
++    "fleet-modelscope", "fleet-ppio",
++  ]);
++  const observedUnpriced = new Set<string>();
+   for (const template of builtin.config.providerConfigRules.templateRules) {
+     if (template.config?.access?.type === "subscription") continue;
+     const url = template.config?.api?.baseUrl;
++    if (unpricedPresets.has(template.templateId)) {
++      observedUnpriced.add(template.templateId);
++      const billingProvider = resolveUsageBillingProvider(url);
++      assert.equal(billingProvider, undefined, template.templateId);
++      for (const modelId of template.config.builtinModelIds ?? []) {
++        const price = estimateUsagePrice({ ...input, billingProvider, modelId });
++        assert.equal(price.estimatedUsd, undefined, template.templateId + modelId);
++      }
++      continue;
++    }
+     if (template.config?.api?.type === "typesafe-system-one") {
+       assert.equal(resolveUsageBillingProvider(url), undefined, template.templateId);
+       assert.equal(
+@@ -166,6 +184,7 @@ test("chat API presets resolve their vendor while decision-only presets remain u
+     }
+     if (url) assert.ok(resolveUsageBillingProvider(url), template.templateId);
+   }
++  assert.deepEqual(observedUnpriced, unpricedPresets);
+   assert.equal(resolveUsageBillingProvider("https://api.minimaxi.com/anthropic"), "minimax-cn");
+   assert.equal(resolveUsageBillingProvider("https://api.minimax.io/anthropic"), "minimax");
+ });
+diff --git a/packages/ui/src/store/pluginManagementStore.ts b/packages/ui/src/store/pluginManagementStore.ts
+index a2d71a8..de08577 100644
+--- a/packages/ui/src/store/pluginManagementStore.ts
++++ b/packages/ui/src/store/pluginManagementStore.ts
+@@ -1,4 +1,5 @@
+ import { create } from "zustand";
++import { createPluginGrantActions } from "@/store/pluginManagementStoreGrants.js";
+ import type {
+   ZCodeAvailablePluginSummary,
+   ZCodeInstalledPluginSummary,
+@@ -99,7 +100,10 @@ export interface PluginManagementState {
+     fingerprint: string,
+     pluginService: IPluginManagementService,
+   ) => Promise<boolean>;
+-  revokePluginGrant: (pluginId: string, pluginService: IPluginManagementService) => Promise<boolean>;
++  revokePluginGrant: (
++    pluginId: string,
++    pluginService: IPluginManagementService,
++  ) => Promise<boolean>;
+   validateSource: (source: string, pluginService: IPluginManagementService) => Promise<void>;
+   setEnabled: (
+     pluginId: string,
+@@ -359,29 +363,7 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+     );
+   },
+ 
+-  async grantPlugin(pluginId, fingerprint, pluginService) {
+-    return await runWorkspaceOperation(
+-      set,
+-      get,
+-      pluginService,
+-      `plugin:grant:${pluginId}`,
+-      async (workspace) => {
+-        await pluginService.grantPlugin({ ...workspace, pluginId, fingerprint });
+-      },
+-    );
+-  },
+-
+-  async revokePluginGrant(pluginId, pluginService) {
+-    return await runWorkspaceOperation(
+-      set,
+-      get,
+-      pluginService,
+-      `plugin:revoke-grant:${pluginId}`,
+-      async (workspace) => {
+-        await pluginService.revokePluginGrant({ ...workspace, pluginId });
+-      },
+-    );
+-  },
++  ...createPluginGrantActions(set, get),
+ 
+   async validateSource(source, pluginService) {
+     const { workspacePath, workspaceIdentity } = get();
+diff --git a/packages/ui/src/store/pluginManagementStoreGrants.ts b/packages/ui/src/store/pluginManagementStoreGrants.ts
+new file mode 100644
+index 0000000..3023285
+--- /dev/null
++++ b/packages/ui/src/store/pluginManagementStoreGrants.ts
+@@ -0,0 +1,34 @@
++import type { PluginManagementState } from "@/store/pluginManagementStore.js";
++import { runWorkspaceOperation } from "@/store/pluginManagementStoreLoading.js";
++
++// 授权动作继续使用原 store 和操作生命周期，拆文件不新增状态或写入路径。
++export function createPluginGrantActions(
++  set: (partial: Partial<PluginManagementState>) => void,
++  get: () => PluginManagementState,
++): Pick<PluginManagementState, "grantPlugin" | "revokePluginGrant"> {
++  return {
++    async grantPlugin(pluginId, fingerprint, pluginService) {
++      return await runWorkspaceOperation(
++        set,
++        get,
++        pluginService,
++        `plugin:grant:${pluginId}`,
++        async (workspace) => {
++          await pluginService.grantPlugin({ ...workspace, pluginId, fingerprint });
++        },
++      );
++    },
++
++    async revokePluginGrant(pluginId, pluginService) {
++      return await runWorkspaceOperation(
++        set,
++        get,
++        pluginService,
++        `plugin:revoke-grant:${pluginId}`,
++        async (workspace) => {
++          await pluginService.revokePluginGrant({ ...workspace, pluginId });
++        },
++      );
++    },
++  };
++}
+diff --git a/packages/ui/test/pluginManagementGrants.test.ts b/packages/ui/test/pluginManagementGrants.test.ts
+new file mode 100644
+index 0000000..6b938d0
+--- /dev/null
++++ b/packages/ui/test/pluginManagementGrants.test.ts
+@@ -0,0 +1,88 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { IPluginManagementService } from "@zcode/services";
++import { usePluginManagementStore } from "../src/store/pluginManagementStore.js";
++
++function fixture() {
++  const calls: Array<{ method: string; input: unknown }> = [];
++  const store = usePluginManagementStore;
++  store.setState(
++    {
++      ...store.getInitialState(),
++      workspacePath: "/fixture/project",
++      workspaceIdentity: "remote:fixture-host/project",
++      configScope: "workspace",
++    },
++    true,
++  );
++  const service = {
++    async grantPlugin(input: unknown) {
++      calls.push({ method: "grant", input });
++    },
++    async revokePluginGrant(input: unknown) {
++      calls.push({ method: "revoke", input });
++    },
++    async listPlugins(input: unknown) {
++      calls.push({ method: "list", input });
++      return { plugins: [], diagnostics: [] };
++    },
++    async getPluginsOverview() {
++      return {
++        marketplaces: [],
++        availablePlugins: [],
++        installedPlugins: [],
++        restorableBuiltins: [],
++        diagnostics: [],
++      };
++    },
++  } as unknown as IPluginManagementService;
++  return { store, service, calls };
++}
++
++test("public grant and revoke retain the Host identity and reload the selected scope", async () => {
++  const { store, service, calls } = fixture();
++  assert.equal(await store.getState().grantPlugin("plugin@source", "fingerprint", service), true);
++  assert.equal(await store.getState().revokePluginGrant("plugin@source", service), true);
++  const workspace = {
++    workspacePath: "/fixture/project",
++    workspaceIdentity: "remote:fixture-host/project",
++  };
++  assert.deepEqual(calls, [
++    {
++      method: "grant",
++      input: { ...workspace, pluginId: "plugin@source", fingerprint: "fingerprint" },
++    },
++    { method: "list", input: { ...workspace, configScope: "workspace" } },
++    { method: "revoke", input: { ...workspace, pluginId: "plugin@source" } },
++    { method: "list", input: { ...workspace, configScope: "workspace" } },
++  ]);
++  assert.equal(store.getState().operationId, null);
++  assert.equal(store.getState().error, null);
++});
++
++test("a late grant completion cannot reload a newly selected Host", async () => {
++  const { store, service, calls } = fixture();
++  let finish!: () => void;
++  service.grantPlugin = async () =>
++    new Promise<void>((resolve) => {
++      finish = resolve;
++    });
++  const pending = store.getState().grantPlugin("plugin@source", "fingerprint", service);
++  store.setState({ workspaceIdentity: "remote:another-host/project" });
++  finish();
++  assert.equal(await pending, false);
++  assert.deepEqual(calls, []);
++  assert.equal(store.getState().workspaceIdentity, "remote:another-host/project");
++  assert.equal(store.getState().operationId, null);
++});
++
++test("an unsuccessful revoke keeps the original failure result and releases the busy control", async () => {
++  const { store, service, calls } = fixture();
++  service.revokePluginGrant = async () => {
++    throw new Error("fixture refusal");
++  };
++  assert.equal(await store.getState().revokePluginGrant("plugin@source", service), false);
++  assert.deepEqual(calls, []);
++  assert.equal(store.getState().error, "fixture refusal");
++  assert.equal(store.getState().operationId, null);
++});

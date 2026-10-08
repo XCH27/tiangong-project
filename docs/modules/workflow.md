@@ -97,6 +97,15 @@ This supplies refusal and inspectable evidence, not a receipt-query/reconciliati
 exactly-once guarantee. The ordinary `test:kernel-recovery` entry covers process effects, SQLite
 reopen, amended lineage and the changed-workspace verifier countercase.
 
+Each production workflow driver cancels only its own world commands through the existing
+ExecutionPort; stopping one run never closes the shared executor. Run settlement waits up to the
+existing 1.5-second late-effect grace for termination and node receipts. An unconfirmed outcome
+returns interruption rather than successful cancellation. A late known result still updates its
+original node without releasing descendants; interrupted commands retain the unknown-replay
+barrier. An un-awaited world command cannot turn a premature script return into successful work.
+The precise ordering and real-command/SQLite acceptance live in the candidate's
+[world-effect contract](../../.fleet/zcode/apps/zcode-cli/docs/workflow-world-effects.md).
+
 ## Execution contracts
 
 These sections own the next step for the listed capability IDs. Read the

@@ -108,7 +108,10 @@ one installable unit, typed views, two trust tiers, standards-compatible content
    plugin (`skills-repository.ts`). Agent Plugins 1.0.0 packages (root `plugin.json`, `mcp.json`,
    `skills/`, `${PLUGIN_ROOT}`/`${PLUGIN_DATA}`) install, and any plugin exports to that format
    without `headers`/`auth`/`oauth`, reporting hooks, commands and agents as not portable
-   (`agent-plugins-export.ts`). Catalog groups over 60 entries start collapsed.
+   (`agent-plugins-export.ts`). Export sanitizes declared MCP source files as well as the generated
+   file, removes sensitive defaults and profiles, and reports environment values needing setup.
+   Scripts and non-secret package content remain; this is not a scan of arbitrary source secrets.
+   Catalog groups over 60 entries start collapsed.
 6. **Grants are per plugin, enablement per primitive, scope global or Project.** Revocation reaches
    resident Sessions (DOM-02). An update that changes declared permissions, tools, hooks, network
    domains or credential use asks again.
@@ -235,9 +238,10 @@ Inline roots declared only by Project configuration keep skills, commands and MC
 withheld with `plugin_project_hooks_withheld`, so they cannot bypass workspace-hook trust (DOM-01).
 Resident Sessions re-check the shared plugin configuration/install record before each plugin hook and
 skip withdrawn ones (DOM-02); resident MCP and Skill withdrawal remain open.
-Close these concrete gaps before expanding the catalog: `adapters/src/plugins/index.ts` allows
-installed third-party hooks; installation defaults to enabled (`bootstrap/src/plugins.ts:733`) without a
-per-package capability grant review. Desktop uninstall now passes the existing `keepData: true`
+Third-party MCP/hooks use the per-package grant described above. Distinct complete plugin IDs
+claiming one legacy MCP name are withheld with a conflict diagnostic; view calls check the owning
+package and connection configuration, including across connection waits. Names and saved rules are
+preserved for unambiguous packages. Desktop uninstall passes the existing `keepData: true`
 policy, removes activation/configuration and optional package cache, and preserves plugin user
 data. The original confirmation names that distinction; no extra control was added. CLI explicit
 removal semantics remain unchanged. Reserved `generated-commands` is derived data: materialization

@@ -302,3 +302,13 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0184 | [0184-cli-config-path.patch](0184-cli-config-path.patch) | `6a4294322c4223cc2b716123e59f51bc98d898b2` |
 
 | 0185 | [0185-skill-market.patch](0185-skill-market.patch) | `cc65abe7370858133bee618ff8bda9417be5a165` |
+
+| 0186 | [0186-permission-dispatch-binding.patch](0186-permission-dispatch-binding.patch) | `c941a7957bc0b428f710a3ce9b9b37d8c5938d3c` |
+
+| 0187 | [0187-workflow-world-cancellation.patch](0187-workflow-world-cancellation.patch) | `66cd6f2d013d61afc62cfe4674dbd153f0ee0c25` |
+
+| 0188 | [0188-plugin-export-and-ownership.patch](0188-plugin-export-and-ownership.patch) | `c6ec064a5f8966bc472b73d8d4781190f5863b50` |
+
+| 0189 | [0189-native-admitted-account.patch](0189-native-admitted-account.patch) | `28ebc2fc90b52010c428ce87251af953eb35233f` |
+
+| 0190 | [0190-verification-contracts.patch](0190-verification-contracts.patch) | `51fb0b7c864a8a730bab9239fc746bb8eec99fea` |

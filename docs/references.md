@@ -4032,6 +4032,27 @@ receipt failures remain separate indexed work. Source, real local execution, sta
 live service behavior and owner visual acceptance remain separate proof levels.
 
 
+### Execution and plugin boundary regression intake
+
+The next corrections start from candidate `b4caadb286018a9daa2108c653d097b6a1f19533`, not the
+retained Craft branch. ZCode's current public HEAD was rechecked as the retained `29628c9` pin.
+The existing owners remain: native Provider/model bindings, tool PermissionService/broker,
+workflow run/node journal, plugin discovery/export and MCP connection pool. No dependency upgrade,
+new credential store, new permission authority or reference re-pin is part of these repairs.
+
+| Chain | Source comparison | Correction and proof boundary |
+|---|---|---|
+| Native account → request → continuation → usage | Original candidate account checks were weakened by `c06b590`. Official Codex current tip `d650bd7c05a9b67b1d397c501acfa5caa8183655`, `codex-rs/core/src/client.rs`, retains explicit per-turn state and discards auth-owned transport state on identity changes; compare retained latest `7f892275e31002f0422477c6219189284560e689`. Published Claude SDK 0.3.289 supplies pre-prompt `accountInfo`; installed SDK and scoped Codex remain unchanged. | Restore the admitted account check for default and isolated homes. Host refresh can prepare a subsequent binding; it does not authorize an old input under a new login. Real scoped Codex/Claude with isolated homes and loopback transport cover stale refusal; matching Codex events and accounting retain the inspected identity. No live-login or entitlement claim. |
+| Project Allow → changed Ask → final handler | Original ZCode PermissionService, broker and current registry identity checks already own approval. An automatic rule match does not prove a person approved this exact input. | New Ask refuses the old automatic allowance; a fresh request uses the original broker. An explicit same-input approval stays valid, and Deny/withdrawn handler still wins. Real Host/SQLite/local-effect fixtures cover both cases and late rule changes. |
+| world.run → Stop → process → journal → cold replay | Original ZCode's ExecutionPort already supports AbortSignal but workflow world.run did not pass it. Its declared-command intake, shared executor and opaque replay barriers are retained. | Driver-scoped cancellation leaves other commands alive. Bounded settlement distinguishes confirmed termination from unknown; late known results still enter the original node. Real commands, fire-and-forget scripts, SQLite reopen, grace expiry and same/amended replay are exercised; no universal OS isolation or remote exactly-once claim. |
+| Plugin package → export / MCP view → owned service | ZCode `29628c9` provides the legacy namespace and pool configuration identity. HarnessRouter current tip `822550ea8847d056ca789a2bb6977890a4276c5c`, `protocol/versions/2026-09-28/plugins.md`, has the same Agent Plugins export contract as retained latest `6e05aef5dc2bb25faf202130398e1509a880e166`. | Export handles declared source files and credential carriers, without claiming arbitrary-code secret detection. Conflicting complete package identities are withheld under their legacy name, preserving existing permission rules. View dispatch validates current owner/configuration across connection waits; completed calls are not replayed. Synthetic export packages and real local MCP processes verify the boundaries. |
+
+Cross-review adds countercases rather than widening the product: embedded literals/defaults in
+environment expressions must not travel as placeholders; equivalent MCP configurations retain the
+pool's existing normalization; an un-awaited world command cannot publish false success. A
+failed pre-dispatch native attempt remains an auditable error attempt, not zero recorded activity
+or a successful provider charge. Capability statuses remain at their existing acceptance level.
+
 ## OpenStock and Octop — bounded reference admission
 
 Inspection evidence is retained at `/Volumes/AIGC/天工参考/meta/openstock-octop-intake/manifest.json`.

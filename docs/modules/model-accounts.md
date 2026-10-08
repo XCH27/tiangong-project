@@ -46,7 +46,7 @@ reopening the tab.
 | Concern | Contract |
 |---|---|
 | Storage | `access.accounts` on the existing native-cli record: id, name, plan, `configDir`. The active account is mirrored in the existing access fields; `configDir: ""` means the CLI's own default home. Records written before 0163 read as one account. |
-| Adding | Claude/Codex only (their official logins honour `CLAUDE_CONFIG_DIR`/`CODEX_HOME`). The Host allocates `<app config>/native-cli-accounts/<cli>/<uuid>` (0700), runs the official login there and inspects that home. A duplicate identity is refused and its home discarded. Ten accounts at most. |
+| Adding | Codex only under OV-096; Claude stays single-account. The Host allocates `<app config>/native-cli-accounts/<cli>/<uuid>` (0700), runs the official login there and inspects that home. A duplicate identity is refused and its home discarded. Ten accounts at most; older records remain readable. |
 | Switching | Re-inspect the target home, then replace identity and catalog in one `mergeDiscoveredModels` transaction. The writer accepts a changed `configDir` only when the new access lists it among its saved accounts. |
 | Continuation | The native continuation scope already hashes executor kind, home and account, so a switch starts a fresh native session and replays the Fleet transcript; another account's thread is never resumed. |
 | Removal | Removing the current account first activates the next one. Only Fleet-allocated homes are deleted; the CLI default home never is. |
@@ -73,7 +73,7 @@ its account store; nothing else rewrites it.
 
 | Failure | Cause | Now |
 |---|---|---|
-| "Account changed, reconnect" | Saved identity vs a rewritten default login | A default-login connection follows the CLI: discovery, allowance reads, a five-minute sweep and the chat error adopt the new identity and catalog. If the new login is an account Fleet keeps in its own home, that home stays in use. Fleet homes cannot change from outside. A turn already admitted still fails its account fence and is retried after the sync. |
+| "Account changed, reconnect" | Saved identity vs a rewritten default login | Discovery, allowance recovery, the five-minute sweep and the existing chat-error recovery can adopt the default CLI's new identity and catalog for a subsequent input. A saved Fleet home keeps its strict identity. Every admitted model, including the default home, checks its captured account before native dispatch; a mismatch refuses before inference/effects. Refresh does not automatically replay the failed input or relabel old usage. |
 | "Revision conflict" on reconnect | Native writes were fenced on the global settings revision, so any unrelated write during a 5–7 s CLI check failed them | Fenced on this connection's own config only |
 | "Sign in first" while signed in | Any ACP `authenticate` failure, and any message containing auth/login, meant signed out | Network causes are kept; only explicit refusals (`category=auth`, 401, "authentication required") mean signed out; Cursor's silent check says signed out *or* offline |
 | Toast in the middle of the list | Feedback overlay lived inside the internally scrolling detail column | Anchored to the visible pane (browser test fails on the old layout) |

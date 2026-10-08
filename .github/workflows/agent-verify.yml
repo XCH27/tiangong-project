@@ -2,18 +2,92 @@ name: Agent Verify (CI)
 on:
   pull_request:
   push:
-    # Until 2026-09-20 this list named only "main" and "work/fresh-base-spine", neither of
-    # which has been the branch anyone commits to since 2026-09-10 — so every push to the
-    # real working line ran no CI at all. "work/**" covers the working lines by convention.
-    branches: [ "main", "work/**" ]
+    branches: [ "main", "work/**", "codex/**" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  validate:
+  candidate:
+    name: Active ZCode candidate (Linux x64)
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Check out the immutable ZCode reconstruction base
+        uses: actions/checkout@v4
+        with:
+          repository: zai-org/ZCode
+          ref: 29628c9acdb81b703bbd4080c207a0e7ce5e276e
+          path: .fleet/zcode
+          persist-credentials: false
+
+      # Reuse the source gate's ordered recipe. It refuses an occupied checkout and
+      # verifies every patch before applying any of them to the fresh working tree.
+      - name: Reconstruct and verify candidate source
+        run: python3 scripts/check-zcode-candidate.py --reconstruct
+
+      - name: Read the reconstructed candidate's locked toolchain
+        id: toolchain
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, tomllib
+          root = pathlib.Path('.fleet/zcode')
+          tools = tomllib.loads((root / 'mise.toml').read_text())['tools']
+          package = json.loads((root / 'package.json').read_text())
+          if package['packageManager'] != 'pnpm@' + tools['pnpm']:
+              raise SystemExit('Candidate pnpm pins disagree')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"node={tools['node']}\npnpm={tools['pnpm']}\n")
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ steps.toolchain.outputs.node }}
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.toolchain.outputs.pnpm }}
+          package_json_file: .fleet/zcode/package.json
+          run_install: false
+
+      - name: Install locked candidate dependencies without lifecycle scripts
+        working-directory: .fleet/zcode
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Fresh workspaces have no CLI dist declarations or staged SDK closure.
+      # Use the documented build owner before running the existing runtime gate.
+      - name: Build and stage the supervised Agent CLI
+        working-directory: .fleet/zcode
+        run: pnpm exec node scripts/build-desktop-agent-cli.mjs
+
+      - name: Run candidate contracts, source and runtime validation
+        run: bash scripts/fleet-verify.sh --candidate-only
+
+  retained-craft:
+    name: Retained Craft preservation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Shared document contracts reference both implementations. This supplies source
+      # only; the retained job neither installs nor runs the candidate dependencies.
+      - name: Check out candidate source for shared documentation contracts
+        uses: actions/checkout@v4
+        with:
+          repository: zai-org/ZCode
+          ref: 29628c9acdb81b703bbd4080c207a0e7ce5e276e
+          path: .fleet/zcode
+          persist-credentials: false
+
+      - name: Reconstruct candidate source for shared documentation contracts
+        run: python3 scripts/check-zcode-candidate.py --reconstruct
 
       - name: Validate doc contracts
         run: python3 scripts/validate-doc-contracts.py
@@ -44,8 +118,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run validation suite
-        run: bash scripts/fleet-verify.sh
+      - name: Run retained Craft validation suite
+        run: bash scripts/fleet-verify.sh --retained-craft
         env:
           FLEET_UPSTREAM_DIR: ${{ github.workspace }}/.fleet-upstream
 

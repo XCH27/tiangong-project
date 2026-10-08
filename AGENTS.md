@@ -90,6 +90,9 @@ Git/GitHub comparisons. These roles do not import several independent products' 
     permit further dispatch for that study. OV-080 authorizes parallel rectification in bounded,
     disjoint code areas with explicit acceptance and cross-review; primary retains account work,
     product/layout decisions, integration and final running verification.
+    Use `gpt-6.1-sol` for delegated implementation and verification to control cost. Workers report
+    failures, unresolved judgments and cross-module issues to the primary instead of repeatedly
+    expanding or retrying the task; primary decides the correction and owns final integration.
 
 ## Routing — read before you touch
 

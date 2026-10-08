@@ -1,18 +1,25 @@
 #!/usr/bin/env bash
 # Fleet verification entry point (repository root)
-# The active candidate is default; --retained-craft verifies the preserved branch explicitly.
+# Default includes retained-source preservation; --candidate-only isolates active-product CI.
+# --retained-craft verifies the preserved branch explicitly.
 # Upstream validate:dev is a subset; this entry also verifies Fleet boundaries.
 # FLEET_UPSTREAM_DIR selects an isolated matching Craft checkout, including in CI.
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+case "${1:-}" in
+  ""|--candidate-only|--retained-craft) ;;
+  *) echo "Usage: fleet-verify.sh [--candidate-only|--retained-craft]" >&2; exit 2 ;;
+esac
 
 # Docs are repository-level, not app-level, so this gate lives here rather than in app/package.json.
 # Until 2026-07-24 this validator existed but nothing invoked it, so the cross-document joins it
 # checks were enforced only by convention.
 python3 "$ROOT_DIR/scripts/validate-doc-contracts.py"
 python3 -m unittest discover -s "$ROOT_DIR/scripts/tests" -p 'test_*.py'
-python3 "$ROOT_DIR/scripts/check-upstream-delta.py"
-python3 "$ROOT_DIR/scripts/check-orphaned-components.py"
+if [ "${1:-}" != "--candidate-only" ]; then
+  python3 "$ROOT_DIR/scripts/check-upstream-delta.py"
+  python3 "$ROOT_DIR/scripts/check-orphaned-components.py"
+fi
 
 if [ "${1:-}" != "--retained-craft" ]; then
   python3 "$ROOT_DIR/scripts/check-zcode-candidate.py"

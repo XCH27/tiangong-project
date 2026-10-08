@@ -181,12 +181,12 @@ bun run electron:dev
 The two upstream checks exit 2 when the reference mirror is not mounted; the hook then warns and
 lets the commit through, because an unplugged volume must not block all work. Exit 1 blocks.
 
-Full gate before handing candidate work over: `bash scripts/fleet-verify.sh` runs the common
-documentation/source checks, then the active candidate verification. Candidate staged-binary and
-renderer checks remain explicit commands above. The retained Craft full suite uses
-`bash scripts/fleet-verify.sh --retained-craft`, including the disposable `CRAFT_CONFIG_DIR`,
-isolated tests, document tools and backend smoke. Upstream `validate:dev` is a subset, not
-full-suite evidence.
+Local full gate: `bash scripts/fleet-verify.sh` includes retained-source preservation and candidate checks.
+CI reconstructs a fresh exact-pin checkout with `check-zcode-candidate.py --reconstruct`, reads its
+locked toolchain and builds the CLI, then uses `--candidate-only` for shared contracts and candidate
+source/runtime checks. The separate `--retained-craft` job retains every preservation/runtime check;
+its clean-checkout delta mismatch from uncommitted `app/` work remains visible, not waived. Both jobs
+provide candidate source for shared links. Staged/renderer checks remain explicit commands above.
 
 **Upstream ships failing tests.** The 31 deterministic v0.13.4 failures and one timing-flaky case are recorded in `scripts/known-upstream-test-failures.txt`; `scripts/run-bun-tests.py` rejects new failures and stale exceptions. **Use a disposable `CRAFT_CONFIG_DIR`**: upstream tests can read the real profile.
 
