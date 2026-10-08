@@ -1,0 +1,248 @@
+From dfbf1f0c2e0fc72c1dccb5067f7db40fe9327f00 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 03:19:50 -0700
+Subject: [PATCH] Desktop readers find the CLI config where the CLI does
+
+Skills, subagents, commands, hooks, MCP sync, plugin sync, settings sync and
+the CUA check each built ~/.zcode/cli from their own home lookup, so in an
+isolated profile they read a different file than the CLI wrote (an installed
+skill plugin counted as disabled). One helper resolves it: ZCODE_HOME, then
+the desktop home, then HOME. Production paths are unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../services/src/commands/commandsService.ts  |  3 ++-
+ packages/services/src/hooks/hooksService.ts   |  3 ++-
+ .../services/src/mcp-sync/mcpSyncService.ts   |  5 +++++
+ packages/services/src/node.ts                 |  4 ++--
+ .../src/plugin-sync/pluginSyncService.ts      |  3 ++-
+ .../src/settings-sync/settingsSyncService.ts  |  3 ++-
+ packages/services/src/skills/skillsService.ts |  3 ++-
+ .../services/src/subagents/subagentStorage.ts |  3 ++-
+ .../src/subagents/subagentsService.ts         |  3 ++-
+ packages/services/src/zcodeCliPaths.ts        | 21 +++++++++++++++++++
+ .../services/test/zcode-cli-paths.test.ts     | 13 ++++++++++++
+ 11 files changed, 55 insertions(+), 9 deletions(-)
+ create mode 100644 packages/services/src/zcodeCliPaths.ts
+ create mode 100644 packages/services/test/zcode-cli-paths.test.ts
+
+diff --git a/packages/services/src/commands/commandsService.ts b/packages/services/src/commands/commandsService.ts
+index 134211b..0e21774 100644
+--- a/packages/services/src/commands/commandsService.ts
++++ b/packages/services/src/commands/commandsService.ts
+@@ -1,4 +1,5 @@
+ /* eslint-disable max-lines -- commandsService 需要集中处理目录来源优先级、读写和命令解析，拆分会削弱读取顺序的一致性 */
++import { zcodeCliConfigPath, zcodeCliDir } from "../zcodeCliPaths.js";
+ import { access, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+ import { existsSync } from "node:fs";
+ import { homedir } from "node:os";
+@@ -89,7 +90,7 @@ function getUserCommandsRoot(agentSource?: CommandAgentSource): string {
+ }
+ 
+ function getUserCliConfigPath(): string {
+-  return join(resolveUserHomeDir(), ".zcode", "cli", "config.json");
++  return zcodeCliConfigPath();
+ }
+ 
+ function isRecord(value: unknown): value is Record<string, unknown> {
+diff --git a/packages/services/src/hooks/hooksService.ts b/packages/services/src/hooks/hooksService.ts
+index 9f60a00..03babf5 100644
+--- a/packages/services/src/hooks/hooksService.ts
++++ b/packages/services/src/hooks/hooksService.ts
+@@ -1,3 +1,4 @@
++import { zcodeCliConfigPath, zcodeCliDir } from "../zcodeCliPaths.js";
+ import { existsSync } from "node:fs";
+ import { readFile } from "node:fs/promises";
+ import { homedir } from "node:os";
+@@ -56,7 +57,7 @@ function resolveUserHomeDir(): string {
+ function getRootDir(source: SettingsDirectorySource, workspacePath?: string): string {
+   const baseDir = workspacePath ?? resolveUserHomeDir();
+   if (source === "zcode") {
+-    return workspacePath ? join(baseDir, ".zcode") : join(baseDir, ".zcode", "cli");
++    return workspacePath ? join(baseDir, ".zcode") : zcodeCliDir();
+   }
+   return join(baseDir, source === "agents" ? ".agents" : ".claude");
+ }
+diff --git a/packages/services/src/mcp-sync/mcpSyncService.ts b/packages/services/src/mcp-sync/mcpSyncService.ts
+index 0a7a96e..5b2dfb5 100644
+--- a/packages/services/src/mcp-sync/mcpSyncService.ts
++++ b/packages/services/src/mcp-sync/mcpSyncService.ts
+@@ -1,4 +1,5 @@
+ /* eslint-disable max-lines -- MCP 同步服务集中维护用户目录读写、远端导入和 filesystem 路径改写，拆分会增加远端配置同步回归面。 */
++import { zcodeCliDir } from "../zcodeCliPaths.js";
+ import { createHash } from "node:crypto";
+ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+ import { homedir } from "node:os";
+@@ -154,6 +155,10 @@ function buildDirectoryConfigPath(
+   scope: Exclude<McpScope, "common">,
+   workspacePath?: string,
+ ): string {
++  // Fleet's own user MCP config is the CLI config, located the same way the CLI finds it.
++  if (scope === "user" && descriptor.source === "zcode") {
++    return join(zcodeCliDir(), descriptor.fileName);
++  }
+   const baseDir = scope === "user" ? resolveUserHomeDir() : workspacePath;
+   if (!baseDir) {
+     throw new Error(
+diff --git a/packages/services/src/node.ts b/packages/services/src/node.ts
+index 8e30d21..3ed6ea5 100644
+--- a/packages/services/src/node.ts
++++ b/packages/services/src/node.ts
+@@ -1,3 +1,4 @@
++import { zcodeCliConfigPath, zcodeCliDir } from "./zcodeCliPaths.js";
+ import { EmptyAccountProviderConfigSource } from "./model-provider/providerRuntime.js";
+ import { createSubscriptionConnections } from "./model-provider/subscriptionConnections.js";
+ import { createPageAssistantService } from "./page-assistant/pageAssistantService.js";
+@@ -1079,8 +1080,7 @@ export function resolveBundledCuaHelperAppPath(
+ export { isOfficialCuaPluginEnabledForWorkspace };
+ 
+ export function hasGlobalCliZCodeCuaServer(env: NodeJS.ProcessEnv = process.env): boolean {
+-  const home = env.HOME?.trim() || homedir();
+-  const configPath = join(home, ".zcode", "cli", "config.json");
++  const configPath = zcodeCliConfigPath(undefined, env);
+   let parsed: unknown;
+   try {
+     parsed = JSON.parse(readFileSync(configPath, "utf8"));
+diff --git a/packages/services/src/plugin-sync/pluginSyncService.ts b/packages/services/src/plugin-sync/pluginSyncService.ts
+index f145057..073c225 100644
+--- a/packages/services/src/plugin-sync/pluginSyncService.ts
++++ b/packages/services/src/plugin-sync/pluginSyncService.ts
+@@ -1,4 +1,5 @@
+ /* eslint-disable max-lines -- plugin 同步需要集中维护候选扫描、归档安全、远端判重和配置写入，拆分会增加远端同步回归面。 */
++import { zcodeCliConfigPath, zcodeCliDir } from "../zcodeCliPaths.js";
+ import { createHash, randomUUID } from "node:crypto";
+ import { existsSync } from "node:fs";
+ import {
+@@ -217,7 +218,7 @@ function resolveUserHomeDir(): string {
+ }
+ 
+ function getUserZcodeConfigPath(): string {
+-  return join(resolveUserHomeDir(), ".zcode", "cli", "config.json");
++  return zcodeCliConfigPath();
+ }
+ 
+ function getUserZcodePluginRoot(): string {
+diff --git a/packages/services/src/settings-sync/settingsSyncService.ts b/packages/services/src/settings-sync/settingsSyncService.ts
+index 492984b..96d2760 100644
+--- a/packages/services/src/settings-sync/settingsSyncService.ts
++++ b/packages/services/src/settings-sync/settingsSyncService.ts
+@@ -1,4 +1,5 @@
+ /* eslint-disable max-lines -- settings-sync 需要集中维护外部 skills/commands/plugins/MCP 扫描、去重和导入状态机，后续按资源类别拆分 */
++import { zcodeCliConfigPath, zcodeCliDir } from "../zcodeCliPaths.js";
+ import type {
+   McpServerConfig,
+   SettingsSyncAgent,
+@@ -446,7 +447,7 @@ function getUserZcodePluginRoot(): string {
+ }
+ 
+ function getUserZcodeCliConfigPath(): string {
+-  return join(resolveUserHomeDir(), ".zcode", "cli", "config.json");
++  return zcodeCliConfigPath();
+ }
+ 
+ function getWorkspaceZcodeConfigPath(workspacePath: string): string {
+diff --git a/packages/services/src/skills/skillsService.ts b/packages/services/src/skills/skillsService.ts
+index 2ec67dd..e2bb7e9 100644
+--- a/packages/services/src/skills/skillsService.ts
++++ b/packages/services/src/skills/skillsService.ts
+@@ -1,4 +1,5 @@
+ /* eslint-disable max-lines -- skill 发现 + 校验 + 状态 + 通用目录管理在同一服务里聚合，分层后跳转成本更高 */
++import { zcodeCliConfigPath, zcodeCliDir } from "../zcodeCliPaths.js";
+ import {
+   access,
+   appendFile,
+@@ -52,7 +53,7 @@ function getSkillSettingsDir(): string {
+ }
+ // 配置路径按当前 Host 的环境解析，不能在模块导入时固定另一个用户目录。
+ function getSkillCliSettingsDir(): string {
+-  return join(resolveUserHomeDir(), ".zcode", "cli");
++  return zcodeCliDir();
+ }
+ function getSkillCliConfigFile(): string {
+   return join(getSkillCliSettingsDir(), "config.json");
+diff --git a/packages/services/src/subagents/subagentStorage.ts b/packages/services/src/subagents/subagentStorage.ts
+index ee7579d..d676e92 100644
+--- a/packages/services/src/subagents/subagentStorage.ts
++++ b/packages/services/src/subagents/subagentStorage.ts
+@@ -1,3 +1,4 @@
++import { zcodeCliConfigPath, zcodeCliDir } from "../zcodeCliPaths.js";
+ import { readFile } from "node:fs/promises";
+ import { homedir } from "node:os";
+ import { isAbsolute, join, resolve } from "node:path";
+@@ -56,7 +57,7 @@ async function readUserCliConfig(
+ ): Promise<Record<string, unknown>> {
+   try {
+     const raw = await readFile(
+-      join(resolveUserHomeDir(options), ".zcode", "cli", "config.json"),
++      zcodeCliConfigPath(options?.homeDir),
+       "utf8",
+     );
+     const parsed = JSON.parse(raw) as unknown;
+diff --git a/packages/services/src/subagents/subagentsService.ts b/packages/services/src/subagents/subagentsService.ts
+index 7868416..419ce43 100644
+--- a/packages/services/src/subagents/subagentsService.ts
++++ b/packages/services/src/subagents/subagentsService.ts
+@@ -1,4 +1,5 @@
+ /* eslint-disable max-lines */
++import { zcodeCliConfigPath, zcodeCliDir } from "../zcodeCliPaths.js";
+ import { access, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+ import {
+@@ -396,7 +397,7 @@ async function discoverPluginAgents(params: {
+ 
+ async function readPluginConfig(options?: SubagentStorageOptions): Promise<PluginConfigSummary> {
+   try {
+-    const configPath = join(resolveUserHomeDir(options), ".zcode", "cli", "config.json");
++    const configPath = zcodeCliConfigPath(options?.homeDir);
+     const raw = await readFile(configPath, "utf-8");
+     const parsed = JSON.parse(raw) as unknown;
+     if (!isRecord(parsed)) return { enabledPlugins: {}, suppressedBuiltins: [] };
+diff --git a/packages/services/src/zcodeCliPaths.ts b/packages/services/src/zcodeCliPaths.ts
+new file mode 100644
+index 0000000..26b74cf
+--- /dev/null
++++ b/packages/services/src/zcodeCliPaths.ts
+@@ -0,0 +1,21 @@
++import { homedir } from "node:os";
++import { join } from "node:path";
++
++/**
++ * The CLI's user directory (`~/.zcode/cli`), shared by the desktop readers and the CLI process.
++ * `ZCODE_HOME` names the `~/.zcode` root exactly as the CLI reads it, so an isolated profile's
++ * desktop and agent see the same plugin, skill, hook and MCP configuration and never the
++ * person's real files. An explicit home (tests) still wins.
++ */
++export function zcodeCliDir(homeDir?: string, env: NodeJS.ProcessEnv = process.env): string {
++  if (homeDir?.trim()) return join(homeDir, ".zcode", "cli");
++  const zcodeHome = env.ZCODE_HOME?.trim();
++  if (zcodeHome) return join(zcodeHome, "cli");
++  const home =
++    env.ZCODE_DESKTOP_HOME_DIR?.trim() || env.HOME?.trim() || env.USERPROFILE?.trim() || homedir();
++  return join(home, ".zcode", "cli");
++}
++
++export function zcodeCliConfigPath(homeDir?: string, env: NodeJS.ProcessEnv = process.env): string {
++  return join(zcodeCliDir(homeDir, env), "config.json");
++}
+diff --git a/packages/services/test/zcode-cli-paths.test.ts b/packages/services/test/zcode-cli-paths.test.ts
+new file mode 100644
+index 0000000..1652930
+--- /dev/null
++++ b/packages/services/test/zcode-cli-paths.test.ts
+@@ -0,0 +1,13 @@
++import assert from "node:assert/strict";
++import { join } from "node:path";
++import test from "node:test";
++import { zcodeCliConfigPath } from "../src/zcodeCliPaths.js";
++
++// The desktop readers and the CLI must name the same config file: ZCODE_HOME first (isolated
++// profiles), then the desktop home, then HOME — never diverging in a review profile again.
++test("desktop readers locate the CLI config exactly as the CLI does", () => {
++  assert.equal(zcodeCliConfigPath(undefined, { ZCODE_HOME: "/p/cli-home", HOME: "/real" }), "/p/cli-home/cli/config.json");
++  assert.equal(zcodeCliConfigPath(undefined, { ZCODE_DESKTOP_HOME_DIR: "/p/desk", HOME: "/real" }), "/p/desk/.zcode/cli/config.json");
++  assert.equal(zcodeCliConfigPath(undefined, { HOME: "/real" }), join("/real", ".zcode", "cli", "config.json"));
++  assert.equal(zcodeCliConfigPath("/test-home", { ZCODE_HOME: "/p" }), "/test-home/.zcode/cli/config.json", "an explicit home wins");
++});
+-- 
+2.54.0 (Apple Git-157)
+

@@ -37,7 +37,7 @@ manifest schema or workflow executor.
 | ID | Capability | Status | Release / acceptance | Surfaces |
 |---|---|---|---|---|
 | ORCH-04 | Agent tool registry and MCP | not implemented | R4,R6 / ORCH-04-A | P-48,P-56 |
-| ORCH-10 | Skill marketplace and loadout distribution | Skill repositories (folders or git repos of SKILL.md) install as one-skill plugins wired but not visually checked; compatibility, provenance and Project composition not implemented | R15 / ORCH-10-A | P-56,P-57 |
+| ORCH-10 | Skill marketplace and loadout distribution | Skill market (Skill sources from folders or git repositories; every SKILL.md installs as one Skill) wired but not visually checked; compatibility, provenance and Project composition not implemented | R15 / ORCH-10-A | P-56,P-57 |
 | ORCH-11 | Component marketplace and lifecycle | per-plugin approval of third-party MCP servers and hooks (re-asked on surface change), Agent Plugins 1.0.0 import/export and plugin views wired but not visually checked; signed provenance, rollback and isolation beyond subprocesses not implemented | R15 / ORCH-11-A | P-56,P-58 |
 | ORCH-12 | MCP server marketplace and connector registry | official MCP Registry as a catalog source (one-server plugins, secrets as sensitive user config) wired but not visually checked; health/revocation detail and keychain credentials not implemented | R15 / ORCH-12-A | P-56,P-59 |
 <!-- /module-card -->
@@ -48,22 +48,23 @@ Discover → inspect contents/dependencies/risk → verify source, license, inte
 → approve scoped grants → stage/install → health check → activate → observe → update/rollback/
 uninstall.
 
-## Organisation of plugins, Skills and MCP (OV-100)
+## Organisation of plugins, Skills and MCP (OV-100, OV-103)
 
 Chosen after the [source comparison](../references.md#plugin-skill-mcp-and-marketplace-organisation-comparison-2026-10-07):
 one installable unit, typed views, two trust tiers, standards-compatible content.
 
-1. **One thing to install: the plugin.** The workspace Plugin Market is the only place to discover
-   and install. Listings carry categories derived from their contents — Skills, Tools (MCP), Apps
-   (pages and panels), Executors (CLI agents), Connections — and the market filters by them
-   (lobehub Discover, dify categories, Codex/OpenClaw single plugin store). A listing may have
-   several categories. Catalog entries rarely declare contents (none of the official or sampled
-   Claude-format marketplace entries do), so the backend inspects packages already on disk
-   (bundled, a folder inside the cloned marketplace, a local directory) and caches the result by
-   package root and manifest time; a remote package is *unknown* until described or installed and
-   appears only under All. Filters exist today for Skills, MCP, Commands, Subagents and Hooks; Apps,
-   Executors and Connections arrive with the app-plugin contribution API (phase 4). A single Skill from a Skills index or a server from the MCP Registry is
-   installed as a one-primitive plugin, so lifecycle, provenance and removal stay one path.
+1. **Two markets, one package model (OV-103).** The *Plugin market* lists plugins, MCP servers
+   (the opt-in MCP Registry source) and plugins that bundle Skills — an MCP server often ships
+   with its matching Skills, so they travel together. The *Skill market* lists standalone Skills:
+   a source added there is read as a Skill collection, every `SKILL.md` folder installs as one
+   Skill even beside the repository's own plugin catalog, and a plain Skill repository added in
+   the Plugin market is classified there too (`catalog: "skills"` on the source; ids prefixed
+   `skills.`). Both are one store view with a market kind in history; each has its own sidebar
+   entry, add-source dialog (MCP Registry / Anthropic skills presets) and source list. Underneath,
+   a Skill is still a one-skill plugin, so install, update, removal and provenance stay one path.
+   Plugin-market filters (Skills, MCP, Commands, Subagents, Hooks) come from package contents; as
+   catalog entries rarely declare them, packages already on disk are inspected (cached by root and
+   manifest time) and a remote package is *unknown* until described, shown only under All.
 2. **Two trust tiers** (OpenClaw native vs bundles). *Content plugins* — Agent Plugins, Claude,
    Codex, Cursor and ZCode packages — map Skills, MCP declarations, commands, prompts and subagent
    definitions into Fleet; they run no host code in-process, and their MCP servers and hooks need
@@ -121,9 +122,9 @@ one installable unit, typed views, two trust tiers, standards-compatible content
    naming the MCP servers and hook commands, and a revoke action. Network-domain and model-use
    permissions for app plugins remain open.
 
-Rejected: separate Skill, MCP and plugin stores (cherry-studio, Cindy SkillHub) — three places to
-look and three lifecycles for one package; hiding MCP entirely (Cindy) — Fleet keeps power-user
-control. Core keeps accounts, connections, credentials, Sessions, permissions, the usage ledger and
+Rejected: a separate MCP store (cherry-studio) — MCP servers and their Skills belong together;
+a single market with Skills as a filter (OV-100, superseded by OV-103) — standalone Skills are
+found and judged differently; hiding MCP entirely (Cindy) — Fleet keeps power-user control. Core keeps accounts, connections, credentials, Sessions, permissions, the usage ledger and
 the plugin host; a plugin reaches them only through host operations.
 
 ## Frontend and backend contract
@@ -578,7 +579,7 @@ The implementation must still pass the source/license/same-task/deletion tests i
 
 #### Fleet decisions
 
-1. **One market, typed views, one package model** (superseded by [OV-100](#organisation-of-plugins-skills-and-mcp-ov-100)):
+1. **One market, typed views, one package model** (superseded by [OV-100](#organisation-of-plugins-skills-and-mcp-ov-100-ov-103)):
    Skills, Tools (MCP) and Apps are category views over one `MarketplacePackage`, `Manifest`,
    `CapabilityGrant`, `InstallReceipt`, `UpdatePlan` and `UninstallReceipt` model.
 2. **Bundle is a projection.** A plugin may contain skills, subagents, MCP servers, hooks and rules,

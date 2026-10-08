@@ -22,6 +22,25 @@ their data kept; see the evidence table in [OV-096](../decisions.md). Multi-acco
 Codex only. Signed-out ACP CLIs offer the sign-in methods they advertise (ACP `authenticate`); the
 vendor runs its own page and Fleet waits, never seeing a token (candidate 0167).
 
+## Terminal access (candidate 0183, OV-103)
+
+Add provider has three tabs: *Subscriptions* (plans), *Usage-based* (API keys) and *Terminal
+access* — every native-cli template, and nothing else. A terminal CLI owns its login, endpoint and
+model list, so its setup asks for no URL, protocol or key: choose it, press Connect, and Fleet
+inspects the CLI's own sign-in (or, signed out, offers the methods the CLI advertises).
+
+| Concern | Contract |
+|---|---|
+| What the list shows | One card per CLI, named by the CLI (Codex CLI, Claude Code, Cursor CLI…), with its state on this computer: *Built in* (Fleet ships the Claude Code SDK binary and a scoped Codex), *Installed <version>*, or *Not installed*. |
+| Detection | Read once each time the tab opens: resolve the CLI's executable the way its executor does, run `--version` (6 s timeout). Nothing signs in, installs or reads credentials (`adapters/src/native-agent/native-detect.ts`). |
+| Not installed | The card still opens; Connect reports the missing CLI and the connection card links the vendor's install guide. Fleet does not download or install vendor CLIs. |
+| Unchanged | The connection record, sign-in, multi-account and allowance paths below; saved connection names. Retired routes (OV-096) stay hidden. |
+
+Reference: CLI managers detect what is installed before offering it (AionUi auto-detection,
+Orca agent list). Rejected: an ACP Registry catalog of every registered agent (OV-102).
+Open: show a saved connection's signed-in state on its card, and a refresh control instead of
+reopening the tab.
+
 ## Native CLI accounts (candidate 0163)
 
 | Concern | Contract |

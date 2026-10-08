@@ -5,6 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Add provider has a third tab, Terminal access, listing the terminal CLIs with whether each is
+  built in, installed (with version) or missing; they connect with their own sign-in, with no URL
+  or key. Standalone Skills have their own Skill market beside the Plugin market, which keeps
+  plugins and MCP servers (including plugins that bundle Skills). Review runs no longer touch your
+  real `~/.zcode` configuration.
+
 - The Plugin Market can add the official MCP Registry or any folder/repository of Skills as a
   source, and their items install as ordinary plugins. Plugins from third-party marketplaces now
   ask before their MCP servers or hooks first run (skills and commands work right away; plugins you

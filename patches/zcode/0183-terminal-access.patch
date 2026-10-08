@@ -1,0 +1,389 @@
+From e60a52e2e6954d18964dceeb86bc20b794a9bebb Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 23:20:00 -0700
+Subject: [PATCH] Add provider gains a Terminal access tab listing the CLIs
+ with their installed state (OV-103)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Native CLI connections leave Subscriptions for their own tab. Each card
+shows whether this computer can run it (built in, installed with version,
+or not installed), read once per open by running the CLI's --version; it
+still connects with the CLI's own sign-in and asks for no URL or key.
+Catalog labels name the CLI (Codex CLI, Claude Code…), and the Alibaba
+Coding Plan card keeps its brand now that Qwen Code moved out.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../adapters/src/native-agent/index.ts        |  1 +
+ .../src/native-agent/native-detect.ts         | 49 ++++++++++++++++++
+ config/provider/zcode-builtin.json            | 32 ++++++------
+ .../src/model-provider/nativeCliConnection.ts |  7 +++
+ .../nativeCliConnectionAdapter.ts             |  2 +
+ packages/ui/src/i18n/locales/en-US.ts         |  6 +++
+ packages/ui/src/i18n/locales/zh-CN.ts         |  6 +++
+ .../ProviderTemplatePicker.tsx                | 50 ++++++++++++++++++-
+ .../providerTemplateCatalog.ts                |  4 +-
+ 9 files changed, 138 insertions(+), 19 deletions(-)
+ create mode 100644 apps/zcode-cli/packages/adapters/src/native-agent/native-detect.ts
+
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+index a5be681..7adc231 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/index.ts
+@@ -14,3 +14,4 @@ export { foldVendorModels, defaultVariantEffort, type FoldedModel } from "./nati
+ export { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
+ export { listAcpAuthMethods, startAcpLogin, parseAcpAuthMethods, type AcpAuthMethod } from "./acp-auth.js";
+ export { withNativeExecutorNetwork } from "./native-network.js";
++export { detectNativeClis, type NativeCliDetection } from "./native-detect.js";
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-detect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-detect.ts
+new file mode 100644
+index 0000000..6e3672f
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-detect.ts
+@@ -0,0 +1,49 @@
++import { execFile } from "node:child_process";
++import { NATIVE_EXECUTOR_KINDS, type NativeExecutorKind } from "@zcode/shared";
++import { isAcpExecutorKind, resolveAcpExecutable } from "./acp-profiles.js";
++import { resolveAntigravityExecutable } from "./antigravity-inspect.js";
++import { resolveClaudeNativeExecutable } from "./claude-executable.js";
++import { resolveCodexNativeExecutable } from "./codex-executable.js";
++
++export interface NativeCliDetection {
++  /** Fleet ships this executor itself (Claude Code SDK binary, scoped Codex build). */
++  bundled: boolean;
++  installed: boolean;
++  version?: string;
++}
++
++const VERSION_TIMEOUT_MS = 6_000;
++
++function version(executable: string): Promise<string | undefined> {
++  return new Promise((resolve) => {
++    execFile(executable, ["--version"], { timeout: VERSION_TIMEOUT_MS, maxBuffer: 16_384, windowsHide: true }, (error, stdout) => {
++      if (error) return resolve(undefined);
++      const line = String(stdout).trim().split("\n")[0]?.trim();
++      resolve(line ? (line.match(/\d+\.\d+[\w.+-]*/)?.[0] ?? line.slice(0, 40)) : "");
++    });
++  });
++}
++
++/**
++ * Which terminal CLIs this computer can run, for the Terminal access list (OV-103). Runs each
++ * CLI's `--version` once; nothing signs in and nothing is installed.
++ */
++export async function detectNativeClis(): Promise<Record<NativeExecutorKind, NativeCliDetection>> {
++  const entries = await Promise.all(
++    NATIVE_EXECUTOR_KINDS.map(async (kind): Promise<[NativeExecutorKind, NativeCliDetection]> => {
++      if (kind === "claude" || kind === "codex") {
++        try {
++          const executable = kind === "claude" ? resolveClaudeNativeExecutable() : resolveCodexNativeExecutable();
++          const found = await version(executable);
++          return [kind, { bundled: true, installed: true, ...(found ? { version: found } : {}) }];
++        } catch {
++          return [kind, { bundled: true, installed: false }];
++        }
++      }
++      const executable = kind === "antigravity" ? resolveAntigravityExecutable() : isAcpExecutorKind(kind) ? resolveAcpExecutable(kind) : undefined;
++      const found = executable ? await version(executable) : undefined;
++      return [kind, { bundled: false, installed: found !== undefined, ...(found ? { version: found } : {}) }];
++    }),
++  );
++  return Object.fromEntries(entries) as Record<NativeExecutorKind, NativeCliDetection>;
++}
+diff --git a/config/provider/zcode-builtin.json b/config/provider/zcode-builtin.json
+index 4ada95c..443ec6d 100644
+--- a/config/provider/zcode-builtin.json
++++ b/config/provider/zcode-builtin.json
+@@ -1341,8 +1341,8 @@
+             },
+             "serviceId": "chatgpt",
+             "serviceNameMap": {
+-              "zh-CN": "ChatGPT",
+-              "en-US": "ChatGPT"
++              "zh-CN": "Codex CLI",
++              "en-US": "Codex CLI"
+             }
+           }
+         },
+@@ -1969,8 +1969,8 @@
+             },
+             "serviceId": "coding",
+             "serviceNameMap": {
+-              "zh-CN": "Coding Plan",
+-              "en-US": "Coding Plan"
++              "zh-CN": "阿里云百炼 Coding Plan",
++              "en-US": "Alibaba Cloud Coding Plan"
+             },
+             "region": "cn"
+           }
+@@ -2005,8 +2005,8 @@
+             },
+             "serviceId": "coding",
+             "serviceNameMap": {
+-              "zh-CN": "Coding Plan",
+-              "en-US": "Coding Plan"
++              "zh-CN": "阿里云百炼 Coding Plan",
++              "en-US": "Alibaba Cloud Coding Plan"
+             },
+             "region": "global"
+           }
+@@ -2073,8 +2073,8 @@
+             },
+             "serviceId": "claude-cli",
+             "serviceNameMap": {
+-              "zh-CN": "Claude",
+-              "en-US": "Claude"
++              "zh-CN": "Claude Code",
++              "en-US": "Claude Code"
+             }
+           }
+         },
+@@ -2105,8 +2105,8 @@
+             },
+             "serviceId": "antigravity-cli",
+             "serviceNameMap": {
+-              "zh-CN": "Antigravity",
+-              "en-US": "Antigravity"
++              "zh-CN": "Antigravity CLI",
++              "en-US": "Antigravity CLI"
+             }
+           }
+         },
+@@ -2137,8 +2137,8 @@
+             },
+             "serviceId": "cursor-cli",
+             "serviceNameMap": {
+-              "zh-CN": "Cursor",
+-              "en-US": "Cursor"
++              "zh-CN": "Cursor CLI",
++              "en-US": "Cursor CLI"
+             }
+           }
+         },
+@@ -2201,8 +2201,8 @@
+             },
+             "serviceId": "codebuddy-cli",
+             "serviceNameMap": {
+-              "zh-CN": "CodeBuddy",
+-              "en-US": "CodeBuddy"
++              "zh-CN": "CodeBuddy Code",
++              "en-US": "CodeBuddy Code"
+             }
+           }
+         },
+@@ -2297,8 +2297,8 @@
+             },
+             "serviceId": "hermes-cli",
+             "serviceNameMap": {
+-              "zh-CN": "Hermes",
+-              "en-US": "Hermes"
++              "zh-CN": "Hermes Agent",
++              "en-US": "Hermes Agent"
+             }
+           }
+         },
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index fdeec21..48b2f04 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -21,6 +21,8 @@ export interface NativeCliConnectionAdapter {
+   /** Fleet-owned per-account CLI homes (CODEX_HOME / CLAUDE_CONFIG_DIR); absent = single account. */
+   accountHomes?: { create(provider: string): string; remove(dir: string): void };
+   usage?(access: NativeCliAccessConfigObject): Promise<SubscriptionUsageResult>;
++  /** Which terminal CLIs this computer can run (version probe only; OV-103 Terminal access list). */
++  detect?(): Promise<Record<string, { bundled: boolean; installed: boolean; version?: string }>>;
+   /** Sign-in methods the CLI advertises over ACP (empty for CLIs without them). */
+   authMethods?(
+     access: NativeCliAccessConfigObject,
+@@ -359,6 +361,11 @@ export function createNativeCliConnectionOperations(
+       adoptions.set(id, run);
+       return run;
+     },
++    /** Installed/bundled state of every terminal CLI, for the Terminal access list. */
++    async detectNativeClis(): Promise<Record<string, { bundled: boolean; installed: boolean; version?: string }>> {
++      assertActive();
++      return native?.detect ? native.detect() : {};
++    },
+     /** Sign-in methods the connection's CLI advertises (ACP `authMethods`). */
+     async nativeCliSignInMethods(id: string) {
+       assertActive();
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 03095ce..c96f40c 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -18,6 +18,7 @@ import {
+   startAcpLogin,
+   resolveAcpExecutable,
+   withNativeExecutorNetwork,
++  detectNativeClis,
+ } from "@zcode/adapters/native-agent";
+ import { randomUUID } from "node:crypto";
+ import { mkdirSync, rmSync } from "node:fs";
+@@ -303,6 +304,7 @@ export function createNativeCliConnectionAdapter(
+           },
+         }
+       : {}),
++    detect: () => detectNativeClis(),
+     authMethods: async (access) => {
+       if (!isAcpExecutorKind(access.provider)) return [];
+       return listAcpAuthMethods({
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 02712de..ff88b25 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3194,6 +3194,12 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.connectionMode.switchToStartPlanPrefix": "Switch to",
+   "settings.modelProvider.connectionMode.teamPlan": "Team Plan",
+   "settings.modelProvider.connectionMode.apiKeyBadge": "API",
++  "settings.modelProvider.catalog.terminal": "Terminal access",
++  "settings.modelProvider.terminal.checking": "Checking…",
++  "settings.modelProvider.terminal.bundled": "Built in",
++  "settings.modelProvider.terminal.missing": "Not installed",
++  "settings.modelProvider.terminal.installed": "Installed",
++  "settings.modelProvider.terminal.installedVersion": "Installed {version}",
+   "settings.modelProvider.catalog.usageBased": "Usage-based",
+   "settings.modelProvider.connectionMode.usageBasedApi": "Usage-based API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "Individual",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 0149cdf..c9fc607 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2961,6 +2961,12 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.connectionMode.switchToStartPlanPrefix": "切换至",
+   "settings.modelProvider.connectionMode.teamPlan": "团队套餐",
+   "settings.modelProvider.connectionMode.apiKeyBadge": "API",
++  "settings.modelProvider.catalog.terminal": "终端接入",
++  "settings.modelProvider.terminal.checking": "检查中…",
++  "settings.modelProvider.terminal.bundled": "内置",
++  "settings.modelProvider.terminal.missing": "未安装",
++  "settings.modelProvider.terminal.installed": "已安装",
++  "settings.modelProvider.terminal.installedVersion": "已安装 {version}",
+   "settings.modelProvider.catalog.usageBased": "用量计费",
+   "settings.modelProvider.connectionMode.usageBasedApi": "按量 API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "个人",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+index d1d6196..125619a 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+@@ -2,7 +2,8 @@ import { connectionRouteRestriction } from "@zcode/provider";
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import type { ProviderSettingsView } from "@zcode/services";
+ import { ArrowLeftIcon, ChevronRightIcon, PlusIcon, Download } from "lucide-react";
+-import { useRef, useState, type ReactNode } from "react";
++import { useEffect, useRef, useState, type ReactNode } from "react";
++import { useServices } from "@/hooks/useServices.js";
+ import {
+   TID_MODEL_PROVIDER_TEMPLATE_BACK_BUTTON,
+   TID_MODEL_PROVIDER_TEMPLATE_ITEM,
+@@ -50,6 +51,40 @@ export function ProviderTemplatePicker({
+   const { dismissFeedback } = useProviderDetailFeedback();
+   const customLabel = intl.formatMessage({ id: "settings.modelProvider.newProviderName" });
+   const [category, setCategory] = useState<ProviderConnectionCategory>("subscription");
++  const { providerSettingsService } = useServices();
++  // Terminal access lists which CLIs this computer can run, the way CLI managers do; it only runs
++  // each CLI's `--version`, and is read once when the tab opens.
++  const [cliStates, setCliStates] = useState<
++    Record<string, { bundled: boolean; installed: boolean; version?: string }>
++  >();
++  useEffect(() => {
++    if (category !== "terminal" || cliStates) return;
++    let cancelled = false;
++    providerSettingsService
++      .detectNativeClis()
++      .then((states) => {
++        if (!cancelled) setCliStates(states);
++      })
++      .catch(() => {
++        if (!cancelled) setCliStates({});
++      });
++    return () => {
++      cancelled = true;
++    };
++  }, [category, cliStates, providerSettingsService]);
++  const cliMeta = (templates: readonly { config: { access?: unknown } }[]): string | undefined => {
++    if (category !== "terminal") return undefined;
++    const access = templates[0]?.config.access as { type?: string; provider?: string } | undefined;
++    if (access?.type !== "native-cli" || !access.provider) return undefined;
++    if (!cliStates) return intl.formatMessage({ id: "settings.modelProvider.terminal.checking" });
++    const state = cliStates[access.provider];
++    if (!state) return undefined;
++    if (state.bundled) return intl.formatMessage({ id: "settings.modelProvider.terminal.bundled" });
++    if (!state.installed) return intl.formatMessage({ id: "settings.modelProvider.terminal.missing" });
++    return state.version
++      ? intl.formatMessage({ id: "settings.modelProvider.terminal.installedVersion" }, { version: state.version })
++      : intl.formatMessage({ id: "settings.modelProvider.terminal.installed" });
++  };
+   const [selectedId, setSelectedId] = useState<string>();
+   const [busy, setBusy] = useState(false);
+   const [routeError, setRouteError] = useState(false);
+@@ -167,6 +202,10 @@ export function ProviderTemplatePicker({
+             value: "api",
+             label: intl.formatMessage({ id: "settings.modelProvider.catalog.usageBased" }),
+           },
++          {
++            value: "terminal",
++            label: intl.formatMessage({ id: "settings.modelProvider.catalog.terminal" }),
++          },
+         ]}
+         onValueChange={setCategory}
+       />
+@@ -204,6 +243,7 @@ export function ProviderTemplatePicker({
+           <ProviderTemplateCard
+             key={vendor.id}
+             label={vendor.label}
++            meta={cliMeta(vendor.templates)}
+             disabled={disabled}
+             testId={testId(TID_MODEL_PROVIDER_TEMPLATE_ITEM, vendor.id)}
+             icon={
+@@ -232,12 +272,15 @@ export function ProviderTemplatePicker({
+ 
+ function ProviderTemplateCard({
+   label,
++  meta,
+   disabled,
+   testId: cardTestId,
+   icon,
+   onClick,
+ }: {
+   label: string;
++  /** Secondary line, e.g. a terminal CLI's installed version. */
++  meta?: string;
+   disabled: boolean;
+   testId: string;
+   icon: ReactNode;
+@@ -253,7 +296,10 @@ function ProviderTemplateCard({
+         className="flex min-h-12 min-w-0 items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors outline-none hover:border-border-hover hover:bg-hover focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:opacity-60"
+       >
+         {icon}
+-        <span className="min-w-0 flex-1 break-words text-ui-base font-medium">{label}</span>
++        <span className="min-w-0 flex-1">
++          <span className="block break-words text-ui-base font-medium">{label}</span>
++          {meta ? <span className="block text-ui-sm text-foreground-subtle">{meta}</span> : null}
++        </span>
+         <ChevronRightIcon className="size-4 shrink-0 text-foreground-subtlest" aria-hidden="true" />
+       </button>
+     </ControlHintTooltip>
+diff --git a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+index e9e6f7e..1990203 100644
+--- a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
++++ b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+@@ -10,11 +10,13 @@ export interface ProviderVendor {
+   templates: ProviderSettingsTemplateView[];
+ }
+ 
+-export type ProviderConnectionCategory = "subscription" | "api";
++/** Subscriptions, usage-based APIs, and terminal CLIs that sign in themselves (OV-103). */
++export type ProviderConnectionCategory = "subscription" | "api" | "terminal";
+ 
+ export function providerConnectionCategory(
+   template: ProviderSettingsTemplateView,
+ ): ProviderConnectionCategory {
++  if (template.config.access?.type === "native-cli") return "terminal";
+   return template.category === "subscription-plan" ||
+     template.config.access?.type === "subscription" ||
+     template.config.access?.type === "zhipu-account" ||
+-- 
+2.54.0 (Apple Git-157)
+

@@ -296,3 +296,9 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0181 | [0181-native-executor-list.patch](0181-native-executor-list.patch) | `62a4c8ccfd734d5d39138592c0a1285b1e515c15` |
 
 | 0182 | [0182-zcode-home-config.patch](0182-zcode-home-config.patch) | `5bb5504ac6fdb966fdc06cc38af730b0086fd27d` |
+
+| 0183 | [0183-terminal-access.patch](0183-terminal-access.patch) | `1c49d12bc6dea57d361f379c9f06225017b99455` |
+
+| 0184 | [0184-cli-config-path.patch](0184-cli-config-path.patch) | `6a4294322c4223cc2b716123e59f51bc98d898b2` |
+
+| 0185 | [0185-skill-market.patch](0185-skill-market.patch) | `cc65abe7370858133bee618ff8bda9417be5a165` |

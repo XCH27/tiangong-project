@@ -2934,7 +2934,7 @@ an installed plugin will use, so later extraction moves code without changing be
 
 The owner asks for the best organisation of plugins, Skills, MCP and their markets after studying
 how open-source projects do it, then to rectify code and documents; the plugin foundation itself
-needs rework. Decision ([Marketplace](modules/marketplace.md#organisation-of-plugins-skills-and-mcp-ov-100),
+needs rework. Decision ([Marketplace](modules/marketplace.md#organisation-of-plugins-skills-and-mcp-ov-100-ov-103),
 evidence in [References](references.md#plugin-skill-mcp-and-marketplace-organisation-comparison-2026-10-07)):
 the plugin is the only installable unit; one Plugin Market filters by derived categories (Skills,
 Tools/MCP, Apps, Executors, Connections); content plugins (Agent Plugins, Claude, Codex, Cursor,
@@ -2960,4 +2960,17 @@ or offer its agents as connection templates; CLI executors stay the curated, pro
 (candidate 0182 reverted). Test fixtures (sample plugins, fake catalogs) are removed from the
 review profile and any configuration after verification; work that extrapolates beyond the
 owner's request is proposed first instead of built.
+
+### OV-103 — Terminal access tab; a Skill market beside the Plugin market (2026-10-08)
+
+The owner asks for a third tab, *Terminal access*, beside Subscriptions and Usage-based in Add
+provider, holding the CLIs, which should connect directly without upstream URLs; and for two
+markets: Skills in their own market, MCP connections and plugins together in the Plugin market,
+because MCP servers often come with matching Skills. Decision: native CLIs leave Subscriptions for
+that tab, which shows each CLI's installed state and connects through the CLI's own sign-in
+([Accounts](modules/model-accounts.md#terminal-access-candidate-0183-ov-103)); the store becomes two
+markets over one package model ([Marketplace](modules/marketplace.md#organisation-of-plugins-skills-and-mcp-ov-100-ov-103)).
+This supersedes OV-100's single market with Skills as a filter. The owner also notes that his
+first impression is not always right, so each piece is judged on its merits (the opt-in MCP
+Registry source stays). Candidates 0183–0185.
 

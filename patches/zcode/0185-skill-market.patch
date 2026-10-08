@@ -1,0 +1,989 @@
+From b4caadb286018a9daa2108c653d097b6a1f19533 Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 03:20:54 -0700
+Subject: [PATCH] A Skill market beside the Plugin market (OV-103)
+
+Standalone Skills get their own market: sources added there are read as
+Skill collections (every SKILL.md folder installs as one Skill, even next
+to a repository's own plugin catalog), and a plain Skill repository added
+in the Plugin market lands there too. The Plugin market keeps plugins, MCP
+servers and plugins that bundle Skills. Both share the store view with a
+market kind carried through back/forward history; the Skill market has its
+own sidebar entry, title, add-source dialog (Anthropic skills preset),
+empty state and source names, without public/personal segments.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../adapters/src/plugins/marketplace.ts       | 73 ++++++++++-----
+ .../adapters/src/plugins/skills-repository.ts |  3 +-
+ .../packages/bootstrap/src/plugins.ts         | 17 +++-
+ .../bootstrap/src/zcode-protocol/plugins.ts   |  1 +
+ .../test/plugin-catalog-adapters.test.ts      | 22 ++++-
+ .../src/zcode-agent/zcodeAgentPluginParams.ts |  2 +
+ .../src/zcode-agent/zcodeAgentService.ts      |  1 +
+ packages/shared/src/zcode-protocol/index.ts   |  2 +
+ packages/ui/src/App.tsx                       | 11 ++-
+ packages/ui/src/WorkspaceSidebar.tsx          | 24 +++++
+ .../ui/src/app-shell/WorkspaceShellLayout.tsx | 11 ++-
+ packages/ui/src/app-shell/types.ts            |  3 +
+ .../app-shell/useWorkspaceTaskNavigation.ts   | 20 +++--
+ packages/ui/src/i18n/locales/en-US.ts         |  6 ++
+ packages/ui/src/i18n/locales/zh-CN.ts         |  6 ++
+ packages/ui/src/lib/taskNavigationHistory.ts  |  5 ++
+ .../settings/AddMarketplaceSourceDialog.tsx   | 18 ++--
+ .../ui/src/settings/PluginStoreListView.tsx   | 10 ++-
+ packages/ui/src/settings/PluginStorePage.tsx  | 89 +++++++++++++++----
+ packages/ui/src/settings/pluginSourceLabel.ts | 11 +++
+ .../ui/src/store/pluginManagementStore.ts     |  9 +-
+ .../src/store/zcodeSessionStoreNavigation.ts  |  3 +-
+ .../ui/src/store/zcodeSessionStoreTypes.ts    |  2 +-
+ 23 files changed, 284 insertions(+), 65 deletions(-)
+
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts b/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
+index 4f4e696..12385a0 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/marketplace.ts
+@@ -72,11 +72,11 @@ const UNSUPPORTED_MANIFEST_FIELDS = ["channels", "lspServers", "outputStyles", "
+ 
+ export type MarketplaceSource =
+   | { source: "url"; headers?: Record<string, string>; url: string }
+-  | { path?: string; ref?: string; repo: string; source: "github"; sparsePaths?: string[] }
+-  | { path?: string; ref?: string; source: "git"; sparsePaths?: string[]; url: string }
++  | { catalog?: "skills"; path?: string; ref?: string; repo: string; source: "github"; sparsePaths?: string[] }
++  | { catalog?: "skills"; path?: string; ref?: string; source: "git"; sparsePaths?: string[]; url: string }
+   | { package: string; source: "npm" }
+   | { source: "file"; path: string }
+-  | { source: "directory"; path: string }
++  | { catalog?: "skills"; source: "directory"; path: string }
+   | { hostPattern: string; source: "hostPattern" }
+   | { pathPattern: string; source: "pathPattern" }
+   | { source: "settings"; marketplace: PluginMarketplaceManifest }
+@@ -214,6 +214,8 @@ interface LoadMarketplaceResult {
+   cleanup?: () => Promise<void>;
+   manifest: PluginMarketplaceManifest;
+   sourceRoot?: string;
++  /** The source was read as a Skill collection: it belongs in the Skill market (OV-103). */
++  skillsCatalog?: boolean;
+ }
+ 
+ interface ResolvedPluginSourceRoot {
+@@ -413,7 +415,10 @@ export async function addMarketplace(input: {
+     const now = new Date().toISOString();
+     const record: KnownMarketplaceRecord = {
+       id: loaded.manifest.name,
+-      source: input.source,
++      // A repository read as Skills keeps that classification on refresh.
++      source: loaded.skillsCatalog
++        ? ({ ...input.source, catalog: "skills" } as MarketplaceSource)
++        : input.source,
+       name: loaded.manifest.name,
+       ...(loaded.manifest.description ? { description: loaded.manifest.description } : {}),
+       addedAt: now,
+@@ -1610,12 +1615,22 @@ async function loadMarketplaceFromSource(
+       };
+     }
+     case "directory": {
+-      const file = findMarketplaceManifestPath(source.path);
++      // A Skill source always lists its SKILL.md folders; a plugin source falls back to them only
++      // when it has no marketplace manifest (OV-103: Skill and Plugin markets are separate).
++      const skillsOnly = source.catalog === "skills";
++      const file = skillsOnly ? null : findMarketplaceManifestPath(source.path);
++      const label = skillsMarketplaceName(basename(source.path));
+       const synthesized = file
+         ? null
+-        : synthesizeSkillsRepository(source.path, skillsMarketplaceName(basename(source.path)));
++        : skillsOnly
++          ? synthesizeSkillsMarketplace(source.path, label)
++          : synthesizeSkillsRepository(source.path, label);
+       if (!file && !synthesized) {
+-        throw new Error(`Marketplace manifest not found in directory: ${source.path}`);
++        throw new Error(
++          skillsOnly
++            ? `No skills (SKILL.md folders) found in: ${source.path}`
++            : `Marketplace manifest not found in directory: ${source.path}`,
++        );
+       }
+       const parsed = file ? (JSON.parse(await readFile(file, "utf8")) as unknown) : synthesized;
+       const manifest = parseRequiredMarketplaceManifest(parsed);
+@@ -1629,7 +1644,7 @@ async function loadMarketplaceFromSource(
+         );
+         await activation.finalize();
+       }
+-      return { manifest, sourceRoot: source.path };
++      return { manifest, sourceRoot: source.path, skillsCatalog: Boolean(synthesized) };
+     }
+     case "url": {
+       const parsed = await requestMarketplaceJson(source.url, source.headers, options.signal);
+@@ -1652,16 +1667,21 @@ async function loadMarketplaceFromSource(
+       );
+       const cleanup = resolved.cleanup;
+       try {
+-        const file = findMarketplaceManifestPath(resolved.path, source.path);
++        const skillsOnly = source.catalog === "skills";
++        const file = skillsOnly ? null : findMarketplaceManifestPath(resolved.path, source.path);
++        const label = skillsMarketplaceName(source.repo);
++        const scanRoot = source.path ? join(resolved.path, source.path) : resolved.path;
+         const synthesized = file
+           ? null
+-          : synthesizeSkillsRepository(
+-              resolved.path,
+-              skillsMarketplaceName(source.repo),
+-              source.path ? join(resolved.path, source.path) : resolved.path,
+-            );
++          : skillsOnly
++            ? synthesizeSkillsMarketplace(resolved.path, label, scanRoot)
++            : synthesizeSkillsRepository(resolved.path, label, scanRoot);
+         if (!file && !synthesized) {
+-          throw new Error(`Marketplace manifest not found in GitHub repo: ${source.repo}`);
++          throw new Error(
++            skillsOnly
++              ? `No skills (SKILL.md folders) found in GitHub repo: ${source.repo}`
++              : `Marketplace manifest not found in GitHub repo: ${source.repo}`,
++          );
+         }
+         const parsed = file ? (JSON.parse(await readFile(file, "utf8")) as unknown) : synthesized;
+         const manifest = parseRequiredMarketplaceManifest(parsed);
+@@ -1675,7 +1695,7 @@ async function loadMarketplaceFromSource(
+           );
+           await activation.finalize();
+         }
+-        return { cleanup, manifest, sourceRoot: resolved.path };
++        return { cleanup, manifest, sourceRoot: resolved.path, skillsCatalog: Boolean(synthesized) };
+       } catch (error) {
+         const cleanupError = await cleanupPluginSourceBestEffort(cleanup);
+         throw appendPluginSourceCleanupError(error, cleanupError);
+@@ -1690,16 +1710,21 @@ async function loadMarketplaceFromSource(
+       );
+       const cleanup = resolved.cleanup;
+       try {
+-        const file = findMarketplaceManifestPath(resolved.path, source.path);
++        const skillsOnly = source.catalog === "skills";
++        const file = skillsOnly ? null : findMarketplaceManifestPath(resolved.path, source.path);
++        const label = skillsMarketplaceName(source.url.replace(/^.*[/:]([^/:]+\/[^/:]+?)(?:\.git)?$/, "$1"));
++        const scanRoot = source.path ? join(resolved.path, source.path) : resolved.path;
+         const synthesized = file
+           ? null
+-          : synthesizeSkillsRepository(
+-              resolved.path,
+-              skillsMarketplaceName(source.url.replace(/^.*[/:]([^/:]+\/[^/:]+?)(?:\.git)?$/, "$1")),
+-              source.path ? join(resolved.path, source.path) : resolved.path,
+-            );
++          : skillsOnly
++            ? synthesizeSkillsMarketplace(resolved.path, label, scanRoot)
++            : synthesizeSkillsRepository(resolved.path, label, scanRoot);
+         if (!file && !synthesized) {
+-          throw new Error(`Marketplace manifest not found in git repo: ${source.url}`);
++          throw new Error(
++            skillsOnly
++              ? `No skills (SKILL.md folders) found in git repo: ${source.url}`
++              : `Marketplace manifest not found in git repo: ${source.url}`,
++          );
+         }
+         const parsed = file ? (JSON.parse(await readFile(file, "utf8")) as unknown) : synthesized;
+         const manifest = parseRequiredMarketplaceManifest(parsed);
+@@ -1713,7 +1738,7 @@ async function loadMarketplaceFromSource(
+           );
+           await activation.finalize();
+         }
+-        return { cleanup, manifest, sourceRoot: resolved.path };
++        return { cleanup, manifest, sourceRoot: resolved.path, skillsCatalog: Boolean(synthesized) };
+       } catch (error) {
+         const cleanupError = await cleanupPluginSourceBestEffort(cleanup);
+         throw appendPluginSourceCleanupError(error, cleanupError);
+diff --git a/apps/zcode-cli/packages/adapters/src/plugins/skills-repository.ts b/apps/zcode-cli/packages/adapters/src/plugins/skills-repository.ts
+index ab137b0..a2593da 100644
+--- a/apps/zcode-cli/packages/adapters/src/plugins/skills-repository.ts
++++ b/apps/zcode-cli/packages/adapters/src/plugins/skills-repository.ts
+@@ -68,7 +68,8 @@ function collectSkillFolders(directory: string, depth: number, found: string[]):
+ 
+ /** Marketplace id from a repository or folder name. */
+ export function skillsMarketplaceName(label: string): string {
+-  return slug(label.replace(/\.git$/, "").replace(/[/:]+/g, "-")) || "skills";
++  // Skill catalogs get their own namespace so a repository can also be added as a plugin source.
++  return `skills.${slug(label.replace(/\.git$/, "").replace(/[/:]+/g, "-")) || "repository"}`;
+ }
+ 
+ function slug(value: string): string {
+diff --git a/apps/zcode-cli/packages/bootstrap/src/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+index 2a3d851..2493c55 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/plugins.ts
+@@ -159,6 +159,8 @@ export interface AddZCodeMarketplaceOptions extends ResolveZCodePluginsOptions {
+   abortSignal?: AbortSignal;
+   dryRun?: boolean;
+   source: string;
++  /** Added from the Skill market (OV-103): read the repository or folder as Skills. */
++  catalog?: "skills";
+   /** `marketplace add --sparse`：仅 git/github 源支持 sparse checkout 子目录。 */
+   sparsePaths?: string[];
+ }
+@@ -523,10 +525,23 @@ export async function addZCodePluginMarketplace(
+   options: AddZCodeMarketplaceOptions,
+ ): Promise<ZCodeMarketplaceSummaryData> {
+   const { pluginStorageRoot } = resolvePluginContext(options);
+-  const source = applySparsePaths(
++  const parsedSource = applySparsePaths(
+     await parseMarketplaceSourceInput(options.source),
+     options.sparsePaths,
+   );
++  if (
++    options.catalog === "skills" &&
++    parsedSource.source !== "github" &&
++    parsedSource.source !== "git" &&
++    parsedSource.source !== "directory"
++  ) {
++    throw new Error("A skill source must be a GitHub repository, a git URL or a local folder.");
++  }
++  const source =
++    options.catalog === "skills" &&
++    (parsedSource.source === "github" || parsedSource.source === "git" || parsedSource.source === "directory")
++      ? { ...parsedSource, catalog: "skills" as const }
++      : parsedSource;
+   if (options.dryRun === true) {
+     return {
+       id: "dry-run",
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+index 532bb75..d49e411 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.ts
+@@ -297,6 +297,7 @@ export async function addPluginMarketplace(
+       dryRun: params.dryRun,
+       logger: context.logger,
+       source: params.source,
++      ...(params.catalog ? { catalog: params.catalog } : {}),
+       workingDirectory: params.workspace.workspacePath,
+     }),
+   );
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-catalog-adapters.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-catalog-adapters.test.ts
+index e0f18d6..7dd0359 100644
+--- a/apps/zcode-cli/packages/bootstrap/test/plugin-catalog-adapters.test.ts
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-catalog-adapters.test.ts
+@@ -31,7 +31,8 @@ test("a folder of Agent Skills becomes a marketplace of one-skill plugins", asyn
+     await writeFile(join(repo, ".git", "skills", "ignored", "SKILL.md"), "---\nname: ignored\n---\n");
+ 
+     const record = await addMarketplace({ source: { source: "directory", path: repo }, storageRoot });
+-    assert.equal(record.id, "team-skills");
++    assert.equal(record.id, "skills.team-skills");
++    assert.equal((record.source as { catalog?: string }).catalog, "skills", "a plain Skill repository belongs to the Skill market");
+     const manifest = loadMarketplaceManifestSync(storageRoot, record.id);
+     assert.deepEqual(manifest?.plugins.map((entry) => entry.name).sort(), ["release-notes", "triage-bugs"]);
+ 
+@@ -46,6 +47,25 @@ test("a folder of Agent Skills becomes a marketplace of one-skill plugins", asyn
+   }
+ });
+ 
++test("a source added from the Skill market lists its SKILL.md folders even beside a plugin manifest", async () => {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-skill-source-"));
++  try {
++    const repo = join(root, "mixed");
++    await mkdir(join(repo, ".claude-plugin"), { recursive: true });
++    await mkdir(join(repo, "skills", "pdf"), { recursive: true });
++    await writeFile(join(repo, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "mixed", plugins: [{ name: "bundle", source: "./" }] }));
++    await writeFile(join(repo, "skills", "pdf", "SKILL.md"), "---\nname: pdf\ndescription: PDFs\n---\n");
++    const storageRoot = join(root, "storage");
++    const asPlugins = await addMarketplace({ source: { source: "directory", path: repo }, storageRoot });
++    assert.equal(asPlugins.id, "mixed", "the Plugin market keeps the repository's own catalog");
++    const asSkills = await addMarketplace({ source: { source: "directory", path: repo, catalog: "skills" }, storageRoot });
++    assert.equal(asSkills.id, "skills.mixed");
++    assert.deepEqual(loadMarketplaceManifestSync(storageRoot, asSkills.id)?.plugins.map((entry) => entry.name), ["pdf"]);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
+ test("the MCP Registry becomes a marketplace of one-server plugins with secrets as user config", async () => {
+   const root = await mkdtemp(join(os.tmpdir(), "fleet-mcp-registry-"));
+   const pages: Record<string, unknown> = {
+diff --git a/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts b/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
+index d9682c8..551fa51 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentPluginParams.ts
+@@ -22,6 +22,8 @@ export interface ZCodeAgentListMcpServerStatusesParams extends ZCodeAgentWorkspa
+ }
+ 
+ export interface ZCodeAgentAddPluginMarketplaceParams extends ZCodeAgentWorkspaceTarget {
++  /** OV-103: a Skill source added from the Skill market. */
++  catalog?: "skills";
+   dryRun?: boolean;
+   operationId?: string;
+   source: string;
+diff --git a/packages/services/src/zcode-agent/zcodeAgentService.ts b/packages/services/src/zcode-agent/zcodeAgentService.ts
+index c8bde48..1537184 100644
+--- a/packages/services/src/zcode-agent/zcodeAgentService.ts
++++ b/packages/services/src/zcode-agent/zcodeAgentService.ts
+@@ -4188,6 +4188,7 @@ export function createZCodeAgentService(
+         {
+           workspace: buildWorkspaceRef(params),
+           source: params.source,
++          ...(params.catalog ? { catalog: params.catalog } : {}),
+           ...(params.dryRun !== undefined ? { dryRun: params.dryRun } : {}),
+           ...(params.operationId ? { operationId: params.operationId } : {}),
+         },
+diff --git a/packages/shared/src/zcode-protocol/index.ts b/packages/shared/src/zcode-protocol/index.ts
+index 8192fd2..16d633b 100644
+--- a/packages/shared/src/zcode-protocol/index.ts
++++ b/packages/shared/src/zcode-protocol/index.ts
+@@ -3200,6 +3200,8 @@ export const zcodePluginsMarketplaceAddParamsSchema = z
+   .object({
+     workspace: zcodeWorkspaceRefSchema,
+     source: nonEmptyString,
++    /** OV-103: added from the Skill market — read the source as a Skill collection. */
++    catalog: z.literal("skills").optional(),
+     dryRun: z.boolean().optional(),
+     operationId: nonEmptyString.optional(),
+   })
+diff --git a/packages/ui/src/App.tsx b/packages/ui/src/App.tsx
+index f871f67..47fe729 100644
+--- a/packages/ui/src/App.tsx
++++ b/packages/ui/src/App.tsx
+@@ -842,6 +842,8 @@ export function App({
+   > | null>(null);
+   const [pluginStoreReturnScopeKey, setPluginStoreReturnScopeKey] = useState("user");
+   const [pluginStoreOpenVersion, setPluginStoreOpenVersion] = useState(0);
++  // OV-103: which market the store view shows — plugins (with MCP) or standalone Skills.
++  const [storeCatalog, setStoreCatalog] = useState<"plugins" | "skills">("plugins");
+   const handleNavigateToTaskMain = useCallback(() => {
+     setWorkspaceMainView("chat");
+   }, []);
+@@ -855,7 +857,8 @@ export function App({
+     setOpenAutomationTab(target.automationTab ?? null);
+     setWorkspaceMainView("automations");
+   }, []);
+-  const handleNavigateToPluginStoreMain = useCallback(() => {
++  const handleNavigateToPluginStoreMain = useCallback((target?: { catalog?: "skills" }) => {
++    setStoreCatalog(target?.catalog === "skills" ? "skills" : "plugins");
+     // 通用入口没有 scope 上下文，默认回到 User；Settings 显式带 scope 的入口会在
+     // 导航完成后覆盖这次默认值，避免沿用上一次 Workspace scope。
+     setPluginStoreReturnScopeKey("user");
+@@ -891,7 +894,7 @@ export function App({
+       // Workspace Marketplace 已收敛为全局入口。兼容旧事件中的 Workspace key，但返回
+       // 目标统一归一为 User，避免旧 sessionStorage/同窗口事件把设置页带回失效 scope。
+       const returnScopeKey = "user";
+-      if (workspaceMainView === "plugin-store") {
++      if (workspaceMainView === "plugin-store" && storeCatalog === "plugins") {
+         setPluginStoreReturnScopeKey(returnScopeKey);
+         setPluginStoreOpenVersion((version) => version + 1);
+         return;
+@@ -899,7 +902,7 @@ export function App({
+       handleOpenPluginStore();
+       setPluginStoreReturnScopeKey(returnScopeKey);
+     },
+-    [handleOpenPluginStore, workspaceMainView],
++    [handleOpenPluginStore, storeCatalog, workspaceMainView],
+   );
+   useEffect(
+     () => addPluginStoreOpenListener(handleOpenPluginStoreForScope),
+@@ -1145,6 +1148,8 @@ export function App({
+         workspaceReadOnlyReason={workspaceReadOnlyReason}
+         workspaceMainView={workspaceMainView}
+         pluginStoreOpenVersion={pluginStoreOpenVersion}
++        storeCatalog={storeCatalog}
++        handleOpenSkillStore={() => handleOpenPluginStore("skills")}
+         openAutomationId={openAutomationId}
+         openAutomationTab={openAutomationTab}
+         onWorkspaceMainViewChange={setWorkspaceMainView}
+diff --git a/packages/ui/src/WorkspaceSidebar.tsx b/packages/ui/src/WorkspaceSidebar.tsx
+index 50950b2..36c064a 100644
+--- a/packages/ui/src/WorkspaceSidebar.tsx
++++ b/packages/ui/src/WorkspaceSidebar.tsx
+@@ -15,6 +15,7 @@ import {
+ import {
+   Archive,
+   Blocks,
++  WandSparkles,
+   CalendarClock,
+   Clock3,
+   Cloud,
+@@ -253,6 +254,8 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+   onOpenPluginStore,
+   automationsActive = false,
+   pluginStoreActive = false,
++  onOpenSkillStore,
++  skillStoreActive = false,
+   onFileTreeOpenChange,
+ }: {
+   workspacePath: string;
+@@ -305,6 +308,9 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+   onOpenPluginStore?: () => void;
+   automationsActive?: boolean;
+   pluginStoreActive?: boolean;
++  /** OV-103: standalone Skills have their own market beside the Plugin market. */
++  onOpenSkillStore?: () => void;
++  skillStoreActive?: boolean;
+   onFileTreeOpenChange?: (open: boolean) => void;
+ }) {
+   const { intl } = useZCodeIntl();
+@@ -1298,6 +1304,24 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
+               <Blocks className="size-4" />
+               {intl.formatMessage({ id: "workspace.openPluginsSettings" })}
+             </Button>
++            {onOpenSkillStore ? (
++              <Button
++                variant="ghost"
++                onClick={onOpenSkillStore}
++                data-icon="inline-start"
++                data-testid="skill-store-sidebar-open"
++                {...pageAssistantScope({ feature: "app-page", pageId: "plugin-store" })}
++                size="lg"
++                aria-pressed={skillStoreActive}
++                className={cn(
++                  "w-full justify-start gap-2 text-foreground hover:bg-surface-hover hover:text-foreground",
++                  skillStoreActive && "bg-selected text-foreground",
++                )}
++              >
++                <WandSparkles className="size-4" />
++                {intl.formatMessage({ id: "workspace.openSkillStore" })}
++              </Button>
++            ) : null}
+           </div>
+ 
+           <div className="relative flex min-h-0 flex-1 flex-col">
+diff --git a/packages/ui/src/app-shell/WorkspaceShellLayout.tsx b/packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+index 5a72724..1f1b1d0 100644
+--- a/packages/ui/src/app-shell/WorkspaceShellLayout.tsx
++++ b/packages/ui/src/app-shell/WorkspaceShellLayout.tsx
+@@ -193,6 +193,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
+   workspaceReadOnlyReason,
+   workspaceMainView,
+   pluginStoreOpenVersion,
++  storeCatalog,
++  handleOpenSkillStore,
+   openAutomationId,
+   openAutomationTab,
+   onWorkspaceMainViewChange,
+@@ -1604,7 +1606,9 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
+                     onOpenAutomations={handleOpenAutomations}
+                     automationsActive={workspaceMainView === "automations"}
+                     onOpenPluginStore={handleOpenPluginStore}
+-                    pluginStoreActive={workspaceMainView === "plugin-store"}
++                    pluginStoreActive={workspaceMainView === "plugin-store" && storeCatalog === "plugins"}
++                    onOpenSkillStore={handleOpenSkillStore}
++                    skillStoreActive={workspaceMainView === "plugin-store" && storeCatalog === "skills"}
+                     onFileTreeOpenChange={setIsSidebarFileTreeOpen}
+                   />
+                 </WorkflowRunOpenProvider>
+@@ -1807,7 +1811,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
+                           <AutomationsMainBreadcrumbFrame
+                             isDesktop={Boolean(isDesktop)}
+                             sectionLabel={intl.formatMessage({
+-                              id: "workspace.openPluginsSettings",
++                              id: storeCatalog === "skills" ? "workspace.openSkillStore" : "workspace.openPluginsSettings",
+                             })}
+                             ariaLabel={intl.formatMessage({
+                               id: "settings.breadcrumbLabel",
+@@ -1816,7 +1820,8 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
+                             <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+                               <div className="mx-auto flex w-full max-w-4xl flex-col px-4 py-4 md:px-6 md:py-6">
+                                 <PluginStorePage
+-                                  key={`plugin-store:${pluginStoreOpenVersion}`}
++                                  key={`plugin-store:${storeCatalog}:${pluginStoreOpenVersion}`}
++                                  catalog={storeCatalog}
+                                   workspacePath={workspaceAbsPath}
+                                   workspaceIdentity={workspaceIdentity}
+                                   onCreateTask={handleCreateTaskInChat}
+diff --git a/packages/ui/src/app-shell/types.ts b/packages/ui/src/app-shell/types.ts
+index bee5ab2..856be7e 100644
+--- a/packages/ui/src/app-shell/types.ts
++++ b/packages/ui/src/app-shell/types.ts
+@@ -123,6 +123,9 @@ export interface WorkspaceShellLayoutProps extends Omit<AppProps, "baseFeedbackS
+   workspaceReadOnlyReason?: string;
+   workspaceMainView: WorkspaceMainView;
+   pluginStoreOpenVersion: number;
++  /** OV-103: the store view shows the Plugin market or the Skill market. */
++  storeCatalog: "plugins" | "skills";
++  handleOpenSkillStore: () => void;
+   openAutomationId: string | null;
+   openAutomationTab: AutomationsNavigationTab | null;
+   onWorkspaceMainViewChange: (view: WorkspaceMainView) => void;
+diff --git a/packages/ui/src/app-shell/useWorkspaceTaskNavigation.ts b/packages/ui/src/app-shell/useWorkspaceTaskNavigation.ts
+index 9449180..76629ae 100644
+--- a/packages/ui/src/app-shell/useWorkspaceTaskNavigation.ts
++++ b/packages/ui/src/app-shell/useWorkspaceTaskNavigation.ts
+@@ -48,7 +48,9 @@ export function useWorkspaceTaskNavigation({
+   activateTabByPath: (workspacePath: string, options?: { workspaceIdentity?: string }) => boolean;
+   onNavigateToTask?: () => void;
+   onNavigateToAutomations?: (target: AutomationsNavigationTarget) => void;
+-  onNavigateToPluginStore?: (target: Omit<AutomationsNavigationTarget, "automationId">) => void;
++  onNavigateToPluginStore?: (
++    target: Omit<AutomationsNavigationTarget, "automationId"> & { catalog?: "skills" },
++  ) => void;
+ }) {
+   // 跨 workspace 选择会先同步切换 tab，但本次 React render 捕获的 ambient
+   // services 仍可能属于旧 remote attachment。local 目标必须固定从 window base attachment
+@@ -219,10 +221,18 @@ export function useWorkspaceTaskNavigation({
+     [onNavigateToAutomations, taskNavPushAutomations, workspaceAbsPath, workspaceIdentity],
+   );
+ 
+-  const handleOpenPluginStore = useCallback(() => {
+-    taskNavPushPluginStore(workspaceAbsPath, workspaceIdentity);
+-    onNavigateToPluginStore?.({ workspacePath: workspaceAbsPath, workspaceIdentity });
+-  }, [onNavigateToPluginStore, taskNavPushPluginStore, workspaceAbsPath, workspaceIdentity]);
++  // OV-103: the Skill market and the Plugin market share one view and one history kind.
++  const handleOpenPluginStore = useCallback(
++    (catalog?: "skills") => {
++      taskNavPushPluginStore(workspaceAbsPath, workspaceIdentity, catalog);
++      onNavigateToPluginStore?.({
++        workspacePath: workspaceAbsPath,
++        workspaceIdentity,
++        ...(catalog ? { catalog } : {}),
++      });
++    },
++    [onNavigateToPluginStore, taskNavPushPluginStore, workspaceAbsPath, workspaceIdentity],
++  );
+ 
+   const handleTaskNavBack = useCallback(() => {
+     const currentWorkspaceState = useZCodeSessionStore
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index ff88b25..2bcd4c6 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -4514,6 +4514,12 @@ const enUS: Record<string, string> = {
+   "settings.plugins.export.action": "Export as Agent Plugins package…",
+   "settings.plugins.export.done": "Exported to {path}",
+   "settings.plugins.export.doneSkipped": "Exported to {path}. Not portable to other clients: {skipped}",
++  "workspace.openSkillStore": "Skill market",
++  "settings.skillStore.subtitle": "Install standalone Skills from Skill sources; plugins with MCP or other abilities are in the Plugin market.",
++  "settings.skillStore.addSource": "Add skill source",
++  "settings.skillStore.source": "GitHub repo, git URL, or local folder",
++  "settings.skillStore.empty": "No skill sources yet. Add a GitHub repo or local folder; every folder with a SKILL.md is listed here as a Skill.",
++  "settings.skillStore.anthropicSkills": "Anthropic skills",
+   "settings.plugins.marketplaces.add": "Add marketplace",
+   "settings.plugins.marketplaces.update": "Update marketplace",
+   "settings.plugins.marketplaces.remove": "Remove marketplace",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index c9fc607..438915b 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -4194,6 +4194,12 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.export.action": "导出为 Agent Plugins 包…",
+   "settings.plugins.export.done": "已导出到 {path}",
+   "settings.plugins.export.doneSkipped": "已导出到 {path}。其他客户端不支持、未包含的部分：{skipped}",
++  "workspace.openSkillStore": "技能市场",
++  "settings.skillStore.subtitle": "从技能仓库安装独立技能；带 MCP 或其他能力的插件在插件市场。",
++  "settings.skillStore.addSource": "添加技能来源",
++  "settings.skillStore.source": "GitHub 仓库、Git URL 或本地文件夹",
++  "settings.skillStore.empty": "还没有技能来源。添加一个 GitHub 仓库或本地文件夹，其中每个包含 SKILL.md 的文件夹都会作为一个技能列在这里。",
++  "settings.skillStore.anthropicSkills": "Anthropic 官方技能",
+   "settings.plugins.marketplaces.add": "添加插件市场",
+   "settings.plugins.marketplaces.update": "更新插件市场",
+   "settings.plugins.marketplaces.remove": "移除插件市场",
+diff --git a/packages/ui/src/lib/taskNavigationHistory.ts b/packages/ui/src/lib/taskNavigationHistory.ts
+index caa6e7b..cea250a 100644
+--- a/packages/ui/src/lib/taskNavigationHistory.ts
++++ b/packages/ui/src/lib/taskNavigationHistory.ts
+@@ -32,6 +32,8 @@ export interface AutomationsNavEntry extends WorkspaceNavEntryBase {
+ 
+ export interface PluginStoreNavEntry extends WorkspaceNavEntryBase {
+   kind: "plugin-store";
++  /** OV-103: the Skill market shares this view; absent means the Plugin market. */
++  catalog?: "skills";
+ }
+ 
+ export type WorkspaceNavEntry = TaskNavEntry | AutomationsNavEntry | PluginStoreNavEntry;
+@@ -77,6 +79,7 @@ function isSameNavEntry(left: WorkspaceNavEntry, right: WorkspaceNavEntry): bool
+       left.automationTab === rightAutomations.automationTab
+     );
+   }
++  if (left.kind === "plugin-store") return left.catalog === (right as PluginStoreNavEntry).catalog;
+   return true;
+ }
+ 
+@@ -142,11 +145,13 @@ export function pushPluginStoreNavEntry(
+   history: TaskNavigationHistory,
+   workspacePath: string,
+   workspaceIdentity?: string,
++  catalog?: "skills",
+ ): TaskNavigationHistory {
+   return pushEntry(history, {
+     kind: "plugin-store",
+     workspacePath,
+     ...(workspaceIdentity ? { workspaceIdentity } : {}),
++    ...(catalog ? { catalog } : {}),
+   });
+ }
+ 
+diff --git a/packages/ui/src/settings/AddMarketplaceSourceDialog.tsx b/packages/ui/src/settings/AddMarketplaceSourceDialog.tsx
+index b305da6..aa9ea48 100644
+--- a/packages/ui/src/settings/AddMarketplaceSourceDialog.tsx
++++ b/packages/ui/src/settings/AddMarketplaceSourceDialog.tsx
+@@ -10,6 +10,8 @@ import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
+ 
+ /** Catalog sources a person can add in one step (OV-100); the backend recognises the URL. */
+ const OFFICIAL_MCP_REGISTRY_URL = "https://registry.modelcontextprotocol.io";
++/** Anthropic's public Agent Skills repository, read as a Skill collection (OV-103). */
++const ANTHROPIC_SKILLS_REPOSITORY = "anthropics/skills";
+ 
+ /**
+  * 顶栏 New 直接打开添加市场源对话框：收编原 AddMarketplacePopover 的
+@@ -21,13 +23,17 @@ export function AddMarketplaceSourceDialog({
+   onAddMarketplace,
+   operationId,
+   error,
++  catalog = "plugins",
+ }: {
+   open: boolean;
+   onOpenChange: (open: boolean) => void;
+   onAddMarketplace: (source: string) => Promise<boolean>;
+   operationId: string | null;
+   error?: string | null;
++  /** OV-103: the Skill market adds Skill sources; the Plugin market adds plugin catalogs. */
++  catalog?: "plugins" | "skills";
+ }) {
++  const skillMarket = catalog === "skills";
+   const { intl } = useZCodeIntl();
+   const platform = useOptionalPlatform();
+   // 仅桌面端能把拖拽 File / 目录选择框解析成 agent 可访问的本地绝对路径；Web 端隐藏这些入口。
+@@ -103,7 +109,7 @@ export function AddMarketplaceSourceDialog({
+         onDrop={canPickPath ? handleDrop : undefined}
+       >
+         <DialogTitle className="text-ui-lg font-medium text-foreground">
+-          {intl.formatMessage({ id: "settings.plugins.marketplaces.add" })}
++          {intl.formatMessage({ id: skillMarket ? "settings.skillStore.addSource" : "settings.plugins.marketplaces.add" })}
+         </DialogTitle>
+         {error ? (
+           <div
+@@ -119,7 +125,7 @@ export function AddMarketplaceSourceDialog({
+           data-testid="plugin-store-add-source-input"
+           size="lg"
+           autoFocus
+-          aria-label={intl.formatMessage({ id: "settings.plugins.marketplaces.source" })}
++          aria-label={intl.formatMessage({ id: skillMarket ? "settings.skillStore.source" : "settings.plugins.marketplaces.source" })}
+           value={source}
+           onChange={(event) => setSource(event.target.value)}
+           onCompositionStart={() => {
+@@ -141,17 +147,17 @@ export function AddMarketplaceSourceDialog({
+             event.preventDefault();
+             void handleAdd();
+           }}
+-          placeholder={intl.formatMessage({ id: "settings.plugins.marketplaces.source" })}
++          placeholder={intl.formatMessage({ id: skillMarket ? "settings.skillStore.source" : "settings.plugins.marketplaces.source" })}
+         />
+         <div className="flex flex-wrap items-center gap-2 text-ui-base text-foreground-subtle">
+           <span>{intl.formatMessage({ id: "settings.plugins.marketplaces.catalogs" })}</span>
+           <button
+             type="button"
+-            data-testid="plugin-store-add-source-mcp-registry"
++            data-testid={skillMarket ? "skill-store-add-source-anthropic" : "plugin-store-add-source-mcp-registry"}
+             className="rounded-full border border-border px-2.5 py-0.5 text-foreground transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
+-            onClick={() => setSource(OFFICIAL_MCP_REGISTRY_URL)}
++            onClick={() => setSource(skillMarket ? ANTHROPIC_SKILLS_REPOSITORY : OFFICIAL_MCP_REGISTRY_URL)}
+           >
+-            {intl.formatMessage({ id: "settings.plugins.marketplaces.mcpRegistry" })}
++            {intl.formatMessage({ id: skillMarket ? "settings.skillStore.anthropicSkills" : "settings.plugins.marketplaces.mcpRegistry" })}
+           </button>
+         </div>
+         {canPickPath ? (
+diff --git a/packages/ui/src/settings/PluginStoreListView.tsx b/packages/ui/src/settings/PluginStoreListView.tsx
+index b174ff9..67e2791 100644
+--- a/packages/ui/src/settings/PluginStoreListView.tsx
++++ b/packages/ui/src/settings/PluginStoreListView.tsx
+@@ -60,9 +60,10 @@ export function PluginStoreListView({
+   loading,
+   query,
+   onQueryChange,
+-  segment,
++  segment: requestedSegment,
+   onSegmentChange,
+   onOpenManage,
++  catalog = "plugins",
+ }: {
+   items: StorePluginItem[];
+   order?: PluginStoreOrder | null;
+@@ -74,7 +75,12 @@ export function PluginStoreListView({
+   segment: PluginStoreSegment;
+   onSegmentChange: (segment: PluginStoreSegment) => void;
+   onOpenManage: () => void;
++  /** OV-103: the Skill market lists its sources' Skills only, without segments or content filters. */
++  catalog?: "plugins" | "skills";
+ }) {
++  const skillMarket = catalog === "skills";
++  // Skill sources are the person's own catalogs; there is no public Skill catalog segment.
++  const segment: PluginStoreSegment = skillMarket ? "personal" : requestedSegment;
+   const { intl, locale } = useZCodeIntl();
+   const isOfficeMode = useIsOfficeMode();
+   const modeOrder = isOfficeMode ? order?.work : order?.code;
+@@ -273,7 +279,7 @@ export function PluginStoreListView({
+       ) : null}
+ 
+       {/* 公开 / 个人分段。 */}
+-      <div className="flex items-center gap-1.5">
++      <div className={skillMarket ? "hidden" : "flex items-center gap-1.5"}>
+         <SegmentPill
+           active={segment === "public"}
+           testId="plugin-store-segment-public"
+diff --git a/packages/ui/src/settings/PluginStorePage.tsx b/packages/ui/src/settings/PluginStorePage.tsx
+index 51f38d3..13c528e 100644
+--- a/packages/ui/src/settings/PluginStorePage.tsx
++++ b/packages/ui/src/settings/PluginStorePage.tsx
+@@ -49,6 +49,17 @@ interface PluginStorePageProps {
+   workspaceIdentity?: string;
+   onCreateTask?: (request?: CreateTaskRequest) => void;
+   onManageInstalled: () => void;
++  /**
++   * OV-103: two markets share this page. The Skill market lists standalone Skills from Skill
++   * sources; the Plugin market lists plugins, MCP servers and plugins that bundle Skills.
++   */
++  catalog?: "plugins" | "skills";
++}
++
++/** A source read as a Skill collection (added from the Skill market, or a plain Skill repository). */
++export function isSkillCatalogSource(marketplace: { source?: unknown }): boolean {
++  const source = marketplace.source as { catalog?: unknown } | undefined;
++  return source?.catalog === "skills";
+ }
+ 
+ type PluginStoreView = "store" | "detail";
+@@ -58,7 +69,9 @@ export function PluginStorePage({
+   workspaceIdentity,
+   onCreateTask,
+   onManageInstalled,
++  catalog = "plugins",
+ }: PluginStorePageProps) {
++  const skillMarket = catalog === "skills";
+   const { intl, locale } = useZCodeIntl();
+   const { order: storeOrder, refresh: refreshStoreOrder } = usePluginStoreOrder();
+   const { pluginManagementService, skillsService } = useServices();
+@@ -126,7 +139,15 @@ export function PluginStorePage({
+ 
+   // 第三方目录只在显式刷新时联网；打开页面沿用本地清单与内置插件。
+ 
+-  const items = useMemo(
++  const marketMarketplaces = useMemo(
++    () => marketplaces.filter((marketplace) => isSkillCatalogSource(marketplace) === skillMarket),
++    [marketplaces, skillMarket],
++  );
++  const skillCatalogIds = useMemo(
++    () => new Set(marketplaces.filter(isSkillCatalogSource).map((marketplace) => marketplace.id)),
++    [marketplaces],
++  );
++  const allItems = useMemo(
+     () =>
+       buildStoreItems({
+         marketplaces,
+@@ -145,6 +166,10 @@ export function PluginStorePage({
+       restorableBuiltins,
+     ],
+   );
++  const items = useMemo(
++    () => allItems.filter((item) => skillCatalogIds.has(item.marketplace) === skillMarket),
++    [allItems, skillCatalogIds, skillMarket],
++  );
+   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+   const detailItem = detailPluginId ? (itemById.get(detailPluginId) ?? null) : null;
+   // 插件自身 warning 诊断（如声明的技能路径扫描为空）：详情高级区展示，避免静默失败。
+@@ -316,7 +341,11 @@ export function PluginStorePage({
+ 
+   const handleAddMarketplace = useCallback(
+     async (source: string) => {
+-      const succeeded = await addMarketplace(source, pluginManagementService);
++      const succeeded = await addMarketplace(
++        source,
++        pluginManagementService,
++        skillMarket ? "skills" : undefined,
++      );
+       // 添加市场源的错误要和提交入口同层展示；否则全局错误条会被 Dialog 遮罩压到下面。
+       setAddMarketplaceError(
+         succeeded ? null : (usePluginManagementStore.getState().error ?? null),
+@@ -325,7 +354,7 @@ export function PluginStorePage({
+       if (succeeded) setSegment("personal");
+       return succeeded;
+     },
+-    [addMarketplace, pluginManagementService],
++    [addMarketplace, pluginManagementService, skillMarket],
+   );
+ 
+   const handleUsePrompt = useCallback(
+@@ -386,13 +415,13 @@ export function PluginStorePage({
+           data-testid="plugin-store-title"
+           className="text-2xl font-semibold tracking-tight text-foreground lg:text-3xl"
+         >
+-          {intl.formatMessage({ id: "workspace.openPluginsSettings" })}
++          {intl.formatMessage({ id: skillMarket ? "workspace.openSkillStore" : "workspace.openPluginsSettings" })}
+         </h1>
+       ) : null}
+       {view === "store" ? (
+         <div className="flex flex-wrap items-start justify-between gap-3">
+           <p className="min-w-0 flex-1 text-ui-base leading-6 text-foreground-subtle">
+-            {intl.formatMessage({ id: "settings.plugins.store.subtitle" })}
++            {intl.formatMessage({ id: skillMarket ? "settings.skillStore.subtitle" : "settings.plugins.store.subtitle" })}
+           </p>
+           {/* 顶栏动作：刷新 / 市场源管理（齿轮）/ 新建市场源。 */}
+           <div className="flex shrink-0 items-center gap-2">
+@@ -436,14 +465,28 @@ export function PluginStorePage({
+                 <Settings className="size-3.5" aria-hidden="true" />
+               </Button>
+             </ControlHintTooltip>
+-            <PluginAddMenu
+-              testId="plugin-store-create"
+-              onCreateTask={onCreateTask}
+-              onAddMarketplace={() => {
+-                setAddMarketplaceError(null);
+-                setAddSourceOpen(true);
+-              }}
+-            />
++            {skillMarket ? (
++              <Button
++                type="button"
++                data-testid="skill-store-add-source"
++                size="lg"
++                onClick={() => {
++                  setAddMarketplaceError(null);
++                  setAddSourceOpen(true);
++                }}
++              >
++                {intl.formatMessage({ id: "settings.skillStore.addSource" })}
++              </Button>
++            ) : (
++              <PluginAddMenu
++                testId="plugin-store-create"
++                onCreateTask={onCreateTask}
++                onAddMarketplace={() => {
++                  setAddMarketplaceError(null);
++                  setAddSourceOpen(true);
++                }}
++              />
++            )}
+           </div>
+         </div>
+       ) : null}
+@@ -526,10 +569,24 @@ export function PluginStorePage({
+           }
+         />
+       ) : (
++        skillMarket && marketMarketplaces.length === 0 ? (
++          <div
++            className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-border p-6"
++            data-testid="skill-store-empty"
++          >
++            <p className="text-ui-base text-foreground-subtle">
++              {intl.formatMessage({ id: "settings.skillStore.empty" })}
++            </p>
++            <Button type="button" variant="outline" onClick={() => setAddSourceOpen(true)}>
++              {intl.formatMessage({ id: "settings.skillStore.addSource" })}
++            </Button>
++          </div>
++        ) : (
+         <PluginStoreListView
+           order={storeOrder}
+           items={items}
+-          marketplaces={marketplaces}
++          catalog={catalog}
++          marketplaces={marketMarketplaces}
+           actions={actions}
+           loading={loading || (operationId?.startsWith("marketplace:update:") ?? false)}
+           query={query}
+@@ -538,6 +595,7 @@ export function PluginStorePage({
+           onSegmentChange={setSegment}
+           onOpenManage={onManageInstalled}
+         />
++        )
+       )}
+ 
+       <PluginUninstallConfirmDialog
+@@ -559,7 +617,7 @@ export function PluginStorePage({
+       <PluginStoreSourcesDialog
+         open={sourcesOpen}
+         onOpenChange={setSourcesOpen}
+-        marketplaces={marketplaces}
++        marketplaces={marketMarketplaces}
+         onUpdateMarketplace={(marketplace) =>
+           void updateMarketplace(marketplace, pluginManagementService)
+         }
+@@ -574,6 +632,7 @@ export function PluginStorePage({
+         onAddMarketplace={handleAddMarketplace}
+         operationId={operationId}
+         error={addMarketplaceError}
++        catalog={catalog}
+       />
+     </div>
+   );
+diff --git a/packages/ui/src/settings/pluginSourceLabel.ts b/packages/ui/src/settings/pluginSourceLabel.ts
+index e79e72c..14996ed 100644
+--- a/packages/ui/src/settings/pluginSourceLabel.ts
++++ b/packages/ui/src/settings/pluginSourceLabel.ts
+@@ -10,5 +10,16 @@ export function resolveMarketplaceDisplayName(
+   marketplaces: readonly ZCodePluginMarketplaceSummary[],
+ ): string {
+   const matched = marketplaces.find((marketplace) => marketplace.id === marketplaceId);
++  // A Skill source shows what the person added (repo, URL or folder), not its internal id.
++  const source = matched?.source as
++    | { catalog?: string; repo?: string; url?: string; path?: string }
++    | undefined;
++  if (source?.catalog === "skills") {
++    const label =
++      source.repo ??
++      source.url?.replace(/^.*[/:]([^/:]+\/[^/:]+?)(?:\.git)?$/, "$1") ??
++      source.path?.split(/[\\/]/).filter(Boolean).pop();
++    if (label) return label;
++  }
+   return matched?.name ?? marketplaceId;
+ }
+diff --git a/packages/ui/src/store/pluginManagementStore.ts b/packages/ui/src/store/pluginManagementStore.ts
+index 9065e7e..a2d71a8 100644
+--- a/packages/ui/src/store/pluginManagementStore.ts
++++ b/packages/ui/src/store/pluginManagementStore.ts
+@@ -55,7 +55,11 @@ export interface PluginManagementState {
+     pluginService: IPluginManagementService;
+   }) => Promise<void>;
+   refresh: (pluginService: IPluginManagementService) => Promise<void>;
+-  addMarketplace: (source: string, pluginService: IPluginManagementService) => Promise<boolean>;
++  addMarketplace: (
++    source: string,
++    pluginService: IPluginManagementService,
++    catalog?: "skills",
++  ) => Promise<boolean>;
+   updateMarketplace: (
+     marketplace: string | null,
+     pluginService: IPluginManagementService,
+@@ -192,7 +196,7 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+     });
+   },
+ 
+-  async addMarketplace(source, pluginService) {
++  async addMarketplace(source, pluginService, catalog) {
+     return runWorkspaceOperation(
+       set,
+       get,
+@@ -202,6 +206,7 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+         await pluginService.addPluginMarketplace({
+           ...workspace,
+           source,
++          ...(catalog ? { catalog } : {}),
+         });
+       },
+     );
+diff --git a/packages/ui/src/store/zcodeSessionStoreNavigation.ts b/packages/ui/src/store/zcodeSessionStoreNavigation.ts
+index 55ef370..baea1fe 100644
+--- a/packages/ui/src/store/zcodeSessionStoreNavigation.ts
++++ b/packages/ui/src/store/zcodeSessionStoreNavigation.ts
+@@ -49,12 +49,13 @@ export function createNavigationSlice(set: SetFn, get: GetFn) {
+       }));
+     },
+ 
+-    taskNavPushPluginStore: (workspacePath: string, workspaceIdentity?: string) => {
++    taskNavPushPluginStore: (workspacePath: string, workspaceIdentity?: string, catalog?: "skills") => {
+       set((state) => ({
+         taskNavHistory: pushPluginStoreNavEntry(
+           state.taskNavHistory,
+           workspacePath,
+           workspaceIdentity,
++          catalog,
+         ),
+       }));
+     },
+diff --git a/packages/ui/src/store/zcodeSessionStoreTypes.ts b/packages/ui/src/store/zcodeSessionStoreTypes.ts
+index e17bab9..4c66518 100644
+--- a/packages/ui/src/store/zcodeSessionStoreTypes.ts
++++ b/packages/ui/src/store/zcodeSessionStoreTypes.ts
+@@ -463,7 +463,7 @@ export interface ZCodeSessionStoreState {
+     automationTab?: AutomationsNavigationTab,
+   ) => void;
+   /** 记录插件市场主视图导航。 */
+-  taskNavPushPluginStore: (workspacePath: string, workspaceIdentity?: string) => void;
++  taskNavPushPluginStore: (workspacePath: string, workspaceIdentity?: string, catalog?: "skills") => void;
+   /** 后退，返回目标 entry；到头了返回 null */
+   taskNavGoBack: () => WorkspaceNavEntry | null;
+   /** 前进，返回目标 entry；到头了返回 null */
+-- 
+2.54.0 (Apple Git-157)
+
