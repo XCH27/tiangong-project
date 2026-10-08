@@ -16,7 +16,7 @@ No register row yet.
 
 ## Selected implementation
 
-Retain ZCode Host + Pi Agent Core. Use the already installed Pi AI 1.0.1 classifier transport for
+Retain ZCode Host + Pi Agent Core. Use the already installed Pi AI 1.0.2 classifier transport for
 bounded `choice`, `score` and `bool` auxiliary calls. Pi translates `bool` to System One `noul`.
 A classifier is a separate operation/model type, not a chat model with a different prompt.
 No new System One SDK, Pi Coding Agent autoload, LangGraph host or universal router is required.
@@ -43,11 +43,33 @@ binding fingerprint, admission ticket, Stop signal, usage receipt and ten-second
 
 The second consumer is the automatic new-conversation default. Personal `automaticTiers` holds
 optional fast/standard/deep models validated by the existing preference writer; the standard model
-is the default a new conversation opens with. On the first message only, and only while the
-conversation is still on the standard model, `turn-model.ts` asks the decision model one `tier`
-choice over the first 6000 characters, and switches to fast or deep when that tier is set and
-executable. Later turns, manual picks, execution-scoped selections, an off decision model, errors,
-timeouts and unset tiers keep the offered model; the outcome is logged as `model.automatic_choice`.
+is the default a new conversation opens with. The Composer marks only an automatically initialized
+new-chat default with `allowAutomaticModelSelection`; explicit choices (including the same standard
+model or its options), Project recent choices and legacy unmarked drafts remain fixed. This field
+is frozen into the existing command/intent and retained through queue, Guide and cold hydration.
+Only an interactive first message with that marker and the configured standard model can ask for
+one `tier` choice. Page assistants, forks, side conversations, children and execution-scoped turns
+never enter this consumer. Prompts longer than 6000 characters abstain without truncation. An
+available fast/deep tier may replace the offered model; policy/tiers/target are revalidated after
+the answer. Later turns, disabled decisions, failure and unset tiers keep the offered model.
+
+The Host passes active Stop, admission and trace through this optional request; it writes an unknown
+intent before inference and observed usage/result through existing artifact/Session owners. An
+existing intent fences another dispatch after interruption, even if an acknowledgement was lost.
+Failed ledger writes retain the original receipt via `runtime/pending_model_usage` for settlement
+and cold reconciliation. A fenced retry keeps the offered model; it does not replay a previous tier
+choice. Original submission intent and resolved Session model remain distinguishable. The final
+executor determines Guide availability; cross-provider choices never copy the original account ID.
+Observed usage survives post-response validation/publication failures; unknown authentication kind
+is not labelled as API-key billing. The main conversation's context/account meter remains separate.
+
+Settings → Model settings → Default models owns auxiliary enablement and selection. Its local Help
+explains the two connected consumers and cost/authority limits. The picker reuses existing eligible
+connections and offers Connection settings back to their existing detail; an empty/missing selection
+returns to Add provider. Cards identify TypeSafe Jev and Laya (local service), preserving template
+IDs and records. Their existing category is labelled API & local services, avoiding a usage-billing
+claim for a local server while subscription products retain their group. The existing System One loopback exception also applies in the setup form; remote
+URLs and other protocols still require credentials. Saving Laya does not install, start or test it.
 Phase handoff and the quantitative plugin remain separate unfinished consumers.
 
 ## Request and receipt contract
@@ -184,8 +206,13 @@ A durable unknown intent fences replay; it never automatically resubmits uncerta
 `decision-chat.test.ts` checks the chat answer contract (unoffered labels, wrong mass, a choice
 that is not the most probable, missing labels or questions, out-of-rubric scores, prose), the chat
 lane over the real Provider registry with an authored model, and tier routing (deep, fast, manual
-pick untouched, decision off); `automatic-model.test.ts` checks first-turn-only routing and
-failure fallback in the runtime. No live provider has been asked a tier question yet.
+pick untouched, decision off), Stop and policy/target withdrawal. `automatic-model.test.ts` checks
+first-turn-only routing, manual same-model/source guards, durable unknown fencing and usage
+write/acknowledgement failures over real stores. `automatic-model-intent.test.ts` runs native V4
+command admission through the actual Runtime and SQLite to live/cold projection, plus queue/Guide
+and retry facts. `automatic-execution-binding.test.ts` checks the final native executor's Guide
+capability. Controlled transports do not establish hosted-model quality; no live provider has been
+asked a tier question yet.
 Renderer/default-policy fixtures check CAS, withdrawal, old service receipts, languages/themes and
 narrow forms. Paid providers, loaded local weights, other platforms and Chinese/domain quality
 still need their own proof. Judge total cost/latency and accepted task quality,

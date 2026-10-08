@@ -240,6 +240,26 @@ The subsequent Host slice reuses those checks: `test:decision-host` exercises pe
 actual SQLite/artifact receipts, replay fencing and bounded real Node HTTP with authored responses.
 Renderer checks exercise opt-in classifier choices and defaults. No weights, paid hosted inference
 or quantitative-suite quality is established; automatic consumers remain unfinished.
+
+Craft decision lifecycle follow-up (owner's screenshot review): fresh official HEAD and release
+`v0.14.1` both resolve to `332533f3096d12500012fe089c3f155e32af1c44`; Electron package also declares
+0.14.1. Selected current files and their SHA-256 manifest are retained at
+`源码参考/software/intake/upstream/craft-ai-agents--craft-agents-oss--332533f3096d-selected`.
+The complete v0.14.0 latest checkout and mandatory v0.13.4/v0.10.5 pins remain unchanged. This is a
+selected-file source review, not execution of current Craft or a whole-tree upgrade.
+
+| Traced Craft source | Mechanism and Fleet adaptation |
+|---|---|
+| `apps/electron/src/renderer/pages/settings/AiSettingsPage.tsx:1064,1487`; `packages/shared/src/decisions/{settings,providers,resolve,status,health}.ts`; `packages/server-core/src/handlers/rpc/decisions.ts` | One optional AI section chooses dedicated TypeSafe/custom/local Laya or a compatible existing OpenRouter/Vercel connection. Existing connection keys can be reused; dedicated keys use Craft's credential namespace. Local Laya defaults to loopback:8000 and no key. Health checks only prove reachability. Fleet reuses its Provider/Personal owner, adds recovery navigation and fixes its existing local-key exception; it does not copy a second key store or claim a health probe exists. |
+| `packages/server-core/src/decisions/decision-point.ts`; consumers `adaptive-thinking.ts`, `suggestions.ts` plus the preserved v0.14.0 task/outcome/automation/risk/tool sources above | Master off plus explicit consumer gates; shared request deadline/caller cancellation and request/result/follow-up records. Thirteen toggles describe Craft consumers, not Fleet delivery. Fleet's two actual consumers retain existing Host receipts/accounting; automatic selection now participates in admission/Stop/recovery and respects explicit input origin and page/task scope. No permission grant or inert switches are imported. |
+
+Confirmed Fleet counterexamples were a blocked empty-key local form, missing settings recovery
+navigation, manual-same-model and page-assistant rerouting, detached automatic inference, lost
+post-response usage and stale returned tier choices. Evidence in
+`/Volumes/AIGC/天工参考/meta/fleet-decision-lifecycle/` distinguishes real local persistence/protocol
+and renderer checks from controlled inference. Hosted inference, local Laya weights/quality and
+owner appearance acceptance are not implied. No paid request or production dependency was added.
+
 The [typed-decision contract](modules/model-decisions.md) owns selected integration and acceptance.
 
 ## Composer defaults and selector comparison

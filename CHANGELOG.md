@@ -5,6 +5,14 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Correct decision settings against Craft's current source: existing model connections remain
+  reusable, Connection settings returns to their original owner, and local Laya setup permits
+  an empty key only on an eligible loopback endpoint. Service cards identify TypeSafe Jev/Laya.
+- Automatic first-turn routing now preserves explicit selection origin and excludes page/child
+  tasks. Active Stop, Host admission, durable unknown receipts and recoverable usage cover its
+  real dispatch; stale policy/targets and incomplete evidence retain the offered model. The final
+  executor controls Guide capability, and cross-provider routing does not carry a foreign account.
+
 - Restore the previously authorized Copilot/Grok subscription and Antigravity native entries;
   Antigravity addition keeps the selected one-time risk confirmation. Subscription products,
   including API-key plans, return to Subscriptions beside Usage-based and Terminal access. Existing

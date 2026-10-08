@@ -328,3 +328,7 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0197 | [0197-verification-entry.patch](0197-verification-entry.patch) | `caa0622df1378f3d50d1b3d55da7c6ee8efe1714` |
 
 | 0198 | [0198-subscription-entry-restoration.patch](0198-subscription-entry-restoration.patch) | `77bece3db7cd8ba937fdb2b771d66200bc838a91` |
+
+| 0199 | [0199-decision-lifecycle.patch](0199-decision-lifecycle.patch) | `b0f34732b71ccf3f76203aade41e5543063ac911` |
+
+| 0200 | [0200-api-local-category.patch](0200-api-local-category.patch) | `df1163fb17d91fdb8369f5288bae26c91cee454f` |

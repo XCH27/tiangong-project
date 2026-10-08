@@ -1,0 +1,48 @@
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index e304969..ab07478 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3205,7 +3205,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.terminal.missing": "Not detected",
+   "settings.modelProvider.terminal.installed": "Installed",
+   "settings.modelProvider.terminal.installedVersion": "Installed {version}",
+-  "settings.modelProvider.catalog.usageBased": "Usage-based",
++  "settings.modelProvider.catalog.usageBased": "API & local services",
+   "settings.modelProvider.connectionMode.usageBasedApi": "Usage-based API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "Individual",
+   "settings.modelProvider.connectionMode.startPlanBadge": "Free",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 3697f4e..ecb5c8f 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2972,7 +2972,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.terminal.missing": "未检测到",
+   "settings.modelProvider.terminal.installed": "已安装",
+   "settings.modelProvider.terminal.installedVersion": "已安装 {version}",
+-  "settings.modelProvider.catalog.usageBased": "按量计费",
++  "settings.modelProvider.catalog.usageBased": "API 与本地服务",
+   "settings.modelProvider.connectionMode.usageBasedApi": "按量 API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "个人",
+   "settings.modelProvider.connectionMode.startPlanBadge": "免费",
+diff --git a/packages/ui/test/connectionIntake.browser.test.tsx b/packages/ui/test/connectionIntake.browser.test.tsx
+index 7e15b75..ef77834 100644
+--- a/packages/ui/test/connectionIntake.browser.test.tsx
++++ b/packages/ui/test/connectionIntake.browser.test.tsx
+@@ -124,7 +124,7 @@ async function run() {
+           created.at(-1)?.[0] === "fleet-xai" && created.at(-1)?.[2] === true,
+           "Grok no longer reaches its original subscription operation",
+         );
+-        await click(zh ? "按量计费" : "Usage-based");
++        await click(zh ? "API 与本地服务" : "API & local services");
+         check(
+           !buttons().some((b) => b.textContent?.includes("MiniMax Token Plan")),
+           "Subscription plan moved into usage-based access",
+@@ -196,7 +196,7 @@ async function run() {
+           created.length === 4 && created.at(-1)?.[0] === "fleet-antigravity-native",
+           "Confirmed Antigravity addition did not use its original native operation",
+         );
+-        await click(zh ? "按量计费" : "Usage-based");
++        await click(zh ? "API 与本地服务" : "API & local services");
+         check(
+           buttons().some((b) => b.textContent?.trim() === "TypeSafe Jev"),
+           "TypeSafe service identity is hidden",
