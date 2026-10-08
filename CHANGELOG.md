@@ -5,6 +5,15 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Normal-turn request budgets include final discovered tool declarations before compaction and
+  output reservation, using existing composition to avoid counting prior declarations twice.
+- Background Stop receipts survive acknowledgement failures and cold reopen; unresolved effects
+  are not replayed, and Stop during child-resume setup cannot leave a hanging caller or overwrite
+  the newer stopped run. ACP Stop fences permissions/configuration waits and confirms owned
+  process/group exit before releasing continuation.
+- CLI type/lint entries use the installed workspace runner. Explicit source lint no longer skips
+  entire packages; its inherited large-file failures remain visible and unresolved.
+
 - Connection intake now distinguishes account sign-in, API access and terminal access. API-key
   plans keep their own endpoint/quota metadata in API access; native setup no longer uses a
   subscription CTA. Terminal installation checks no longer present shipped executors as Fleet's

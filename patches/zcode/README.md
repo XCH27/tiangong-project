@@ -318,3 +318,11 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0192 | [0192-durable-late-tool-receipts.patch](0192-durable-late-tool-receipts.patch) | `d8caa6b52c1d80a8e01f51a729c81859993759ec` |
 
 | 0193 | [0193-connection-intake-mechanisms.patch](0193-connection-intake-mechanisms.patch) | `b7f38a3fdee9dcc5dc553c7e9591db1b60738eb7` |
+
+| 0194 | [0194-acp-stop.patch](0194-acp-stop.patch) | `4f56c860a8a6ebbbbfdc469a7b4d98e046fd9734` |
+
+| 0195 | [0195-request-budget.patch](0195-request-budget.patch) | `bcd6e2fa40288b452c077291269426ee7aa6a652` |
+
+| 0196 | [0196-stop-recovery.patch](0196-stop-recovery.patch) | `de12b056d68256ef94ce389f3c2c8441d1211934` |
+
+| 0197 | [0197-verification-entry.patch](0197-verification-entry.patch) | `caa0622df1378f3d50d1b3d55da7c6ee8efe1714` |

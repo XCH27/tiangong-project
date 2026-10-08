@@ -3865,7 +3865,7 @@ These are not equivalent to the product capabilities still absent. Source-only f
 | API-04 | P1 | Changing a discovered model ID forges provider facts for the new ID | real ProviderRuntime/Facade/Node repository/Registry and cold reopen with synthetic directory transport; no provider HTTP/inference; full trigger, exact paths, recovery and source lineage in `api` evidence. |
 | API-05 | P1 | Deleting and recreating an API connection can resurrect old provider observations | real ProviderRuntime persistence/Registry, delete/recreate/manual add with synthetic keys; full trigger, exact paths, recovery and source lineage in `api` evidence. |
 | DOM-01 | P1 | Unadmitted Project inline plugin hooks run on first input/cold materialization outside direct-hook trust — corrected in candidate 0172: Project-only inline roots load without runnable hooks (`project-plugin-hooks.test.ts`, fails before the fix) | Actual bootstrap/Host/Pi/SQLite and reviewed local Node marker: plugin hooks2, direct hooks0, ordinary tool denied; `plugin-proof` narrows opening-only claim. |
-| DOM-02 | P1 | Resident future turns retain disabled plugin hooks — hooks corrected in candidate 0172: each plugin hook re-checks the shared configuration written by the management process (`plugin-hook-withdrawal.test.ts`, `plugin-availability.test.ts`); resident MCP/Skill withdrawal remain open | Actual owner disable succeeded/UI flagfalse; next input added marker3, cold recreation added0. Skill/MCP/uninstall branches remain resource-specific source evidence; removed files may fail. |
+| DOM-02 | P1 | Resident future turns retain disabled plugin hooks — hooks corrected in candidate 0172, MCP/Skill withdrawal in 0191: each consumer re-checks the existing install/config/grant owner; disable/uninstall also removes Skills, while grant revocation retains its existing MCP/hooks scope | Original fixture: disable succeeded but next input added marker3; cold recreation added0. Current real local stdio/Host/SQLite cases cover resident disable/uninstall, permission/metadata waits, re-enable and retained results (`resident-plugin-withdrawal.test.ts`). No native executor or OS sandbox claim. |
 | DOM-12 | P1 | Expected revision is not held through native atomic publication | actual native NodeFileSystemAdapter fixture plus caller source trace; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
 | DOM-20 | P1 | atomic:true file save silently degrades to destructive direct rewrite after publication failure | actual native adapter with narrowly scoped fault injection; full trigger, exact paths, recovery and source lineage in `domains` evidence. |
 | K-01 | P1 | Background Agent Stop waits for artifact/notification publication before requesting cancellation | real_runner_and_registry_with_scripted_child; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
@@ -3873,7 +3873,7 @@ These are not equivalent to the product capabilities still absent. Source-only f
 | K-03 | P1 | Automatic memory extraction physically calls the model but drops returned usage — corrected in candidate 0152 for memory extraction (`usage-before-publication.test.ts`); WebFetch/ReadSessionContext auxiliary calls remain open | real_Host_Pi_sqlite_with_scripted_model; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
 | K-04 | P1 | Main/title completion publication failure drops already received known usage — corrected in candidate 0151: main/title/workspace/verifier record before publishing (`usage-before-publication.test.ts`, fails before the fix) | real_Host_sqlite_with_scripted_model_and_event_write_fault; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
 | K-05 | P1 | Malformed/failed Goal verifier is persisted as complete — corrected in candidate 0150: inconclusive results pause the Goal, late passes complete only the reviewed Goal (`goal-verification.test.ts`) | real_Host_goal_consumer_sqlite_with_scripted_model; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
-| K-07 | P1 | Final discovered tool declaration is excluded from the current request-budget heuristic | real_Host_Pi_sqlite_with_scripted_model_and_existing_heuristic; full trigger, exact paths, recovery and source lineage in `kernel` evidence. |
+| K-07 | P1 | Final discovered declarations were excluded from normal-turn budgets; candidate 0195 includes the final set before compaction/output reservation and restores observed schema deltas through cold history. Compact-summary declarations and calibrated prefix changes remain open. | Real Host/Pi/SQLite with scripted inference and isolated original-estimator counterexample; local estimates do not establish vendor limits. |
 | PRI-01 | P1 | Cancelling post-login native inspection still commits the connection — corrected in candidate 0149: cancel fences the write until it starts (`native-cli-login.test.ts`, fails before the fix) | real Provider runtime/facade/repository and cold reopen; injected native login/inspect; full trigger, exact paths, recovery and source lineage in `primary` evidence. |
 | PRI-02 | P1 | Default credential encryption key is derived from non-secret machine/user identifiers | actual cipher with forced empty-env synthetic fixture, independently decrypted using platform/home/username; full trigger, exact paths, recovery and source lineage in `primary` evidence. |
 | PRI-03 | P1 | SSH connection has no server host-key verification | complete config/constructor/ensureConnected source and installed ssh2 contract; full trigger, exact paths, recovery and source lineage in `primary` evidence. |
@@ -4029,8 +4029,8 @@ still running is recorded unknown with its late outcome logged (`stop-late-effec
 SessionEntry owner before part/usage publication, then reconciles the original part and marked V4
 row. Same-part identities, failed writes, schema/media failures, live future history and cold
 reopen are covered; no rollback claim follows.
-Background after-commit acknowledgement loss, cold Stop-plan reconstruction, general native
-termination, paid/provider effects, request budgets, scheduler/Goal and other
+Background acknowledgement/Stop-plan recovery is corrected in candidate 0196; generic cold task
+reconstruction, full native/remote termination, paid effects, compact-summary budgets, scheduler/Goal and other
 receipt failures remain separate indexed work. Source, real local execution, staged executable,
 live service behavior and owner visual acceptance remain separate proof levels.
 
@@ -4096,6 +4096,51 @@ Logs are retained in `/Volumes/AIGC/天工参考/meta/fleet-intake-resident-rece
 exhaustion interrupted an earlier SQLite run; successful runs use the existing pinned pnpm 10.33.2
 and external temporary storage. Node 26.3.0 still differs from the declared CLI 24.14.0, inherited
 CLI-wide lint limits remain, and live providers, other OSes and owner visual acceptance are unproved.
+
+### Request budget and Stop settlement
+
+Candidates 0194–0197 retain the existing Host, registry, Session entries and native client owners.
+Public ZCode `29628c9`, Pi `6fb2e7815167e6b19006fc526d1a5d0f5f998787` and Cindy
+`5c9d8919ea69cf786ced810f18ab9a1328f9e46b` tips were rechecked. Pi's current abort/waitForIdle
+sequence is cancellation-order evidence, not durable parent notification semantics.
+
+The final normal-turn request includes MCP/discovered declarations, projected Skill guidance and
+reminders before compaction. Existing `contextUsageBreakdown` supplies the prior declaration
+estimate without another store or provider-visible field. Same-model reported input receives the
+estimated schema delta; the full local estimate supplies a floor. The isolated original estimator
+kept a 4,096 output cap where the complete 16K-window fixture allowed 2,109 under the same heuristic.
+Live/cold metadata, growth/removal, dynamic discovery and sparse capacities have controlled Host
+proof. Summary registry selection, calibrated changed-prefix deltas and vendor token accuracy remain
+separate; non-positive estimated space retains the original provider-error recovery behavior.
+
+Official ACP tip `43e664a0d90116ac5fd1f5d3b7d6f8e515f65d72`,
+`docs/protocol/v1/prompt-turn.mdx`, requires cancelled permission outcomes after cancellation.
+The immutable inspected file has SHA-256 `eb6367b607b5b55347de704018362d6ae9b3cf0f37c71506a11bd1d1b8889901`.
+Actual local counterexamples proved late automatic approval, prompt dispatch after awaited options,
+and early release while an owned descendant remained. The adapter now fences each boundary and
+awaits process/group disappearance, including setup/version probes and descendants without shared
+pipes. Windows remains child-only; escaped process groups are outside the claim.
+
+Background Stop journals stages before fallible publication and uses exact run/branch receipt
+identity. Unknown acceptance refuses replay; cold incomplete settlement is explicitly lost rather
+than running. Same-entry resume intent separates pending from admitted new work; proven rollback
+restores prior evidence, and historical Stop cannot replace a newer run. Independent SQLite/process
+review reproduced Stop during paused resume persistence hanging SendMessage; the correction settles
+the caller and preserves the concurrent stopped span, metadata and terminal receipts.
+
+CLI checks use the existing pnpm workspace runner and disable inherited source ignores. Full lint
+now reports 87 `max-lines` failures: 83 files are unchanged from the starting source and the four
+edited files reproduce that same rule failure in isolated original copies. No rule was relaxed;
+this separate CLI gate is not reported as green or silently waived in the existing root gate.
+Detailed logs, original comparisons and source hashes are retained at
+`/Volumes/AIGC/天工参考/meta/fleet-request-budget-stop-recovery/`.
+
+Integrated verification passes 1,071 Node test executions, 44 Python checks (one declared expected
+failure), the 197-patch source recipe, desktop and CLI typechecks, and root lint (70 warnings,
+zero errors). Separate staged Pi/Claude restart probes and 11 Codex cases pass with loopback
+inference. The rebuilt review instance was reopened and its model/terminal settings inspected;
+this is startup evidence, not a live-provider or whole-kernel acceptance. Full CLI lint remains
+failed as described above; neither the rules nor capability acceptance statuses were weakened.
 
 ## OpenStock and Octop — bounded reference admission
 

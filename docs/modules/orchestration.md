@@ -49,8 +49,11 @@ shares the same flight; failed publication does not claim a committed terminal o
 settlement releases its temporary coordination state, while a failed Stop plan remains retryable.
 Known completed output wins once the registry commits completion. Reusing its task ID waits for
 the old receipt writer, then the existing Started event resets the old terminal projection.
-Cancellation requests do not prove every native executor terminated. Receipt commit followed by
-lost acknowledgement, cold reconstruction and generic late I/O require separate recovery proof.
+The existing Session entry retains Stop settlement stages and keyed notification/receipt evidence.
+Ambiguous acceptance refuses replay; incomplete cold settlement is lost/unresolved, never a live
+child. A same-entry pending/admitted resume intent protects known Stop history and concurrent Stop;
+rollback cannot overwrite a newer run. See the candidate [recovery contract](../../.fleet/zcode/apps/zcode-cli/docs/background-agent-stop.md).
+Generic cold task reconstruction and remote/native lifetime guarantees remain separate.
 
 ### 0. The one-sentence model
 

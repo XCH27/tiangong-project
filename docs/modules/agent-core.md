@@ -41,7 +41,7 @@ End state: intent → prompt/profile → ActorRef → PermissionDecision → gov
 execution → RunReport/event evidence → optional Git/PR delivery receipt. Implement through the selected host
 owners. OV-027 selects ZCode as the product direction; the retained Craft contracts below are
 reference and preservation obligations, not proof of a migrated or replaced runtime.
-Native file publication follows the existing [FileSystemPort integrity contract](../../.fleet/zcode/apps/zcode-cli/docs/file-write-integrity.md); after Stop a mutating tool gets 1.5 s to report its real outcome, else it is recorded unknown and its late result logged (RECOVERY-01, `stop-late-effect.test.ts`).
+Native file publication follows the existing [FileSystemPort integrity contract](../../.fleet/zcode/apps/zcode-cli/docs/file-write-integrity.md); after Stop a mutating tool gets 1.5 s to settle, else it is recorded unknown until its late result is retained in the original Session receipt (RECOVERY-01, `stop-late-effect.test.ts`, `late-tool-receipt.test.ts`).
 
 ## Kernel target under OV-036
 
@@ -111,7 +111,7 @@ owned process without returning a recoverable tool error to its live model loop.
 pointers and per-response usage remain within the existing continuation and ledger contracts.
 Media resolution, context validation and the final Stop check precede the observation handle's
 `generateText`/`streamText` entry; failed preparation cannot release a tool receipt or another request.
-Both observation modes consume the final projected request, including resolved media.
+Both observation modes consume the final projected request, including resolved media. ACP Stop fences late approvals and setup/option awaits; cleanup waits for the owned process/group under the platform limits in its [termination contract](../../.fleet/zcode/apps/zcode-cli/docs/permission-dispatch.md#native-acp-stop-and-process-settlement).
 Admission snapshots model/account/effort/Fast, intent and attachments before async work; queued inputs cannot inherit later edits. Failed configuration writes cannot publish new bindings.
 An actual returned response or stream finish is retained even if Stop or an iterator tail error
 wins afterward. Its original account/request, usage and received text/reasoning remain in the

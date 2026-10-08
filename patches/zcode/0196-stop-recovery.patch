@@ -1,0 +1,2262 @@
+diff --git a/apps/zcode-cli/docs/background-agent-stop.md b/apps/zcode-cli/docs/background-agent-stop.md
+index c9738cd..3f0f6bc 100644
+--- a/apps/zcode-cli/docs/background-agent-stop.md
++++ b/apps/zcode-cli/docs/background-agent-stop.md
+@@ -18,6 +18,35 @@ existing Started event before the new execution.
+ 
+ Acceptance uses TaskStop → strict Runtime → real runner/registry/events, a disposable process,
+ artifact/queue/event failures, concurrent requests, late completion and completed-result preservation.
+-Cancellation requests are not proof of every native executor's termination. Lost acknowledgement
+-after committed receipt and cold reconstruction remain separate recovery work; no schema, store,
++Cancellation requests are not proof of every native executor's termination. Stop settlement stages
++persist in existing Session entries, keyed by the original run span and
++branch. Cancellation precedes this fallible persistence. A retry checks accepted receipt identity;
++a cold runner only reconstructs the saved settlement, never restarts the child. An attempted
++notification with unknown acceptance remains explicitly unresolved and cannot be replayed.
++Known pre-admission failures remain retryable. This record is settlement evidence owned by Session,
++not another task or notification queue; no schema, store,
+ permission grant, new UI or exactly-once claim is introduced.
++
++Acceptance also covers commit-before-acknowledgement loss with SQLite and a real disposable child,
++cold reconstruction, unknown notification acceptance, and a newer run using the same task ID.
++
++Incomplete cold settlement projects `lost` with an explicit unresolved error, never a live child.
++A derived pending-settlement marker keeps public Stop open even if its last terminal event was
++committed before acknowledgement was lost. Resume writes a pending new-run intent into the same old Stop entry before metadata I/O, then
++admits that exact new run before child execution. Proven rollback restores the original Stop.
++Unknown rollback preserves the original evidence; a persisted pending intent blocks old-artifact
++replay. If admission already committed, the newer run excludes historical Stop reconstruction,
++leaving subsequent child outcome to its existing Session/artifact owners. Branch/run identity is
++rechecked after asynchronous reads and before publication.
++
++Source: ZCode `29628c9` runner retains the original registry/artifact/event/notification owners.
++Pi Core `6fb2e7815167e6b19006fc526d1a5d0f5f998787` `agent.ts:341–351,508–555`
++abort/wait-for-idle is sequencing evidence only; it does not make parent receipts durable.
++Recovery here adapts those existing owners, using Session entries and the background SessionInput
++identity for evidence. SQLite absence cannot prove a synchronous queue callback did not accept work.
++
++Resume setup rechecks the exact new run after each awaited journal/metadata stage before another
++write or execution. Concurrent Stop does not wait to request cancellation behind setup persistence.
++When Stop already owns the run, the stale resume settles SendMessage as interrupted and cannot
++restore the previous registry or artifacts. A terminal pre-ready child explicitly settles the
++readiness caller instead of leaving it waiting forever.
+diff --git a/apps/zcode-cli/packages/core/src/runtime-task/registry.ts b/apps/zcode-cli/packages/core/src/runtime-task/registry.ts
+index 48d9788..eeb6d30 100644
+--- a/apps/zcode-cli/packages/core/src/runtime-task/registry.ts
++++ b/apps/zcode-cli/packages/core/src/runtime-task/registry.ts
+@@ -61,6 +61,8 @@ export interface RuntimeTaskSnapshot extends SubagentTaskSnapshot {
+    * 端口 cancel 之前写下它；终态通知稍后由 waiter 结算时读它。重臂（resume 新生命）随结算面复位。
+    */
+   stopInitiator?: "user" | "model";
++  /** Derived Stop receipt evidence; does not prove a child is still executing. */
++  stopSettlementPending?: boolean;
+   taskType?: RuntimeTaskType;
+   traceContext?: TraceContext;
+   turnId?: TurnId;
+@@ -71,10 +73,7 @@ export interface RuntimeTaskRegistry {
+   all(): Record<string, RuntimeTaskSnapshot>;
+   get(id: string): RuntimeTaskSnapshot | undefined;
+   drainMessages(id: string): RuntimeTaskPendingMessage[];
+-  queueMessage(
+-    id: string,
+-    message: RuntimeTaskPendingMessage,
+-  ): RuntimeTaskSnapshot | undefined;
++  queueMessage(id: string, message: RuntimeTaskPendingMessage): RuntimeTaskSnapshot | undefined;
+   register(task: RuntimeTaskSnapshot): void;
+   remove(id: string): void;
+   requestBackground(id: string): boolean;
+@@ -165,10 +164,7 @@ export class InMemoryRuntimeTaskRegistry implements RuntimeTaskRegistry {
+     return Object.fromEntries(this.tasks);
+   }
+ 
+-  queueMessage(
+-    id: string,
+-    message: RuntimeTaskPendingMessage,
+-  ): RuntimeTaskSnapshot | undefined {
++  queueMessage(id: string, message: RuntimeTaskPendingMessage): RuntimeTaskSnapshot | undefined {
+     return this.update(id, (task) => ({
+       ...task,
+       pendingMessages: [...(task.pendingMessages ?? []), message],
+@@ -242,10 +238,7 @@ export class InMemoryRuntimeTaskRegistry implements RuntimeTaskRegistry {
+     }
+   }
+ 
+-  private resolveBackgroundWaiters(
+-    id: string,
+-    task: RuntimeTaskSnapshot | undefined,
+-  ): void {
++  private resolveBackgroundWaiters(id: string, task: RuntimeTaskSnapshot | undefined): void {
+     this.resolveWaiters(this.backgroundWaiters, id, task);
+   }
+ 
+diff --git a/apps/zcode-cli/packages/core/src/runtime/internal-methods.ts b/apps/zcode-cli/packages/core/src/runtime/internal-methods.ts
+index 81b61bb..4eff5a8 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/internal-methods.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/internal-methods.ts
+@@ -164,6 +164,7 @@ export interface AgentRuntimeCoreMethods {
+     options?: StopActiveForegroundExecutionOptions,
+   ): StopActiveForegroundExecutionResult;
+   enqueueBackgroundTaskNotification(notification: {
++    id?: string;
+     originMeta?: BackgroundResultOriginMeta;
+     taskId?: string;
+     text: string;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/background-notifications.ts b/apps/zcode-cli/packages/core/src/runtime/methods/background-notifications.ts
+index 702dd94..6c1c993 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/background-notifications.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/background-notifications.ts
+@@ -1,7 +1,11 @@
+ import { createMessageId, traceContextToLogContext } from "../deps.js";
+ import type { MessageId, TraceContext } from "../deps.js";
+ import type { BackgroundResultOriginMeta } from "@zcode/contracts";
+-import { createRuntimeCommandId, type TaskNotificationRuntimeCommand } from "../command-queue.js";
++import {
++  createRuntimeCommandId,
++  type RuntimeCommandId,
++  type TaskNotificationRuntimeCommand,
++} from "../command-queue.js";
+ import { runtimeInputMetadata } from "../../agent/runtime-input-presentation.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
+ import type { SealBackgroundTaskNotificationsInput } from "../types.js";
+@@ -10,6 +14,7 @@ import { shouldSuppressSealedSubagentBashNotification } from "../../runtime-task
+ export function enqueueBackgroundTaskNotification(
+   this: AgentRuntimeInternal,
+   notification: {
++    id?: string;
+     originMeta?: BackgroundResultOriginMeta;
+     taskId?: string;
+     text: string;
+@@ -41,7 +46,9 @@ export function enqueueBackgroundTaskNotification(
+     });
+     return;
+   }
+-  const commandId = createRuntimeCommandId();
++  const commandId = notification.id
++    ? (notification.id as RuntimeCommandId)
++    : createRuntimeCommandId();
+   this.enqueueRuntimeCommand({
+     branchGeneration,
+     createdAt: new Date(),
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/background-stop-projection.ts b/apps/zcode-cli/packages/core/src/runtime/methods/background-stop-projection.ts
+new file mode 100644
+index 0000000..04ceb76
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/background-stop-projection.ts
+@@ -0,0 +1,92 @@
++import type { BackgroundTaskInfo, BackgroundTaskInfoStatus } from "../deps.js";
++import type { RuntimeTaskSnapshot, RuntimeTaskType } from "../../runtime-task/registry.js";
++import type { RuntimeBackgroundStopStatus } from "./background-stop-types.js";
++
++export function backgroundInfoFromRuntimeTask(task: RuntimeTaskSnapshot): BackgroundTaskInfo {
++  return {
++    taskId: task.taskId,
++    toolCallId: typeof task.parentToolCallId === "string" ? task.parentToolCallId : undefined,
++    toolName: toolNameFromRuntimeTaskType(task.type),
++    cancellable: task.status === "running",
++    command: commandFromRuntimeTask(task, undefined),
++    description: task.description,
++    status: toBackgroundTaskInfoStatus(task.status) ?? "lost",
++    pid: task.pid,
++    startedAt: task.startedAt,
++    completedAt: task.completedAt,
++    outputPath: task.outputFile,
++    terminalId: task.taskId,
++  };
++}
++
++export function commandFromRuntimeTask(
++  task: RuntimeTaskSnapshot | undefined,
++  existing: BackgroundTaskInfo | undefined,
++): string | undefined {
++  // TaskStop 对 local_agent 返回短 description；旧 projection 的 command
++  // 可能已保存为完整 prompt，因此运行时任务必须先于 existing.command 取值。
++  if (task?.type === "local_agent") return task.description;
++  if (!task && existing?.toolName === "Agent") return existing.description;
++  if (existing?.command) return existing.command;
++  if (task?.type === "local_bash") return task.description || task.prompt;
++  return task?.prompt;
++}
++
++export function runtimeTaskTypeFromBackgroundInfo(
++  task: BackgroundTaskInfo | undefined,
++): RuntimeTaskType | undefined {
++  switch (task?.toolName) {
++    case "Bash":
++      return "local_bash";
++    case "Agent":
++      return "local_agent";
++    case "Workflow":
++      return "local_workflow";
++    case "CreateWorkflow":
++    case "AmendWorkflow":
++      return "local_dynamic_workflow";
++    default:
++      return undefined;
++  }
++}
++
++export function toolNameFromRuntimeTaskType(type: RuntimeTaskType): string {
++  switch (type) {
++    case "local_agent":
++      return "Agent";
++    case "local_bash":
++      return "Bash";
++    case "local_workflow":
++      return "Workflow";
++    case "local_dynamic_workflow":
++      return "CreateWorkflow";
++    case "monitor_mcp":
++      return "Monitor";
++  }
++}
++
++export function isTerminalBackgroundTaskInfoStatus(
++  status: BackgroundTaskInfoStatus | undefined,
++): boolean {
++  return Boolean(status && status !== "running");
++}
++
++export function toBackgroundTaskInfoStatus(
++  status: RuntimeBackgroundStopStatus | undefined,
++): BackgroundTaskInfoStatus | undefined {
++  switch (status) {
++    case "cancelled":
++    case "killed":
++    case "stopped":
++      return "cancelled";
++    case "completed":
++    case "failed":
++    case "lost":
++    case "running":
++    case "spawn_error":
++    case "timed_out":
++      return status;
++    default:
++      return undefined;
++  }
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/background.ts b/apps/zcode-cli/packages/core/src/runtime/methods/background.ts
+index 87d49ab..3a4aa70 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/background.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/background.ts
+@@ -7,18 +7,20 @@ import type {
+   TraceContext,
+ } from "../deps.js";
+ import type { AgentRuntimeInternal } from "../internal.js";
++import {
++  backgroundInfoFromRuntimeTask,
++  commandFromRuntimeTask,
++  runtimeTaskTypeFromBackgroundInfo,
++  isTerminalBackgroundTaskInfoStatus,
++  toBackgroundTaskInfoStatus,
++} from "./background-stop-projection.js";
+ import { stopDynamicWorkflowBackgroundTask } from "./background-stop-dynamic-workflow.js";
+ import type {
+   RuntimeBackgroundStopOptions,
+   RuntimeBackgroundStopResult,
+-  RuntimeBackgroundStopStatus,
+   RuntimeBackgroundStopTarget,
+   TypedRuntimeBackgroundStopTarget,
+ } from "./background-stop-types.js";
+-import type {
+-  RuntimeTaskSnapshot,
+-  RuntimeTaskType,
+-} from "../../runtime-task/registry.js";
+ import {
+   hasRunningBackgroundRuntimeTask,
+   isTerminalRuntimeTask,
+@@ -133,6 +135,8 @@ async function resolveBackgroundStopTarget(
+   this: AgentRuntimeInternal,
+   taskId: string,
+ ): Promise<RuntimeBackgroundStopTarget | undefined> {
++  // 冷恢复只由原 subagent owner 读取停止证据，不能重新执行子任务。
++  if (!this.runtimeTaskRegistry.get(taskId)) await this.subagentPort?.getTask?.(taskId);
+   const registryTask = this.runtimeTaskRegistry.get(taskId);
+   const projection = await this.rebuildProjection();
+   const existing =
+@@ -153,6 +157,8 @@ async function resolveBackgroundStopTarget(
+ }
+ 
+ function isTerminalBackgroundStopTarget(target: RuntimeBackgroundStopTarget): boolean {
++  // 最后一个终态事件提交后可能丢失确认；投影终态不能关闭仍待结算的 Stop。
++  if (target.registryTask?.stopSettlementPending) return false;
+   return (
+     (target.registryTask ? isTerminalRuntimeTask(target.registryTask) : false) ||
+     isTerminalBackgroundTaskInfoStatus(target.existing?.status)
+@@ -299,9 +305,7 @@ export async function cancelRunningRuntimeBackgroundTasks(
+   const traceContext = input.traceContext ?? this.rootTraceContext;
+   const tasks = Object.values(this.runtimeTaskRegistry.all()).filter(
+     (task) =>
+-      task.type === "local_bash" &&
+-      task.isBackgrounded === true &&
+-      task.status === "running",
++      task.type === "local_bash" && task.isBackgrounded === true && task.status === "running",
+   );
+ 
+   for (const task of tasks) {
+@@ -392,93 +396,3 @@ export function buildBackgroundTaskPayload(
+     terminalId: existing?.terminalId ?? taskId,
+   };
+ }
+-
+-function backgroundInfoFromRuntimeTask(task: RuntimeTaskSnapshot): BackgroundTaskInfo {
+-  return {
+-    taskId: task.taskId,
+-    toolCallId:
+-      typeof task.parentToolCallId === "string" ? task.parentToolCallId : undefined,
+-    toolName: toolNameFromRuntimeTaskType(task.type),
+-    cancellable: task.status === "running",
+-    command: commandFromRuntimeTask(task, undefined),
+-    description: task.description,
+-    status: toBackgroundTaskInfoStatus(task.status) ?? "lost",
+-    pid: task.pid,
+-    startedAt: task.startedAt,
+-    completedAt: task.completedAt,
+-    outputPath: task.outputFile,
+-    terminalId: task.taskId,
+-  };
+-}
+-
+-function commandFromRuntimeTask(
+-  task: RuntimeTaskSnapshot | undefined,
+-  existing: BackgroundTaskInfo | undefined,
+-): string | undefined {
+-  // TaskStop 对 local_agent 返回短 description；旧 projection 的 command
+-  // 可能已保存为完整 prompt，因此运行时任务必须先于 existing.command 取值。
+-  if (task?.type === "local_agent") return task.description;
+-  if (!task && existing?.toolName === "Agent") return existing.description;
+-  if (existing?.command) return existing.command;
+-  if (task?.type === "local_bash") return task.description || task.prompt;
+-  return task?.prompt;
+-}
+-
+-function runtimeTaskTypeFromBackgroundInfo(
+-  task: BackgroundTaskInfo | undefined,
+-): RuntimeTaskType | undefined {
+-  switch (task?.toolName) {
+-    case "Bash":
+-      return "local_bash";
+-    case "Agent":
+-      return "local_agent";
+-    case "Workflow":
+-      return "local_workflow";
+-    case "CreateWorkflow":
+-    case "AmendWorkflow":
+-      return "local_dynamic_workflow";
+-    default:
+-      return undefined;
+-  }
+-}
+-
+-function toolNameFromRuntimeTaskType(type: RuntimeTaskType): string {
+-  switch (type) {
+-    case "local_agent":
+-      return "Agent";
+-    case "local_bash":
+-      return "Bash";
+-    case "local_workflow":
+-      return "Workflow";
+-    case "local_dynamic_workflow":
+-      return "CreateWorkflow";
+-    case "monitor_mcp":
+-      return "Monitor";
+-  }
+-}
+-
+-function isTerminalBackgroundTaskInfoStatus(
+-  status: BackgroundTaskInfoStatus | undefined,
+-): boolean {
+-  return Boolean(status && status !== "running");
+-}
+-
+-function toBackgroundTaskInfoStatus(
+-  status: RuntimeBackgroundStopStatus | undefined,
+-): BackgroundTaskInfoStatus | undefined {
+-  switch (status) {
+-    case "cancelled":
+-    case "killed":
+-    case "stopped":
+-      return "cancelled";
+-    case "completed":
+-    case "failed":
+-    case "lost":
+-    case "running":
+-    case "spawn_error":
+-    case "timed_out":
+-      return status;
+-    default:
+-      return undefined;
+-  }
+-}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts b/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts
+index 5b09fd0..e9b864e 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts
+@@ -1,4 +1,8 @@
+ /* eslint-disable max-lines -- subagent runtime wiring 集中衔接 child runtime、tool pool、权限、MCP 与 activity watchdog，拆分需单独迁移。 */
++import {
++  backgroundStopKey,
++  restoreStoppedBackgroundAgentTask,
++} from "../../subagent/background-agent-settlement.js";
+ import { RESPOND_TO_COORDINATOR_TOOL_NAME } from "@zcode/contracts";
+ import type { SubagentRunOptions } from "@zcode/contracts";
+ import {
+@@ -72,12 +76,51 @@ export function createDefaultSubagentPort(
+     profiles: this.config.subagents?.profiles,
+     builtInModelSelectionOverrides: this.config.subagents?.builtInModelSelectionOverrides,
+     runtimeTaskRegistry: this.runtimeTaskRegistry,
++    stopPersistence:
++      this.sessionStore?.saveSessionEntry && this.sessionStore.sessionEntries
++        ? {
++            save: async (stopped) => {
++              const now = Date.now();
++              // 停止证据沿用 Session entry；不能把内存 retry flag 当成重启后的事实。
++              await this.sessionStore!.saveSessionEntry!({
++                id: backgroundStopKey(stopped.task),
++                sessionID: this.sessionId,
++                type: "subagent_stop",
++                touchSession: false,
++                time: { created: stopped.task.completedAt!.getTime(), updated: now },
++                data: { ...stopped, cold: undefined },
++              });
++            },
++            load: async (taskId) => {
++              const entries = await this.sessionStore!.sessionEntries!({
++                sessionID: this.sessionId,
++                type: "subagent_stop",
++              });
++              return entries
++                .sort((a, b) => b.time.created - a.time.created)
++                .map((entry) => restoreStoppedBackgroundAgentTask(entry.data))
++                .find(
++                  (stopped) =>
++                    stopped?.task.taskId === taskId &&
++                    stopped.task.parentSessionId === this.sessionId &&
++                    stopped.task.branchGeneration === this.branchGeneration,
++                );
++            },
++            hasEvent: async (id) =>
++              (await this.eventStore.getEvents(this.sessionId)).some((event) => event.id === id),
++            hasNotification: async (id) =>
++              (
++                (await this.sessionStore?.listSessionInputs?.({ sessionID: this.sessionId })) ?? []
++              ).some((input) => input.id === id && input.kind === "backgroundNotification"),
++          }
++        : undefined,
+     emitParentEvent: async (event, traceContext) => {
+       if (isStaleBranchRuntimeTaskEvent(this, event)) return;
+       await this.appendEvent(event, traceContext);
+     },
+     enqueueParentTaskNotification: (notification) => {
+       this.enqueueBackgroundTaskNotification({
++        id: notification.id,
+         originMeta: notification.originMeta,
+         taskId: notification.taskId,
+         text: notification.text,
+diff --git a/apps/zcode-cli/packages/core/src/subagent/background-agent-settlement.ts b/apps/zcode-cli/packages/core/src/subagent/background-agent-settlement.ts
+index d630c49..1329a71 100644
+--- a/apps/zcode-cli/packages/core/src/subagent/background-agent-settlement.ts
++++ b/apps/zcode-cli/packages/core/src/subagent/background-agent-settlement.ts
+@@ -1,4 +1,4 @@
+-import type { TraceContext } from "@zcode/contracts";
++import type { SessionEvent, TraceContext } from "@zcode/contracts";
+ import { isTerminalRuntimeTask, type RuntimeTaskSnapshot } from "../runtime-task/registry.js";
+ 
+ /** I/O coordination derived from a registry run, never another accepted task store. */
+@@ -13,6 +13,10 @@ export interface StoppedBackgroundAgentTask {
+   totalDurationMs: number;
+   traceContext: TraceContext;
+   artifactsWritten?: boolean;
++  notificationAttempted?: boolean;
++  pendingReceipt?: "subagent" | "background";
++  cold?: boolean;
++  resumeIntent?: { spanId: string; state: "pending" | "admitted" };
+   notificationEnqueued?: boolean;
+   backgroundEventEmitted?: boolean;
+   subagentEventEmitted?: boolean;
+@@ -62,3 +66,64 @@ export function canFinalizeBackgroundRun(
+ ): boolean {
+   return ownsBackgroundRun(lifecycle, task) && task !== undefined && !isTerminalRuntimeTask(task);
+ }
++
++/** Known failure before queue acceptance; every other callback failure is ambiguous. */
++export class BackgroundNotificationNotAcceptedError extends Error {}
++
++export interface BackgroundStopPersistence {
++  save(stopped: StoppedBackgroundAgentTask): Promise<void>;
++  load(taskId: string): Promise<StoppedBackgroundAgentTask | undefined>;
++  hasEvent(id: SessionEvent["id"]): Promise<boolean>;
++  hasNotification(id: string): Promise<boolean>;
++}
++
++export function backgroundStopKey(task: RuntimeTaskSnapshot): string {
++  return `subagent-stop:${task.taskId}:${task.traceContext?.spanId ?? task.startedAt.toISOString()}:${task.branchGeneration ?? 0}`;
++}
++
++export function restoreStoppedBackgroundAgentTask(
++  value: unknown,
++): StoppedBackgroundAgentTask | undefined {
++  if (!value || typeof value !== "object") return undefined;
++  const data = value as StoppedBackgroundAgentTask;
++  const task = data.task;
++  if (
++    !task ||
++    task.type !== "local_agent" ||
++    task.status !== "killed" ||
++    typeof task.taskId !== "string" ||
++    !task.traceContext?.spanId ||
++    typeof data.totalDurationMs !== "number" ||
++    !data.traceContext?.traceId
++  )
++    return undefined;
++  const flags = [
++    data.artifactsWritten,
++    data.notificationAttempted,
++    data.notificationEnqueued,
++    data.backgroundEventEmitted,
++    data.subagentEventEmitted,
++  ];
++  if (
++    flags.some((flag) => flag !== undefined && typeof flag !== "boolean") ||
++    (data.pendingReceipt !== undefined &&
++      data.pendingReceipt !== "subagent" &&
++      data.pendingReceipt !== "background") ||
++    (data.resumeIntent !== undefined &&
++      (!data.resumeIntent ||
++        typeof data.resumeIntent.spanId !== "string" ||
++        (data.resumeIntent.state !== "pending" && data.resumeIntent.state !== "admitted"))) ||
++    typeof task.parentSessionId !== "string" ||
++    task.traceContext.spanId !== data.traceContext.spanId ||
++    !Number.isFinite(data.totalDurationMs) ||
++    data.totalDurationMs < 0 ||
++    (task.branchGeneration !== undefined &&
++      (!Number.isInteger(task.branchGeneration) || task.branchGeneration < 0))
++  )
++    return undefined;
++  const startedAt = new Date(task.startedAt);
++  const completedAt = new Date(task.completedAt!);
++  if (!Number.isFinite(startedAt.getTime()) || !Number.isFinite(completedAt.getTime()))
++    return undefined;
++  return { ...data, task: { ...task, startedAt, completedAt }, cold: true };
++}
+diff --git a/apps/zcode-cli/packages/core/src/subagent/runner.ts b/apps/zcode-cli/packages/core/src/subagent/runner.ts
+index 202faeb..414b479 100644
+--- a/apps/zcode-cli/packages/core/src/subagent/runner.ts
++++ b/apps/zcode-cli/packages/core/src/subagent/runner.ts
+@@ -1,5 +1,8 @@
+ import {
+   serializeBackgroundSettlement,
++  backgroundStopKey,
++  BackgroundNotificationNotAcceptedError,
++  type BackgroundStopPersistence,
+   releaseBackgroundSettlement,
+   ownsBackgroundRun,
+   canFinalizeBackgroundRun,
+@@ -104,6 +107,7 @@ export interface ExploreSubagentRuntimeResult {
+ }
+ 
+ export interface ParentTaskNotificationCommand {
++  id?: string;
+   originMeta: BackgroundResultOriginMeta;
+   text: string;
+   traceContext: TraceContext;
+@@ -123,6 +127,7 @@ export interface ExploreSubagentPortOptions {
+   // background completion 必须同步写入父 runtime command queue；
+   // 返回 undefined 可让 TypeScript 拒绝 async enqueue，避免 fake-notified。
+   enqueueParentTaskNotification?: EnqueueParentTaskNotification;
++  stopPersistence?: BackgroundStopPersistence;
+   outputRootDir?: string;
+   profiles?: readonly AgentProfile[];
+   builtInModelSelectionOverrides?: Partial<
+@@ -147,6 +152,33 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+   });
+   const autoBackgroundMs = normalizeAutoBackgroundMs(options.autoBackgroundMs);
+ 
++  async function recoverStoppedTask(taskId: string): Promise<void> {
++    if (registry.get(taskId) || backgroundSettlements.has(taskId)) return;
++    const stopped = await options.stopPersistence?.load(taskId);
++    if (
++      !stopped ||
++      stopped.resumeIntent?.state === "admitted" ||
++      registry.get(taskId) ||
++      backgroundSettlements.has(taskId)
++    )
++      return;
++    const complete =
++      !stopped.resumeIntent &&
++      stopped.backgroundEventEmitted &&
++      stopped.subagentEventEmitted &&
++      stopped.notificationEnqueued;
++    registry.register({
++      ...stopped.task,
++      status: complete ? "killed" : "lost",
++      stopSettlementPending: !complete,
++      error: complete
++        ? stopped.task.error
++        : "Stop settlement is unresolved after restart; child execution is not running.",
++      notified: stopped.notificationEnqueued,
++    });
++    if (!complete) backgroundSettlements.set(taskId, { tail: Promise.resolve(), stopped });
++  }
++
+   const port: SubagentPort & { start: NonNullable<SubagentPort["start"]> } = {
+     async launch(
+       rawRequest: SubagentLaunchRequest,
+@@ -537,7 +569,8 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+         await readyGate.promise;
+       } catch (error) {
+         taskAbort.abort(error);
+-        registry.remove(lifecycle.agentId);
++        if (canFinalizeBackgroundRun(lifecycle, registry.get(lifecycle.agentId)))
++          registry.remove(lifecycle.agentId);
+         releaseBackgroundSettlement(backgroundSettlements, lifecycle);
+         throw error;
+       }
+@@ -555,6 +588,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+     },
+ 
+     async getTask(taskId: string): Promise<SubagentTaskSnapshot | undefined> {
++      await recoverStoppedTask(taskId);
+       return registry.get(taskId);
+     },
+ 
+@@ -580,6 +614,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+       if (stopOptions?.signal?.aborted) {
+         throw stopOptions.signal.reason ?? new Error("Subagent stop aborted");
+       }
++      await recoverStoppedTask(taskId);
+       const task = registry.get(taskId);
+       if (!task || task.type !== "local_agent") return task;
+       const settlement = backgroundSettlements.get(taskId) ?? {
+@@ -597,6 +632,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+           .get(taskId)
+           ?.abort(new Error(`${BACKGROUND_AGENT_STOPPED_STATE.message}: ${taskId}`));
+         abortControllers.delete(taskId);
++        registry.update(taskId, (current) => ({ ...current, stopSettlementPending: true }));
+         const flight = serializeBackgroundSettlement(settlement, () =>
+           finalizeBackgroundStopped(options, registry, stopped),
+         );
+@@ -620,6 +656,7 @@ export function createExploreSubagentPort(options: ExploreSubagentPortOptions):
+       request: SubagentSendMessageRequest,
+       sendOptions?: SubagentSendMessageOptions,
+     ): Promise<SubagentSendMessageResult> {
++      await recoverStoppedTask(request.to);
+       return sendMessageToLocalAgent(
+         options,
+         profiles,
+@@ -989,7 +1026,10 @@ async function sendMessageToLocalAgent(
+       );
+     }
+   }
+-  if (backgroundSettlements.get(request.to)?.stopped && !isTerminalRuntimeTask(task)) {
++  if (
++    backgroundSettlements.get(request.to)?.stopped &&
++    (!isTerminalRuntimeTask(task) || task.stopSettlementPending)
++  ) {
+     return createSendMessageFailure(
+       request,
+       `Stop settlement is pending for local agent ${request.to}. Retry Stop before sending a message.`,
+@@ -1066,6 +1106,12 @@ async function resumeTerminalAgentInBackground(
+       `Cannot resume local agent ${task.agentId}: missing child session id.`,
+     );
+   }
++  const resumeSpanId = lifecycle.runTraceContext.spanId;
++  if (!resumeSpanId)
++    return createSendMessageFailure(
++      request,
++      `Cannot resume local agent ${task.agentId}: missing run identity.`,
++    );
+   const startedAt = new Date(lifecycle.startedAt);
+   const previousTask = task;
+   registry.register(
+@@ -1077,18 +1123,98 @@ async function resumeTerminalAgentInBackground(
+       status: "running",
+     }),
+   );
++  const resumedBranch = registry.get(task.taskId)?.branchGeneration;
++  const ownsPendingResume = () => {
++    const current = registry.get(task.taskId);
++    return (
++      current?.traceContext?.spanId === resumeSpanId &&
++      current.branchGeneration === resumedBranch &&
++      !isTerminalRuntimeTask(current) &&
++      !current.stopSettlementPending
++    );
++  };
++  const assertPendingResume = () => {
++    if (!ownsPendingResume())
++      throw new Error(`Resume interrupted by Stop or a newer run: ${task.taskId}`);
++  };
++  const interruptedResume = () =>
++    createSendMessageFailure(request, `Resume interrupted by Stop or a newer run: ${task.taskId}`);
++  let priorStop: StoppedBackgroundAgentTask | undefined;
+   try {
++    // 新一轮复用 child id 后，旧停止证据只保留历史，不能在冷启动恢复为当前任务。
++    const loaded = await options.stopPersistence?.load(task.taskId);
++    assertPendingResume();
++    priorStop =
++      loaded?.task.traceContext?.spanId === task.traceContext?.spanId ? loaded : undefined;
++    if (priorStop) {
++      await options.stopPersistence?.save({
++        ...priorStop,
++        resumeIntent: { spanId: resumeSpanId, state: "pending" },
++      });
++      assertPendingResume();
++    }
++    assertPendingResume();
+     await writeAgentMetadataFile(lifecycle, resumeRequest, "running", {
+       resumedAt: new Date().toISOString(),
+       resumedFromMessageId: message.id,
+     });
++    assertPendingResume();
++    if (priorStop) {
++      await options.stopPersistence?.save({
++        ...priorStop,
++        resumeIntent: { spanId: resumeSpanId, state: "admitted" },
++      });
++      assertPendingResume();
++    }
+   } catch (error) {
++    // setup 跨越 await 后可能已被 Stop 接管；旧 resume 不得回写新停止快照或产物。
++    if (!ownsPendingResume()) return interruptedResume();
++    if (priorStop) {
++      try {
++        assertPendingResume();
++        await options.stopPersistence?.save(priorStop);
++        assertPendingResume();
++      } catch (restoreError) {
++        if (!ownsPendingResume()) return interruptedResume();
++        const restored = await options.stopPersistence?.load(task.taskId).catch(() => undefined);
++        if (!ownsPendingResume()) return interruptedResume();
++        if (!restored || restored.resumeIntent) {
++          const unresolved = {
++            ...priorStop,
++            resumeIntent: { spanId: resumeSpanId, state: "pending" as const },
++          };
++          registry.register({
++            ...previousTask,
++            status: "lost",
++            stopSettlementPending: true,
++            error: "Resume setup restoration is unresolved; previous Stop evidence is retained.",
++          });
++          backgroundSettlements.set(task.taskId, { tail: Promise.resolve(), stopped: unresolved });
++          throw new AggregateError(
++            [error, restoreError],
++            "Resume setup restoration is unresolved; child was not executed",
++          );
++        }
++      }
++    }
+     // SendMessage resume setup 失败不能覆盖原 terminal task；
+     // 还原旧 snapshot，避免一个未启动的新 turn 卡成 running。
++    assertPendingResume();
++    if (priorStop) {
++      try {
++        await writeStoppedAgentArtifacts(priorStop.task);
++      } catch (artifactError) {
++        if (!ownsPendingResume()) return interruptedResume();
++        registry.register(previousTask);
++        throw artifactError;
++      }
++    }
++    if (!ownsPendingResume()) return interruptedResume();
+     registry.register(previousTask);
+     throw error;
+   }
+ 
++  if (!ownsPendingResume()) return interruptedResume();
+   const taskAbort = createSubagentTaskAbortController(abortControllers, lifecycle.agentId);
+   backgroundSettlements.set(lifecycle.agentId, lifecycle.backgroundSettlement);
+   const readyGate = createSubagentSessionReadyGate();
+@@ -1101,6 +1227,7 @@ async function resumeTerminalAgentInBackground(
+     {
+       resumeFromStore: true,
+       onSessionReady: async () => {
++        assertPendingResume();
+         await emitSubagentEvent(
+           options,
+           SessionEventType.SubagentSpawned,
+@@ -1119,6 +1246,7 @@ async function resumeTerminalAgentInBackground(
+             status: "running",
+           },
+         );
++        assertPendingResume();
+         await emitSubagentEvent(
+           options,
+           SessionEventType.BackgroundTaskStarted,
+@@ -1138,6 +1266,7 @@ async function resumeTerminalAgentInBackground(
+             terminalId: lifecycle.agentId,
+           },
+         );
++        assertPendingResume();
+         readyGate.resolve();
+       },
+       onSessionStartFailed: readyGate.reject,
+@@ -1151,6 +1280,7 @@ async function resumeTerminalAgentInBackground(
+     await readyGate.promise;
+   } catch (error) {
+     taskAbort.abort(error);
++    if (!ownsPendingResume()) return interruptedResume();
+     registry.register(previousTask);
+     throw error;
+   }
+@@ -1437,7 +1567,11 @@ async function runBackgroundAgent(
+ ): Promise<void> {
+   let sessionReady = false;
+   try {
+-    if (isTerminalRuntimeTask(registry.get(lifecycle.agentId) ?? { status: "lost" })) {
++    if (!canFinalizeBackgroundRun(lifecycle, registry.get(lifecycle.agentId))) {
++      // 已在 ready 之前终结的任务也必须结束调用方等待，不能留下悬空 readyGate。
++      executionOptions.onSessionStartFailed?.(
++        new Error(`Background agent ended before session readiness: ${lifecycle.agentId}`),
++      );
+       return;
+     }
+     const completed = await runAgentToCompletion(
+@@ -1800,43 +1934,115 @@ async function finalizeBackgroundStopped(
+     status: BACKGROUND_AGENT_STOPPED_STATE.notificationStatus,
+     totalDurationMs: stopped.totalDurationMs,
+   });
++  if (stopped.resumeIntent)
++    throw new Error(
++      `Newer child resume acceptance is unresolved: ${stopped.task.taskId}; prior Stop will not be replayed`,
++    );
++  const assertOwned = () => {
++    const current = registry.get(stopped.task.taskId);
++    if (
++      !current ||
++      current.traceContext?.spanId !== stopped.task.traceContext?.spanId ||
++      current.branchGeneration !== stopped.task.branchGeneration
++    ) {
++      throw new Error(`Stop settlement belongs to an older run: ${stopped.task.taskId}`);
++    }
++  };
++  assertOwned();
++  const persistence = options.stopPersistence;
++  const key = backgroundStopKey(stopped.task);
++  await persistence?.save(stopped);
+   if (!stopped.artifactsWritten) {
+     await writeStoppedAgentArtifacts(stopped.task);
+     stopped.artifactsWritten = true;
++    await persistence?.save(stopped);
+   }
++  assertOwned();
+   if (!stopped.notificationEnqueued) {
+-    const enqueued = enqueueBackgroundNotification(
+-      options,
+-      registry,
+-      stopped.task.taskId,
+-      notification,
+-      stopped.traceContext,
+-    );
+-    if (!enqueued) {
+-      throw new Error(
+-        `Background agent task stopped notification was not enqueued: ${stopped.task.taskId}`,
+-      );
++    if (stopped.notificationAttempted) {
++      if (
++        registry.get(stopped.task.taskId)?.notified ||
++        (await persistence?.hasNotification(`${key}:notification`))
++      ) {
++        stopped.notificationEnqueued = true;
++      } else {
++        throw new Error(
++          `Stop notification acceptance is unresolved: ${stopped.task.taskId}; notification will not be replayed`,
++        );
++      }
++    } else {
++      stopped.notificationAttempted = true;
++      await persistence?.save(stopped);
++      try {
++        const enqueued = enqueueBackgroundNotification(
++          options,
++          registry,
++          stopped.task.taskId,
++          notification,
++          stopped.traceContext,
++          `${key}:notification`,
++        );
++        if (!enqueued)
++          throw new BackgroundNotificationNotAcceptedError(
++            `Background agent task stopped notification was not enqueued: ${stopped.task.taskId}`,
++          );
++        stopped.notificationEnqueued = true;
++      } catch (error) {
++        if (error instanceof BackgroundNotificationNotAcceptedError) {
++          stopped.notificationAttempted = false;
++          await persistence?.save(stopped);
++          throw new BackgroundNotificationNotAcceptedError(
++            `Background agent task stopped notification was not enqueued: ${stopped.task.taskId}`,
++            { cause: error },
++          );
++        }
++        throw error;
++      }
+     }
+-    stopped.notificationEnqueued = true;
++    await persistence?.save(stopped);
+   }
+ 
+-  if (!stopped.subagentEventEmitted) {
+-    await emitRuntimeTaskSubagentStoppedEvent(
+-      options,
+-      stopped.task,
+-      stopped.traceContext,
+-      stopped.totalDurationMs,
+-    );
+-    stopped.subagentEventEmitted = true;
+-  }
+-  // The background terminal receipt closes the public Stop retry path. Emit it
+-  // last, so an earlier event-write failure still permits another Stop request.
+-  if (!stopped.backgroundEventEmitted) {
+-    await emitRuntimeTaskBackgroundCompletedEvent(options, stopped.task, stopped.traceContext);
+-    stopped.backgroundEventEmitted = true;
++  for (const stage of ["subagent", "background"] as const) {
++    const field = stage === "subagent" ? "subagentEventEmitted" : "backgroundEventEmitted";
++    if (stopped[field]) continue;
++    const id = `${key}:${stage}` as SessionEvent["id"];
++    if (stopped.pendingReceipt === stage) {
++      if (await persistence?.hasEvent(id)) {
++        stopped[field] = true;
++      } else if (stopped.cold || !persistence) {
++        throw new Error(
++          `Stop receipt acceptance is unresolved: ${stopped.task.taskId}; receipt will not be replayed`,
++        );
++      }
++    }
++    assertOwned();
++    if (!stopped[field]) {
++      stopped.pendingReceipt = stage;
++      await persistence?.save(stopped);
++      if (stage === "subagent") {
++        await emitRuntimeTaskSubagentStoppedEvent(
++          options,
++          stopped.task,
++          stopped.traceContext,
++          stopped.totalDurationMs,
++          id,
++        );
++      } else {
++        await emitRuntimeTaskBackgroundCompletedEvent(
++          options,
++          stopped.task,
++          stopped.traceContext,
++          id,
++        );
++      }
++      stopped[field] = true;
++    }
++    stopped.pendingReceipt = undefined;
++    await persistence?.save(stopped);
+   }
+   // No terminal waiter or successful Stop sees killed before the existing receipt
+   // and notification owners have accepted their writes.
++  assertOwned();
+   const committed = registry.update(stopped.task.taskId, (current) => ({
+     ...stopped.task,
+     notified: current.notified,
+@@ -1885,6 +2091,7 @@ async function emitRuntimeTaskBackgroundCompletedEvent(
+   options: ExploreSubagentPortOptions,
+   task: RuntimeTaskSnapshot,
+   traceContext: TraceContext,
++  id?: SessionEvent["id"],
+ ): Promise<void> {
+   if (!task.parentSessionId) return;
+   const event = createSessionEvent(
+@@ -1909,6 +2116,7 @@ async function emitRuntimeTaskBackgroundCompletedEvent(
+       traceId: traceContext.traceId,
+     },
+   );
++  if (id) event.id = id;
+   await options.emitParentEvent(event, traceContext);
+ }
+ 
+@@ -1917,6 +2125,7 @@ async function emitRuntimeTaskSubagentStoppedEvent(
+   task: RuntimeTaskSnapshot,
+   traceContext: TraceContext,
+   totalDurationMs: number,
++  id?: SessionEvent["id"],
+ ): Promise<void> {
+   if (!task.parentSessionId) return;
+   const event = createSessionEvent(
+@@ -1938,6 +2147,7 @@ async function emitRuntimeTaskSubagentStoppedEvent(
+       traceId: traceContext.traceId,
+     },
+   );
++  if (id) event.id = id;
+   await options.emitParentEvent(event, traceContext);
+ }
+ 
+@@ -1947,6 +2157,7 @@ function enqueueBackgroundNotification(
+   taskId: string,
+   message: string,
+   traceContext: TraceContext,
++  id?: string,
+ ): boolean {
+   if (!options.enqueueParentTaskNotification) {
+     options.logger?.warn("Skipped subagent background notification without parent queue", {
+@@ -1972,6 +2183,7 @@ function enqueueBackgroundNotification(
+ 
+   try {
+     options.enqueueParentTaskNotification({
++      ...(id ? { id } : {}),
+       originMeta: {
+         backgroundSource: "subagent",
+         title: task.description.trim() || taskId,
+@@ -1989,6 +2201,7 @@ function enqueueBackgroundNotification(
+       module: "core.subagent",
+       taskId,
+     });
++    if (id) throw error;
+     return false;
+   }
+ 
+diff --git a/apps/zcode-cli/packages/core/test/background-agent-stop-race.test.ts b/apps/zcode-cli/packages/core/test/background-agent-stop-race.test.ts
+new file mode 100644
+index 0000000..8bf00e4
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/background-agent-stop-race.test.ts
+@@ -0,0 +1,82 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { readFile } from "node:fs/promises";
++import { dirname, join } from "node:path";
++import { backgroundStopFixture as fixture } from "./helpers/background-stop-fixture.js";
++import {
++  backgroundStopKey,
++  restoreStoppedBackgroundAgentTask,
++} from "../src/subagent/background-agent-settlement.js";
++import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
++
++for (const state of ["pending", "admitted"] as const) {
++  for (const acknowledgementLost of [false, true]) {
++    test(
++      `Stop owns a resumed run while its pending journal write is paused (${state},${acknowledgementLost})`,
++      { timeout: 10000 },
++      async () => {
++        const f = await fixture(false, false, true);
++        const entered = Promise.withResolvers<void>();
++        const release = Promise.withResolvers<void>();
++        let reopened: SqliteSessionStore | undefined;
++        try {
++          await f.stop();
++          const previousSpan = f.registry.get("child")!.traceContext!.spanId;
++          const save = f.store!.saveSessionEntry.bind(f.store);
++          f.store!.saveSessionEntry = async (input) => {
++            if ((input.data as any)?.resumeIntent?.state === state) {
++              entered.resolve();
++              await release.promise;
++              await save(input);
++              if (acknowledgementLost)
++                throw new Error("paused pending journal acknowledgement lost");
++              return;
++            }
++            await save(input);
++          };
++          const resume = f.resume();
++          await entered.promise;
++          const resumedSpan = f.registry.get("child")!.traceContext!.spanId;
++          assert.notEqual(resumedSpan, previousSpan);
++          await f.port.stopTask!("child");
++          const stopped = f.registry.get("child")!;
++          assert.equal(
++            stopped.status,
++            "killed",
++            "Stop cannot wait behind the paused setup journal",
++          );
++          assert.equal(stopped.traceContext!.spanId, resumedSpan);
++          const metadataPath = join(dirname(f.outputFile), "metadata.json");
++          const metadata = await readFile(metadataPath, "utf8");
++          release.resolve();
++          assert.equal((await resume).status, "failed", "interrupted SendMessage must settle");
++          assert.equal(f.runs.length, 1, "no resumed child executed");
++          assert.equal(f.registry.get("child")!.traceContext!.spanId, resumedSpan);
++          assert.equal(f.registry.get("child")!.status, "killed");
++          assert.equal(
++            await readFile(metadataPath, "utf8"),
++            metadata,
++            "stale resume cannot overwrite newer Stop artifacts",
++          );
++          assert.equal(JSON.parse(metadata).status, "stopped");
++          f.closeStore();
++          reopened = new SqliteSessionStore({ dbPath: join(f.root, "session.sqlite") });
++          const entry = (
++            await reopened.sessionEntries({ sessionID: "parent" as never, type: "subagent_stop" })
++          ).find((item) => item.id === backgroundStopKey(stopped))!;
++          const evidence = restoreStoppedBackgroundAgentTask(entry.data)!;
++          assert.equal(evidence.task.traceContext!.spanId, resumedSpan);
++          assert.equal(evidence.task.status, "killed");
++          assert.equal(evidence.backgroundEventEmitted, true);
++          assert.equal(evidence.subagentEventEmitted, true);
++          assert.equal(evidence.notificationEnqueued, true);
++          assert.equal(evidence.resumeIntent, undefined);
++        } finally {
++          release.resolve();
++          reopened?.close();
++          await f.close();
++        }
++      },
++    );
++  }
++}
+diff --git a/apps/zcode-cli/packages/core/test/background-agent-stop-recovery.test.ts b/apps/zcode-cli/packages/core/test/background-agent-stop-recovery.test.ts
+new file mode 100644
+index 0000000..6ca6421
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/background-agent-stop-recovery.test.ts
+@@ -0,0 +1,364 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { dirname, join } from "node:path";
++import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
++import { SessionEventType } from "@zcode/contracts";
++import { backgroundStopFixture as fixture } from "./helpers/background-stop-fixture.js";
++import {
++  backgroundStopKey,
++  restoreStoppedBackgroundAgentTask,
++} from "../src/subagent/background-agent-settlement.js";
++import { createExploreSubagentPort } from "../src/subagent/runner.js";
++import { stopBackgroundTask } from "../src/runtime/methods/background.js";
++import { InMemoryRuntimeTaskRegistry } from "../src/runtime-task/registry.js";
++import { SqliteSessionStore } from "../../adapters/src/storage/session-store/sqlite-session-store.js";
++// Commit-before-acknowledgement failure must not replay a terminal receipt.
++test("Stop retry after receipt acknowledgement loss does not duplicate the accepted receipt", async () => {
++  const f = await fixture(true, false, true);
++  try {
++    f.failures.afterEvent = SessionEventType.SubagentStopped;
++    await assert.rejects(f.stop(), /acknowledgement lost/);
++    assert.deepEqual(await f.childExit, [null, "SIGTERM"]);
++    f.failures.afterEvent = undefined;
++    await f.stop();
++    assert.equal(
++      f.events.filter((event) => event.type === SessionEventType.SubagentStopped).length,
++      1,
++    );
++    assert.equal(f.notifications.length, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++async function coldPort(root: string) {
++  const store = new SqliteSessionStore({ dbPath: join(root, "session.sqlite") });
++  const registry = new InMemoryRuntimeTaskRegistry();
++  const effects = { events: 0, notifications: 0, executions: 0 };
++  const port = createExploreSubagentPort({
++    runtimeTaskRegistry: registry,
++    outputRootDir: root,
++    stopPersistence: {
++      async save(stopped) {
++        await store.saveSessionEntry({
++          id: backgroundStopKey(stopped.task),
++          sessionID: "parent" as never,
++          type: "subagent_stop",
++          time: { created: stopped.task.completedAt!.getTime(), updated: Date.now() },
++          data: stopped,
++        });
++      },
++      async load(taskId) {
++        const entries = await store.sessionEntries({
++          sessionID: "parent" as never,
++          type: "subagent_stop",
++        });
++        return entries
++          .sort((a, b) => b.time.created - a.time.created)
++          .map((entry) => restoreStoppedBackgroundAgentTask(entry.data))
++          .find((stop) => stop?.task.taskId === taskId);
++      },
++      async hasEvent() {
++        return false;
++      },
++      async hasNotification(id) {
++        return (await store.listSessionInputs({ sessionID: "parent" as never })).some(
++          (input) => input.id === id,
++        );
++      },
++    },
++    async emitParentEvent() {
++      effects.events++;
++    },
++    enqueueParentTaskNotification() {
++      effects.notifications++;
++      return undefined;
++    },
++    async runExploreAgent() {
++      effects.executions++;
++      throw new Error("cold recovery must not execute a child");
++    },
++  });
++  return { port, registry, store, effects };
++}
++
++test("cold SQLite reopen recovers known Stop settlement without a child or notification replay", async () => {
++  const f = await fixture(true, false, true);
++  let cold: Awaited<ReturnType<typeof coldPort>> | undefined;
++  try {
++    await f.stop();
++    await f.childExit;
++    f.closeStore();
++    cold = await coldPort(f.root);
++    assert.equal((await cold.port.getTask!("child"))!.status, "killed");
++    assert.equal((await cold.port.stopTask!("child"))!.status, "killed");
++    assert.deepEqual(cold.effects, { events: 0, notifications: 0, executions: 0 });
++  } finally {
++    cold?.store.close();
++    await f.close();
++  }
++});
++
++test("unknown notification acceptance remains unresolved on retry and cold reopen", async () => {
++  const f = await fixture(true, false, true);
++  let cold: Awaited<ReturnType<typeof coldPort>> | undefined;
++  try {
++    f.failures.afterQueue = true;
++    await assert.rejects(f.stop(), /acknowledgement lost/);
++    await f.childExit;
++    f.closeStore();
++    cold = await coldPort(f.root);
++    await assert.rejects(
++      stopBackgroundTask.call(
++        {
++          runtimeTaskRegistry: cold.registry,
++          subagentPort: cold.port,
++          rebuildProjection: async () => ({ backgroundTasks: [] }),
++        } as never,
++        "child",
++        { strict: true },
++      ),
++      /acceptance is unresolved/,
++    );
++    assert.equal(
++      cold.registry.get("child")!.status,
++      "lost",
++      "unresolved settlement never claims a running child",
++    );
++    assert.deepEqual(cold.effects, { events: 0, notifications: 0, executions: 0 });
++  } finally {
++    cold?.store.close();
++    await f.close();
++  }
++});
++
++test("cold pending receipt has no acknowledgement proof and is preserved without replay", async () => {
++  const f = await fixture(true, false, true);
++  let cold: Awaited<ReturnType<typeof coldPort>> | undefined;
++  try {
++    f.failures.afterEvent = SessionEventType.SubagentStopped;
++    await assert.rejects(f.stop(), /acknowledgement lost/);
++    await f.childExit;
++    f.closeStore();
++    cold = await coldPort(f.root);
++    await assert.rejects(cold.port.stopTask!("child"), /receipt acceptance is unresolved/);
++    assert.deepEqual(cold.effects, { events: 0, notifications: 0, executions: 0 });
++  } finally {
++    cold?.store.close();
++    await f.close();
++  }
++});
++
++test("a newer same-child run retires old Stop reconstruction", async () => {
++  const f = await fixture(false, false, true);
++  let cold: Awaited<ReturnType<typeof coldPort>> | undefined;
++  try {
++    await f.stop();
++    assert.equal((await f.resume()).status, "success");
++    f.finish(1, "known completed newer child output");
++    assert.equal((await f.port.waitForTask!("child"))!.status, "completed");
++    assert.match(await readFile(f.outputFile, "utf8"), /known completed newer child output/);
++    f.closeStore();
++    cold = await coldPort(f.root);
++    assert.equal(await cold.port.getTask!("child"), undefined);
++    assert.deepEqual(cold.effects, { events: 0, notifications: 0, executions: 0 });
++  } finally {
++    cold?.store.close();
++    await f.close();
++  }
++});
++
++test("real Host cold Stop reads existing SQLite evidence and never re-executes child work", async () => {
++  const { fixture: hostFixture, reply } = await import("./helpers/pi-runtime-fixture.js");
++  const child = await fixture(true, false, true);
++  const host = await hostFixture();
++  try {
++    host.steps.push(() => reply("initialize disposable Session"));
++    await host.runtime.executeTurn("initialize recovery fixture");
++    await child.stop();
++    await child.childExit;
++    const entry = (
++      await child.store!.sessionEntries({ sessionID: "parent" as never, type: "subagent_stop" })
++    )[0]!;
++    const stopped = restoreStoppedBackgroundAgentTask(entry.data)!;
++    stopped.task.parentSessionId = "session" as never;
++    await host.store.saveSessionEntry!({ ...entry, sessionID: "session" as never, data: stopped });
++    await host.reopen();
++    const requestsBeforeStop = host.requests.length;
++    const result = await host.runtime.stopBackgroundTask("child", { initiator: "user" });
++    assert.equal(result.ok, true);
++    assert.equal(result.status, "killed");
++    assert.equal(host.requests.length, requestsBeforeStop, "cold Stop never launches a model turn");
++    assert.equal(child.runs.length, 1);
++    const unknown = {
++      ...stopped,
++      task: { ...stopped.task, taskId: "unknown", agentId: "unknown" },
++      notificationAttempted: true,
++      notificationEnqueued: false,
++    };
++    await host.store.saveSessionEntry!({
++      ...entry,
++      id: backgroundStopKey(unknown.task),
++      sessionID: "session" as never,
++      data: unknown,
++    });
++    await assert.rejects(
++      host.runtime.stopBackgroundTask("unknown", { strict: true }),
++      /acceptance is unresolved/,
++    );
++    assert.equal((host.runtime as any).runtimeTaskRegistry.get("unknown").status, "lost");
++    assert.equal(host.runtime.hasRunningBackgroundTasks(), false);
++    assert.equal(host.requests.length, requestsBeforeStop);
++  } finally {
++    await host.close();
++    await child.close();
++  }
++});
++
++test("accepted live notification acknowledgement loss reconciles the same identity once", async () => {
++  const f = await fixture(true, false, true);
++  try {
++    f.failures.afterQueue = true;
++    await assert.rejects(f.stop(), /acknowledgement lost/);
++    f.failures.afterQueue = false;
++    await f.stop();
++    assert.equal(f.notifications.length, 1);
++    assert.equal(f.registry.get("child")!.status, "killed");
++  } finally {
++    await f.close();
++  }
++});
++
++test("public TaskStop retries final terminal receipt acknowledgement loss", async () => {
++  const f = await fixture(true, false, true);
++  try {
++    f.failures.afterEvent = SessionEventType.BackgroundTaskCompleted;
++    await assert.rejects(f.stop(), /acknowledgement lost/);
++    f.failures.afterEvent = undefined;
++    await f.stop();
++    assert.equal(
++      f.events.filter((event) => event.type === SessionEventType.BackgroundTaskCompleted).length,
++      1,
++    );
++    assert.equal(f.registry.get("child")!.status, "killed");
++    const saved = (
++      await f.store!.sessionEntries({ sessionID: "parent" as never, type: "subagent_stop" })
++    )[0]!;
++    assert.equal(restoreStoppedBackgroundAgentTask(saved.data)!.backgroundEventEmitted, true);
++  } finally {
++    await f.close();
++  }
++});
++
++for (const fault of ["pending-before", "pending-after", "admitted-before", "admitted-after"]) {
++  test(`resume ${fault} failure restores known old Stop before child execution`, async () => {
++    const f = await fixture(false, false, true);
++    let cold: Awaited<ReturnType<typeof coldPort>> | undefined;
++    try {
++      await f.stop();
++      f.failures.resumeSaveFailures.push(fault);
++      await assert.rejects(f.resume(), /persistence/);
++      assert.equal(f.runs.length, 1);
++      assert.equal(f.registry.get("child")!.status, "killed");
++      f.closeStore();
++      cold = await coldPort(f.root);
++      assert.equal((await cold.port.getTask!("child"))!.status, "killed");
++      assert.deepEqual(cold.effects, { events: 0, notifications: 0, executions: 0 });
++    } finally {
++      cold?.store.close();
++      await f.close();
++    }
++  });
++}
++
++test("failed resume rollback retains pending intent and refuses old Stop replay after cold reopen", async () => {
++  const f = await fixture(false, false, true);
++  let cold: Awaited<ReturnType<typeof coldPort>> | undefined;
++  try {
++    await f.stop();
++    f.failures.resumeSaveFailures.push("pending-after", "restore-before");
++    await assert.rejects(f.resume(), /restoration is unresolved/);
++    assert.equal(f.runs.length, 1);
++    f.closeStore();
++    cold = await coldPort(f.root);
++    assert.equal((await cold.port.getTask!("child"))!.status, "lost");
++    await assert.rejects(cold.port.stopTask!("child"), /resume acceptance is unresolved/);
++    const prior = (
++      await cold.store.sessionEntries({ sessionID: "parent" as never, type: "subagent_stop" })
++    )[0]!;
++    assert.equal(
++      restoreStoppedBackgroundAgentTask(prior.data)!.task.status,
++      "killed",
++      "known old evidence is retained",
++    );
++    assert.deepEqual(cold.effects, { events: 0, notifications: 0, executions: 0 });
++  } finally {
++    cold?.store.close();
++    await f.close();
++  }
++});
++
++test("rollback acknowledgement loss with proven restoration preserves old Stop", async () => {
++  const f = await fixture(false, false, true);
++  try {
++    await f.stop();
++    f.failures.resumeSaveFailures.push("pending-after", "restore-after");
++    await assert.rejects(f.resume(), /pending persistence acknowledgement lost/);
++    assert.equal(f.runs.length, 1);
++    assert.equal(f.registry.get("child")!.status, "killed");
++    const prior = (
++      await f.store!.sessionEntries({ sessionID: "parent" as never, type: "subagent_stop" })
++    )[0]!;
++    assert.equal(restoreStoppedBackgroundAgentTask(prior.data)!.resumeIntent, undefined);
++  } finally {
++    await f.close();
++  }
++});
++
++test("resume metadata failure before child start preserves the original settled Stop on reopen", async () => {
++  const f = await fixture(false, false, true);
++  let cold: Awaited<ReturnType<typeof coldPort>> | undefined;
++  try {
++    await f.stop();
++    const metadata = join(dirname(f.outputFile), "metadata.json");
++    const original = await readFile(metadata, "utf8");
++    await rm(metadata);
++    await mkdir(metadata);
++    await assert.rejects(f.resume(), /EISDIR/);
++    assert.equal(f.runs.length, 1);
++    assert.equal(f.registry.get("child")!.status, "killed");
++    await rm(metadata, { recursive: true });
++    await writeFile(metadata, original);
++    f.closeStore();
++    cold = await coldPort(f.root);
++    assert.equal((await cold.port.getTask!("child"))!.status, "killed");
++    assert.deepEqual(cold.effects, { events: 0, notifications: 0, executions: 0 });
++  } finally {
++    cold?.store.close();
++    await f.close();
++  }
++});
++
++test("unknown rollback after new-run admission preserves historical Stop without fabricating a current child", async () => {
++  const f = await fixture(false, false, true);
++  let cold: Awaited<ReturnType<typeof coldPort>> | undefined;
++  try {
++    await f.stop();
++    f.failures.resumeSaveFailures.push("admitted-after", "restore-before");
++    await assert.rejects(f.resume(), /restoration is unresolved/);
++    assert.equal(f.runs.length, 1);
++    f.closeStore();
++    cold = await coldPort(f.root);
++    assert.equal(await cold.port.getTask!("child"), undefined);
++    const prior = (
++      await cold.store.sessionEntries({ sessionID: "parent" as never, type: "subagent_stop" })
++    )[0]!;
++    const evidence = restoreStoppedBackgroundAgentTask(prior.data)!;
++    assert.equal(evidence.task.status, "killed");
++    assert.equal(evidence.resumeIntent!.state, "admitted");
++    assert.deepEqual(cold.effects, { events: 0, notifications: 0, executions: 0 });
++  } finally {
++    cold?.store.close();
++    await f.close();
++  }
++});
+diff --git a/apps/zcode-cli/packages/core/test/background-agent-stop.test.ts b/apps/zcode-cli/packages/core/test/background-agent-stop.test.ts
+index 8e5a942..81a4761 100644
+--- a/apps/zcode-cli/packages/core/test/background-agent-stop.test.ts
++++ b/apps/zcode-cli/packages/core/test/background-agent-stop.test.ts
+@@ -1,242 +1,130 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+-import { spawn, type ChildProcess } from "node:child_process";
+-import { once } from "node:events";
+-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+-import { dirname, join } from "node:path";
+-import { tmpdir } from "node:os";
+-import {
+-  EventReducer,
+-  SessionEventType,
+-  createRootTraceContext,
+-  type SessionEvent,
+-  type SubagentStartRequest,
+-} from "@zcode/contracts";
+-import {
+-  createExploreSubagentPort,
+-  type ExploreSubagentRuntimeRequest,
+-  type ExploreSubagentRuntimeResult,
+-} from "../src/subagent/runner.js";
+-import { InMemoryRuntimeTaskRegistry } from "../src/runtime-task/registry.js";
+-import { stopBackgroundTask } from "../src/runtime/methods/background.js";
+-import { taskStopToolEntry } from "../src/tool/handlers/task-stop.js";
++import { readFile, rm, writeFile } from "node:fs/promises";
++import { dirname } from "node:path";
++import { EventReducer, SessionEventType, type SessionEvent } from "@zcode/contracts";
++import { backgroundStopFixture as fixture } from "./helpers/background-stop-fixture.js";
+ 
+-async function fixture(realChild = false, foreground: boolean | "foreground" | "foreground_failed" = false) {
+-  const root = await mkdtemp(join(tmpdir(), "fleet-background-stop-"));
+-  const registry = new InMemoryRuntimeTaskRegistry();
+-  const events: SessionEvent[] = [];
+-  const notifications: unknown[] = [];
+-  const runs: Array<{
+-    request: ExploreSubagentRuntimeRequest;
+-    signal: AbortSignal;
+-    finish: ReturnType<typeof Promise.withResolvers<ExploreSubagentRuntimeResult>>;
+-  }> = [];
+-  const failures = { queue: false, event: undefined as SessionEventType | undefined };
+-  const spawned = Promise.withResolvers<void>();
+-  let eventGate: { type: SessionEventType; wait: () => Promise<void> } | undefined;
+-  let aborts = 0;
+-  let child: ChildProcess | undefined;
+-  let childExit: Promise<unknown[]> | undefined;
+-  const trace = createRootTraceContext({ sessionId: "parent" as never });
+-  const request = {
+-    agentType: "general-purpose",
+-    sessionId: "parent",
+-    turnId: "turn",
+-    parentToolCallId: "agent-call",
+-    description: "owned temporary stop fixture",
+-    prompt: "no model or external effect",
+-    workingDirectory: root,
+-    workspaceRoot: root,
+-    trace,
+-  } as SubagentStartRequest;
+-  const port = createExploreSubagentPort({
+-    outputRootDir: root,
+-    createAgentId: () => "child",
+-    runtimeTaskRegistry: registry,
+-    async emitParentEvent(event) {
+-      if (eventGate && event.type === eventGate.type) await eventGate.wait();
+-      if (failures.event === event.type) throw new Error("synthetic receipt write failed");
+-      events.push(event);
+-      if (event.type === SessionEventType.SubagentSpawned) spawned.resolve();
+-    },
+-    enqueueParentTaskNotification(notification) {
+-      if (notification.text.includes("<status>stopped</status>")) {
+-        assert.equal(runs.at(-1)?.signal.aborted, true, "Stop must precede notification I/O");
+-      }
+-      if (failures.queue) throw new Error("synthetic notification admission failed");
+-      notifications.push(notification);
+-      return undefined;
+-    },
+-    async runExploreAgent(childRequest, options) {
+-      assert.ok(options?.signal);
+-      const signal = options.signal;
+-      const finish = Promise.withResolvers<ExploreSubagentRuntimeResult>();
+-      runs.push({ request: childRequest, signal, finish });
+-      if (realChild) {
+-        // The disposable process only announces readiness and waits. No model/network/files.
+-        child = spawn(process.execPath, ["-e", "process.stdout.write('ready'); setInterval(() => {}, 1000)"], {
+-          stdio: ["ignore", "pipe", "pipe"],
+-        });
+-        childExit = once(child, "close");
+-        signal.addEventListener("abort", () => { aborts++; child?.kill("SIGTERM"); }, { once: true });
+-        await once(child.stdout!, "data");
+-        await childRequest.onSessionReady?.();
+-        await childExit;
+-        return { response: "late child result after SIGTERM", traceId: trace.traceId, events: [] };
+-      }
+-      signal.addEventListener("abort", () => { aborts++; }, { once: true });
+-      await childRequest.onSessionReady?.();
+-      return finish.promise;
+-    },
+-  });
+-  const runtime = {
+-    runtimeTaskRegistry: registry,
+-    subagentPort: port,
+-    rootTraceContext: trace,
+-    rebuildProjection: async () => new EventReducer().reduce(events),
+-    stopBackgroundTask(taskId: string, options: unknown) {
+-      return stopBackgroundTask.call(runtime as never, taskId, options as never);
+-    },
+-  };
+-  if (foreground) {
+-    const running = port.run(request);
+-    await spawned.promise;
+-    if (foreground === true) {
+-      await port.backgroundTask!("child");
+-      assert.equal((await running).status, "async_launched");
+-    } else if (foreground === "foreground_failed") {
+-      runs[0]!.finish.reject(new Error("synthetic foreground child failure"));
+-      await assert.rejects(running, /Explore subagent failed/);
+-    } else {
+-      runs[0]!.finish.resolve({ response: "foreground completed output", traceId: trace.traceId, events: [] });
+-      assert.equal((await running).status, "completed");
+-    }
+-  } else {
+-    await port.start!(request);
+-  }
+-  const outputFile = registry.get("child")!.outputFile!;
+-  return {
+-    port, registry, events, notifications, failures, runs, root, outputFile, runtime,
+-    get aborts() { return aborts; },
+-    get childExit() { return childExit; },
+-    gateEvent(gate: () => Promise<void>, type: SessionEventType = SessionEventType.SubagentStopped) {
+-      eventGate = { type, wait: gate };
+-    },
+-    async stop() {
+-      return taskStopToolEntry.handler({ task_id: "child" }, {
+-        backgroundTaskControlPort: runtime,
+-        traceContext: trace,
+-        toolCallId: "stop-call",
+-      } as never);
+-    },
+-    finish(index: number, response: string) {
+-      runs[index]!.finish.resolve({ response, traceId: trace.traceId, events: [] });
+-    },
+-    async resume() {
+-      return port.sendMessage!({
+-        ...request,
+-        to: "child",
+-        message: "continue the same child with a new input",
+-        parentToolCallId: "message-call",
+-      } as never);
+-    },
+-    async close() {
+-      failures.queue = false;
+-      failures.event = undefined;
+-      eventGate = undefined;
+-      await port.stopTask!("child").catch(() => {});
+-      child?.kill("SIGKILL");
+-      await childExit?.catch(() => {});
+-      for (const run of runs) run.finish.resolve({ response: "fixture cleanup", traceId: trace.traceId, events: [] });
+-      await new Promise<void>((resolve) => setImmediate(resolve));
+-      await rm(root, { recursive: true, force: true });
+-    },
+-  };
+-}
++const terminalEvents = (events: SessionEvent[]) =>
++  events.filter(
++    (event) =>
++      event.type === SessionEventType.BackgroundTaskCompleted ||
++      event.type === SessionEventType.SubagentStopped,
++  );
+ 
+-const terminalEvents = (events: SessionEvent[]) => events.filter((event) =>
+-  event.type === SessionEventType.BackgroundTaskCompleted || event.type === SessionEventType.SubagentStopped,
++test(
++  "TaskStop cancels a real child before a failed artifact write; repair and retry settles once",
++  { timeout: 10000 },
++  async () => {
++    const f = await fixture(true);
++    try {
++      const outputDir = dirname(f.outputFile);
++      await rm(outputDir, { recursive: true });
++      await writeFile(outputDir, "owned fault: blocks output directory");
++      let waiterResolved = false;
++      const waiter = f.port.waitForTask!("child").then((task) => {
++        waiterResolved = true;
++        return task;
++      });
++      await assert.rejects(f.stop(), /EEXIST|ENOTDIR/);
++      assert.equal(f.runs[0]!.signal.aborted, true);
++      assert.deepEqual(await f.childExit, [null, "SIGTERM"]);
++      await new Promise<void>((resolve) => setImmediate(resolve));
++      assert.equal(f.aborts, 1);
++      assert.equal(
++        f.registry.get("child")!.status,
++        "running",
++        "failed settlement must not claim killed",
++      );
++      assert.equal(waiterResolved, false);
++      assert.equal(f.notifications.length, 0);
++      assert.equal(terminalEvents(f.events).length, 0);
++      assert.equal(
++        (await f.resume()).status,
++        "failed",
++        "no message is queued to a cancelled run awaiting settlement",
++      );
++      await rm(outputDir);
++      await f.stop();
++      assert.equal((await waiter)!.status, "killed");
++      assert.equal(f.notifications.length, 1);
++      assert.equal(terminalEvents(f.events).length, 2);
++      assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
++      await f.port.stopTask!("child");
++      assert.equal(f.notifications.length, 1);
++      assert.equal(f.aborts, 1);
++    } finally {
++      await f.close();
++    }
++  },
+ );
+ 
+-test("TaskStop cancels a real child before a failed artifact write; repair and retry settles once", { timeout: 10000 }, async () => {
+-  const f = await fixture(true);
+-  try {
+-    const outputDir = dirname(f.outputFile);
+-    await rm(outputDir, { recursive: true });
+-    await writeFile(outputDir, "owned fault: blocks output directory");
+-    let waiterResolved = false;
+-    const waiter = f.port.waitForTask!("child").then((task) => { waiterResolved = true; return task; });
+-    await assert.rejects(f.stop(), /EEXIST|ENOTDIR/);
+-    assert.equal(f.runs[0]!.signal.aborted, true);
+-    assert.deepEqual(await f.childExit, [null, "SIGTERM"]);
+-    await new Promise<void>((resolve) => setImmediate(resolve));
+-    assert.equal(f.aborts, 1);
+-    assert.equal(f.registry.get("child")!.status, "running", "failed settlement must not claim killed");
+-    assert.equal(waiterResolved, false);
+-    assert.equal(f.notifications.length, 0);
+-    assert.equal(terminalEvents(f.events).length, 0);
+-    assert.equal((await f.resume()).status, "failed", "no message is queued to a cancelled run awaiting settlement");
+-    await rm(outputDir);
+-    await f.stop();
+-    assert.equal((await waiter)!.status, "killed");
+-    assert.equal(f.notifications.length, 1);
+-    assert.equal(terminalEvents(f.events).length, 2);
+-    assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
+-    await f.port.stopTask!("child");
+-    assert.equal(f.notifications.length, 1);
+-    assert.equal(f.aborts, 1);
+-  } finally { await f.close(); }
+-});
+-
+-test("normal foreground, promoted and background settlements release their private run coordination", { concurrency: false }, async () => {
+-  // Observe the private per-run Map without adding a production diagnostic API.
+-  // This hook is limited to this test realm and restored before the next test.
+-  const originalSet = Map.prototype.set;
+-  const maps: Array<Map<unknown, unknown>> = [];
+-  Map.prototype.set = function (key: unknown, value: unknown) {
+-    if (
+-      key === "child" && value && typeof value === "object" &&
+-      "tail" in value && value.tail instanceof Promise && !maps.includes(this)
+-    ) maps.push(this);
+-    return originalSet.call(this, key, value);
+-  };
+-  try {
+-    for (const mode of [false, true, "foreground", "foreground_failed"] as const) {
+-      const f = await fixture(false, mode);
++test(
++  "normal foreground, promoted and background settlements release their private run coordination",
++  { concurrency: false },
++  async () => {
++    // Observe the private per-run Map without adding a production diagnostic API.
++    // This hook is limited to this test realm and restored before the next test.
++    const originalSet = Map.prototype.set;
++    const maps: Array<Map<unknown, unknown>> = [];
++    Map.prototype.set = function (key: unknown, value: unknown) {
++      if (
++        key === "child" &&
++        value &&
++        typeof value === "object" &&
++        "tail" in value &&
++        value.tail instanceof Promise &&
++        !maps.includes(this)
++      )
++        maps.push(this);
++      return originalSet.call(this, key, value);
++    };
++    try {
++      for (const mode of [false, true, "foreground", "foreground_failed"] as const) {
++        const f = await fixture(false, mode);
++        try {
++          const map = maps.at(-1)!;
++          if (mode === false || mode === true) {
++            assert.equal(map.size, 1, "a running child retains cancellation coordination");
++            f.finish(0, "normal completed output");
++            await f.port.waitForTask!("child");
++            await new Promise<void>((resolve) => setImmediate(resolve));
++          }
++          assert.equal(map.size, 0, `normal ${String(mode)} lifecycle leaves no retained entry`);
++        } finally {
++          await f.close();
++        }
++      }
++      const failed = await fixture();
+       try {
+         const map = maps.at(-1)!;
+-        if (mode === false || mode === true) {
+-          assert.equal(map.size, 1, "a running child retains cancellation coordination");
+-          f.finish(0, "normal completed output");
+-          await f.port.waitForTask!("child");
+-          await new Promise<void>((resolve) => setImmediate(resolve));
+-        }
+-        assert.equal(map.size, 0, `normal ${String(mode)} lifecycle leaves no retained entry`);
+-      } finally { await f.close(); }
++        failed.runs[0]!.finish.reject(new Error("synthetic background child failure"));
++        await failed.port.waitForTask!("child");
++        await new Promise<void>((resolve) => setImmediate(resolve));
++        assert.equal(failed.registry.get("child")!.status, "failed");
++        assert.equal(map.size, 0, "a normally settled failure also releases its entry");
++      } finally {
++        await failed.close();
++      }
++      const pendingStop = await fixture();
++      try {
++        const map = maps.at(-1)!;
++        pendingStop.failures.queue = true;
++        await assert.rejects(pendingStop.stop(), /notification was not enqueued/);
++        pendingStop.finish(0, "cancelled child settled after publication failure");
++        await new Promise<void>((resolve) => setImmediate(resolve));
++        assert.equal(map.size, 1, "failed Stop retains its retry plan after child exit");
++        pendingStop.failures.queue = false;
++        await pendingStop.stop();
++        assert.equal(map.size, 0, "successful retry releases the same plan");
++      } finally {
++        await pendingStop.close();
++      }
++    } finally {
++      Map.prototype.set = originalSet;
+     }
+-    const failed = await fixture();
+-    try {
+-      const map = maps.at(-1)!;
+-      failed.runs[0]!.finish.reject(new Error("synthetic background child failure"));
+-      await failed.port.waitForTask!("child");
+-      await new Promise<void>((resolve) => setImmediate(resolve));
+-      assert.equal(failed.registry.get("child")!.status, "failed");
+-      assert.equal(map.size, 0, "a normally settled failure also releases its entry");
+-    } finally { await failed.close(); }
+-    const pendingStop = await fixture();
+-    try {
+-      const map = maps.at(-1)!;
+-      pendingStop.failures.queue = true;
+-      await assert.rejects(pendingStop.stop(), /notification was not enqueued/);
+-      pendingStop.finish(0, "cancelled child settled after publication failure");
+-      await new Promise<void>((resolve) => setImmediate(resolve));
+-      assert.equal(map.size, 1, "failed Stop retains its retry plan after child exit");
+-      pendingStop.failures.queue = false;
+-      await pendingStop.stop();
+-      assert.equal(map.size, 0, "successful retry releases the same plan");
+-    } finally { await pendingStop.close(); }
+-  } finally { Map.prototype.set = originalSet; }
+-});
++  },
++);
+ 
+ test("Stop preserves known completion while its receipt waits; resumed work starts after that writer", async () => {
+   const f = await fixture();
+@@ -244,7 +132,10 @@ test("Stop preserves known completion while its receipt waits; resumed work star
+   const release = Promise.withResolvers<void>();
+   let resumed: ReturnType<typeof f.resume> | undefined;
+   try {
+-    f.gateEvent(async () => { entered.resolve(); await release.promise; }, SessionEventType.BackgroundTaskCompleted);
++    f.gateEvent(async () => {
++      entered.resolve();
++      await release.promise;
++    }, SessionEventType.BackgroundTaskCompleted);
+     f.finish(0, "known completed output");
+     await entered.promise;
+     assert.equal(f.registry.get("child")!.status, "completed");
+@@ -254,7 +145,11 @@ test("Stop preserves known completion while its receipt waits; resumed work star
+     assert.equal(f.aborts, 0);
+     resumed = f.resume();
+     await new Promise<void>((resolve) => setImmediate(resolve));
+-    assert.equal(f.runs.length, 1, "resume cannot reuse the task ID during old receipt publication");
++    assert.equal(
++      f.runs.length,
++      1,
++      "resume cannot reuse the task ID during old receipt publication",
++    );
+     assert.equal(f.registry.get("child")!.status, "completed");
+     release.resolve();
+     assert.equal((await resumed).delivery, "resumed_background");
+@@ -270,10 +165,14 @@ test("Stop preserves known completion while its receipt waits; resumed work star
+     await f.stop();
+     assert.equal(f.registry.get("child")!.status, "killed");
+     assert.equal(f.notifications.length, 2, "one completion and one later Stop notification");
+-    assert.equal(terminalEvents(f.events).filter((event) =>
+-      event.type === SessionEventType.BackgroundTaskCompleted &&
+-      (event.payload as { status: string }).status === "completed",
+-    ).length, 1);
++    assert.equal(
++      terminalEvents(f.events).filter(
++        (event) =>
++          event.type === SessionEventType.BackgroundTaskCompleted &&
++          (event.payload as { status: string }).status === "completed",
++      ).length,
++      1,
++    );
+     assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
+   } finally {
+     release.resolve();
+@@ -300,7 +199,9 @@ test("failed notification admission never resolves terminal waiters or restores
+     assert.equal(f.notifications.length, 1);
+     assert.equal(f.aborts, 1);
+     assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
+-  } finally { await f.close(); }
++  } finally {
++    await f.close();
++  }
+ });
+ 
+ test("an Agent moved from foreground to background shares the failure-safe Stop path", async () => {
+@@ -317,7 +218,9 @@ test("an Agent moved from foreground to background shares the failure-safe Stop
+     assert.equal(f.registry.get("child")!.status, "killed");
+     assert.equal(f.notifications.length, 1);
+     assert.match(await readFile(f.outputFile, "utf8"), /Background agent task stopped/);
+-  } finally { await f.close(); }
++  } finally {
++    await f.close();
++  }
+ });
+ 
+ for (const type of [SessionEventType.SubagentStopped, SessionEventType.BackgroundTaskCompleted]) {
+@@ -328,14 +231,21 @@ for (const type of [SessionEventType.SubagentStopped, SessionEventType.Backgroun
+       await assert.rejects(f.stop(), /receipt write failed/);
+       assert.equal(f.runs[0]!.signal.aborted, true);
+       assert.equal(f.registry.get("child")!.status, "running");
+-      assert.equal(new EventReducer().reduce(f.events).backgroundTasks.some((task) => task.status === "cancelled"), false);
++      assert.equal(
++        new EventReducer()
++          .reduce(f.events)
++          .backgroundTasks.some((task) => task.status === "cancelled"),
++        false,
++      );
+       assert.equal(f.notifications.length, 1);
+       f.failures.event = undefined;
+       await f.stop();
+       assert.equal(f.registry.get("child")!.status, "killed");
+       assert.equal(f.notifications.length, 1);
+       assert.equal(terminalEvents(f.events).length, 2);
+-    } finally { await f.close(); }
++    } finally {
++      await f.close();
++    }
+   });
+ }
+ 
+@@ -344,7 +254,10 @@ test("concurrent Stop requests share settlement and cancellation", async () => {
+   const entered = Promise.withResolvers<void>();
+   const release = Promise.withResolvers<void>();
+   try {
+-    f.gateEvent(async () => { entered.resolve(); await release.promise; });
++    f.gateEvent(async () => {
++      entered.resolve();
++      await release.promise;
++    });
+     const first = f.stop();
+     await entered.promise;
+     const second = f.stop();
+@@ -355,7 +268,10 @@ test("concurrent Stop requests share settlement and cancellation", async () => {
+     assert.equal(f.notifications.length, 1);
+     assert.equal(f.aborts, 1);
+     assert.equal(terminalEvents(f.events).length, 2);
+-  } finally { release.resolve(); await f.close(); }
++  } finally {
++    release.resolve();
++    await f.close();
++  }
+ });
+ 
+ test("a stopped child's late completion cannot overwrite a resumed run", async () => {
+@@ -371,7 +287,9 @@ test("a stopped child's late completion cannot overwrite a resumed run", async (
+     await new Promise<void>((resolve) => setImmediate(resolve));
+     assert.equal(f.registry.get("child")!.status, "completed");
+     assert.equal(await readFile(f.outputFile, "utf8"), "new accepted result");
+-  } finally { await f.close(); }
++  } finally {
++    await f.close();
++  }
+ });
+ 
+ test("completed-task Stop leaves original completion output and notification unchanged", async () => {
+@@ -387,7 +305,9 @@ test("completed-task Stop leaves original completion output and notification unc
+     assert.equal(await readFile(f.outputFile, "utf8"), "original completed output");
+     assert.equal(f.events.length, before.events);
+     assert.equal(f.notifications.length, before.notifications);
+-  } finally { await f.close(); }
++  } finally {
++    await f.close();
++  }
+ });
+ 
+ test("an already-cancelled Stop caller does not cancel its target", async () => {
+@@ -400,5 +320,7 @@ test("an already-cancelled Stop caller does not cancel its target", async () =>
+     assert.equal(f.registry.get("child")!.status, "running");
+     assert.equal(terminalEvents(f.events).length, 0);
+     await f.stop();
+-  } finally { await f.close(); }
++  } finally {
++    await f.close();
++  }
+ });
+diff --git a/apps/zcode-cli/packages/core/test/helpers/background-stop-fixture.ts b/apps/zcode-cli/packages/core/test/helpers/background-stop-fixture.ts
+new file mode 100644
+index 0000000..b1610db
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/helpers/background-stop-fixture.ts
+@@ -0,0 +1,275 @@
++import assert from "node:assert/strict";
++import { spawn, type ChildProcess } from "node:child_process";
++import { once } from "node:events";
++import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { dirname, join } from "node:path";
++import { tmpdir } from "node:os";
++import {
++  EventReducer,
++  SessionEventType,
++  createRootTraceContext,
++  type SessionEvent,
++  type SubagentStartRequest,
++} from "@zcode/contracts";
++import {
++  createExploreSubagentPort,
++  type ExploreSubagentRuntimeRequest,
++  type ExploreSubagentRuntimeResult,
++} from "../../src/subagent/runner.js";
++import {
++  BackgroundNotificationNotAcceptedError,
++  backgroundStopKey,
++  restoreStoppedBackgroundAgentTask,
++} from "../../src/subagent/background-agent-settlement.js";
++import { SqliteSessionStore } from "../../../adapters/src/storage/session-store/sqlite-session-store.js";
++import { InMemoryRuntimeTaskRegistry } from "../../src/runtime-task/registry.js";
++import { stopBackgroundTask } from "../../src/runtime/methods/background.js";
++import { taskStopToolEntry } from "../../src/tool/handlers/task-stop.js";
++
++export async function backgroundStopFixture(
++  realChild = false,
++  foreground: boolean | "foreground" | "foreground_failed" = false,
++  durable = false,
++) {
++  const root = await mkdtemp(join(tmpdir(), "fleet-background-stop-"));
++  const store = durable
++    ? new SqliteSessionStore({ dbPath: join(root, "session.sqlite") })
++    : undefined;
++  if (store)
++    await store.createSession({
++      id: "parent" as never,
++      projectID: "fixture" as never,
++      slug: "fixture",
++      directory: root,
++      title: "fixture",
++      version: "fixture",
++    });
++  let storeClosed = false;
++  const registry = new InMemoryRuntimeTaskRegistry();
++  const events: SessionEvent[] = [];
++  const notifications: unknown[] = [];
++  const runs: Array<{
++    request: ExploreSubagentRuntimeRequest;
++    signal: AbortSignal;
++    finish: ReturnType<typeof Promise.withResolvers<ExploreSubagentRuntimeResult>>;
++  }> = [];
++  const failures = {
++    queue: false,
++    resumeSaveFailures: [] as string[],
++    afterQueue: false,
++    event: undefined as SessionEventType | undefined,
++    afterEvent: undefined as SessionEventType | undefined,
++  };
++  const spawned = Promise.withResolvers<void>();
++  let eventGate: { type: SessionEventType; wait: () => Promise<void> } | undefined;
++  let aborts = 0;
++  let child: ChildProcess | undefined;
++  let childExit: Promise<unknown[]> | undefined;
++  const trace = createRootTraceContext({ sessionId: "parent" as never });
++  const request = {
++    agentType: "general-purpose",
++    sessionId: "parent",
++    turnId: "turn",
++    parentToolCallId: "agent-call",
++    description: "owned temporary stop fixture",
++    prompt: "no model or external effect",
++    workingDirectory: root,
++    workspaceRoot: root,
++    trace,
++  } as SubagentStartRequest;
++  const port = createExploreSubagentPort({
++    outputRootDir: root,
++    stopPersistence: {
++      async save(stopped) {
++        const stage = stopped.resumeIntent?.state ?? "restore";
++        const fault = failures.resumeSaveFailures[0];
++        if (fault === `${stage}-before`) {
++          failures.resumeSaveFailures.shift();
++          throw new Error(`synthetic ${stage} persistence before commit`);
++        }
++        await store?.saveSessionEntry({
++          id: backgroundStopKey(stopped.task),
++          sessionID: "parent" as never,
++          type: "subagent_stop",
++          time: { created: stopped.task.completedAt!.getTime(), updated: Date.now() },
++          data: stopped,
++        });
++        if (fault === `${stage}-after`) {
++          failures.resumeSaveFailures.shift();
++          throw new Error(`synthetic ${stage} persistence acknowledgement lost`);
++        }
++      },
++      async load(taskId) {
++        return (
++          (await store?.sessionEntries({ sessionID: "parent" as never, type: "subagent_stop" })) ??
++          []
++        )
++          .map((entry) => restoreStoppedBackgroundAgentTask(entry.data))
++          .find((stop) => stop?.task.taskId === taskId);
++      },
++      async hasEvent(id) {
++        return events.some((event) => event.id === id);
++      },
++      async hasNotification(id) {
++        return notifications.some((note) => (note as { id?: string }).id === id);
++      },
++    },
++    createAgentId: () => "child",
++    runtimeTaskRegistry: registry,
++    async emitParentEvent(event) {
++      if (eventGate && event.type === eventGate.type) await eventGate.wait();
++      if (failures.event === event.type) throw new Error("synthetic receipt write failed");
++      events.push(event);
++      await store?.saveSessionEntry({
++        id: String(event.id),
++        sessionID: event.sessionId,
++        type: "stop_test_receipt",
++        time: { created: event.timestamp.getTime(), updated: event.timestamp.getTime() },
++        data: event,
++      });
++      if (failures.afterEvent === event.type)
++        throw new Error("synthetic committed receipt acknowledgement lost");
++      if (event.type === SessionEventType.SubagentSpawned) spawned.resolve();
++    },
++    enqueueParentTaskNotification(notification) {
++      if (notification.text.includes("<status>stopped</status>")) {
++        assert.equal(runs.at(-1)?.signal.aborted, true, "Stop must precede notification I/O");
++      }
++      if (failures.queue)
++        throw new BackgroundNotificationNotAcceptedError("synthetic notification admission failed");
++      notifications.push(notification);
++      if (failures.afterQueue) throw new Error("synthetic notification acknowledgement lost");
++      return undefined;
++    },
++    async runExploreAgent(childRequest, options) {
++      assert.ok(options?.signal);
++      const signal = options.signal;
++      const finish = Promise.withResolvers<ExploreSubagentRuntimeResult>();
++      runs.push({ request: childRequest, signal, finish });
++      if (realChild) {
++        // The disposable process only announces readiness and waits. No model/network/files.
++        child = spawn(
++          process.execPath,
++          ["-e", "process.stdout.write('ready'); setInterval(() => {}, 1000)"],
++          {
++            stdio: ["ignore", "pipe", "pipe"],
++          },
++        );
++        childExit = once(child, "close");
++        signal.addEventListener(
++          "abort",
++          () => {
++            aborts++;
++            child?.kill("SIGTERM");
++          },
++          { once: true },
++        );
++        await once(child.stdout!, "data");
++        await childRequest.onSessionReady?.();
++        await childExit;
++        return { response: "late child result after SIGTERM", traceId: trace.traceId, events: [] };
++      }
++      signal.addEventListener(
++        "abort",
++        () => {
++          aborts++;
++        },
++        { once: true },
++      );
++      await childRequest.onSessionReady?.();
++      return finish.promise;
++    },
++  });
++  const runtime = {
++    runtimeTaskRegistry: registry,
++    subagentPort: port,
++    rootTraceContext: trace,
++    rebuildProjection: async () => new EventReducer().reduce(events),
++    stopBackgroundTask(taskId: string, options: unknown) {
++      return stopBackgroundTask.call(runtime as never, taskId, options as never);
++    },
++  };
++  if (foreground) {
++    const running = port.run(request);
++    await spawned.promise;
++    if (foreground === true) {
++      await port.backgroundTask!("child");
++      assert.equal((await running).status, "async_launched");
++    } else if (foreground === "foreground_failed") {
++      runs[0]!.finish.reject(new Error("synthetic foreground child failure"));
++      await assert.rejects(running, /Explore subagent failed/);
++    } else {
++      runs[0]!.finish.resolve({
++        response: "foreground completed output",
++        traceId: trace.traceId,
++        events: [],
++      });
++      assert.equal((await running).status, "completed");
++    }
++  } else {
++    await port.start!(request);
++  }
++  const outputFile = registry.get("child")!.outputFile!;
++  return {
++    port,
++    registry,
++    events,
++    notifications,
++    failures,
++    runs,
++    root,
++    outputFile,
++    runtime,
++    store,
++    get aborts() {
++      return aborts;
++    },
++    get childExit() {
++      return childExit;
++    },
++    gateEvent(
++      gate: () => Promise<void>,
++      type: SessionEventType = SessionEventType.SubagentStopped,
++    ) {
++      eventGate = { type, wait: gate };
++    },
++    async stop() {
++      return taskStopToolEntry.handler({ task_id: "child" }, {
++        backgroundTaskControlPort: runtime,
++        traceContext: trace,
++        toolCallId: "stop-call",
++      } as never);
++    },
++    finish(index: number, response: string) {
++      runs[index]!.finish.resolve({ response, traceId: trace.traceId, events: [] });
++    },
++    async resume() {
++      return port.sendMessage!({
++        ...request,
++        to: "child",
++        message: "continue the same child with a new input",
++        parentToolCallId: "message-call",
++      } as never);
++    },
++    closeStore() {
++      store?.close();
++      storeClosed = true;
++    },
++    async close() {
++      failures.queue = false;
++      failures.resumeSaveFailures.length = 0;
++      failures.afterQueue = false;
++      failures.event = undefined;
++      failures.afterEvent = undefined;
++      eventGate = undefined;
++      await port.stopTask!("child").catch(() => {});
++      child?.kill("SIGKILL");
++      await childExit?.catch(() => {});
++      for (const run of runs)
++        run.finish.resolve({ response: "fixture cleanup", traceId: trace.traceId, events: [] });
++      await new Promise<void>((resolve) => setImmediate(resolve));
++      if (!storeClosed) store?.close();
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}

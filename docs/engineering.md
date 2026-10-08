@@ -89,8 +89,8 @@ The CJS build resolves Pi/Claude SDK ESM locations to the artifact. SDK runtime 
 Native tests require the SDK-matched bundled Claude executable and loopback inference; missing/broken binaries fail verification. They prove matching-ID native resume with delta input, changed/missing-cache handoff, checkpoint-save refusal, process-exit-aware Stop and failed admission without an extra request. SDK MCP returns committed Host receipts; actual Provider writer tests cover native account/catalog atomicity. Public ChatGPT tests run real Pi OAuth/serialization with signed local OIDC fixtures, locked refresh, account-bound reauthorization and isolated production/development bundles. Login UI uses fixtures; live consent, entitlement/inference, other platforms and owner acceptance remain separate.
 Built desktop IPC rejects an independent writer's stale address, retains its draft and saves after
 Esc restoration; checked dark/zh-CN and light/en-US in an isolated profile. Owner visual acceptance remains separate.
-Known check limits: root lint excludes CLI; inherited formatting/max-lines failures and complete
-license notices remain separate closure items. SDK notices are source-pinned; complete regeneration
+Root lint covers desktop/services; separate `lint:cli` runs declared CLI package checks with inherited ignores disabled and reports inherited large-file failures without waiving them. CLI type/lint entries use the existing pnpm workspace runner; no dependency installation is needed.
+Formatting and complete license notices remain separate closure items. SDK notices are source-pinned; complete regeneration
 is blocked by `proxy-agent-negotiate@1.1.0` lacking complete upstream text. Cross-platform notice
 verification also lacks installed optional architecture packages. Do not waive these release gates or call a development build
 a signed Fleet release. The product updater stays unavailable until a Fleet feed is configured.

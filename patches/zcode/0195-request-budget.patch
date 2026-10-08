@@ -1,0 +1,752 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 1cf15d1..7c4ced8 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -213,6 +213,34 @@ error or missing-usage row supersedes older counters with identity/time only. Th
+ and retention remain unchanged. The same query supplies cumulative raw main-turn counters from retained records, independent of context capacity, excluding sidecars and without the old statistics input-baseline subtraction. The label is recorded requests total, not an all-time invoice. Repeated or late seeds cannot overwrite a live main request. Optional/unavailable UsageStore support leaves the detail absent,
+ and a delayed restore seed cannot replace any newer live main-request report.
+ 
++## Final Host request budget (K-07)
++
++The Host assembles MCP/discovered declarations and their Skill/context guidance before automatic
++compaction. Its immutable final tool set contributes name, description, input schema and strictness
++to the existing character estimate. Compaction retains the existing output reserve and failure
++limits; normal-turn output is capped against the same complete estimated input when positive
++space remains. A non-positive heuristic retains the existing provider-error recovery path. Unknown capacity
++remains unknown; the working fallback is never published as model evidence.
++
++Reported input already includes the preceding tool declarations. Existing assistant composition
++metadata therefore supplies the old declaration size, carried through live history and cold
++hydration without another store. A same-model provider anchor adds only the estimated declaration
++size difference and new history. This is a mixed estimate, never a new vendor measurement. Legacy
++records without composition use the larger of the complete local estimate and the reported-history
++floor; the missing old declaration size prevents an exact calibrated delta. Model changes use the
++complete local estimate. Raw input/output/cache counters and durable composition remain untouched.
++Compaction reprojects the same final tool guidance before the request; native executors keep their
++own compaction boundary.
++
++Compact-summary requests still use the original registry/count-based declaration selection;
++their own declaration budget is separate unfinished work. Changed system/Skill prefixes enter
++the complete local floor, but do not yet have a separate calibrated provider-anchor delta.
++
++Acceptance: isolated Host/Pi/SQLite requests cover first-request output reserve, dynamic discovery
++before compaction, tool growth/removal, unchanged declarations without double counting, cold
++composition restoration, sparse/zero capacities and unchanged vendor counters. These are local
++scripted-provider proofs; tokenizer accuracy and live vendor limits are not established.
++
+ ## Small context compaction
+ 
+ Keep the existing output reservation and token accounting. The default safety buffer is the smaller of 13K and 10% of the effective input window, so a small but positive window does not compact after a few tokens. Explicit buffer values (including zero) retain precedence. The 200K/1M defaults, disabled state and failure circuit breaker retain their behavior. A zero effective input budget is still a separate unresolved request-budget boundary; no artificial positive threshold is created. `packages/core/test/compact-policy.test.ts` covers the bounded change.
+diff --git a/apps/zcode-cli/packages/core/src/agent/message-history.ts b/apps/zcode-cli/packages/core/src/agent/message-history.ts
+index 89f4f57..bb52948 100644
+--- a/apps/zcode-cli/packages/core/src/agent/message-history.ts
++++ b/apps/zcode-cli/packages/core/src/agent/message-history.ts
+@@ -11,6 +11,7 @@ import {
+   type Model,
+   type ModelReasoningContentBlock,
+   type TokenUsageInfo,
++  type ContextUsageBreakdownItem,
+ } from "@zcode/contracts";
+ import { SYSTEM_REMINDER_SOURCES, type SystemReminderSource } from "../system-reminder/source.js";
+ 
+@@ -52,6 +53,8 @@ export interface RuntimeMessageMessageEntry {
+   metadata?: RuntimeMessageMetadata;
+   /** 已提交 assistant 自己的 provider tokens；不会发送到 provider。 */
+   tokens?: TokenUsageInfo;
++  /** Existing assistant composition; Host-only observation, not provider input. */
++  contextUsageBreakdown?: readonly ContextUsageBreakdownItem[];
+   /** 仅在当前 query 内生效；不得进入 canonical history 或 Session persistence。 */
+   queryScope?: "output_token_continuation";
+   /** Host-only provenance for an unknown tool receipt; never sent to a provider. */
+@@ -98,6 +101,7 @@ export interface MessageHistory {
+     reasoning?: ReasoningContentInput[],
+     model?: Pick<Model, "providerId" | "modelId">,
+     tokens?: TokenUsageInfo,
++    contextUsageBreakdown?: readonly ContextUsageBreakdownItem[],
+   ): void;
+ 
+   // Add tool result
+@@ -184,6 +188,7 @@ export class MessageHistoryImpl implements MessageHistory {
+     reasoning?: ReasoningContentInput[],
+     model?: Pick<Model, "providerId" | "modelId">,
+     tokens?: TokenUsageInfo,
++    contextUsageBreakdown?: readonly ContextUsageBreakdownItem[],
+   ): void {
+     const reasoningBlocks = reasoning?.map((block) => cloneReasoningBlock(block)) ?? [];
+     this.entries.push({
+@@ -204,6 +209,9 @@ export class MessageHistoryImpl implements MessageHistory {
+         ...(model ? { providerId: model.providerId, modelId: model.modelId } : {}),
+       },
+       ...(tokens ? { tokens: cloneTokenUsageInfo(tokens) } : {}),
++      ...(Array.isArray(contextUsageBreakdown)
++        ? { contextUsageBreakdown: contextUsageBreakdown.map((item) => ({ ...item })) }
++        : {}),
+     });
+     this.cacheStats.totalMessages = this.entries.length;
+   }
+@@ -355,6 +363,7 @@ export function createRuntimeAssistantEntry(
+   reasoning?: readonly ReasoningContentInput[],
+   model?: Pick<Model, "providerId" | "modelId">,
+   tokens?: TokenUsageInfo,
++  contextUsageBreakdown?: readonly ContextUsageBreakdownItem[],
+ ): RuntimeMessageMessageEntry {
+   const reasoningBlocks = reasoning?.map((block) => cloneReasoningBlock(block)) ?? [];
+   return {
+@@ -375,6 +384,9 @@ export function createRuntimeAssistantEntry(
+       ...(model ? { providerId: model.providerId, modelId: model.modelId } : {}),
+     },
+     ...(tokens ? { tokens: cloneTokenUsageInfo(tokens) } : {}),
++    ...(Array.isArray(contextUsageBreakdown)
++      ? { contextUsageBreakdown: contextUsageBreakdown.map((item) => ({ ...item })) }
++      : {}),
+   };
+ }
+ 
+@@ -421,6 +433,9 @@ export function cloneRuntimeMessageEntry(entry: RuntimeMessageEntry): RuntimeMes
+     message: cloneModelInputMessage(entry.message),
+     metadata: cloneRuntimeMessageMetadata(entry.metadata),
+     ...(entry.tokens ? { tokens: cloneTokenUsageInfo(entry.tokens) } : {}),
++    ...(Array.isArray(entry.contextUsageBreakdown)
++      ? { contextUsageBreakdown: entry.contextUsageBreakdown.map((item) => ({ ...item })) }
++      : {}),
+     ...(entry.queryScope ? { queryScope: entry.queryScope } : {}),
+     ...(entry.toolResultPartId ? { toolResultPartId: entry.toolResultPartId } : {}),
+   };
+diff --git a/apps/zcode-cli/packages/core/src/agent/session-history-hydrator.ts b/apps/zcode-cli/packages/core/src/agent/session-history-hydrator.ts
+index c4ef20d..dfdca91 100644
+--- a/apps/zcode-cli/packages/core/src/agent/session-history-hydrator.ts
++++ b/apps/zcode-cli/packages/core/src/agent/session-history-hydrator.ts
+@@ -158,6 +158,11 @@ export async function hydrateMessageHistoryFromSession(input: {
+         ? { modelId: message.info.modelId, providerId: message.info.providerId }
+         : undefined,
+       message.info.tokens,
++      (
++        message.info.metadata as
++          | { contextUsageBreakdown?: import("@zcode/contracts").ContextUsageBreakdownItem[] }
++          | undefined
++      )?.contextUsageBreakdown,
+     );
+     appliedMessageCount++;
+ 
+diff --git a/apps/zcode-cli/packages/core/src/compact/policy.ts b/apps/zcode-cli/packages/core/src/compact/policy.ts
+index 29456b8..cacae00 100644
+--- a/apps/zcode-cli/packages/core/src/compact/policy.ts
++++ b/apps/zcode-cli/packages/core/src/compact/policy.ts
+@@ -1,5 +1,8 @@
+ import { DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY as DEFAULT_BUDGET_STRATEGY } from "@zcode/shared";
+-import { DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS, resolveModelInputOutputReserveTokens } from "@zcode/shared/model-config";
++import {
++  DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS,
++  resolveModelInputOutputReserveTokens,
++} from "@zcode/shared/model-config";
+ import type { CompactModelMessage } from "./manual.js";
+ import { estimateMessageTokens, hasEnoughMessagesToCompact } from "./manual.js";
+ import type { LocalMicrocompactPolicyConfig } from "./microcompact.js";
+@@ -26,7 +29,7 @@ export interface AutoCompactPolicyConfig {
+   microcompact?: LocalMicrocompactPolicyConfig;
+ }
+ 
+-export type AutoCompactTokenSource = "estimate" | "provider_usage";
++export type AutoCompactTokenSource = "estimate" | "provider_usage" | "provider_usage_with_estimate";
+ 
+ export interface AutoCompactTokenOverride {
+   baseTokenCount?: number;
+@@ -35,7 +38,8 @@ export interface AutoCompactTokenOverride {
+   contextUsageTokenCount?: number;
+   incrementalTokenCount?: number;
+   outputTokens?: number;
+-  source: Extract<AutoCompactTokenSource, "provider_usage">;
++  source: Exclude<AutoCompactTokenSource, "estimate">;
++  estimatedDeclarationDeltaTokens?: number;
+   tokenCount: number;
+ }
+ 
+@@ -50,6 +54,7 @@ export interface AutoCompactDecision {
+   providerContextUsageTokenCount?: number;
+   providerIncrementalTokenCount?: number;
+   providerOutputTokens?: number;
++  estimatedDeclarationDeltaTokens?: number;
+   threshold: number;
+   contextWindow: number;
+   effectiveContextWindow: number;
+@@ -95,6 +100,7 @@ export function shouldAutoCompact(input: {
+   config?: AutoCompactPolicyConfig;
+   consecutiveFailures?: number;
+   tokenOverride?: AutoCompactTokenOverride;
++  estimatedTokenCount?: number;
+ }): AutoCompactDecision {
+   const config = input.config ?? {};
+   const contextWindow = positiveInt(config.contextWindow) ?? DEFAULT_COMPACT_CONTEXT_WINDOW;
+@@ -102,7 +108,7 @@ export function shouldAutoCompact(input: {
+   const outputReserveTokens = Math.min(getAutoCompactOutputReserveTokens(config), contextWindow);
+   const threshold = getAutoCompactThreshold(config);
+   const thresholdPercent = DEFAULT_AUTOCOMPACT_THRESHOLD_PERCENT;
+-  const estimatedTokenCount = estimateMessageTokens(input.messages);
++  const estimatedTokenCount = input.estimatedTokenCount ?? estimateMessageTokens(input.messages);
+   const tokenCount = input.tokenOverride?.tokenCount ?? estimatedTokenCount;
+   const tokenSource = input.tokenOverride?.source ?? "estimate";
+   const common = {
+@@ -118,6 +124,7 @@ export function shouldAutoCompact(input: {
+     providerContextUsageTokenCount: input.tokenOverride?.contextUsageTokenCount,
+     providerIncrementalTokenCount: input.tokenOverride?.incrementalTokenCount,
+     providerOutputTokens: input.tokenOverride?.outputTokens,
++    estimatedDeclarationDeltaTokens: input.tokenOverride?.estimatedDeclarationDeltaTokens,
+     threshold,
+     thresholdPercent,
+     tokenCount,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/helpers/request-tool-budget.ts b/apps/zcode-cli/packages/core/src/runtime/helpers/request-tool-budget.ts
+new file mode 100644
+index 0000000..5793d56
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/src/runtime/helpers/request-tool-budget.ts
+@@ -0,0 +1,38 @@
++import type { ContextUsageBreakdownItem, ModelToolContract } from "@zcode/contracts";
++import { ESTIMATED_TOKEN_CHAR_DIVISOR } from "@zcode/shared";
++import { stringifyForEstimation } from "./tool-result.js";
++
++/** Host declaration observation, not provider tokenization or execution policy. */
++export function toolDeclarationText(tool: ModelToolContract): string {
++  return stringifyForEstimation({
++    name: tool.name,
++    description: tool.description,
++    inputSchema: tool.inputSchema,
++    strict: tool.strict,
++  });
++}
++
++export function estimateToolDeclarationTokens(tools: readonly ModelToolContract[]): number {
++  return Math.ceil(
++    tools.reduce((sum, tool) => sum + toolDeclarationText(tool).length, 0) /
++      ESTIMATED_TOKEN_CHAR_DIVISOR,
++  );
++}
++
++export function observedToolDeclarationTokens(
++  breakdown: readonly ContextUsageBreakdownItem[] | undefined,
++): number | undefined {
++  if (
++    !Array.isArray(breakdown) ||
++    breakdown.some((item) => !item || !Number.isFinite(item.chars) || item.chars < 0)
++  )
++    return undefined;
++  const chars = breakdown.reduce(
++    (sum, item) =>
++      item.source === "system_tool_schemas" || item.source === "mcp_tool_schemas"
++        ? sum + item.chars
++        : sum,
++    0,
++  );
++  return Math.ceil(chars / ESTIMATED_TOKEN_CHAR_DIVISOR);
++}
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/compact-log-context.ts b/apps/zcode-cli/packages/core/src/runtime/methods/compact-log-context.ts
+index 5fc07af..09f1c14 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/compact-log-context.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/compact-log-context.ts
+@@ -5,6 +5,7 @@ export function autoCompactDecisionLogContext(decision: AutoCompactDecision) {
+     contextWindow: decision.contextWindow,
+     effectiveContextWindow: decision.effectiveContextWindow,
+     estimatedTokenCount: decision.estimatedTokenCount,
++    estimatedDeclarationDeltaTokens: decision.estimatedDeclarationDeltaTokens,
+     inputBudgetTokens: decision.effectiveContextWindow,
+     maxOutputTokens: decision.maxOutputTokens,
+     modelContextBudgetStrategy: decision.modelContextBudgetStrategy,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts b/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts
+index 4f7d2f0..c918939 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/compact.ts
+@@ -1,3 +1,7 @@
++import {
++  estimateToolDeclarationTokens,
++  observedToolDeclarationTokens,
++} from "../helpers/request-tool-budget.js";
+ import {
+   CompactPhase,
+   CompactReason,
+@@ -205,9 +209,16 @@ export async function autoCompactIfNeeded(
+     model: context.model,
+   });
+   const { messages: activeMessages, sourceEntries } = activeProjection;
+-  const tokenOverride = buildProviderUsageTokenOverride(activeMessages, sourceEntries);
++  const tokenOverride = buildProviderUsageTokenOverride(
++    activeMessages,
++    sourceEntries,
++    context.tools,
++    context.model,
++  );
+   const decision = shouldAutoCompact({
+     messages: activeMessages,
++    estimatedTokenCount:
++      estimateMessageTokens(activeMessages) + estimateToolDeclarationTokens(context.tools ?? []),
+     config,
+     consecutiveFailures: this.autoCompactConsecutiveFailures,
+     tokenOverride,
+@@ -265,7 +276,7 @@ export async function autoCompactIfNeeded(
+           inputTokens: decision.tokenCount,
+           policyContextWindowTokens: decision.contextWindow,
+           thresholdTokens: decision.threshold,
+-          tokenSource: decision.tokenSource,
++          tokenSource: decision.tokenSource === "provider_usage" ? "provider_usage" : "estimate",
+         },
+         autoCompactThreshold: decision.threshold,
+         compactReason: context.compactReason,
+@@ -313,6 +324,8 @@ export async function autoCompactIfNeeded(
+ function buildProviderUsageTokenOverride(
+   messages: RunModelTextRequestOptions["messages"],
+   sourceEntries: readonly (RuntimeMessageEntry | undefined)[],
++  tools?: readonly import("../deps.js").ModelToolContract[],
++  model?: Pick<Model, "providerId" | "modelId">,
+ ): AutoCompactTokenOverride | undefined {
+   const latestUsage = findLatestCommittedAssistantUsage(sourceEntries);
+   if (!latestUsage || latestUsage.messageIndex >= messages.length) {
+@@ -320,6 +333,23 @@ function buildProviderUsageTokenOverride(
+   }
+ 
+   const { baseline, messageIndex } = latestUsage;
++  const anchor = sourceEntries[messageIndex];
++  if (
++    model &&
++    anchor?.kind !== "attachment" &&
++    (anchor?.message.providerId !== model.providerId || anchor?.message.modelId !== model.modelId)
++  )
++    return undefined;
++  const currentDeclarationTokens =
++    tools === undefined ? undefined : estimateToolDeclarationTokens(tools);
++  const previousDeclarationTokens =
++    anchor?.kind === "attachment"
++      ? undefined
++      : observedToolDeclarationTokens(anchor?.contextUsageBreakdown);
++  const declarationDelta =
++    currentDeclarationTokens !== undefined && previousDeclarationTokens !== undefined
++      ? currentDeclarationTokens - previousDeclarationTokens
++      : undefined;
+   const incrementalStartIndex =
+     baseline.contextUsageTokens === undefined ? messageIndex : messageIndex + 1;
+   const incrementalTokenCount = estimateMessageTokens(messages.slice(incrementalStartIndex));
+@@ -334,18 +364,29 @@ function buildProviderUsageTokenOverride(
+     contextUsageTokenCount: baseline.contextUsageTokens,
+     incrementalTokenCount,
+     outputTokens: baseline.outputTokens,
+-    source: "provider_usage",
+-    tokenCount: providerBaseTokenCount + incrementalTokenCount,
++    source: tools === undefined ? "provider_usage" : "provider_usage_with_estimate",
++    estimatedDeclarationDeltaTokens: declarationDelta,
++    // vendor input 已含旧声明，不能再把本轮工具全集加一次；只加已有 composition 证明的差值。
++    // 旧记录缺少 composition 时保留 vendor floor，并用完整本地估算托底，不伪造旧工具大小。
++    tokenCount:
++      tools === undefined
++        ? providerBaseTokenCount + incrementalTokenCount
++        : Math.max(
++            estimateMessageTokens(messages) + (currentDeclarationTokens ?? 0),
++            providerBaseTokenCount + incrementalTokenCount + (declarationDelta ?? 0),
++          ),
+   };
+ }
+ 
+ export function estimateCurrentModelInputTokens(
+   messages: RunModelTextRequestOptions["messages"],
+   sourceEntries: readonly (RuntimeMessageEntry | undefined)[] = [],
++  tools?: readonly import("../deps.js").ModelToolContract[],
++  model?: Pick<Model, "providerId" | "modelId">,
+ ): number {
+   return (
+-    buildProviderUsageTokenOverride(messages, sourceEntries)?.tokenCount ??
+-    estimateMessageTokens(messages)
++    buildProviderUsageTokenOverride(messages, sourceEntries, tools, model)?.tokenCount ??
++    estimateMessageTokens(messages) + estimateToolDeclarationTokens(tools ?? [])
+   );
+ }
+ 
+@@ -420,7 +461,7 @@ export async function reactiveCompactAfterContextExceeded(
+             contextWindow !== undefined && Number.isFinite(contextWindow) && contextWindow > 0
+               ? Math.floor(contextWindow)
+               : DEFAULT_COMPACT_CONTEXT_WINDOW,
+-          tokenSource: tokenOverride?.source ?? "estimate",
++          tokenSource: tokenOverride?.source === "provider_usage" ? "provider_usage" : "estimate",
+         },
+         compactReason: CompactReason.ProviderOverflow,
+         initialPromptTooLongCause: originalError,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/context-usage.ts b/apps/zcode-cli/packages/core/src/runtime/methods/context-usage.ts
+index 69e3b59..a6dda0e 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/context-usage.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/context-usage.ts
+@@ -1,3 +1,4 @@
++import { toolDeclarationText } from "../helpers/request-tool-budget.js";
+ import { modelMessageContentToText, traceContextToLogContext, estimateTokens } from "../deps.js";
+ import type { ModelInputMessage, ModelToolContract, TraceContext } from "../deps.js";
+ import type { ContextUsageBreakdownItem } from "@zcode/contracts";
+@@ -314,11 +315,7 @@ export function buildToolUsageDetail(
+ ): ContextUsageToolDetail {
+   // Adapters send the name, description and input schema. Execution policy and result schemas stay local.
+   // This is a Host estimate; provider-native definitions and wire normalization may change its size.
+-  const content = stringifyForEstimation({
+-    name: tool.name,
+-    description: tool.description,
+-    inputSchema: tool.inputSchema,
+-  });
++  const content = toolDeclarationText(tool);
+   const mcp = parseMcpToolName(tool.name);
+   return {
+     name: tool.name,
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
+index c576764..2a800c8 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop-state.ts
+@@ -58,6 +58,7 @@ export interface AutoCompactLoopContext {
+   rapidRefill: RapidRefillDecision;
+   model: Model;
+   turnRequestState: TurnRequestState;
++  tools?: readonly import("@zcode/contracts").ModelToolContract[];
+ }
+ 
+ export interface ReactiveCompactLoopContext {
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+index eeb56fa..f326a44 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-model-step.ts
+@@ -256,6 +256,8 @@ async function runModelBackedTurnStepImpl(
+         estimatedCurrentUsage: estimateCurrentModelInputTokens(
+           options.messages,
+           options.sourceEntries,
++          options.tools,
++          model,
+         ),
+         modelContextBudgetStrategy: this.config.modelContextBudgetStrategy,
+       }),
+@@ -293,10 +295,16 @@ async function runModelBackedTurnStepImpl(
+     });
+     if (receivedResult) {
+       await publishModelResponseObservation(this, state, {
+-        result: receivedResult, querySource, contextWindow: publishedContextWindow,
+-        traceContext: modelTraceContext, toolCallCount: receivedResult.toolCalls?.length ?? 0,
++        result: receivedResult,
++        querySource,
++        contextWindow: publishedContextWindow,
++        traceContext: modelTraceContext,
++        toolCallCount: receivedResult.toolCalls?.length ?? 0,
+         outcome: state.turnAbortSignal.aborted ? "cancelled" : "error",
+-        cacheHit: querySource === "main_turn" ? recordMainTurnCacheHitUsage(this, receivedResult.usage) : undefined,
++        cacheHit:
++          querySource === "main_turn"
++            ? recordMainTurnCacheHitUsage(this, receivedResult.usage)
++            : undefined,
+       });
+     }
+     const failedRequestId = latestFailedModelRequestId ?? latestModelRequestId;
+@@ -640,8 +648,14 @@ async function runModelBackedTurnStepImpl(
+     toolCallCount: toolCalls.length,
+   });
+   await publishModelResponseObservation(this, state, {
+-    result, querySource, contextWindow: publishedContextWindow, content: state.modelResponse,
+-    traceContext: modelTraceContext, toolCallCount: toolCalls.length, cacheHit, fileChanges,
++    result,
++    querySource,
++    contextWindow: publishedContextWindow,
++    content: state.modelResponse,
++    traceContext: modelTraceContext,
++    toolCallCount: toolCalls.length,
++    cacheHit,
++    fileChanges,
+   });
+   this.lastAssistantCompletedAtMs = Date.now();
+   state.turnMachine = new TurnMachineImpl(
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-output-token-continuation.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-output-token-continuation.ts
+index e5a9313..337152a 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-output-token-continuation.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-output-token-continuation.ts
+@@ -125,6 +125,7 @@ export function commitAssistantToTurnRequest(
+       reasoning,
+       modelRef,
+       toTokenUsageInfo(result.usage),
++      result.contextUsageBreakdown,
+     ),
+   ]);
+   return true;
+diff --git a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+index 904b33b..e7b89c8 100644
+--- a/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
++++ b/apps/zcode-cli/packages/core/src/runtime/methods/turn-step-prepare.ts
+@@ -82,36 +82,6 @@ export async function prepareRegularModelStep(
+     );
+   throwIfTurnAborted(state.turnAbortSignal);
+ 
+-  const rapidRefill = evaluateRapidRefill(state.compactTracking);
+-  const autoCompactOutcome = nativeContext
+-    ? "skipped"
+-    : await runtime.autoCompactIfNeeded(
+-        state.turnTraceContext,
+-        state.events,
+-        state.turnAbortSignal,
+-        {
+-          compactReason: CompactReason.ContextLimit,
+-          modelStepIndex: state.modelStepCount,
+-          phase: compactPhase,
+-          rapidRefill,
+-          model: state.model,
+-          turnRequestState: state.turnRequestState,
+-        },
+-      );
+-  if (autoCompactOutcome === "rapid_refill_blocked") {
+-    throw createCompactRapidRefillError({
+-      consecutiveRapidRefills: rapidRefill.consecutiveRapidRefills,
+-      maxConsecutiveRapidRefills: MAX_CONSECUTIVE_RAPID_REFILLS,
+-      toolTurnThreshold: RAPID_REFILL_TOOL_TURN_THRESHOLD,
+-      toolTurnsSinceCompact: rapidRefill.toolTurnsSinceCompact,
+-    });
+-  }
+-  if (autoCompactOutcome === "compacted") {
+-    recordCompactSuccess(state, rapidRefill);
+-    recordCompactHistoryRound(state);
+-  }
+-  throwIfTurnAborted(state.turnAbortSignal);
+-
+   const finishMcp = beginLocalTurnPreparation(state.turnTraceContext, "mcp");
+   await runtime.initializeMcp(state.turnTraceContext);
+   finishMcp();
+@@ -181,6 +151,44 @@ export async function prepareRegularModelStep(
+       systemReminderAttachmentEntry("output_style", outputStyleReminderBody),
+     ]);
+   }
++  const rapidRefill = evaluateRapidRefill(state.compactTracking);
++  const autoCompactOutcome = nativeContext
++    ? "skipped"
++    : await runtime.autoCompactIfNeeded(
++        state.turnTraceContext,
++        state.events,
++        state.turnAbortSignal,
++        {
++          compactReason: CompactReason.ContextLimit,
++          modelStepIndex: state.modelStepCount,
++          phase: compactPhase,
++          rapidRefill,
++          model: state.model,
++          turnRequestState: state.turnRequestState,
++          tools,
++        },
++      );
++  if (autoCompactOutcome === "rapid_refill_blocked") {
++    throw createCompactRapidRefillError({
++      consecutiveRapidRefills: rapidRefill.consecutiveRapidRefills,
++      maxConsecutiveRapidRefills: MAX_CONSECUTIVE_RAPID_REFILLS,
++      toolTurnThreshold: RAPID_REFILL_TOOL_TURN_THRESHOLD,
++      toolTurnsSinceCompact: rapidRefill.toolTurnsSinceCompact,
++    });
++  }
++  if (autoCompactOutcome === "compacted") {
++    recordCompactSuccess(state, rapidRefill);
++    recordCompactHistoryRound(state);
++    // compact 可恢复 canonical prefix；本轮最终工具/Skill 投影仍以同一不可变声明集重建。
++    state.turnRequestState.entries = projectContextPrefixForTools(
++      runtime,
++      state.turnRequestState.entries,
++      state.modelStepToolNames,
++      state.model,
++    );
++  }
++  throwIfTurnAborted(state.turnAbortSignal);
++
+   const providerEntries = [...state.turnRequestState.entries];
+   const requestEntries = providerEntries;
+   // provider-visible user ordering projection 会改变最终 latest user 落点，
+diff --git a/apps/zcode-cli/packages/core/test/request-budget.test.ts b/apps/zcode-cli/packages/core/test/request-budget.test.ts
+new file mode 100644
+index 0000000..244d212
+--- /dev/null
++++ b/apps/zcode-cli/packages/core/test/request-budget.test.ts
+@@ -0,0 +1,197 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { getCurrentModelInvocationContext } from "@zcode/contracts";
++import { fixture, reply } from "./helpers/pi-runtime-fixture.js";
++import { estimateCurrentModelInputTokens } from "../src/runtime/methods/compact.js";
++import { resolveModelStepMaxOutputTokens } from "../src/runtime/methods/model-token-limits.js";
++
++const tool = { name: "Large", description: "x".repeat(32000), inputSchema: { type: "object" } };
++
++test("real Host/Pi request reserves output after final tool declarations", async () => {
++  const f = await fixture();
++  try {
++    const runtime = f.runtime as any;
++    const originalFactory = runtime.modelFactory;
++    const constrain = (model: any): any => ({
++      ...model,
++      properties: { ...model.properties, contextWindow: 16000 },
++      bind: (options: any) => constrain(model.bind(options)),
++    });
++    runtime.modelFactory = (input: any) => constrain(originalFactory(input));
++    const probe = runtime.getToolRegistry().get("Probe");
++    probe.metadata.description = tool.description;
++    runtime.invalidateToolCache();
++    f.steps.push((request: any) => {
++      const expectedInput =
++        estimateCurrentModelInputTokens(request.messages) +
++        request.tools.reduce(
++          (sum: number, declaration: any) =>
++            sum +
++            Math.ceil(
++              JSON.stringify({
++                name: declaration.name,
++                description: declaration.description,
++                inputSchema: declaration.inputSchema,
++                strict: declaration.strict,
++              }).length / 3,
++            ),
++          0,
++        );
++      const expectedOutput = resolveModelStepMaxOutputTokens({
++        baselineMaxOutputTokens: 4096,
++        contextWindow: 16000,
++        estimatedCurrentUsage: expectedInput,
++        modelContextBudgetStrategy: "preflight-v1",
++      });
++      assert.ok(expectedOutput < 4096, "fixture must reach the remaining-window boundary");
++      assert.equal(request.options.maxOutputTokens, expectedOutput);
++      return reply("complete");
++    });
++    await runtime.executeTurn("A bounded document request");
++    assert.equal(f.requests.length, 1);
++  } finally {
++    await f.close();
++  }
++});
++
++test("provider input includes old declarations once; growth and removal are estimated deltas", async () => {
++  const { createRuntimeAssistantEntry } = await import("../src/agent/message-history.js");
++  const { toolDeclarationText, estimateToolDeclarationTokens } =
++    await import("../src/runtime/helpers/request-tool-budget.js");
++  const oldTool = { ...tool, description: "old declaration" } as any;
++  const nextTool = tool as any;
++  const model = { providerId: "fixture", modelId: "model-a" } as any;
++  const anchor = createRuntimeAssistantEntry(
++    "ok",
++    [],
++    [],
++    model,
++    { input: 20000, output: 100, total: 20100, reasoning: 0, cache: { read: 1000, write: 0 } },
++    [{ source: "system_tool_schemas", chars: toolDeclarationText(oldTool).length }],
++  );
++  const tail = { message: { role: "user", content: "next" } } as any;
++  const entries = [anchor, tail];
++  const messages = entries.map((entry) => entry.message);
++  const oldTokens = estimateToolDeclarationTokens([oldTool]);
++  for (const currentTools of [[oldTool], [nextTool], []]) {
++    const expected = 20102 + estimateToolDeclarationTokens(currentTools) - oldTokens;
++    assert.equal(estimateCurrentModelInputTokens(messages, entries, currentTools, model), expected);
++  }
++  assert.equal(anchor.tokens?.input, 20000);
++  assert.equal(anchor.tokens?.cache.read, 1000, "cache subset is never counted again");
++  assert.equal(
++    estimateCurrentModelInputTokens(messages, entries, [nextTool], { ...model, modelId: "new" }),
++    estimateCurrentModelInputTokens(messages, [], [nextTool]),
++  );
++  const legacy = { ...anchor, contextUsageBreakdown: undefined };
++  assert.equal(
++    estimateCurrentModelInputTokens(messages, [legacy, tail], [oldTool], model),
++    20102,
++    "legacy input is a floor, not input plus the full declarations again",
++  );
++});
++
++test("cold Session hydration restores existing composition as Host-only budget provenance", async () => {
++  const f = await fixture();
++  try {
++    f.steps.push(() => ({
++      ...reply("retained"),
++      usage: { inputTokens: 20000, outputTokens: 100, totalTokens: 20100 },
++    }));
++    await f.runtime.executeTurn("Retain a document receipt");
++    const project = () => {
++      const entries = (f.runtime as any).messageHistory.toRuntimeEntries();
++      const assistant = entries.findLast((entry: any) => entry.message?.role === "assistant");
++      assert.ok(
++        assistant.contextUsageBreakdown?.some((item: any) => item.source === "system_tool_schemas"),
++      );
++      assert.ok(!JSON.stringify(assistant.message).includes("contextUsageBreakdown"));
++      return structuredClone(assistant.contextUsageBreakdown);
++    };
++    const before = project();
++    await f.reopen();
++    assert.deepEqual(project(), before);
++  } finally {
++    await f.close();
++  }
++});
++
++test("sparse and zero capacities retain the existing output fallback without invented evidence", () => {
++  for (const contextWindow of [undefined, 0, Number.NaN]) {
++    assert.equal(
++      resolveModelStepMaxOutputTokens({
++        baselineMaxOutputTokens: 4096,
++        contextWindow,
++        estimatedCurrentUsage: 999999,
++        modelContextBudgetStrategy: "preflight-v1",
++      }),
++      4096,
++    );
++  }
++});
++
++test("dynamic discovery reaches Host compaction before the next physical request", async () => {
++  const f = await fixture(undefined, false, {
++    config: { toolAllowlist: ["Probe", "SearchTools"] },
++  });
++  try {
++    const runtime = f.runtime as any;
++    const originalFactory = runtime.modelFactory;
++    const constrain = (model: any): any => ({
++      ...model,
++      properties: { ...model.properties, contextWindow: 24000 },
++      bind: (options: any) => constrain(model.bind(options)),
++      async *streamText(request: any) {
++        const result = await model.generateText(request);
++        yield { type: "start" };
++        if (result.text) {
++          yield { type: "text_start", id: "summary" };
++          yield { type: "text_delta", id: "summary", text: result.text };
++          yield { type: "text_end", id: "summary" };
++        }
++        for (const toolCall of result.toolCalls ?? []) yield { type: "tool_call", toolCall };
++        yield { type: "finish", finishReason: result.finishReason, usage: result.usage };
++      },
++    });
++    runtime.modelFactory = (input: any) => constrain(originalFactory(input));
++    const registry = runtime.getToolRegistry();
++    const probe = registry.get("Probe");
++    registry.register({
++      ...probe,
++      deferLoading: true,
++      metadata: { ...probe.metadata, name: "mcp__fixture__large", description: "x".repeat(48000) },
++    });
++    runtime.invalidateToolCache();
++    f.steps.push(() => reply("prior response"));
++    await runtime.executeTurn("An earlier document task");
++    let summaryCalls = 0;
++    let finalSeen = false;
++    f.steps.push(
++      (request: any) => {
++        assert.ok(!request.tools.some((tool: any) => tool.name === "mcp__fixture__large"));
++        return reply("discover", [
++          { id: "search", name: "SearchTools", input: { query: "mcp__fixture__large", limit: 1 } },
++        ]);
++      },
++      () => {
++        assert.equal(
++          getCurrentModelInvocationContext()?.modelCall?.operation,
++          "context_compaction",
++          "Host compacts before the next main model step",
++        );
++        summaryCalls++;
++        return reply("A short retained task summary");
++      },
++      (request: any) => {
++        assert.equal(summaryCalls, 1);
++        assert.ok(request.tools.some((tool: any) => tool.name === "mcp__fixture__large"));
++        finalSeen = true;
++        return reply("complete");
++      },
++    );
++    await runtime.executeTurn("Find the large document formatter");
++    assert.ok(finalSeen);
++  } finally {
++    await f.close();
++  }
++});

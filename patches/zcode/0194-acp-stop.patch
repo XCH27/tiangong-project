@@ -1,0 +1,832 @@
+diff --git a/apps/zcode-cli/docs/permission-dispatch.md b/apps/zcode-cli/docs/permission-dispatch.md
+index 0843cdf..b7e6f35 100644
+--- a/apps/zcode-cli/docs/permission-dispatch.md
++++ b/apps/zcode-cli/docs/permission-dispatch.md
+@@ -24,3 +24,32 @@ Acceptance uses AgentRuntime.executeTurn with controlled model replies, the real
+ writer and a real local effect: Allow→Ask, Allow→Deny, approved Ask→Ask, and a subsequent fresh
+ request through the original broker. Rules change during the awaited started-event publication,
+ before the actual effect, rather than replacing the permission checker with a mock.
++
++## Native ACP Stop and process settlement
++
++The existing Host abort signal fences every ACP permission callback immediately, including
++callbacks arriving after `session/cancel` and approvals resolving after Stop. Their result is
++`cancelled`, never an automatic allowance or an old approval. The vendor still owns its tools;
++Fleet does not invent Host receipts for them. ACP protocol v1 requires pending permission
++requests to receive the cancelled outcome (local reference `302e6f7`, current official tip
++`43e664a0d901`, `docs/protocol/v1/prompt-turn.mdx` cancellation section).
++
++```text
++Host abort → permission fence → session/cancel → cancelled prompt / bounded failure
++Host close → transport fence → TERM → bounded KILL → confirmed process close → release / checkpoint
++```
++
++`AcpClient` owns one idempotent close promise. Native port cleanup waits for that promise and
++any setup already in flight; the Host's existing `await native.close()` remains the only
++release/continuation settlement path. Late callbacks cannot write into closed stdin. A missing
++exit confirmation is an explicit cleanup failure after a two-second TERM grace and a two-second
++KILL confirmation window. POSIX teardown targets the owned process group and confirms its
++disappearance even when the leader closes without inherited pipes. Windows targets the owned
++child only; descendants that escape the POSIX group are outside this teardown claim.
++
++Acceptance uses isolated real child processes: Stop followed by a late automatic permission,
++Stop while an approval is pending, repeated close, a TERM-resistant child, and cleanup during
++setup, option replies arriving after Stop, and descendants without inherited pipes. Existing
++ACP catalog, continuation, modes and errors must continue to pass. Shared catalog and
++vendor-login consumers await the same process barrier before reporting completion. This changes
++no credential, permission-mode, Session storage, UI or provider protocol authority.
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-auth.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-auth.ts
+index 0fe3c2a..3ad13d6 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-auth.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-auth.ts
+@@ -73,7 +73,7 @@ export async function listAcpAuthMethods(target: Target): Promise<AcpAuthMethod[
+   try {
+     return parseAcpAuthMethods((await initialize(acp)).authMethods);
+   } finally {
+-    acp.close();
++    await acp.close();
+   }
+ }
+ 
+@@ -88,15 +88,17 @@ export function startAcpLogin(target: Target & { methodId: string; timeoutMs?: n
+     .catch((error: unknown) => {
+       throw acpFailure(target.kind, error);
+     })
+-    .finally(() => {
++    .finally(async () => {
+       settled = true;
+-      acp.close();
++      // 登录结果只能在所属进程退出后交付，避免下一次登录与旧进程继续写入同一配置。
++      await acp.close();
+     });
+   void completion.catch(() => {});
+   return {
+     completion,
+     cancel() {
+-      if (!settled) acp.close();
++      // completion 的 finally 仍等待同一个关闭结果；这里仅消费取消触发的旁路 Promise。
++      if (!settled) void acp.close().catch(() => {});
+     },
+   };
+ }
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-client.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-client.ts
+index 2bd557e..95e15a8 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-client.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-client.ts
+@@ -44,6 +44,9 @@ export class AcpClient {
+   private buffer = "";
+   private stderr = "";
+   private exited = false;
++  private closing = false;
++  private closePromise?: Promise<void>;
++  private readonly processClosed: Promise<void>;
+ 
+   constructor(private readonly options: AcpClientOptions) {
+     this.child = spawn(options.executable, options.args, {
+@@ -53,6 +56,8 @@ export class AcpClient {
+       detached: process.platform !== "win32",
+       windowsHide: true,
+     });
++    this.processClosed = new Promise((resolve) => this.child.once("close", () => resolve()));
++    this.child.stdin.on("error", () => this.terminate(new Error("ACP protocol write failed")));
+     const decoder = new StringDecoder("utf8");
+     this.child.stdout.on("data", (chunk: Buffer) => this.consume(decoder.write(chunk)));
+     this.child.stderr.on("data", (chunk: Buffer) => {
+@@ -71,8 +76,12 @@ export class AcpClient {
+   }
+ 
+   /** `timeoutMs` bounds setup calls; a prompt turn is unbounded and ends via cancel or exit. */
+-  request<T = Record<string, unknown>>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
+-    if (this.exited) return Promise.reject(new Error("ACP agent is not running"));
++  request<T = Record<string, unknown>>(
++    method: string,
++    params: unknown,
++    timeoutMs?: number,
++  ): Promise<T> {
++    if (this.exited || this.closing) return Promise.reject(new Error("ACP agent is not running"));
+     const id = ++this.nextId;
+     return new Promise<T>((resolve, reject) => {
+       const timer = timeoutMs
+@@ -97,28 +106,61 @@ export class AcpClient {
+   }
+ 
+   notify(method: string, params: unknown): void {
+-    if (!this.exited) this.write({ jsonrpc: "2.0", method, params });
++    if (!this.exited && !this.closing) this.write({ jsonrpc: "2.0", method, params });
+   }
+ 
+-  close(): void {
+-    if (this.exited) return;
+-    this.child.stdin.end();
+-    const pid = this.child.pid;
+-    const kill = (signal: NodeJS.Signals) => {
+-      if (this.exited || !pid) return;
+-      try {
+-        if (process.platform === "win32") this.child.kill(signal);
+-        else process.kill(-pid, signal);
+-      } catch {
+-        this.child.kill(signal);
+-      }
+-    };
+-    kill("SIGTERM");
+-    setTimeout(() => kill("SIGKILL"), 2000).unref();
++  close(): Promise<void> {
++    if (this.closePromise) return this.closePromise;
++    this.closing = true;
++    this.terminate(new Error("ACP agent connection closed"));
++    // Stop 后不再放行回调；同一个退出屏障必须先于 Host 释放 turn 或保存 continuation。
++    this.closePromise = (async () => {
++      const pid = this.child.pid;
++      const groupAlive = () => {
++        if (process.platform === "win32" || !pid) return false;
++        try {
++          process.kill(-pid, 0);
++          return true;
++        } catch (error) {
++          if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
++          throw new Error("ACP agent group exit could not be confirmed");
++        }
++      };
++      if (this.exited && !groupAlive()) return;
++      if (!this.exited) this.child.stdin.end();
++      const kill = (signal: NodeJS.Signals) => {
++        if (!pid || (process.platform === "win32" && this.exited)) return;
++        try {
++          if (process.platform === "win32") this.child.kill(signal);
++          else process.kill(-pid, signal);
++        } catch {
++          this.child.kill(signal);
++        }
++      };
++      const waitForClose = async (timeoutMs: number) => {
++        const deadline = Date.now() + timeoutMs;
++        for (;;) {
++          // 主进程的 close 不证明无管道的子进程退出；同组成员也必须消失后才释放 Host。
++          if (this.exited && !groupAlive()) { await this.processClosed; return true; }
++          const remaining = deadline - Date.now();
++          if (remaining <= 0) return false;
++          await new Promise((resolve) => setTimeout(resolve, Math.min(20, remaining)));
++        }
++      };
++      kill("SIGTERM");
++      if (await waitForClose(2000)) return;
++      kill("SIGKILL");
++      if (!(await waitForClose(2000))) throw new Error("ACP agent exit could not be confirmed");
++    })();
++    return this.closePromise;
+   }
+ 
+   private write(message: unknown) {
+-    this.child.stdin.write(`${JSON.stringify(message)}\n`);
++    // 已关闭的 stdin 不能接收迟到审批；写入失败由当前连接结算，不能形成未处理流错误。
++    if (this.closing || this.exited) return;
++    this.child.stdin.write(`${JSON.stringify(message)}\n`, (error) => {
++      if (error) this.terminate(new Error("ACP protocol write failed"));
++    });
+   }
+ 
+   private terminate(error: Error) {
+@@ -127,6 +169,7 @@ export class AcpClient {
+   }
+ 
+   private consume(text: string) {
++    if (this.closing || this.exited) return;
+     this.buffer += text;
+     for (let index = this.buffer.indexOf("\n"); index >= 0; index = this.buffer.indexOf("\n")) {
+       const line = this.buffer.slice(0, index).trim();
+@@ -155,7 +198,10 @@ export class AcpClient {
+               error:
+                 error instanceof AcpRpcError
+                   ? { code: error.code ?? -32603, message: error.message }
+-                  : { code: -32603, message: error instanceof Error ? error.message : "Request failed" },
++                  : {
++                      code: -32603,
++                      message: error instanceof Error ? error.message : "Request failed",
++                    },
+             }),
+         );
+         continue;
+@@ -164,8 +210,13 @@ export class AcpClient {
+       const entry = this.pending.get(id);
+       if (!entry) continue;
+       this.pending.delete(id);
+-      const error = message.error as { code?: number; message?: string; data?: unknown } | undefined;
+-      if (error) entry.reject(new AcpRpcError(error.message ?? "ACP request failed", error.code, error.data));
++      const error = message.error as
++        | { code?: number; message?: string; data?: unknown }
++        | undefined;
++      if (error)
++        entry.reject(
++          new AcpRpcError(error.message ?? "ACP request failed", error.code, error.data),
++        );
+       else entry.resolve(message.result ?? {});
+     }
+   }
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+index a3f8a10..da33c75 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-inspect.ts
+@@ -82,6 +82,6 @@ export async function inspectAcpConnection(input: {
+       images: session.images,
+     };
+   } finally {
+-    session.client.close();
++    await session.client.close();
+   }
+ }
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+index 47663ab..75b1814 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-session.ts
+@@ -72,6 +72,8 @@ export async function openAcpSession(input: {
+   onNotification(notification: AcpNotification): void;
+   onRequest(request: AcpIncomingRequest): Promise<unknown>;
+   onExit(code: number | null, stderr: string): void;
++  /** Expose the owned transport before handshake so Stop can terminate stalled setup. */
++  onClient?(client: AcpClient): void;
+ }): Promise<AcpSession> {
+   const profile = ACP_PROFILES[input.kind];
+   let replaying = false;
+@@ -87,6 +89,7 @@ export async function openAcpSession(input: {
+     onExit: input.onExit,
+   });
+   try {
++    input.onClient?.(client);
+     const initialized = await client.request<{
+       protocolVersion?: number;
+       agentCapabilities?: {
+@@ -186,8 +189,14 @@ export async function openAcpSession(input: {
+       images: initialized.agentCapabilities?.promptCapabilities?.image === true,
+     };
+   } catch (error) {
+-    client.close();
+-    throw error instanceof AcpRpcError ? authFailure(input.kind, error) : error;
++    const failure = error instanceof AcpRpcError ? authFailure(input.kind, error) : error;
++    try {
++      await client.close();
++    } catch (cleanupError) {
++      // 回收失败不能抹掉原始 setup 错误；两条事实都保留给 Host 的故障结算。
++      throw new AggregateError([failure, cleanupError], "ACP session setup and process cleanup failed");
++    }
++    throw failure;
+   }
+ }
+ 
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+index 5aac835..e87412d 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-turn.ts
+@@ -9,7 +9,7 @@ import type {
+   NativeAgentPort,
+ } from "@zcode/contracts";
+ import { NativeEvents } from "./native-events.js";
+-import { AcpRpcError, type AcpIncomingRequest, type AcpNotification } from "./acp-client.js";
++import { AcpRpcError, type AcpClient, type AcpIncomingRequest, type AcpNotification } from "./acp-client.js";
+ import { ACP_PROFILES, isAcpExecutorKind, resolveAcpExecutable, type AcpExecutorKind } from "./acp-profiles.js";
+ import { acpFailure, acpOption, acpOptionValues, acpSignInMessage, openAcpSession, setAcpOption, type AcpSession } from "./acp-session.js";
+ import { latestImageBlocks, nativeTranscriptPrompt } from "./native-prompt.js";
+@@ -21,11 +21,22 @@ const fingerprint = (kind: string, sessionId: string, version: string) =>
+   createHash("sha256").update(JSON.stringify([kind, sessionId, version])).digest("hex");
+ 
+ /** `<cli> --version` first line; fences resumption to the build that owns the vendor session. */
+-export function acpCliVersion(executable: string, env: NodeJS.ProcessEnv): Promise<string> {
++export function acpCliVersion(executable: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<string> {
+   return new Promise((resolve, reject) => {
+-    execFile(executable, ["--version"], { env, timeout: 15_000 }, (error, stdout) => {
+-      if (error) reject(new Error("The official CLI is not installed or cannot start"));
+-      else resolve(stdout.trim().split(/\r?\n/u)[0] || "acp");
++    let failure: Error | undefined;
++    let version = "";
++    const child = execFile(executable, ["--version"], { env, timeout: 15_000, signal, killSignal: "SIGKILL" }, (error, stdout) => {
++      failure = error ?? undefined;
++      version = stdout.trim().split(/\r?\n/u)[0] || "acp";
++    });
++    // execFile 的 abort 回调可早于退出且默认仅发 TERM；探测进程也必须回收后再结算。
++    const stop = () => child.kill("SIGKILL");
++    signal?.addEventListener("abort", stop, { once: true });
++    if (signal?.aborted) stop();
++    child.once("close", () => {
++      signal?.removeEventListener("abort", stop);
++      if (failure) reject(new Error("The official CLI is not installed or cannot start"));
++      else resolve(version);
+     });
+   });
+ }
+@@ -102,7 +113,13 @@ export function createAcpNativeAgentPort(
+       const executable = resolveAcpExecutable(kind, request.model.nativeExecutor.executable);
+       const mode = request.collaborationMode;
+       let session: AcpSession | undefined;
++      let client: AcpClient | undefined;
++      const setupController = new AbortController();
++      const setupSignal = AbortSignal.any([request.signal, setupController.signal]);
+       let started = false;
++      let running: Promise<void> | undefined;
++      let closePromise: Promise<void> | undefined;
++      let stopTimer: ReturnType<typeof setTimeout> | undefined;
+       let closed = false;
+       let completed = false;
+       let version: string | undefined;
+@@ -112,7 +129,8 @@ export function createAcpNativeAgentPort(
+         if (closed) return;
+         closed = true;
+         events.push(error instanceof Error ? error : new Error(`${profile.label} execution failed`));
+-        session?.client.close();
++        setupController.abort();
++        void client?.close().catch(() => {});
+       };
+       const onNotification = (notification: AcpNotification) => {
+         if (notification.method !== "session/update" || closed) return;
+@@ -129,6 +147,7 @@ export function createAcpNativeAgentPort(
+       const onRequest = async (incoming: AcpIncomingRequest): Promise<unknown> => {
+         if (incoming.method !== "session/request_permission")
+           throw new AcpRpcError("Method not found", -32601);
++        if (closed || request.signal.aborted) return { outcome: { outcome: "cancelled" } };
+         const params = incoming.params ?? {};
+         const toolCall = (params.toolCall ?? {}) as Record<string, unknown>;
+         const choices = (Array.isArray(params.options) ? params.options : []) as PermissionOption[];
+@@ -145,7 +164,8 @@ export function createAcpNativeAgentPort(
+             riskLevel: toolCall.kind === "execute" || toolCall.kind === "delete" ? "high" : "medium",
+           });
+         if (!allow && decision === "deny") refused.push(title);
+-        const optionId = closed ? undefined : pickOption(choices, allow);
++        // 审批等待期间 Stop 仍会撤销本次放行；不能将旧 allow 交给仍存活的厂商工具。
++        const optionId = closed || request.signal.aborted ? undefined : pickOption(choices, allow);
+         return { outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" } };
+       };
+       const finish = (stopReason: unknown, usage: ModelUsage, sessionId: string) => {
+@@ -180,16 +200,21 @@ export function createAcpNativeAgentPort(
+       const launch = (messages: Parameters<Model["streamText"]>[0]["messages"]) => {
+         if (started) return;
+         started = true;
+-        void (async () => {
+-          if (request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
++        running = (async () => {
++          if (closed || request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
+           const env = environment(mode);
+-          version = await acpCliVersion(executable, env);
++          version = await acpCliVersion(executable, env, setupSignal);
++          if (closed || request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
+           session = await openAcpSession({
+             kind,
+             executable,
+             cwd: request.workingDirectory,
+             env,
+             resumeSessionId: request.continuation?.sessionId,
++            onClient: (owned) => {
++              client = owned;
++              if (closed || request.signal.aborted) void owned.close().catch(() => {});
++            },
+             onNotification,
+             onRequest,
+             onExit: (code, stderr) => {
+@@ -198,7 +223,7 @@ export function createAcpNativeAgentPort(
+             },
+           });
+           if (closed) {
+-            session.client.close();
++            await session.client.close();
+             return;
+           }
+           // ACP 的思考强度是会话选项；只有"快速"对应厂商配对的模型 ID（如 Kimi -highspeed）。
+@@ -209,17 +234,23 @@ export function createAcpNativeAgentPort(
+             false,
+             acpOptionValues(acpOption(session.configOptions, "model")).map((entry) => entry.value),
+           );
++          if (closed || request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
+           if (!profile.fixedModel && !(await setAcpOption(session, "model", modelId)))
+             throw new Error(`${profile.label} does not offer model ${modelId} for this account`);
++          // option 调用也有等待边界；Stop 不能被迟到的设置回执绕过并派发首个 prompt。
++          if (closed || request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
+           await setAcpOption(session, "mode", mode === "plan" ? profile.planMode : profile.manualMode);
++          if (closed || request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
+           const effort = request.model.options.reasoningLevel;
+           if (effort && effort !== "auto") await setAcpOption(session, "thought_level", effort);
++          if (closed || request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
+           const resumed = Boolean(request.continuation);
+           const images = session.images ? latestImageBlocks(messages) : [];
+           const prompt = nativeTranscriptPrompt(messages, resumed, request.continuationMessageOffset, {
+             images: images.length > 0,
+           });
+           if (!prompt && !images.length) throw new Error(`${profile.label} received an empty prompt`);
++          if (closed || request.signal.aborted) throw new Error(`${profile.label} turn stopped`);
+           const response = await session.client
+             .request<{ stopReason?: string; usage?: unknown }>("session/prompt", {
+               sessionId: session.sessionId,
+@@ -259,9 +290,15 @@ export function createAcpNativeAgentPort(
+         },
+       };
+       const stop = () => {
++        if (!session) {
++          fail(new Error(`${profile.label} turn stopped`));
++          return;
++        }
+         // ACP cancellation: notify, then the agent answers the prompt with stopReason "cancelled".
+-        if (session && !completed) session.client.notify("session/cancel", { sessionId: session.sessionId });
+-        setTimeout(() => fail(new Error(`${profile.label} turn stopped`)), 3000).unref();
++        if (session && !completed)
++          session.client.notify("session/cancel", { sessionId: session.sessionId });
++        stopTimer ??= setTimeout(() => fail(new Error(`${profile.label} turn stopped`)), 3000);
++        stopTimer.unref();
+       };
+       request.signal.addEventListener("abort", stop, { once: true });
+       return {
+@@ -282,9 +319,18 @@ export function createAcpNativeAgentPort(
+         // 工具在厂商进程内执行；需要确认的操作经 requestApproval 走 Host 的审批卡片，没有回执需回传。
+         retainToolReceipts() {},
+         async close() {
+-          request.signal.removeEventListener("abort", stop);
+-          closed = true;
+-          session?.client.close();
++          closePromise ??= (async () => {
++            request.signal.removeEventListener("abort", stop);
++            clearTimeout(stopTimer);
++            closed = true;
++            events.push(new Error(`${profile.label} connection closed`));
++            setupController.abort();
++            // setup 可能尚未交回 session；等待后再次回收，才能阻止替换 run 与旧进程重叠。
++            await client?.close();
++            await running;
++            await client?.close();
++          })();
++          await closePromise;
+         },
+       };
+     },
+diff --git a/apps/zcode-cli/packages/adapters/test/acp-stop.test.ts b/apps/zcode-cli/packages/adapters/test/acp-stop.test.ts
+new file mode 100644
+index 0000000..6260f36
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/acp-stop.test.ts
+@@ -0,0 +1,372 @@
++import assert from "node:assert/strict";
++import { mkdtempSync, writeFileSync, chmodSync, readFileSync, existsSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import { AcpClient } from "../src/native-agent/acp-client.js";
++import { listAcpAuthMethods, startAcpLogin } from "../src/native-agent/acp-auth.js";
++import { createAcpNativeAgentPort } from "../src/native-agent/acp-turn.js";
++
++function stoppedAgent(pendingApproval = false) {
++  const dir = mkdtempSync(join(tmpdir(), "acp-stop-"));
++  const script = join(dir, "kimi");
++  const log = join(dir, "outcome");
++  writeFileSync(
++    script,
++    `#!/usr/bin/env node
++const fs = require('node:fs');
++if(process.argv.includes('--version')) { console.log('9.9.9'); process.exit(0); }
++const send = m => console.log(JSON.stringify(m)); let buf='';
++const permission = () => send({id:100,method:'session/request_permission',params:{sessionId:'probe',toolCall:{toolCallId:'late',kind:'edit'},options:[{optionId:'yes',kind:'allow_once'},{optionId:'no',kind:'reject_once'}]}});
++process.stdin.on('data', c => { buf += c; let i; while((i=buf.indexOf('\\n'))>=0) {
++const m=JSON.parse(buf.slice(0,i)); buf=buf.slice(i+1); const reply=result=>send({id:m.id,result});
++if(m.method==='initialize') reply({protocolVersion:1,agentCapabilities:{}});
++else if(m.method==='session/new') reply({sessionId:'probe',configOptions:[{id:'model',category:'model',currentValue:'k3',options:[{value:'k3'}]}]});
++else if(m.method==='session/set_config_option') reply({});
++else if(m.method==='session/prompt') { send({method:'session/update',params:{sessionId:'probe',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'ready'}}}}); if (${pendingApproval}) permission(); }
++else if(m.method==='session/cancel' && !${pendingApproval}) permission();
++else if(m.id===100) { fs.writeFileSync(${JSON.stringify(log)},JSON.stringify(m.result)); send({method:'session/update',params:{sessionId:'probe',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'observed'}}}}); }
++}}); setInterval(()=>{},1000);
++`,
++  );
++  chmodSync(script, 0o755);
++  return { dir, script, log };
++}
++
++test(
++  "ACP Stop cancels a permission arriving after session/cancel",
++  { timeout: 10000 },
++  async () => {
++    const agent = stoppedAgent();
++    const controller = new AbortController();
++    const turn = createAcpNativeAgentPort("kimi").createTurn({
++      model: {
++        modelId: "k3",
++        options: {},
++        nativeExecutor: { kind: "kimi", executable: agent.script },
++      },
++      tools: [],
++      messages: [],
++      sessionId: "fixture",
++      turnId: "turn",
++      workingDirectory: agent.dir,
++      signal: controller.signal,
++      collaborationMode: "yolo",
++    } as never);
++    const iterator = turn.model.streamText({
++      messages: [{ role: "user", content: "probe" }],
++    } as never);
++    try {
++      await iterator.next();
++      controller.abort();
++      // The child records its received reply before publishing this second notification.
++      await iterator.next();
++      assert.deepEqual(JSON.parse(readFileSync(agent.log, "utf8")), {
++        outcome: { outcome: "cancelled" },
++      });
++    } finally {
++      await turn.close();
++    }
++  },
++);
++
++test(
++  "ACP close is idempotent and waits for a TERM-resistant owned process to exit",
++  { timeout: 10000 },
++  async () => {
++    const ready = Promise.withResolvers<number>();
++    let exited = false;
++    const client = new AcpClient({
++      executable: process.execPath,
++      args: [
++        "-e",
++        "process.on('SIGTERM',()=>{}); process.stdin.resume(); process.stdin.on('end',()=>{}); console.log(JSON.stringify({method:'ready',params:{pid:process.pid}})); setInterval(()=>{},1000);",
++      ],
++      cwd: tmpdir(),
++      env: { PATH: process.env.PATH },
++      onNotification: (event) => ready.resolve(Number(event.params?.pid)),
++      onRequest: async () => ({}),
++      onExit: () => {
++        exited = true;
++      },
++    });
++    const pid = await ready.promise;
++    const first = client.close(),
++      second = client.close();
++    await Promise.all([first, second]);
++    assert.equal(exited, true);
++    assert.throws(() => process.kill(pid, 0));
++  },
++);
++
++test(
++  "ACP Stop cancels an approval that resolves allow after the abort",
++  { timeout: 10000 },
++  async () => {
++    const agent = stoppedAgent(true);
++    const controller = new AbortController();
++    const entered = Promise.withResolvers<void>(),
++      answer = Promise.withResolvers<boolean>();
++    const turn = createAcpNativeAgentPort("kimi").createTurn({
++      model: {
++        modelId: "k3",
++        options: {},
++        nativeExecutor: { kind: "kimi", executable: agent.script },
++      },
++      tools: [],
++      messages: [],
++      sessionId: "fixture",
++      turnId: "turn",
++      workingDirectory: agent.dir,
++      signal: controller.signal,
++      collaborationMode: "build",
++      requestApproval: () => {
++        entered.resolve();
++        return answer.promise;
++      },
++    } as never);
++    const iterator = turn.model.streamText({
++      messages: [{ role: "user", content: "probe" }],
++    } as never);
++    try {
++      await iterator.next();
++      await entered.promise;
++      controller.abort();
++      answer.resolve(true);
++      await iterator.next();
++      assert.deepEqual(JSON.parse(readFileSync(agent.log, "utf8")), {
++        outcome: { outcome: "cancelled" },
++      });
++    } finally {
++      answer.resolve(false);
++      await turn.close();
++    }
++  },
++);
++
++test("ACP spawn failure still has an idempotent close barrier", { timeout: 10000 }, async () => {
++  const client = new AcpClient({
++    executable: join(tmpdir(), "missing-acp-executable"),
++    args: [],
++    cwd: tmpdir(),
++    env: {},
++    onNotification: () => {},
++    onRequest: async () => ({}),
++    onExit: () => {},
++  });
++  await assert.rejects(client.request("initialize", {}));
++  const first = client.close();
++  assert.equal(client.close(), first);
++  await first;
++  await assert.rejects(client.request("initialize", {}), /not running/u);
++});
++
++test(
++  "ACP late callback resolution after close cannot write or reopen the connection",
++  { timeout: 10000 },
++  async () => {
++    const entered = Promise.withResolvers<void>(),
++      answer = Promise.withResolvers<unknown>();
++    const client = new AcpClient({
++      executable: process.execPath,
++      args: [
++        "-e",
++        "process.stdin.resume(); console.log(JSON.stringify({id:1,method:'session/request_permission'})); setInterval(()=>{},1000);",
++      ],
++      cwd: tmpdir(),
++      env: {},
++      onNotification: () => {},
++      onRequest: () => {
++        entered.resolve();
++        return answer.promise;
++      },
++      onExit: () => {},
++    });
++    await entered.promise;
++    const closing = client.close();
++    answer.resolve({ outcome: { outcome: "selected", optionId: "yes" } });
++    await closing;
++    await assert.rejects(client.request("session/prompt", {}), /not running/u);
++  },
++);
++
++async function waitForFile(path: string) {
++  const deadline = Date.now() + 3000;
++  while (!existsSync(path)) {
++    if (Date.now() >= deadline) throw new Error("Fixture process did not reach setup");
++    await new Promise((resolve) => setTimeout(resolve, 10));
++  }
++}
++
++function lifecycleAgent(delaySetup: boolean | "stall") {
++  const dir = mkdtempSync(join(tmpdir(), "acp-lifecycle-"));
++  const script = join(dir, "kimi"),
++    pidPath = join(dir, "pid"),
++    promptPath = join(dir, "prompt");
++  writeFileSync(
++    script,
++    `#!/usr/bin/env node
++const fs=require('node:fs');
++if(process.argv.includes('--version')) { console.log('9.9.9'); process.exit(0); }
++process.on('SIGTERM',()=>{}); process.stdin.on('end',()=>{});
++const send=m=>console.log(JSON.stringify(m)); let buf='';
++process.stdin.on('data',c=>{buf+=c;let i;while((i=buf.indexOf('\\n'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);const reply=result=>send({id:m.id,result});
++if(m.method==='initialize'){fs.writeFileSync(${JSON.stringify(pidPath)},String(process.pid));setTimeout(()=>reply({protocolVersion:1,agentCapabilities:{},authMethods:[{id:'vendor-login',name:'Vendor login'}]}),${delaySetup === "stall" ? 60000 : delaySetup ? 150 : 0});}
++else if(m.method==='session/new') reply({sessionId:'probe',configOptions:[{id:'model',category:'model',currentValue:'k3',options:[{value:'k3'}]}]});
++else if(m.method==='session/prompt'){fs.writeFileSync(${JSON.stringify(promptPath)},'started');reply({stopReason:'end_turn'});}
++else reply({});
++}});setInterval(()=>{},1000);
++`,
++  );
++  chmodSync(script, 0o755);
++  return { dir, script, pidPath, promptPath };
++}
++
++test(
++  "ACP port close waits for setup already in flight and prevents the first prompt",
++  { timeout: 10000 },
++  async () => {
++    const agent = lifecycleAgent("stall");
++    const turn = createAcpNativeAgentPort("kimi").createTurn({
++      model: {
++        modelId: "k3",
++        options: {},
++        nativeExecutor: { kind: "kimi", executable: agent.script },
++      },
++      tools: [],
++      messages: [],
++      sessionId: "fixture",
++      turnId: "turn",
++      workingDirectory: agent.dir,
++      signal: new AbortController().signal,
++      collaborationMode: "yolo",
++    } as never);
++    const pending = turn.model
++      .streamText({ messages: [{ role: "user", content: "probe" }] } as never)
++      .next();
++    void pending.catch(() => {});
++    await waitForFile(agent.pidPath);
++    const closeStarted = Date.now();
++    await turn.close();
++    assert.ok(
++      Date.now() - closeStarted < 5000,
++      "stalled handshake must not wait for its 60 s timeout",
++    );
++    await assert.rejects(pending, /connection closed/u);
++    assert.equal(existsSync(agent.promptPath), false);
++    assert.throws(() => process.kill(Number(readFileSync(agent.pidPath, "utf8")), 0));
++  },
++);
++
++for (const operation of ["list", "login"] as const) {
++  test(
++    `ACP ${operation} completes only after its TERM-resistant process exits`,
++    { timeout: 10000 },
++    async () => {
++      const agent = lifecycleAgent(false);
++      const target = {
++        kind: "kimi" as const,
++        executable: agent.script,
++        cwd: agent.dir,
++        env: { PATH: process.env.PATH },
++      };
++      if (operation === "list")
++        assert.equal((await listAcpAuthMethods(target))[0]?.id, "vendor-login");
++      else await startAcpLogin({ ...target, methodId: "vendor-login" }).completion;
++      assert.throws(() => process.kill(Number(readFileSync(agent.pidPath, "utf8")), 0));
++    },
++  );
++}
++
++
++test("ACP port close terminates a stalled version probe before returning", { timeout: 10000 }, async () => {
++  const dir = mkdtempSync(join(tmpdir(), "acp-version-stop-"));
++  const script = join(dir, "kimi"), pidPath = join(dir, "pid");
++  writeFileSync(script, `#!/usr/bin/env node
++require('node:fs').writeFileSync(${JSON.stringify(pidPath)},String(process.pid)); process.on('SIGTERM',()=>{}); setInterval(()=>{},1000);
++`);
++  chmodSync(script, 0o755);
++  const turn = createAcpNativeAgentPort("kimi").createTurn({
++    model: { modelId: "k3", options: {}, nativeExecutor: { kind: "kimi", executable: script } },
++    tools: [], messages: [], sessionId: "fixture", turnId: "turn", workingDirectory: dir,
++    signal: new AbortController().signal, collaborationMode: "yolo",
++  } as never);
++  const pending = turn.model.streamText({ messages: [{ role: "user", content: "probe" }] } as never).next();
++  void pending.catch(() => {});
++  await waitForFile(pidPath);
++  await turn.close();
++  await assert.rejects(pending, /connection closed/u);
++  assert.throws(() => process.kill(Number(readFileSync(pidPath, "utf8")), 0));
++});
++
++test("ACP close handles inherited pipes after the POSIX group leader exits", { timeout: 10000, skip: process.platform === "win32" }, async () => {
++  const ready = Promise.withResolvers<void>();
++  let leader = 0, exited = false;
++  const descendant = "process.on('SIGTERM',()=>{}); console.log(JSON.stringify({method:'descendant'})); setInterval(()=>{},1000);";
++  const script = `const {spawn}=require('node:child_process'); console.log(JSON.stringify({method:'leader',params:{pid:process.pid}})); spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:['ignore','inherit','inherit']}); process.stdin.resume();`;
++  const client = new AcpClient({
++    executable: process.execPath, args: ["-e", script], cwd: tmpdir(), env: {},
++    onNotification: (event) => { if (event.method === "leader") leader = Number(event.params?.pid); if (event.method === "descendant") ready.resolve(); },
++    onRequest: async () => ({}), onExit: () => { exited = true; },
++  });
++  await ready.promise;
++  const started = Date.now();
++  await client.close();
++  assert.equal(exited, true);
++  assert.ok(Date.now() - started < 5000, "inherited pipes must not leave the Host waiting indefinitely");
++  assert.throws(() => process.kill(leader, 0));
++});
++
++for (const option of ["model", "mode", "thought_level"]) {
++  test(`ACP Stop during ${option} setup prevents the first prompt`, { timeout: 10000 }, async () => {
++    const dir = mkdtempSync(join(tmpdir(), "acp-option-stop-"));
++    const script = join(dir, "kimi"), optionPath = join(dir, "option"), promptPath = join(dir, "prompt");
++    writeFileSync(script, `#!/usr/bin/env node
++const fs=require('node:fs'); if(process.argv.includes('--version')){console.log('9.9.9');process.exit(0);}
++const send=m=>console.log(JSON.stringify(m));let buf='',pending;
++process.stdin.on('data',c=>{buf+=c;let i;while((i=buf.indexOf('\\n'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);const reply=result=>send({id:m.id,result});
++if(m.method==='initialize')reply({protocolVersion:1,agentCapabilities:{}});
++else if(m.method==='session/new')reply({sessionId:'probe',configOptions:[{id:'model',category:'model',currentValue:'k2',options:[{value:'k3'}]},{id:'mode',category:'mode',currentValue:'old',options:[{value:'default'}]},{id:'thought_level',category:'thought_level',currentValue:'low',options:[{value:'high'}]}]});
++else if(m.method==='session/set_config_option'){if(m.params.configId===${JSON.stringify(option)}){pending=m.id;fs.writeFileSync(${JSON.stringify(optionPath)},'waiting');}else reply({});}
++else if(m.method==='session/cancel')send({id:pending,result:{}});
++else if(m.method==='session/prompt'){fs.writeFileSync(${JSON.stringify(promptPath)},'dispatched');reply({stopReason:'end_turn'});}
++}});setInterval(()=>{},1000);
++`);
++    chmodSync(script, 0o755);
++    const controller = new AbortController();
++    const turn = createAcpNativeAgentPort("kimi").createTurn({
++      model: { modelId: "k3", options: {reasoningLevel:"high"}, nativeExecutor: { kind: "kimi", executable: script } },
++      tools: [], messages: [], sessionId: "fixture", turnId: "turn", workingDirectory: dir,
++      signal: controller.signal, collaborationMode: "yolo",
++    } as never);
++    const running = turn.model.generateText({ messages: [{ role: "user", content: "probe" }] } as never);
++    void running.catch(() => {});
++    try {
++      await waitForFile(optionPath);
++      controller.abort();
++      await assert.rejects(running, /stopped/u);
++      assert.equal(existsSync(promptPath), false);
++    } finally { await turn.close(); }
++  });
++}
++
++test("ACP close drains a TERM-resistant POSIX descendant with ignored pipes", { timeout: 10000, skip: process.platform === "win32" }, async () => {
++  const ready = Promise.withResolvers<{leader:number;descendant:number}>();
++  const descendant = "process.on('SIGTERM',()=>{}); process.send('ready'); setInterval(()=>{},1000);";
++  const script = `const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:['ignore','ignore','ignore','ipc']}); child.once('message',()=>console.log(JSON.stringify({method:'ready',params:{leader:process.pid,descendant:child.pid}}))); process.stdin.resume();`;
++  const client = new AcpClient({
++    executable: process.execPath, args: ["-e", script], cwd: tmpdir(), env: {},
++    onNotification: (event) => ready.resolve(event.params as {leader:number;descendant:number}),
++    onRequest: async () => ({}), onExit: () => {},
++  });
++  const pids = await ready.promise;
++  try {
++    await client.close();
++    assert.throws(() => process.kill(pids.descendant, 0), "leader exit must not leave the owned group running");
++    assert.throws(() => process.kill(-pids.leader, 0));
++  } finally {
++    // Red regression cleanup targets only the child created by this isolated fixture.
++    try { process.kill(pids.descendant, "SIGKILL"); } catch {}
++    await client.close();
++  }
++});

@@ -43,19 +43,19 @@ catalogue observations from renamed or recreated identities. These repair nine o
 they do not close the kernel or promote delivery status. Independent cross-review also corrected
 partial-read hashes, per-profile lock partitioning, masked staging errors and complete-Read freshness.
 
-1. Preserve durable late tool receipts, their old-row/history/usage reconciliation, and resident
-   plugin withdrawal through the existing owners. Extend the cancellation retry plan and workflow
-   uncertainty proof to acknowledgement loss and cold Stop-plan reconstruction. Neither a stopped
-   turn nor a disabled plugin implies rollback of already accepted effects; full native and remote
-   termination still requires its own proof.
+1. Preserve late-tool receipts, resident withdrawal, durable background Stop/acknowledgement
+   reconciliation and resume/Stop race fences. Extend proof to generic cold task reconstruction,
+   remote termination and platform-specific executor descendants. ACP local process/group teardown
+   does not prove Windows process-tree or escaped-group termination; Stop never implies rollback.
 2. Keep discovery and inference auth aligned (API-02). Preserve returned-ID observations separately
    from personal model renames; connection deletion clears both exact layers, while recommendation
    restore retains observations. Verify through live permitted provider paths after the local
    fixtures. Per-vendor native network routes (PRI-08) and the cancelled post-login inspection fence
    (PRI-01) are corrected in candidate 0149; the Codex/Claude PAC split still lacks a live proof.
-3. Include final tool declarations and output reserve in the Host request-budget path, including
-   dynamic discovery and reported usage deltas. Preserve sparse capacity and distinguish estimates
-   from vendor counters; avoid treating a heuristic as a proven provider limit.
+3. Complete compact-summary declaration budgeting and calibrated system/Skill-prefix deltas.
+   Preserve the normal-turn final-tool/output-reserve correction, including discovery and cold
+   composition, while testing real provider limits. Sparse capacity and estimates remain distinct
+   from vendor evidence; non-positive estimated input space still uses the existing recovery path.
 4. Complete native request admission/Guide and per-binding parked continuation under the existing
    Session journal. Keep unsupported strategies refused and prove cancellation/version/account scope.
    Prepare account/profile/organization and credential/SSH trust corrections under their existing
@@ -94,6 +94,9 @@ not postponed until packaging. Retained Craft has both a full-suite execution ga
 committed delta ledger and uncommitted source; its independent CI remains strict. These are
 retained-branch findings, not candidate runtime evidence or blockers for unrelated ZCode work. Existing data/migration and production-dependency
 checkpoints still apply when an actual operation reaches them.
+The candidate's restored full CLI lint currently reports 87 inherited large-file violations.
+Refactor those through module boundaries; preserve the strict rule and distinguish this failure
+from the passing root gate and behavioral checks.
 
 ### Open baseline workflows
 

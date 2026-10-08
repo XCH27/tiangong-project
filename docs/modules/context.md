@@ -68,6 +68,11 @@ tool. This view derives from the already constructed context; it does not reread
 language/style settings into active input. Existing loaded bodies and ordinary permitted manual
 invocation remain. Loaded-Skill success pairs a result with its declaring assistant batch; a failed
 call cannot borrow a later reused ID. The current registry and policy remain the execution owners.
+Normal-turn compaction and output budgeting consume the final MCP/discovered declarations and
+guidance. Existing assistant composition supplies estimated declaration deltas over same-model
+reported usage without double counting; live/cold history carries that Host-only observation.
+These mixed estimates do not establish exact provider limits. The candidate [request contract](../../.fleet/zcode/apps/zcode-cli/docs/provider-routing.md#final-host-request-budget-k-07)
+retains unknown capacity, legacy-history and compact-summary limits.
 Next preserve logical cache scope through compact but isolate forks/accounts/routes, retain native replay
 and explicit option overrides. Pi cache identity already binds Session/account, and forks receive a new Session ID; actual
 compact/fork cache-hit and quality proof remains open. Do not copy forced `max` or duplicate markers.
