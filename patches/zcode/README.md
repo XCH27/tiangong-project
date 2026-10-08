@@ -312,3 +312,9 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0189 | [0189-native-admitted-account.patch](0189-native-admitted-account.patch) | `28ebc2fc90b52010c428ce87251af953eb35233f` |
 
 | 0190 | [0190-verification-contracts.patch](0190-verification-contracts.patch) | `51fb0b7c864a8a730bab9239fc746bb8eec99fea` |
+
+| 0191 | [0191-resident-plugin-withdrawal.patch](0191-resident-plugin-withdrawal.patch) | `3d1148a36422b62268487c87b997d37557bb90f8` |
+
+| 0192 | [0192-durable-late-tool-receipts.patch](0192-durable-late-tool-receipts.patch) | `d8caa6b52c1d80a8e01f51a729c81859993759ec` |
+
+| 0193 | [0193-connection-intake-mechanisms.patch](0193-connection-intake-mechanisms.patch) | `b7f38a3fdee9dcc5dc553c7e9591db1b60738eb7` |

@@ -1,0 +1,627 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 8f808ad..1cf15d1 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -4,6 +4,27 @@ Fleet correction against ZCode `29628c9acdb81b703bbd4080c207a0e7ce5e276e`.
+ 
+ ## Contract
+ 
++### Connection intake is grouped by mechanism
++
++The existing three picker views mean account sign-in, API access and terminal access. Classify
++from access.type, not the payment plan: a Coding Plan requiring an API key belongs to API access.
++The template's plan/product identity, catalog, quota reader and credential owner do not change.
++Native CLI entries create native-cli connections, never a generic subscription-login form.
++Their setup reads that CLI's supported account/configuration; the current Claude/Codex adapters
++still support their declared subscription route, not arbitrary API-configured native sessions.
++
++Fleet's default scheduling remains Pi Agent Core under the Host. A shipped Claude/Codex executable
++is an optional native executor, not Fleet's core or a signed-in account. Terminal cards show
++detected installation/version only after a successful version probe; shipped-but-broken binaries
++are unavailable. Detection failure is not evidence that no executable is installed. Keep the
++original controls and layout, use the existing native connection operation, and preserve saved
++connections, drafts, permissions and all enabled/retired route decisions. No data migration occurs.
++
++Verify the complete picker → exact selected template → mechanism-specific setup → original
++create callback, including API-key plans, direct account login and native CLI. Renderer cases
++must reject the old subscription CTA and API fields on native setup, keep back navigation usable,
++and exercise English/Chinese and light/dark. This proves local routing, not vendor entitlement.
++
+ The existing Provider config owns access type, API format, endpoint and credential. A
+ bound model captures these facts. Its request-auth overlay may refresh credentials;
+ it cannot select a different endpoint or protocol. No additional credential store,
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-detect.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-detect.ts
+index 6e3672f..85e0e49 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-detect.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-detect.ts
+@@ -30,20 +30,26 @@ function version(executable: string): Promise<string | undefined> {
+  */
+ export async function detectNativeClis(): Promise<Record<NativeExecutorKind, NativeCliDetection>> {
+   const entries = await Promise.all(
+-    NATIVE_EXECUTOR_KINDS.map(async (kind): Promise<[NativeExecutorKind, NativeCliDetection]> => {
+-      if (kind === "claude" || kind === "codex") {
+-        try {
+-          const executable = kind === "claude" ? resolveClaudeNativeExecutable() : resolveCodexNativeExecutable();
+-          const found = await version(executable);
+-          return [kind, { bundled: true, installed: true, ...(found ? { version: found } : {}) }];
+-        } catch {
+-          return [kind, { bundled: true, installed: false }];
+-        }
+-      }
+-      const executable = kind === "antigravity" ? resolveAntigravityExecutable() : isAcpExecutorKind(kind) ? resolveAcpExecutable(kind) : undefined;
+-      const found = executable ? await version(executable) : undefined;
+-      return [kind, { bundled: false, installed: found !== undefined, ...(found ? { version: found } : {}) }];
+-    }),
++    NATIVE_EXECUTOR_KINDS.map(async (kind): Promise<[NativeExecutorKind, NativeCliDetection]> =>
++      [kind, await detectNativeCli(kind)]),
+   );
+   return Object.fromEntries(entries) as Record<NativeExecutorKind, NativeCliDetection>;
+ }
++
++export async function detectNativeCli(
++  kind: NativeExecutorKind,
++  resolveExecutable: () => string | undefined = () => kind === "claude" ? resolveClaudeNativeExecutable()
++    : kind === "codex" ? resolveCodexNativeExecutable()
++      : kind === "antigravity" ? resolveAntigravityExecutable()
++        : isAcpExecutorKind(kind) ? resolveAcpExecutable(kind) : undefined,
++): Promise<NativeCliDetection> {
++  const bundled = kind === "claude" || kind === "codex";
++  try {
++    const executable = resolveExecutable();
++    const found = executable ? await version(executable) : undefined;
++    // 找到了附带路径不代表程序能运行；版本探测失败必须如实报告不可用。
++    return { bundled, installed: found !== undefined, ...(found ? { version: found } : {}) };
++  } catch {
++    return { bundled, installed: false };
++  }
++}
+diff --git a/apps/zcode-cli/packages/adapters/test/native-detect.test.ts b/apps/zcode-cli/packages/adapters/test/native-detect.test.ts
+new file mode 100644
+index 0000000..75e64ec
+--- /dev/null
++++ b/apps/zcode-cli/packages/adapters/test/native-detect.test.ts
+@@ -0,0 +1,27 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtemp, writeFile, chmod, rm } from "node:fs/promises";
++import { join } from "node:path";
++import { tmpdir } from "node:os";
++import { detectNativeCli } from "../src/native-agent/native-detect.js";
++
++test("a shipped binary is only available after its real version probe succeeds", async () => {
++  const found = await detectNativeCli("codex", () => process.execPath);
++  assert.equal(found.bundled, true);
++  assert.equal(found.installed, true);
++  assert.match(found.version!, /^\d+\.\d+/);
++  const missing = await detectNativeCli("codex", () => join(tmpdir(), "fleet-missing-executor-never-created"));
++  assert.deepEqual(missing, { bundled: true, installed: false });
++  const broken = await detectNativeCli("claude", () => { throw new Error("fixture unavailable"); });
++  assert.deepEqual(broken, { bundled: true, installed: false });
++});
++
++test("an existing executable that exits unsuccessfully is not reported installed", { skip: process.platform === "win32" }, async () => {
++  const dir = await mkdtemp(join(tmpdir(), "fleet-cli-detection-"));
++  try {
++    const file = join(dir, "broken-cli");
++    await writeFile(file, "#!/bin/sh\nexit 1\n");
++    await chmod(file, 0o700);
++    assert.deepEqual(await detectNativeCli("claude", () => file), { bundled: true, installed: false });
++  } finally { await rm(dir, { recursive: true, force: true }); }
++});
+diff --git a/package.json b/package.json
+index 7def681..2a50a8a 100644
+--- a/package.json
++++ b/package.json
+@@ -60,10 +60,10 @@
+     "test:provider-drafts": "node scripts/test-usage-hooks.mjs packages/ui/test/providerDrafts.browser.tsx __providerDraftTests --desktop-styles --focused-window && node scripts/test-usage-hooks.mjs packages/ui/test/providerModelWrites.browser.tsx __providerModelWriteTests && node scripts/test-usage-hooks.mjs packages/ui/test/providerProbeScope.browser.tsx __providerProbeTests",
+     "test:cc-switch-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/ccSwitchDefaults.browser.tsx __ccSwitchDefaultTests",
+     "test:composer-previews": "node scripts/test-usage-hooks.mjs packages/ui/test/composerAttachmentPreviews.browser.test.tsx __composerPreviewTests",
+-    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/claude-native-errors.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-accounts.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts",
++    "test:native-executor": "tsx --test apps/zcode-cli/packages/core/test/claude-native-turn.test.ts apps/zcode-cli/packages/core/test/claude-native-errors.test.ts apps/zcode-cli/packages/core/test/native-model-capacity.test.ts packages/services/test/native-cli-login.test.ts packages/services/test/native-cli-accounts.test.ts packages/services/test/native-cli-usage.test.ts packages/services/test/claude-oauth-usage.test.ts packages/services/test/antigravity-native.test.ts packages/services/test/acp-native.test.ts apps/zcode-cli/packages/adapters/test/native-detect.test.ts",
+     "test:native-bundle": "node scripts/test-native-bundle.mjs",
+     "test:codex-native": "tsx --test apps/zcode-cli/packages/core/test/codex-native-turn.test.ts apps/zcode-cli/packages/core/test/codex-native-errors.test.ts",
+-    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliAccountList.browser.test.tsx __nativeAccountListTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/providerDetailFeedback.browser.test.tsx __providerFeedbackTests --desktop-styles",
++    "test:native-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliConnection.browser.test.tsx __nativeCliTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/nativeCliAccountList.browser.test.tsx __nativeAccountListTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/providerDetailFeedback.browser.test.tsx __providerFeedbackTests --desktop-styles && node scripts/test-usage-hooks.mjs packages/ui/test/connectionIntake.browser.test.tsx __connectionIntakeTests --desktop-styles",
+     "test:chatgpt-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/chatgptConnection.browser.test.tsx __chatgptConnectionTests --desktop-styles",
+     "test:model-settings-tool-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/modelSettingsTool.browser.test.tsx __modelSettingsToolTests --desktop-styles",
+     "test:context-capacity-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/contextCapacity.browser.test.tsx __contextCapacityTests --desktop-styles",
+@@ -78,7 +78,7 @@
+     "test:git-hooks": "node --test scripts/prepare-git-hooks.test.mjs",
+     "test:decision-host": "tsx --test apps/zcode-cli/packages/adapters/test/decision-model-port.test.ts apps/zcode-cli/packages/adapters/test/decision-chat.test.ts apps/zcode-cli/packages/core/test/decision-tool.test.ts apps/zcode-cli/packages/core/test/automatic-model.test.ts",
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+-    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts"
++    "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 5f6849a..199b43a 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -52,7 +52,12 @@ test("Antigravity is a native CLI route that is complete only after a signed-in
+   assert.equal(template.config.api, undefined);
+   assert.deepEqual(template.config.builtinModelIds, []);
+   const connected = parseProviderConfig({
+-    access: { type: "native-cli", provider: "antigravity", connected: true, accountId: "antigravity-local" },
++    access: {
++      type: "native-cli",
++      provider: "antigravity",
++      connected: true,
++      accountId: "antigravity-local",
++    },
+   });
+   assert.deepEqual(connected.access!.validateComplete(), []);
+   const pending = parseProviderConfig({
+@@ -299,7 +304,7 @@ test("Grok subscription and xAI API remain distinct under one vendor", () => {
+   );
+ });
+ 
+-test("subscription/API/terminal sections preserve all templates and their distinct execution routes", () => {
++test("sign-in/API/terminal sections classify the actual mechanism independently of billing", () => {
+   const subscription = templates.filter(
+     (item) => providerConnectionCategory(item) === "subscription",
+   );
+@@ -311,10 +316,10 @@ test("subscription/API/terminal sections preserve all templates and their distin
+   assert.ok([...subscription, ...api].every((item) => item.config.access?.type !== "native-cli"));
+   assert.ok(subscription.some((item) => item.templateId === "fleet-openai-codex"));
+   assert.ok(api.some((item) => item.templateId === "openai"));
+-  assert.ok(subscription.some((item) => item.templateId === "fleet-minimax-token-plan"));
++  assert.ok(api.some((item) => item.templateId === "fleet-minimax-token-plan"));
+   assert.ok(api.some((item) => item.templateId === "fleet-minimax"));
+-  assert.ok(subscription.some((item) => item.templateId === "fleet-qwen-coding-plan-cn"));
+-  assert.ok(subscription.some((item) => item.templateId === "fleet-qwen-coding-plan"));
++  assert.ok(api.some((item) => item.templateId === "fleet-qwen-coding-plan-cn"));
++  assert.ok(api.some((item) => item.templateId === "fleet-qwen-coding-plan"));
+   assert.ok(api.some((item) => item.templateId === "fleet-qwen-token-plan-cn"));
+   assert.ok(api.some((item) => item.templateId === "fleet-qwen-token-plan"));
+   for (const category of [subscription, api, terminal]) {
+@@ -336,10 +341,15 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   assert.equal(grok.label, "Grok");
+   // The Grok CLI-client OAuth route is retained for saved data but restricted; the official Grok
+   // Build CLI is the offered route under the same vendor and logo.
+-  assert.deepEqual(grok.templates.map((t) => t.templateId), ["fleet-xai"]);
++  assert.deepEqual(
++    grok.templates.map((t) => t.templateId),
++    ["fleet-xai"],
++  );
+   const xaiOAuth = grok.templates.find((t) => t.templateId === "fleet-xai")!;
+   assert.equal(connectionRouteRestriction(xaiOAuth.config.access), "impersonated-client");
+-  const grokCli = terminal.find((g) => g.id === "vendor:xai")!.templates.find((t) => t.templateId === "fleet-grok-native")!;
++  const grokCli = terminal
++    .find((g) => g.id === "vendor:xai")!
++    .templates.find((t) => t.templateId === "fleet-grok-native")!;
+   assert.equal(connectionRouteRestriction(grokCli.config.access), undefined);
+   assert.equal(grokCli.config.logo?.key, "grok");
+   assert.equal(grokCli.catalog?.vendorId, "xai");
+@@ -349,10 +359,26 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   assert.equal(subscriptions.find((g) => g.id === "vendor:openai")?.label, "ChatGPT");
+   assert.equal(api.find((g) => g.id === "vendor:openai")?.label, "OpenAI");
+   // OV-103 将 CLI 移至独立终端页；订阅页继续显示产品名，而不是公司或执行器名。
+-  assert.equal(subscriptions.find((g) => g.id === "vendor:kimi")?.label, "Kimi Code");
+-  assert.equal(subscriptions.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Go");
++  assert.equal(
++    subscriptions.find((g) => g.id === "vendor:kimi"),
++    undefined,
++  );
++  assert.ok(
++    api
++      .find((g) => g.id === "vendor:kimi")
++      ?.templates.some((t) => t.config.access?.type === "api-key"),
++  );
++  assert.equal(
++    subscriptions.find((g) => g.id === "vendor:opencode"),
++    undefined,
++  );
++  assert.ok(
++    api
++      .find((g) => g.id === "vendor:opencode")
++      ?.templates.some((t) => t.templateId.includes("opencode-go")),
++  );
+   assert.equal(terminal.find((g) => g.id === "vendor:kimi")?.label, "Kimi Code CLI");
+-  assert.equal(api.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Zen");
++  assert.equal(api.find((g) => g.id === "vendor:opencode")?.label, "OpenCode");
+ });
+ 
+ test("OpenRouter exposes its three official protocols in one vendor and service", () => {
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 2bcd4c6..7faaafa 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3033,7 +3033,7 @@ const enUS: Record<string, string> = {
+     "Disabled {plugin} in this workspace (overriding User default)",
+   "settings.plugins.toggle.failed": "Couldn't update {plugin}. Try again.",
+   "settings.modelProviderDescription":
+-    "Manage model services and subscription accounts for your conversations.",
++    "Manage account sign-in, API access and terminal Agents, then choose a model for your conversations.",
+   "settings.modelProvider.add": "Add provider",
+   "settings.modelProvider.createCustomProvider": "Create custom provider",
+   "settings.modelProvider.templateCreateFailed":
+@@ -3150,7 +3150,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.import.chooseFile": "Choose database",
+   "settings.modelProvider.import.confirm": "Import",
+   "settings.modelProvider.import.back": "Back to providers",
+-  "settings.modelProvider.catalog.subscriptions": "Subscriptions",
++  "settings.modelProvider.catalog.subscriptions": "Account sign-in",
+   "settings.modelProvider.catalog.search": "Search providers or services",
+   "settings.modelProvider.catalog.empty": "No providers found",
+   "settings.modelProvider.catalog.region": "Region",
+@@ -3196,11 +3196,13 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.connectionMode.apiKeyBadge": "API",
+   "settings.modelProvider.catalog.terminal": "Terminal access",
+   "settings.modelProvider.terminal.checking": "Checking…",
+-  "settings.modelProvider.terminal.bundled": "Built in",
+-  "settings.modelProvider.terminal.missing": "Not installed",
++  "settings.modelProvider.terminal.unavailable": "Executable unavailable",
++  "settings.modelProvider.terminal.unknown": "Detection failed",
++  "settings.modelProvider.terminal.description": "Fleet’s default assistant uses Pi; connect a terminal Agent here to run tasks independently.",
++  "settings.modelProvider.terminal.missing": "Not detected",
+   "settings.modelProvider.terminal.installed": "Installed",
+   "settings.modelProvider.terminal.installedVersion": "Installed {version}",
+-  "settings.modelProvider.catalog.usageBased": "Usage-based",
++  "settings.modelProvider.catalog.usageBased": "API access",
+   "settings.modelProvider.connectionMode.usageBasedApi": "Usage-based API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "Individual",
+   "settings.modelProvider.connectionMode.startPlanBadge": "Free",
+@@ -7397,7 +7399,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.nativeCli.qwen.login": "Run qwen in a terminal to sign in, then connect again.",
+   "settings.modelProvider.nativeCli.qwen.guide": "Qwen Code setup and sign-in",
+   "settings.modelProvider.nativeCli.flow":
+-    "Use the bundled official executor to connect your current account, or sign in to Claude in your browser.",
++    "Run tasks with Claude Code. This connection currently supports Claude subscription accounts.",
+   "settings.modelProvider.nativeCli.waiting": "Complete sign-in in the browser.",
+   "settings.modelProvider.nativeCli.connected":
+     "Connected to the official CLI. Model access is checked when a request runs.",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 438915b..47e63ce 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2812,7 +2812,7 @@ const zhCN: Record<string, string> = {
+   "settings.plugins.toggle.workspaceEnabled": "已在当前工作区启用 {plugin}（覆盖 User 默认）",
+   "settings.plugins.toggle.workspaceDisabled": "已在当前工作区停用 {plugin}（覆盖 User 默认）",
+   "settings.plugins.toggle.failed": "无法更新 {plugin}，请重试。",
+-  "settings.modelProviderDescription": "管理模型服务与订阅账号，连接后可在对话中选择模型。",
++  "settings.modelProviderDescription": "管理账号、API 和终端 Agent，连接后可在对话中选择模型。",
+   "settings.modelProvider.add": "添加供应商",
+   "settings.modelProvider.createCustomProvider": "创建自定义供应商",
+   "settings.modelProvider.templateCreateFailed": "创建供应商失败：个人供应商配置格式无效",
+@@ -2919,7 +2919,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.import.chooseFile": "选择数据库文件",
+   "settings.modelProvider.import.confirm": "导入",
+   "settings.modelProvider.import.back": "返回供应商列表",
+-  "settings.modelProvider.catalog.subscriptions": "订阅会员",
++  "settings.modelProvider.catalog.subscriptions": "账号登录",
+   "settings.modelProvider.catalog.search": "搜索供应商或服务",
+   "settings.modelProvider.catalog.empty": "没有找到供应商",
+   "settings.modelProvider.catalog.region": "地区",
+@@ -2963,11 +2963,13 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.connectionMode.apiKeyBadge": "API",
+   "settings.modelProvider.catalog.terminal": "终端接入",
+   "settings.modelProvider.terminal.checking": "检查中…",
+-  "settings.modelProvider.terminal.bundled": "内置",
+-  "settings.modelProvider.terminal.missing": "未安装",
++  "settings.modelProvider.terminal.unavailable": "程序不可用",
++  "settings.modelProvider.terminal.unknown": "检测失败",
++  "settings.modelProvider.terminal.description": "Fleet 默认助手由 Pi 驱动；这里连接独立执行任务的终端 Agent。",
++  "settings.modelProvider.terminal.missing": "未检测到",
+   "settings.modelProvider.terminal.installed": "已安装",
+   "settings.modelProvider.terminal.installedVersion": "已安装 {version}",
+-  "settings.modelProvider.catalog.usageBased": "用量计费",
++  "settings.modelProvider.catalog.usageBased": "API 接入",
+   "settings.modelProvider.connectionMode.usageBasedApi": "按量 API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "个人",
+   "settings.modelProvider.connectionMode.startPlanBadge": "免费",
+@@ -7009,7 +7011,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.nativeCli.qwen.login": "请先在终端运行 qwen 完成登录，然后再连接。",
+   "settings.modelProvider.nativeCli.qwen.guide": "Qwen Code 安装与登录",
+   "settings.modelProvider.nativeCli.flow":
+-    "使用内置的官方执行器连接当前账号，或在浏览器中登录 Claude。",
++    "使用 Claude Code 执行任务；当前接入支持 Claude 订阅账号。",
+   "settings.modelProvider.nativeCli.waiting": "请在浏览器中完成登录。",
+   "settings.modelProvider.nativeCli.connected": "已连接官方 CLI；模型权限将在实际请求时验证。",
+   "settings.modelProvider.nativeCli.connect": "连接当前账号",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+index 125619a..47134b3 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+@@ -54,35 +54,44 @@ export function ProviderTemplatePicker({
+   const { providerSettingsService } = useServices();
+   // Terminal access lists which CLIs this computer can run, the way CLI managers do; it only runs
+   // each CLI's `--version`, and is read once when the tab opens.
+-  const [cliStates, setCliStates] = useState<
+-    Record<string, { bundled: boolean; installed: boolean; version?: string }>
+-  >();
++  const [cliDetection, setCliDetection] = useState<{
++    owner: typeof providerSettingsService;
++    states: Record<string, { bundled: boolean; installed: boolean; version?: string }>;
++  }>();
++  const cliStates = cliDetection?.owner === providerSettingsService ? cliDetection.states : undefined;
+   useEffect(() => {
+-    if (category !== "terminal" || cliStates) return;
++    if (category !== "terminal") return;
+     let cancelled = false;
++    setCliDetection(undefined);
+     providerSettingsService
+       .detectNativeClis()
+       .then((states) => {
+-        if (!cancelled) setCliStates(states);
++        if (!cancelled) setCliDetection({ owner: providerSettingsService, states });
+       })
+       .catch(() => {
+-        if (!cancelled) setCliStates({});
++        if (!cancelled) setCliDetection({ owner: providerSettingsService, states: {} });
+       });
+     return () => {
+       cancelled = true;
+     };
+-  }, [category, cliStates, providerSettingsService]);
++  }, [category, providerSettingsService]);
+   const cliMeta = (templates: readonly { config: { access?: unknown } }[]): string | undefined => {
+     if (category !== "terminal") return undefined;
+     const access = templates[0]?.config.access as { type?: string; provider?: string } | undefined;
+     if (access?.type !== "native-cli" || !access.provider) return undefined;
+     if (!cliStates) return intl.formatMessage({ id: "settings.modelProvider.terminal.checking" });
+     const state = cliStates[access.provider];
+-    if (!state) return undefined;
+-    if (state.bundled) return intl.formatMessage({ id: "settings.modelProvider.terminal.bundled" });
+-    if (!state.installed) return intl.formatMessage({ id: "settings.modelProvider.terminal.missing" });
++    if (!state) return intl.formatMessage({ id: "settings.modelProvider.terminal.unknown" });
++    // 附带的程序不等于已安装可执行，也不等于默认内核或已登录账号。
++    if (!state.installed && state.bundled)
++      return intl.formatMessage({ id: "settings.modelProvider.terminal.unavailable" });
++    if (!state.installed)
++      return intl.formatMessage({ id: "settings.modelProvider.terminal.missing" });
+     return state.version
+-      ? intl.formatMessage({ id: "settings.modelProvider.terminal.installedVersion" }, { version: state.version })
++      ? intl.formatMessage(
++          { id: "settings.modelProvider.terminal.installedVersion" },
++          { version: state.version },
++        )
+       : intl.formatMessage({ id: "settings.modelProvider.terminal.installed" });
+   };
+   const [selectedId, setSelectedId] = useState<string>();
+@@ -207,8 +216,16 @@ export function ProviderTemplatePicker({
+             label: intl.formatMessage({ id: "settings.modelProvider.catalog.terminal" }),
+           },
+         ]}
+-        onValueChange={setCategory}
++        onValueChange={(next) => {
++          setCliDetection(undefined);
++          setCategory(next);
++        }}
+       />
++      {category === "terminal" ? (
++        <p className="text-ui-base text-foreground-subtle">
++          {intl.formatMessage({ id: "settings.modelProvider.terminal.description" })}
++        </p>
++      ) : null}
+       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+         {category === "api" ? (
+           <ProviderTemplateCard
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+index 05cd61e..3f77163 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplateSetup.tsx
+@@ -60,7 +60,8 @@ export function ProviderTemplateSetup({
+   };
+   const serviceId = selected.catalog?.serviceId ?? selected.templateId;
+   const native = selected.config.access?.type === "native-cli";
+-  const subscription = selected.config.access?.type === "subscription" || native;
++  const subscription = selected.config.access?.type === "subscription";
++  const api = !subscription && !native;
+   const subscriptionKind =
+     selected.config.access?.type === "subscription" ? selected.config.access.provider : undefined;
+   const services = [
+@@ -181,7 +182,7 @@ export function ProviderTemplateSetup({
+           disabled={busy}
+           onChange={(region) => choose({ serviceId, region })}
+         />
+-        {!subscription ? (
++        {api ? (
+           <>
+             <div className="space-y-2">
+               <div className="flex items-center text-ui-base text-foreground-subtle">
+@@ -254,7 +255,7 @@ export function ProviderTemplateSetup({
+             trailingAction={
+               <Button type="submit" disabled={busy}>
+                 {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+-                {t("connect")}
++                {intl.formatMessage({ id: "settings.modelProvider.nativeCli.connect" })}
+               </Button>
+             }
+           />
+@@ -267,7 +268,7 @@ export function ProviderTemplateSetup({
+             : intl.formatMessage({ id: "settings.modelProvider.templateCreateFailed" })}
+         </p>
+       ) : null}
+-      {!subscription ? (
++      {api ? (
+         <div>
+           <Button
+             type="submit"
+@@ -275,7 +276,7 @@ export function ProviderTemplateSetup({
+             disabled={
+               busy ||
+               (custom && !name.trim()) ||
+-              (!subscription &&
++              (api &&
+                 (!draft.baseUrl.trim() ||
+                   ![draft.primary, ...draft.additional].some((key) => key.trim())))
+             }
+diff --git a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+index 1990203..43c5ef6 100644
+--- a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
++++ b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+@@ -10,17 +10,15 @@ export interface ProviderVendor {
+   templates: ProviderSettingsTemplateView[];
+ }
+ 
+-/** Subscriptions, usage-based APIs, and terminal CLIs that sign in themselves (OV-103). */
++/** Intake mechanism; a paid API-key plan is still API access, not account sign-in. */
+ export type ProviderConnectionCategory = "subscription" | "api" | "terminal";
+ 
+ export function providerConnectionCategory(
+   template: ProviderSettingsTemplateView,
+ ): ProviderConnectionCategory {
+   if (template.config.access?.type === "native-cli") return "terminal";
+-  return template.category === "subscription-plan" ||
+-    template.config.access?.type === "subscription" ||
+-    template.config.access?.type === "zhipu-account" ||
+-    template.config.access?.type === "zhipu-coding-plan-api-key"
++  return template.config.access?.type === "subscription" ||
++    template.config.access?.type === "zhipu-account"
+     ? "subscription"
+     : "api";
+ }
+diff --git a/packages/ui/test/connectionIntake.browser.test.tsx b/packages/ui/test/connectionIntake.browser.test.tsx
+new file mode 100644
+index 0000000..b1c2e02
+--- /dev/null
++++ b/packages/ui/test/connectionIntake.browser.test.tsx
+@@ -0,0 +1,147 @@
++import { act } from "react";
++import { createRoot } from "react-dom/client";
++import {
++  parseProviderTemplateMap,
++  ProviderSettingsFacade,
++  type ProviderRegistryFacadeSource,
++} from "@zcode/provider";
++import builtin from "../../../config/provider/zcode-builtin.json";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { PlatformProvider } from "../src/hooks/usePlatform.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { ProviderDetailFeedbackBoundary } from "../src/settings/model-provider-section/ProviderDetailFeedback.js";
++import { ProviderTemplatePicker } from "../src/settings/model-provider-section/ProviderTemplatePicker.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const templates = new ProviderSettingsFacade({
++  getSnapshot: () => ({
++    registry: { revision: 1 },
++    config: {
++      zcodeBuiltinProviderTemplates: parseProviderTemplateMap(
++        builtin.config.providerConfigRules.templateRules,
++      ),
++    },
++    resolution: { registryProviders: [], resolvedProviders: [] },
++    account: { states: {} },
++  }),
++} as unknown as ProviderRegistryFacadeSource).getView().providerTemplates;
++const results: { name: string; error?: string }[] = [];
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++async function run() {
++  for (const locale of ["zh-CN", "en-US"] as const)
++    for (const theme of ["theme-zai-light", "theme-zai-dark"]) {
++      const name = `complete connection intake ${locale}/${theme}`;
++      const node = document.createElement("div");
++      node.style.width = "720px";
++      document.documentElement.className = theme;
++      document.body.append(node);
++      const root = createRoot(node);
++      const created: any[] = [];
++      const zh = locale === "zh-CN";
++      const service = {
++        detectNativeClis: async () => ({
++          claude: { bundled: true, installed: true, version: "2.1.fixture" },
++          codex: { bundled: true, installed: false },
++        }),
++      };
++      const buttons = () => [...node.querySelectorAll<HTMLButtonElement>("button")];
++      const click = async (text: string, prefix = false) => {
++        const button = buttons().find((b) =>
++          prefix ? b.textContent?.trim().startsWith(text) : b.textContent?.trim() === text,
++        );
++        check(button, `Missing button ${text}`);
++        await act(async () => {
++          button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
++          button.click();
++        });
++      };
++      try {
++        await act(async () =>
++          root.render(
++            <ServiceProvider services={{ providerSettingsService: service } as never}>
++              <PlatformProvider platform={{ openExternal: async () => {} } as never}>
++                <ZCodeIntlProvider initialLocale={locale}>
++                  <TooltipProvider>
++                    <ProviderDetailFeedbackBoundary>
++                      <ProviderTemplatePicker
++                        templates={templates}
++                        onBack={() => {}}
++                        onCreateFromTemplate={async (...args) => {
++                          created.push(args);
++                        }}
++                        onCreateCustom={async () => {
++                          throw new Error("unexpected custom create");
++                        }}
++                        creating={false}
++                        onImported={() => {}}
++                      />
++                    </ProviderDetailFeedbackBoundary>
++                  </TooltipProvider>
++                </ZCodeIntlProvider>
++              </PlatformProvider>
++            </ServiceProvider>,
++          ),
++        );
++        check(
++          node.textContent?.includes(zh ? "账号登录" : "Account sign-in"),
++          "Missing sign-in mechanism",
++        );
++        await click(zh ? "API 接入" : "API access");
++        await click("MiniMax", true);
++        await click("MiniMax Token Plan");
++        check(node.querySelector("#provider-setup-url"), "API-key plan lost its URL/key form");
++        check(
++          !buttons().some(
++            (b) => b.textContent === (zh ? "连接订阅账号" : "Connect subscription account"),
++          ),
++          "Key-based plan was converted to browser login",
++        );
++        const back = node.querySelector<HTMLButtonElement>("button[aria-label]");
++        check(back, "missing back");
++        await act(async () => back.click());
++        await click(zh ? "终端接入" : "Terminal access");
++        check(
++          node.textContent?.includes("Pi"),
++          "Default assistant/external Agent distinction is missing",
++        );
++        const codex = buttons().find((b) => b.textContent?.startsWith("Codex CLI"));
++        check(
++          codex?.textContent?.includes(zh ? "程序不可用" : "Executable unavailable"),
++          "Broken bundled CLI was advertised as installed/core",
++        );
++        check(
++          !node.textContent?.includes(zh ? "内置" : "Built in"),
++          "Ambiguous builtin label remains",
++        );
++        await click("Claude Code", true);
++        check(
++          !node.querySelector("#provider-setup-url") &&
++            !node.querySelector('input[type="password"]'),
++          "Native CLI got an API form",
++        );
++        check(
++          !buttons().some(
++            (b) => b.textContent === (zh ? "连接订阅账号" : "Connect subscription account"),
++          ),
++          "Native CLI still has subscription CTA",
++        );
++        await click(zh ? "连接当前账号" : "Connect current account");
++        check(
++          created.length === 1 && created[0][0] === "fleet-claude-native" && created[0][2] === true,
++          "Native creation changed its route",
++        );
++        check(JSON.stringify(created[0][1]) === "{}", "Native setup invented API credentials");
++        results.push({ name });
++      } catch (error) {
++        results.push({ name, error: error instanceof Error ? error.message : String(error) });
++      } finally {
++        await act(async () => root.unmount());
++        node.remove();
++      }
++    }
++  return results;
++}
++(window as any).__connectionIntakeTests = run();

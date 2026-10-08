@@ -43,11 +43,11 @@ catalogue observations from renamed or recreated identities. These repair nine o
 they do not close the kernel or promote delivery status. Independent cross-review also corrected
 partial-read hashes, per-profile lock partitioning, masked staging errors and complete-Read freshness.
 
-1. Late executor outcomes after Stop are recorded truthfully within a 1.5 s grace or as unknown
-   (RECOVERY-01, candidate 0171); persist the late outcome as a durable Session receipt rather than
-   a log line. Project-only plugin hooks are withheld and resident plugin hooks honour withdrawal
-   (DOM-01/02, candidate 0172); finish resident Skill/MCP withdrawal. Preserve the new cancellation retry plan and
-   workflow uncertainty guards while testing acknowledgement loss and cold reconstruction.
+1. Preserve durable late tool receipts, their old-row/history/usage reconciliation, and resident
+   plugin withdrawal through the existing owners. Extend the cancellation retry plan and workflow
+   uncertainty proof to acknowledgement loss and cold Stop-plan reconstruction. Neither a stopped
+   turn nor a disabled plugin implies rollback of already accepted effects; full native and remote
+   termination still requires its own proof.
 2. Keep discovery and inference auth aligned (API-02). Preserve returned-ID observations separately
    from personal model renames; connection deletion clears both exact layers, while recommendation
    restore retains observations. Verify through live permitted provider paths after the local

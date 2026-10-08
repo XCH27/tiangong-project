@@ -24,22 +24,29 @@ vendor runs its own page and Fleet waits, never seeing a token (candidate 0167).
 
 ## Terminal access (candidate 0183, OV-103)
 
-Add provider has three tabs: *Subscriptions* (plans), *Usage-based* (API keys) and *Terminal
-access* — every native-cli template, and nothing else. A terminal CLI owns its login, endpoint and
+Add provider keeps three views, refined by OV-105 to *Account sign-in*, *API access* and *Terminal
+access*. They describe the connection mechanism, not payment: API-key Coding Plans belong to API
+access; native-cli templates belong to Terminal access. A terminal CLI owns its login, endpoint and
 model list, so its setup asks for no URL, protocol or key: choose it, press Connect, and Fleet
 inspects the CLI's own sign-in (or, signed out, offers the methods the CLI advertises).
 
 | Concern | Contract |
 |---|---|
-| What the list shows | One card per CLI, named by the CLI (Codex CLI, Claude Code, Cursor CLI…), with its state on this computer: *Built in* (Fleet ships the Claude Code SDK binary and a scoped Codex), *Installed <version>*, or *Not installed*. |
+| What the list shows | One card per CLI with detected installation/version, not a core or authentication badge. Shipped Claude/Codex binaries must also pass the version probe; a broken shipped binary is unavailable, a missing external probe is not detected, and a failed detection RPC is reported distinctly. |
 | Detection | Read once each time the tab opens: resolve the CLI's executable the way its executor does, run `--version` (6 s timeout). Nothing signs in, installs or reads credentials (`adapters/src/native-agent/native-detect.ts`). |
-| Not installed | The card still opens; Connect reports the missing CLI and the connection card links the vendor's install guide. Fleet does not download or install vendor CLIs. |
+| Not detected / unavailable | The card still opens; Connect reports the unavailable CLI and retains the vendor's install/recovery guide. Fleet does not install it through this control. |
 | Unchanged | The connection record, sign-in, multi-account and allowance paths below; saved connection names. Retired routes (OV-096) stay hidden. |
 
 Reference: CLI managers detect what is installed before offering it (AionUi auto-detection,
 Orca agent list). Rejected: an ACP Registry catalog of every registered agent (OV-102).
 Open: show a saved connection's signed-in state on its card, and a refresh control instead of
 reopening the tab.
+
+Pi remains the default loop under Fleet's Host; terminal entries select optional independent
+executors. Native setup uses its own Connect action, never the generic subscription CTA or API
+form. The current Claude/Codex native adapters still support their documented subscription route;
+arbitrary API-configured native sessions are not claimed by this classification correction.
+Saved names, connections, account owners and plan/quota metadata are unchanged.
 
 ## Native CLI accounts (candidate 0163)
 

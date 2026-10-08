@@ -119,7 +119,7 @@ existing ledger and transcript; a known complete response is not blindly replaye
 stays interrupted/failed and returned tools are not newly dispatched. The same observation feeds
 live V4, cold usage restoration and the compatible Session counter. Only missing saved text/reasoning
 suffixes enter the original stream-row path; no second output or accounting owner is introduced.
-No-finish failures retain unknown consumption rather than fabricating a report.
+No-finish failures retain unknown consumption rather than fabricating a report. Late tool results use the existing [Session receipt recovery](../../.fleet/zcode/apps/zcode-cli/docs/file-write-integrity.md): reconcile the original part/history/usage and marked old V4 row without reviving a turn.
 The final handler boundary reloads Project rules and checks the original registry entity/handler.
 A new Ask after automatic Allow needs fresh approval; existing approval stays bound to the exact
 input. Deny wins; remembered rule writes compare SQLite rules, so stale approval cannot undo revocation.

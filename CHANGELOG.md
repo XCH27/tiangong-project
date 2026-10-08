@@ -5,6 +5,14 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Connection intake now distinguishes account sign-in, API access and terminal access. API-key
+  plans keep their own endpoint/quota metadata in API access; native setup no longer uses a
+  subscription CTA. Terminal installation checks no longer present shipped executors as Fleet's
+  default core or treat a failed version probe as installed.
+- Late tool results after Stop are retained through the existing Session journal and reconcile
+  the original tool row, history and usage without rerunning effects. Resident plugin disable/
+  uninstall withdraws new MCP/Skill calls; grant revocation keeps its existing MCP/hooks scope.
+
 - Repair execution boundaries without changing the selected Host: native account mismatches
   refuse before inference instead of charging the wrong identity; a rule tightened from Allow
   to Ask cannot inherit the old automatic allowance. Workflow Stop cancels only that run's world

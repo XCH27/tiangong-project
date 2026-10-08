@@ -236,8 +236,9 @@ claiming Agent authoring works. The creator UI currently requires the official S
 Keep the existing dependency resolution, ZIP digest/path protections and atomic activation rollback. Settings Skill, command and subagent readers must use the CLI's `ZCODE_STORAGE_DIR` precedence, and local UI user roots must honor the existing desktop-home override; otherwise a scoped runtime and its settings can show different cached plugins. Opening the candidate store must only read its local inventory; the inherited automatic ZCode CDN refresh is retired. Explicit Refresh retains the original marketplace command and third-party source identity. The shared node_repl host remains in runtime inventory but is not a separate settings switch; Browser/Computer Use own the visible controls. The Browser Use content package keeps its identity and MIT author attribution while its visible Fleet wording is versioned with its seeded manifest. This is not a Fleet-owned or fully independent catalog.
 Inline roots declared only by Project configuration keep skills, commands and MCP but their hooks are
 withheld with `plugin_project_hooks_withheld`, so they cannot bypass workspace-hook trust (DOM-01).
-Resident Sessions re-check the shared plugin configuration/install record before each plugin hook and
-skip withdrawn ones (DOM-02); resident MCP and Skill withdrawal remain open.
+Resident Sessions check the existing package owner for hooks, MCP and Skills (DOM-02). Disable/
+uninstall removes future discovery/dispatch; grant revocation affects MCP/hooks, not the existing
+Skill grant scope. Per-request projection and final transport checks preserve accepted effects/history.
 Third-party MCP/hooks use the per-package grant described above. Distinct complete plugin IDs
 claiming one legacy MCP name are withheld with a conflict diagnostic; view calls check the owning
 package and connection configuration, including across connection waits. Names and saved rules are

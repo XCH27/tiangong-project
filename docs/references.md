@@ -4025,9 +4025,12 @@ The entered-rename Stop fixture showed a file committing after the turn had sett
 recorded as "cancelled before the file operation completed" (RECOVERY-01). Candidate 0171 gives a
 mutating tool 1.5 s after Stop to settle; a commit inside it is recorded as completed, and a tool
 still running is recorded unknown with its late outcome logged (`stop-late-effect.test.ts`). The
-late outcome is a log record, not yet a durable Session receipt; no rollback claim follows.
+0171 late outcome was a log record. The current Host retains a recovery receipt in the existing
+SessionEntry owner before part/usage publication, then reconciles the original part and marked V4
+row. Same-part identities, failed writes, schema/media failures, live future history and cold
+reopen are covered; no rollback claim follows.
 Background after-commit acknowledgement loss, cold Stop-plan reconstruction, general native
-termination, paid/provider effects, plugin withdrawal, request budgets, scheduler/Goal and other
+termination, paid/provider effects, request budgets, scheduler/Goal and other
 receipt failures remain separate indexed work. Source, real local execution, staged executable,
 live service behavior and owner visual acceptance remain separate proof levels.
 
@@ -4052,6 +4055,47 @@ environment expressions must not travel as placeholders; equivalent MCP configur
 pool's existing normalization; an un-awaited world command cannot publish false success. A
 failed pre-dispatch native attempt remains an auditable error attempt, not zero recorded activity
 or a successful provider charge. Capability statuses remain at their existing acceptance level.
+
+### Resident withdrawal, late receipts and connection intake
+
+ZCode public HEAD remains `29628c9`; required pins and dependencies are unchanged. Pi public tip
+`6fb2e7815167e6b19006fc526d1a5d0f5f998787` was read from immutable files: Agent Core `agent.ts`
+SHA-256 `7024a3145a6ebc951a0f030164adb1dfb12d33d6e0dbbac15ef0efda49c87457` and `agent-loop.ts`
+`28a2b03e34a7e32f004aa851e54d3b5be9dad71c392205614cbc9abdf3a9020a`. Its loop awaits tool
+execution/finalization before the subsequent abort check; it does not supply Fleet Session
+persistence. Fleet extends its own journal/part/usage owners rather than replacing them.
+Late receipt publication carries an explicit Host marker and original assistant/turn/part identity;
+V4 uses its existing executor-turn to product-turn mapping. Tool processing/media failures record
+the known execution with unavailable output, not a claim that the effect never happened.
+
+Resident plugin checks reuse the original install/config/grant owner. The existing grant contract
+allows Skills without an executable-surface grant, so revoke affects MCP/hooks, while disable and
+uninstall also withdraw Skills. Per-request discovery and final transport checks preserve earlier
+accepted results and loaded history. Same-Session, approval/meta waits, re-enable, cold reopen,
+real local stdio and durable output/data cases exercise this distinction. No paid MCP/provider,
+plugin-process sandbox or whole native-executor acceptance is inferred.
+
+For OV-105, AionUi current `6744099b279b991c17e31c243f0920477bd31cb6` separates managed Agent
+availability (`AgentSettings/LocalAgents.tsx`) from provider/account configuration. Cindy current
+`5c9d8919ea69cf786ced810f18ab9a1328f9e46b`, `ProvidersSection.tsx` (SHA-256
+`aa8c90e8c737465b32b278dd70159088366016a59674b7db0218fc9aca9b936e`) carries provider auth and
+agent execution facts separately. Fleet retains its original ZCode controls and one Provider
+writer, but classifies intake by the actual access mechanism. A paid API-key plan still needs an
+API form; an optional native executor is neither a default-core claim nor proof of sign-in.
+The full picker/setup/create callback is exercised in both locales/themes, and a real failed
+version process cannot appear installed. This changes no billing, credential or native API support.
+
+Integration evidence for candidate patches 0191–0193: the root verifier passes 1,032 Node test
+executions plus 44 Python checks (one declared expected failure), source reconstruction, retained
+source preservation, desktop/CLI typechecks and root lint (70 warnings, zero errors). Native
+renderer checks pass 42 cases, including the four locale/theme intake combinations at a 720 px
+content width. Separate staged Pi/Claude restart checks and 11 scoped Codex checks pass using
+loopback inference. The primary inspected the rebuilt desktop in Chinese/dark and English/light,
+including actual program versions, API-plan/native forms and keyboard category navigation.
+Logs are retained in `/Volumes/AIGC/天工参考/meta/fleet-intake-resident-receipts/`. System-disk
+exhaustion interrupted an earlier SQLite run; successful runs use the existing pinned pnpm 10.33.2
+and external temporary storage. Node 26.3.0 still differs from the declared CLI 24.14.0, inherited
+CLI-wide lint limits remain, and live providers, other OSes and owner visual acceptance are unproved.
 
 ## OpenStock and Octop — bounded reference admission
 

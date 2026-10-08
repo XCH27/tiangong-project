@@ -2985,3 +2985,15 @@ verification defects through their existing owners. Preserve the later OV-103 en
 general human/Agent workbench goal. Source comparison and documentation accompany implementation;
 they do not replace a working result or erase unfinished page, media, document and canvas work.
 No baseline reset, new authority, data migration, service admission or public effect is selected.
+
+### OV-105 — Correct connection classification across the real flow (2026-10-08)
+
+The owner points out that “built in” next to Codex looks like the default Pi core was replaced,
+and that terminal setup still says subscription login. The review must cover intake, setup,
+authentication, model selection and execution, rather than only changing a label. The bounded
+correction uses one intake axis: account sign-in, API access, terminal access. An API-key plan is
+API access regardless of its billing schedule; native CLI setup uses the native connection action.
+Installation, account authentication and model entitlement remain separate facts. Fleet's Host
+and default Pi loop remain, with optional native executors and their current supported account
+routes. Preserve the three-view entry, existing controls, stored connections, billing metadata and
+all permissions; this does not add arbitrary API access to Claude/Codex native routes or migrate data.
