@@ -294,3 +294,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0180 | [0180-agent-plugins-format.patch](0180-agent-plugins-format.patch) | `32160d1d8a196adeb75e31eb080de38b36d61892` |
 
 | 0181 | [0181-native-executor-list.patch](0181-native-executor-list.patch) | `62a4c8ccfd734d5d39138592c0a1285b1e515c15` |
+
+| 0182 | [0182-zcode-home-config.patch](0182-zcode-home-config.patch) | `5bb5504ac6fdb966fdc06cc38af730b0086fd27d` |
