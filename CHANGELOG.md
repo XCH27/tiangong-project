@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Restore the previously authorized Copilot/Grok subscription and Antigravity native entries;
+  Antigravity addition keeps the selected one-time risk confirmation. Subscription products,
+  including API-key plans, return to Subscriptions beside Usage-based and Terminal access. Existing
+  SDK/credential/account owners, Pi identity and native connection forms are preserved.
+
 - Normal-turn request budgets include final discovered tool declarations before compaction and
   output reservation, using existing composition to avoid counting prior declarations twice.
 - Background Stop receipts survive acknowledgement failures and cold reopen; unresolved effects

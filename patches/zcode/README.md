@@ -326,3 +326,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0196 | [0196-stop-recovery.patch](0196-stop-recovery.patch) | `de12b056d68256ef94ce389f3c2c8441d1211934` |
 
 | 0197 | [0197-verification-entry.patch](0197-verification-entry.patch) | `caa0622df1378f3d50d1b3d55da7c6ee8efe1714` |
+
+| 0198 | [0198-subscription-entry-restoration.patch](0198-subscription-entry-restoration.patch) | `77bece3db7cd8ba937fdb2b771d66200bc838a91` |

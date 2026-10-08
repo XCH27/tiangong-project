@@ -2991,9 +2991,26 @@ No baseline reset, new authority, data migration, service admission or public ef
 The owner points out that “built in” next to Codex looks like the default Pi core was replaced,
 and that terminal setup still says subscription login. The review must cover intake, setup,
 authentication, model selection and execution, rather than only changing a label. The bounded
-correction uses one intake axis: account sign-in, API access, terminal access. An API-key plan is
-API access regardless of its billing schedule; native CLI setup uses the native connection action.
+implementation chose one intake axis: account sign-in, API access, terminal access. The owner
+subsequently rejected the loss of subscription entries in OV-106; that grouping is superseded.
+Native CLI setup still uses the native connection action.
 Installation, account authentication and model entitlement remain separate facts. Fleet's Host
 and default Pi loop remain, with optional native executors and their current supported account
 routes. Preserve the three-view entry, existing controls, stored connections, billing metadata and
 all permissions; this does not add arbitrary API access to Claude/Codex native routes or migrate data.
+
+### OV-106 — Restore subscription coverage and reuse reference mechanisms (2026-10-08)
+
+The owner points out that subscription connections disappeared and again requires comparing
+existing open-source implementations before writing replacements. Rechecking the original human
+answers confirms OV-098: restore Copilot/Grok and Antigravity with one risk acknowledgement on
+addition. The earlier tooling rejection left that change unapplied; it was not an owner reversal.
+Current implementation must honor that prior authorization without asking the same question again.
+
+Restore the original Subscriptions and Usage-based groups beside Terminal access. API-key
+subscription products retain their subscription home and actual key form; native CLI entries
+retain their own connection flow. Keep Pi default identity, truthful executable detection and
+the corrected native CTA. Reuse existing SDK auth, Provider/credential owners and runtime bindings;
+no account deletion, foreign-token import, new credential authority or live paid probe is authorized
+by the restoration. Compare the complete related feature in the original and named references,
+including authentication, catalog, persistence, refresh and failure consumers, rather than a card.

@@ -12,21 +12,23 @@ own credentials. No token import, copying, keychain read or second account datab
 No register row yet.
 <!-- /module-card -->
 
-## Permitted routes (candidate 0166, OV-096)
+## Subscription and executor routes (OV-098/106)
 
-Subscriptions run only where the vendor sanctions it: Fleet's own Sign in with ChatGPT registration
-(multi-account, as OpenAI documents), the Codex app-server, and vendors' documented ACP modes,
-including the official Copilot CLI and Grok Build executors added here, and the unmodified Claude
-Code (one account, no rotation). Antigravity and borrowed-client Copilot/Grok logins are retired with
-their data kept; see the evidence table in [OV-096](../decisions.md). Multi-account below applies to
-Codex only. Signed-out ACP CLIs offer the sign-in methods they advertise (ACP `authenticate`); the
-vendor runs its own page and Fleet waits, never seeing a token (candidate 0167).
+Fleet keeps its own Sign in with ChatGPT registration and restores the existing Pi Copilot/Grok
+subscription drivers. Their existing connection-scoped credential store owns login, refresh,
+account selection and recovery. Community implementation is evidence of a mechanism, not vendor
+approval. Native Codex, Claude Code and curated ACP CLIs remain whole executors; native multi-account
+below applies to Codex, while Claude stays single-account. Signed-out ACP CLIs offer their own
+`authenticate` methods. Fleet does not import another application's tokens.
+Antigravity's existing native route is restored with the owner-selected account-risk confirmation
+on addition. Cancelling the dialog creates nothing; existing records and their data remain. The
+current Google terms and source comparison live in [References](../references.md#subscription-entry-restoration).
 
 ## Terminal access (candidate 0183, OV-103)
 
-Add provider keeps three views, refined by OV-105 to *Account sign-in*, *API access* and *Terminal
-access*. They describe the connection mechanism, not payment: API-key Coding Plans belong to API
-access; native-cli templates belong to Terminal access. A terminal CLI owns its login, endpoint and
+Add provider preserves *Subscriptions*, *Usage-based* and *Terminal access* (OV-103/106). API-key
+subscription products remain in Subscriptions; each selected template supplies its real key or
+login form. Native-cli templates belong to Terminal access. A terminal CLI owns its login, endpoint and
 model list, so its setup asks for no URL, protocol or key: choose it, press Connect, and Fleet
 inspects the CLI's own sign-in (or, signed out, offers the methods the CLI advertises).
 
@@ -35,7 +37,7 @@ inspects the CLI's own sign-in (or, signed out, offers the methods the CLI adver
 | What the list shows | One card per CLI with detected installation/version, not a core or authentication badge. Shipped Claude/Codex binaries must also pass the version probe; a broken shipped binary is unavailable, a missing external probe is not detected, and a failed detection RPC is reported distinctly. |
 | Detection | Read once each time the tab opens: resolve the CLI's executable the way its executor does, run `--version` (6 s timeout). Nothing signs in, installs or reads credentials (`adapters/src/native-agent/native-detect.ts`). |
 | Not detected / unavailable | The card still opens; Connect reports the unavailable CLI and retains the vendor's install/recovery guide. Fleet does not install it through this control. |
-| Unchanged | The connection record, sign-in, multi-account and allowance paths below; saved connection names. Retired routes (OV-096) stay hidden. |
+| Unchanged | The connection record, sign-in, multi-account and allowance paths below; saved connection names. Route restoration follows OV-098/106 through these same owners. |
 
 Reference: CLI managers detect what is installed before offering it (AionUi auto-detection,
 Orca agent list). Rejected: an ACP Registry catalog of every registered agent (OV-102).

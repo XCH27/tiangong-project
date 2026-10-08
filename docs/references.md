@@ -4079,8 +4079,8 @@ For OV-105, AionUi current `6744099b279b991c17e31c243f0920477bd31cb6` separates 
 availability (`AgentSettings/LocalAgents.tsx`) from provider/account configuration. Cindy current
 `5c9d8919ea69cf786ced810f18ab9a1328f9e46b`, `ProvidersSection.tsx` (SHA-256
 `aa8c90e8c737465b32b278dd70159088366016a59674b7db0218fc9aca9b936e`) carries provider auth and
-agent execution facts separately. Fleet retains its original ZCode controls and one Provider
-writer, but classifies intake by the actual access mechanism. A paid API-key plan still needs an
+agent execution facts separately. Candidate 0193 retained ZCode controls and one Provider
+writer but classified intake by access mechanism; OV-106 restores the original product groups below. A paid API-key plan still needs an
 API form; an optional native executor is neither a default-core claim nor proof of sign-in.
 The full picker/setup/create callback is exercised in both locales/themes, and a real failed
 version process cannot appear installed. This changes no billing, credential or native API support.
@@ -4262,9 +4262,55 @@ goose, openclaw, pi-mono), Nous Portal (hermes). Anthropic OAuth "routes as Clau
 extra usage only (hermes docs). Antigravity: account tools (cockpit-tools, CLIProxyAPI, CodexBar,
 orca) support it; hermes keeps it in a third-party plugin catalog and openclaw's Google guide cites
 the terms forbidding it. Plan endpoints (Z.ai/Zhipu, Kimi, Volcengine Ark, DashScope coding,
-MiniMax, StepFun step plan): cc-switch, hermes, Kun, cindy, goose, openclaw. Fleet lacks Qwen,
-MiniMax, Kimi and OpenRouter OAuth, StepFun/Ark plan presets and most plan allowance readers;
-Copilot/xAI/Antigravity are held by `route-policy.ts` (OV-096) pending OV-098.
+MiniMax, StepFun step plan): cc-switch, hermes, Kun, cindy, goose, openclaw. Fleet's separate Qwen,
+MiniMax, Kimi and OpenRouter OAuth drivers remain absent; later plan presets and allowance readers
+follow the Models/Context contracts rather than this initial survey's coverage snapshot.
+Copilot/xAI/Antigravity were held by `route-policy.ts` (OV-096); their previously approved
+restoration is reconciled under OV-098/106 below.
+
+### Subscription entry restoration
+
+The original human response in the project-scoped Claude continuation confirms restoration with
+one Antigravity acknowledgement on addition. The previously prepared stash remained unapplied;
+it is retained as evidence, not applied wholesale over newer changes. Current correction restores
+Copilot/Grok through the existing Pi OAuth drivers and Antigravity through its existing native
+executor, plus the original Subscriptions/Usage-based/Terminal groups. An API-key subscription
+product keeps its own key form. This corrects the over-narrow 0193 grouping without recreating
+accounts, switching credential authorities or restoring legacy ChatGPT grants.
+
+Fresh immutable source comparison (required pins retained): OpenCode
+`388406238bd5ca15564a762840a2362c3a45bd9c`, `packages/opencode/src/plugin/github-copilot/copilot.ts`
+and `plugin/xai.ts`, supplies device authorization, polling, refresh and model-route evidence.
+Hermes `d687605c7b6ee8d1c5f17b76870a7dd0eb414e06`, `hermes_cli/copilot_auth.py` and `auth_xai.py`,
+separates device sign-in, credential refresh, expiry, account-pool identity and failure states.
+Fleet reuses installed Pi `1.0.2` for those protocols and its own connection-scoped credential
+owner; Hermes' optional foreign `gh` token import and OpenCode's different client registration
+are not copied. Copilot catalog fixtures use IDs in the pinned SDK's actual catalog.
+
+Cindy `5c9d8919ea69cf786ced810f18ab9a1328f9e46b`, `ProvidersSection.tsx:671–700`, carries subscription
+product, authentication and executor separately. Its `subscription-account-auth.ts` fences writes
+by owner scope, cancellation and exact stored bytes, including rollback. Fleet retains its existing
+authorization-generation/connection-lock mechanisms and original ZCode controls. The comparison
+covers picker, real form, login, stored account, catalog, request binding and cancellation consumers;
+matching names or screenshots alone are not used as proof.
+
+Google's current [Antigravity terms](https://www.antigravity.google/terms) and
+[FAQ](https://antigravity.google/docs/faq) still restrict third-party access and mention account
+suspension. The owner-selected confirmation reflects that risk; community source is not treated
+as vendor permission. Reuse the original confirmation host, with focused Cancel retaining its
+keyboard action: the previous global Enter handler incorrectly confirmed it, reproduced in all
+four locale/theme cases before correction. No real authorization or paid inference is required
+for these fixture checks. Immutable source hashes and detailed proof are retained at
+`/Volumes/AIGC/天工参考/meta/fleet-subscription-restoration/`.
+
+Candidate 0198 verification: 75 focused catalog/subscription/bundled-driver cases and 42 actual
+renderer checks pass, including Chinese/English, light/dark, plan key forms, restored OAuth
+callbacks, Antigravity decline/accept and focused-Cancel keyboard handling. The integrated root
+gate passes 1,072 Node executions, 44 Python checks (one declared expected failure), types, root
+lint and the 198-patch recipe. The primary inspected the rebuilt page's 13 subscription products,
+existing Grok account card, Copilot form and Antigravity confirmation; actual Shift-Tab/Enter on
+Cancel leaves the original connections unchanged. New live login and paid inference remain
+unperformed; strict CLI large-file failures and the existing acceptance status remain unchanged.
 
 **Allowance readers.** CodexBar documents a reader per provider (50+; `docs/<provider>.md`):
 Kimi (`kimi-auth` JWT, weekly + 5 h), OpenCode Go (usage API, local SQLite), Copilot (internal

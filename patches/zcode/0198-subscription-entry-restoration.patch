@@ -1,0 +1,548 @@
+diff --git a/apps/zcode-cli/docs/provider-routing.md b/apps/zcode-cli/docs/provider-routing.md
+index 7c4ced8..ffbbc68 100644
+--- a/apps/zcode-cli/docs/provider-routing.md
++++ b/apps/zcode-cli/docs/provider-routing.md
+@@ -4,11 +4,13 @@ Fleet correction against ZCode `29628c9acdb81b703bbd4080c207a0e7ce5e276e`.
+ 
+ ## Contract
+ 
+-### Connection intake is grouped by mechanism
++### Preserve subscription products beside usage-based and terminal access
+ 
+-The existing three picker views mean account sign-in, API access and terminal access. Classify
+-from access.type, not the payment plan: a Coding Plan requiring an API key belongs to API access.
+-The template's plan/product identity, catalog, quota reader and credential owner do not change.
++The owner retains Subscriptions, Usage-based and Terminal access (OV-103/106). Subscription
++products include API-key Coding Plans; their payment product and authentication mechanism are
++separate facts, as in Cindy's access/auth/agent declarations. Native CLI templates remain in
++Terminal access. The selected access.type decides the actual login or key form; grouping never
++rewrites a connection's credential mechanism, catalog or quota owner.
+ Native CLI entries create native-cli connections, never a generic subscription-login form.
+ Their setup reads that CLI's supported account/configuration; the current Claude/Codex adapters
+ still support their declared subscription route, not arbitrary API-configured native sessions.
+@@ -18,12 +20,19 @@ is an optional native executor, not Fleet's core or a signed-in account. Termina
+ detected installation/version only after a successful version probe; shipped-but-broken binaries
+ are unavailable. Detection failure is not evidence that no executable is installed. Keep the
+ original controls and layout, use the existing native connection operation, and preserve saved
+-connections, drafts, permissions and all enabled/retired route decisions. No data migration occurs.
++connections, drafts and permissions. OV-098 restores Copilot/xAI subscription and Antigravity
++native routes through their existing owners. Antigravity addition uses the existing confirmation
++dialog once per addition, as previously selected by the owner; cancellation creates no connection.
++The shared dialog must respect its focused button: Enter on Cancel cannot acknowledge the risk.
++Existing records need no migration, copied foreign tokens or replacement credential owner.
+ 
+ Verify the complete picker → exact selected template → mechanism-specific setup → original
+-create callback, including API-key plans, direct account login and native CLI. Renderer cases
++create callback, including restored OAuth products, API-key plans and native CLI. Renderer cases
+ must reject the old subscription CTA and API fields on native setup, keep back navigation usable,
+-and exercise English/Chinese and light/dark. This proves local routing, not vendor entitlement.
++and exercise English/Chinese and light/dark. Account verification must exercise actual bundled
++OAuth drivers through injected transport, credential persistence/refresh and retained identities.
++This proves local routing/protocol behavior, not live entitlement or vendor approval inferred
++from community source. Compact-summary and execution-budget rules below remain unchanged.
+ 
+ The existing Provider config owns access type, API format, endpoint and credential. A
+ bound model captures these facts. Its request-auth overlay may refresh credentials;
+diff --git a/packages/provider/src/index.ts b/packages/provider/src/index.ts
+index 77186e3..febcc9f 100644
+--- a/packages/provider/src/index.ts
++++ b/packages/provider/src/index.ts
+@@ -19,6 +19,6 @@ export { matchEndpointTemplate } from "./endpoint-template.js";
+ 
+ export * from "./classifier-models.js";
+ 
+-export { connectionRouteRestriction, RESTRICTED_ROUTE_ALTERNATIVE, type ConnectionRouteRestriction } from "./route-policy.js";
++export { connectionRouteRestriction, connectionRouteRisk, RESTRICTED_ROUTE_ALTERNATIVE, type ConnectionRouteRestriction } from "./route-policy.js";
+ export { lookupModelKnowledge, modelKnowledgeConfig, setModelKnowledgeOverlay, type ModelKnowledge } from "./model-knowledge.js";
+ export { buildModelKnowledge, type ModelKnowledgeData } from "./model-knowledge-build.js";
+diff --git a/packages/provider/src/route-policy.ts b/packages/provider/src/route-policy.ts
+index c5129ab..41ef0ef 100644
+--- a/packages/provider/src/route-policy.ts
++++ b/packages/provider/src/route-policy.ts
+@@ -1,19 +1,6 @@
+-/**
+- * Connection routes the vendors do not permit for a third-party application such as Fleet. A
+- * restricted connection keeps its saved data but cannot run, and is not offered for new
+- * connections; the UI explains the permitted alternative. Sources (checked 2026-10-06):
+- *
+- * Claude is not restricted: Anthropic's help article "Use the Claude Agent SDK with your Claude
+- *   plan" counts "third-party apps that authenticate with your Claude subscription through the
+- *   Agent SDK" as plan usage. What Anthropic forbids — offering a Fleet-owned Claude login, or
+- *   collecting, storing or routing Claude credentials — Fleet never does: it runs the unmodified
+- *   Claude Code, which signs in through Anthropic's own flow and keeps its own credentials. One
+- *   account per connection and no automatic rotation keep usage "ordinary, individual".
+- * - google-antigravity: Antigravity Additional Terms §6, "Using third party software, tools, or
+- *   services to access the Service … is a breach", enforced with account suspensions in 2026.
+- * - impersonated-client: the login presents another product's OAuth client (GitHub Copilot as the
+- *   VS Code extension, Grok as the Grok CLI). The vendors' own agents are reachable instead through
+- *   their documented ACP modes (`copilot --acp`, `grok agent stdio`).
++/** Local route retirement is separate from vendor terms and runtime permission checks.
++ * OV-098/106 restores the existing community subscription routes; their protocol, credential
++ * and account-scoping owners stay unchanged. Source practice does not imply vendor approval.
+  */
+ export type ConnectionRouteRestriction =
+   | "google-antigravity"
+@@ -25,16 +12,18 @@ interface AccessLike {
+ }
+ 
+ export function connectionRouteRestriction(
+-  access: AccessLike | null | undefined,
++  _access: AccessLike | null | undefined,
+ ): ConnectionRouteRestriction | undefined {
+-  if (access?.type === "native-cli") {
+-    if (access.provider === "antigravity") return "google-antigravity";
+-  }
+-  if (access?.type === "subscription" && (access.provider === "github-copilot" || access.provider === "xai"))
+-    return "impersonated-client";
+   return undefined;
+ }
+ 
++/** The owner selected one acknowledgement per Antigravity addition; existing records are kept. */
++export function connectionRouteRisk(access: AccessLike | null | undefined): "account-suspension" | undefined {
++  return access?.type === "native-cli" && access.provider === "antigravity"
++    ? "account-suspension"
++    : undefined;
++}
++
+ /** The API-key template a restricted connection points users to. */
+ export const RESTRICTED_ROUTE_ALTERNATIVE: Readonly<Record<string, string>> = {
+   antigravity: "fleet-google",
+diff --git a/packages/services/src/model-provider/subscriptionConnections.ts b/packages/services/src/model-provider/subscriptionConnections.ts
+index a03ab57..000b0fe 100644
+--- a/packages/services/src/model-provider/subscriptionConnections.ts
++++ b/packages/services/src/model-provider/subscriptionConnections.ts
+@@ -83,7 +83,7 @@ export function createSubscriptionConnections(options: {
+       throw new Error("Subscription connection no longer exists");
+     if (expectedKind && access.provider !== expectedKind)
+       throw new Error("Subscription connection changed; select the model again");
+-    // 合规：借用其他产品 OAuth 身份的路线（Copilot=VS Code 扩展、Grok=Grok CLI）不再登录、读取或调用。
++    // 本地停用策略不替代账号有效性检查；恢复入口仍保留原连接/账号/请求身份约束。
+     if (connectionRouteRestriction(access))
+       throw new Error("This connection route is not permitted by its vendor; use its official CLI or an API key");
+     const oauth = providers[access.provider].auth.oauth;
+diff --git a/packages/services/test/provider-catalog.test.ts b/packages/services/test/provider-catalog.test.ts
+index 199b43a..8c9806e 100644
+--- a/packages/services/test/provider-catalog.test.ts
++++ b/packages/services/test/provider-catalog.test.ts
+@@ -304,7 +304,7 @@ test("Grok subscription and xAI API remain distinct under one vendor", () => {
+   );
+ });
+ 
+-test("sign-in/API/terminal sections classify the actual mechanism independently of billing", () => {
++test("subscription plans retain their home while CLI executors remain in terminal access", () => {
+   const subscription = templates.filter(
+     (item) => providerConnectionCategory(item) === "subscription",
+   );
+@@ -316,10 +316,10 @@ test("sign-in/API/terminal sections classify the actual mechanism independently
+   assert.ok([...subscription, ...api].every((item) => item.config.access?.type !== "native-cli"));
+   assert.ok(subscription.some((item) => item.templateId === "fleet-openai-codex"));
+   assert.ok(api.some((item) => item.templateId === "openai"));
+-  assert.ok(api.some((item) => item.templateId === "fleet-minimax-token-plan"));
++  assert.ok(subscription.some((item) => item.templateId === "fleet-minimax-token-plan"));
+   assert.ok(api.some((item) => item.templateId === "fleet-minimax"));
+-  assert.ok(api.some((item) => item.templateId === "fleet-qwen-coding-plan-cn"));
+-  assert.ok(api.some((item) => item.templateId === "fleet-qwen-coding-plan"));
++  assert.ok(subscription.some((item) => item.templateId === "fleet-qwen-coding-plan-cn"));
++  assert.ok(subscription.some((item) => item.templateId === "fleet-qwen-coding-plan"));
+   assert.ok(api.some((item) => item.templateId === "fleet-qwen-token-plan-cn"));
+   assert.ok(api.some((item) => item.templateId === "fleet-qwen-token-plan"));
+   for (const category of [subscription, api, terminal]) {
+@@ -339,14 +339,13 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   const terminal = section("terminal");
+   const grok = subscriptions.find((g) => g.id === "vendor:xai")!;
+   assert.equal(grok.label, "Grok");
+-  // The Grok CLI-client OAuth route is retained for saved data but restricted; the official Grok
+-  // Build CLI is the offered route under the same vendor and logo.
++  // OV-098/106 restores the existing subscription without replacing its separate CLI route.
+   assert.deepEqual(
+     grok.templates.map((t) => t.templateId),
+     ["fleet-xai"],
+   );
+   const xaiOAuth = grok.templates.find((t) => t.templateId === "fleet-xai")!;
+-  assert.equal(connectionRouteRestriction(xaiOAuth.config.access), "impersonated-client");
++  assert.equal(connectionRouteRestriction(xaiOAuth.config.access), undefined);
+   const grokCli = terminal
+     .find((g) => g.id === "vendor:xai")!
+     .templates.find((t) => t.templateId === "fleet-grok-native")!;
+@@ -360,8 +359,8 @@ test("filtered intake uses product names and logos without replacing vendor iden
+   assert.equal(api.find((g) => g.id === "vendor:openai")?.label, "OpenAI");
+   // OV-103 将 CLI 移至独立终端页；订阅页继续显示产品名，而不是公司或执行器名。
+   assert.equal(
+-    subscriptions.find((g) => g.id === "vendor:kimi"),
+-    undefined,
++    subscriptions.find((g) => g.id === "vendor:kimi")?.label,
++    "Kimi Code",
+   );
+   assert.ok(
+     api
+@@ -369,16 +368,16 @@ test("filtered intake uses product names and logos without replacing vendor iden
+       ?.templates.some((t) => t.config.access?.type === "api-key"),
+   );
+   assert.equal(
+-    subscriptions.find((g) => g.id === "vendor:opencode"),
+-    undefined,
++    subscriptions.find((g) => g.id === "vendor:opencode")?.label,
++    "OpenCode Go",
+   );
+   assert.ok(
+-    api
++    subscriptions
+       .find((g) => g.id === "vendor:opencode")
+       ?.templates.some((t) => t.templateId.includes("opencode-go")),
+   );
+   assert.equal(terminal.find((g) => g.id === "vendor:kimi")?.label, "Kimi Code CLI");
+-  assert.equal(api.find((g) => g.id === "vendor:opencode")?.label, "OpenCode");
++  assert.equal(api.find((g) => g.id === "vendor:opencode")?.label, "OpenCode Zen");
+ });
+ 
+ test("OpenRouter exposes its three official protocols in one vendor and service", () => {
+diff --git a/packages/services/test/subscription-bundle.test.ts b/packages/services/test/subscription-bundle.test.ts
+index 36b852b..c52337a 100644
+--- a/packages/services/test/subscription-bundle.test.ts
++++ b/packages/services/test/subscription-bundle.test.ts
+@@ -44,7 +44,13 @@ const hostFetch = async (input, init) => {
+   if (url === "https://cli-chat-proxy.grok.com/v1/user?include=subscription")
+     return Response.json({ userId: "grok-account", email: "test@example.com" });
+   if (url === "https://github.com/login/device/code")
+-    return Response.json({ device_code: "fixture-device", user_code: "COPILOT", verification_uri: "https://github.com/login/device", interval: 60, expires_in: 900 });
++    return Response.json({ device_code: "fixture-device", user_code: "COPILOT", verification_uri: "https://github.com/login/device", interval: 0.01, expires_in: 900 });
++  if (url === "https://github.com/login/oauth/access_token")
++    return Response.json({ access_token: "github-fixture-access" });
++  if (url === "https://api.github.com/user")
++    return Response.json({ id: 42, login: "fixture-user" });
++  if (url === "https://cli-chat-proxy.grok.com/v1/models")
++    return Response.json({ data: [{ id: "grok-fixture", api_backend: "responses" }] });
+   if (url === "https://auth.openai.com/api/accounts/deviceauth/token")
+     return new Response(null, { status: 403 });
+   if (url === "https://auth.openai.com/oauth/token") {
+@@ -54,7 +60,7 @@ const hostFetch = async (input, init) => {
+   if (url === "https://api.github.com/copilot_internal/v2/token")
+     return Response.json({ token: "fixture;proxy-ep=proxy.individual.githubcopilot.com", expires_at: Math.floor(Date.now()/1000) + 3600 });
+   if (url === "https://api.individual.githubcopilot.com/models")
+-    return Response.json({ data: [{ id: "gpt-4.1", model_picker_enabled: true, policy: { state: "enabled" } }] });
++    return Response.json({ data: [{ id: "claude-haiku-4.5", model_picker_enabled: true, policy: { state: "enabled" } }] });
+   throw new Error("Unexpected network request: " + url);
+ };
+ const records = new Map();
+@@ -76,11 +82,6 @@ records.set("model-subscription:openai-codex", JSON.stringify({
+   kind: "openai-codex", credential: { type: "oauth", access: "expired", refresh: "fixture-refresh", expires: 1, accountId: "fixture-account" }
+ }));
+ await assert.rejects(owner.resolve("openai-codex"), /reauthorization/);
+-// Copilot (VS Code extension client) and Grok (Grok CLI client) never reach the vendor.
+-for (const kind of ["github-copilot", "xai"]) {
+-  await assert.rejects(owner.begin(kind, "device_code"), /not permitted/);
+-  await assert.rejects(owner.resolve(kind), /not permitted/);
+-}
+ assert.equal(requests.length, 0);
+ const browser = await owner.begin("openai-codex");
+ assert.equal(browser.method, "browser");
+@@ -94,7 +95,21 @@ await owner.submit("openai-codex", browser.flowId, callback.href);
+ await owner.finish("openai-codex", browser.flowId);
+ assert.equal((await owner.accounts("openai-codex")).accounts.length, 2);
+ assert.equal(JSON.parse(records.get("model-subscription:openai-codex")).pendingFlowId, undefined);
+-console.log("Bundled ChatGPT public authorization passed; legacy, Copilot and Grok routes refused");
++for (const kind of ["github-copilot", "xai"]) {
++  const flow = await owner.begin(kind, "browser"); // The real settings entry requests browser; the driver offers device-code.
++  assert.equal(flow.method, "device_code");
++  assert.equal(flow.userCode, kind === "xai" ? "GROK" : "COPILOT");
++  await owner.finish(kind, flow.flowId);
++  const accounts = await owner.accounts(kind);
++  assert.equal(accounts.accounts.length, 1);
++  const saved = records.get("model-subscription:" + kind);
++  assert.ok(saved, "existing credential owner persists the subscription");
++  const auth = await owner.resolve(kind);
++  assert.ok(auth.apiKey);
++  assert.ok((await owner.models(kind)).models.length > 0, kind + " returns an available catalog");
++  assert.equal((await owner.accounts(kind)).accounts[0].id, accounts.accounts[0].id);
++}
++console.log("Bundled ChatGPT public authorization and restored Copilot/Grok drivers passed");
+ `;
+ 
+ for (const minify of [false, true]) {
+diff --git a/packages/services/test/subscription-connections.test.ts b/packages/services/test/subscription-connections.test.ts
+index 999660c..c0e855e 100644
+--- a/packages/services/test/subscription-connections.test.ts
++++ b/packages/services/test/subscription-connections.test.ts
+@@ -1173,7 +1173,7 @@ function nativeCatalog(kind: string, ids: string[]) {
+       : { models: ids.map((slug) => ({ slug })) },
+   );
+ }
+-for (const kind of ["openai-codex"] as const) {
++for (const kind of ["openai-codex", "xai"] as const) {
+   test(`${kind} selected account cannot use a model discovered under another account`, async () => {
+     const requested: string[] = [];
+     const f = fixture(undefined, async (_url, init) => {
+@@ -1353,8 +1353,7 @@ test("an account switch discards an in-flight subscription catalog", async () =>
+   await assert.rejects(result, /account changed/);
+ });
+ 
+-test("Grok and Copilot subscription routes that borrow another client are refused before any request", async () => {
+-  // Route policy: these logins present the Grok CLI's / VS Code extension's OAuth client.
++test("restored Grok and Copilot start their existing login without replacing saved accounts", async () => {
+   for (const kind of ["xai", "github-copilot"] as const) {
+     let requests = 0;
+     const f = fixture(undefined, async () => {
+@@ -1362,10 +1361,14 @@ test("Grok and Copilot subscription routes that borrow another client are refuse
+       return Response.json({ data: [] });
+     });
+     seedCatalogAccounts(f, kind);
+-    await assert.rejects(f.owner.begin("one"), /not permitted by its vendor/);
+-    await assert.rejects(f.owner.resolve("one", kind, "model-one"), /not permitted by its vendor/);
+-    await assert.rejects(f.owner.models("one"), /not permitted by its vendor/);
+-    assert.equal(requests, 0, `${kind} must not reach the vendor`);
++    const before = await f.owner.accounts("one");
++    const flow = await f.owner.begin("one");
++    assert.equal(flow.userCode, "ABCD");
++    assert.equal(f.pending.length, 1, `${kind} uses the existing OAuth owner`);
++    await f.owner.cancel("one", flow.flowId);
++    assert.deepEqual(await f.owner.accounts("one"), before);
++    assert.deepEqual(await fixture(f).owner.accounts("one"), before, "owner recreation retains saved accounts");
++    assert.equal(requests, 0, "cancelling login does not inspect or spend saved accounts");
+   }
+ });
+ 
+diff --git a/packages/ui/src/ConfirmDialog.tsx b/packages/ui/src/ConfirmDialog.tsx
+index c7adca6..8379fd4 100644
+--- a/packages/ui/src/ConfirmDialog.tsx
++++ b/packages/ui/src/ConfirmDialog.tsx
+@@ -71,9 +71,9 @@ export function ConfirmDialogHost() {
+         return;
+       }
+ 
+-      // 带复选框的选择对话框保留焦点按钮的键盘语义，避免“不了”按 Enter 变成切换。
++      // 原逻辑仅在复选框弹窗尊重焦点按钮，导致“取消”上的 Enter 也提交确认。
++      // 所有弹窗都保留按钮/输入框原本的键盘动作；空白区域仍可用 Enter 确认。
+       if (
+-        displayedRequest?.checkbox &&
+         event.target instanceof HTMLElement &&
+         event.target.closest("button,input")
+       )
+diff --git a/packages/ui/src/i18n/locales/en-US.ts b/packages/ui/src/i18n/locales/en-US.ts
+index 7faaafa..66ccf3d 100644
+--- a/packages/ui/src/i18n/locales/en-US.ts
++++ b/packages/ui/src/i18n/locales/en-US.ts
+@@ -3150,7 +3150,10 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.import.chooseFile": "Choose database",
+   "settings.modelProvider.import.confirm": "Import",
+   "settings.modelProvider.import.back": "Back to providers",
+-  "settings.modelProvider.catalog.subscriptions": "Account sign-in",
++  "settings.modelProvider.routeRisk.account-suspension.title": "Connect Antigravity",
++  "settings.modelProvider.routeRisk.account-suspension.body": "Google restricts third-party access to Antigravity and may suspend or terminate accounts. Continue to connect through the Antigravity CLI.",
++  "settings.modelProvider.routeRisk.account-suspension.confirm": "Accept risk and continue",
++  "settings.modelProvider.catalog.subscriptions": "Subscriptions",
+   "settings.modelProvider.catalog.search": "Search providers or services",
+   "settings.modelProvider.catalog.empty": "No providers found",
+   "settings.modelProvider.catalog.region": "Region",
+@@ -3202,7 +3205,7 @@ const enUS: Record<string, string> = {
+   "settings.modelProvider.terminal.missing": "Not detected",
+   "settings.modelProvider.terminal.installed": "Installed",
+   "settings.modelProvider.terminal.installedVersion": "Installed {version}",
+-  "settings.modelProvider.catalog.usageBased": "API access",
++  "settings.modelProvider.catalog.usageBased": "Usage-based",
+   "settings.modelProvider.connectionMode.usageBasedApi": "Usage-based API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "Individual",
+   "settings.modelProvider.connectionMode.startPlanBadge": "Free",
+diff --git a/packages/ui/src/i18n/locales/zh-CN.ts b/packages/ui/src/i18n/locales/zh-CN.ts
+index 47e63ce..60adab6 100644
+--- a/packages/ui/src/i18n/locales/zh-CN.ts
++++ b/packages/ui/src/i18n/locales/zh-CN.ts
+@@ -2919,7 +2919,10 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.import.chooseFile": "选择数据库文件",
+   "settings.modelProvider.import.confirm": "导入",
+   "settings.modelProvider.import.back": "返回供应商列表",
+-  "settings.modelProvider.catalog.subscriptions": "账号登录",
++  "settings.modelProvider.routeRisk.account-suspension.title": "连接 Antigravity",
++  "settings.modelProvider.routeRisk.account-suspension.body": "Google 对第三方软件使用 Antigravity 有限制，可能暂停或终止账号。确认后将通过 Antigravity CLI 连接。",
++  "settings.modelProvider.routeRisk.account-suspension.confirm": "了解风险并继续",
++  "settings.modelProvider.catalog.subscriptions": "订阅会员",
+   "settings.modelProvider.catalog.search": "搜索供应商或服务",
+   "settings.modelProvider.catalog.empty": "没有找到供应商",
+   "settings.modelProvider.catalog.region": "地区",
+@@ -2969,7 +2972,7 @@ const zhCN: Record<string, string> = {
+   "settings.modelProvider.terminal.missing": "未检测到",
+   "settings.modelProvider.terminal.installed": "已安装",
+   "settings.modelProvider.terminal.installedVersion": "已安装 {version}",
+-  "settings.modelProvider.catalog.usageBased": "API 接入",
++  "settings.modelProvider.catalog.usageBased": "按量计费",
+   "settings.modelProvider.connectionMode.usageBasedApi": "按量 API",
+   "settings.modelProvider.connectionMode.codingPlanBadge": "个人",
+   "settings.modelProvider.connectionMode.startPlanBadge": "免费",
+diff --git a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+index 47134b3..89486f8 100644
+--- a/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
++++ b/packages/ui/src/settings/model-provider-section/ProviderTemplatePicker.tsx
+@@ -1,9 +1,10 @@
+-import { connectionRouteRestriction } from "@zcode/provider";
++import { connectionRouteRestriction, connectionRouteRisk } from "@zcode/provider";
+ import type { ProviderConfigObject } from "@zcode/provider";
+ import type { ProviderSettingsView } from "@zcode/services";
+ import { ArrowLeftIcon, ChevronRightIcon, PlusIcon, Download } from "lucide-react";
+ import { useEffect, useRef, useState, type ReactNode } from "react";
+ import { useServices } from "@/hooks/useServices.js";
++import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
+ import {
+   TID_MODEL_PROVIDER_TEMPLATE_BACK_BUTTON,
+   TID_MODEL_PROVIDER_TEMPLATE_ITEM,
+@@ -49,6 +50,7 @@ export function ProviderTemplatePicker({
+ }) {
+   const { intl, locale } = useZCodeIntl();
+   const { dismissFeedback } = useProviderDetailFeedback();
++  const confirm = useConfirmDialog();
+   const customLabel = intl.formatMessage({ id: "settings.modelProvider.newProviderName" });
+   const [category, setCategory] = useState<ProviderConnectionCategory>("subscription");
+   const { providerSettingsService } = useServices();
+@@ -99,8 +101,7 @@ export function ProviderTemplatePicker({
+   const [routeError, setRouteError] = useState(false);
+   const creationLock = useRef(false);
+   const categoryTemplates = templates.filter(
+-    // 厂商不允许第三方应用使用的路线不再提供（见 @zcode/provider route-policy）。ChatGPT 订阅走 OpenAI
+-    // 官方的 Sign in with ChatGPT 注册（fleet-openai-codex，支持多账号），与 Codex CLI 原生路径并列。
++    // 套餐归类不能删掉已支持的登录入口；具体接入仍走原模板和同一个账号 owner。
+     (template) =>
+       !connectionRouteRestriction(template.config?.access) &&
+       providerConnectionCategory(template) === category,
+@@ -136,6 +137,15 @@ export function ProviderTemplatePicker({
+     const feedbackKey = "provider-template-create";
+     dismissFeedback(feedbackKey);
+     try {
++      const risk = connectionRouteRisk(
++        templates.find((item) => item.templateId === templateId)?.config.access,
++      );
++      if (risk && !(await confirm({
++        title: intl.formatMessage({ id: `settings.modelProvider.routeRisk.${risk}.title` }),
++        description: intl.formatMessage({ id: `settings.modelProvider.routeRisk.${risk}.body` }),
++        confirmLabel: intl.formatMessage({ id: `settings.modelProvider.routeRisk.${risk}.confirm` }),
++        confirmVariant: "destructive",
++      }))) return;
+       if (templateId)
+         await onCreateFromTemplate(
+           templateId,
+diff --git a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+index 43c5ef6..36ec21b 100644
+--- a/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
++++ b/packages/ui/src/settings/model-provider-section/providerTemplateCatalog.ts
+@@ -10,15 +10,17 @@ export interface ProviderVendor {
+   templates: ProviderSettingsTemplateView[];
+ }
+ 
+-/** Intake mechanism; a paid API-key plan is still API access, not account sign-in. */
++/** Preserve product groups; the chosen template separately owns its authentication form. */
+ export type ProviderConnectionCategory = "subscription" | "api" | "terminal";
+ 
+ export function providerConnectionCategory(
+   template: ProviderSettingsTemplateView,
+ ): ProviderConnectionCategory {
+   if (template.config.access?.type === "native-cli") return "terminal";
+-  return template.config.access?.type === "subscription" ||
+-    template.config.access?.type === "zhipu-account"
++  return template.category === "subscription-plan" ||
++    template.config.access?.type === "subscription" ||
++    template.config.access?.type === "zhipu-account" ||
++    template.config.access?.type === "zhipu-coding-plan-api-key"
+     ? "subscription"
+     : "api";
+ }
+diff --git a/packages/ui/test/connectionIntake.browser.test.tsx b/packages/ui/test/connectionIntake.browser.test.tsx
+index b1c2e02..9f9c4ec 100644
+--- a/packages/ui/test/connectionIntake.browser.test.tsx
++++ b/packages/ui/test/connectionIntake.browser.test.tsx
+@@ -12,6 +12,8 @@ import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
+ import { TooltipProvider } from "../src/components/ui/tooltip.js";
+ import { ProviderDetailFeedbackBoundary } from "../src/settings/model-provider-section/ProviderDetailFeedback.js";
+ import { ProviderTemplatePicker } from "../src/settings/model-provider-section/ProviderTemplatePicker.js";
++import { ConfirmDialogHost } from "../src/ConfirmDialog.js";
++import { useConfirmDialogStore } from "../src/store/confirmDialogStore.js";
+ 
+ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+ const templates = new ProviderSettingsFacade({
+@@ -45,9 +47,10 @@ async function run() {
+         detectNativeClis: async () => ({
+           claude: { bundled: true, installed: true, version: "2.1.fixture" },
+           codex: { bundled: true, installed: false },
++          antigravity: { bundled: false, installed: true, version: "1.fixture" },
+         }),
+       };
+-      const buttons = () => [...node.querySelectorAll<HTMLButtonElement>("button")];
++      const buttons = () => [...document.querySelectorAll<HTMLButtonElement>("button")];
+       const click = async (text: string, prefix = false) => {
+         const button = buttons().find((b) =>
+           prefix ? b.textContent?.trim().startsWith(text) : b.textContent?.trim() === text,
+@@ -78,6 +81,7 @@ async function run() {
+                         creating={false}
+                         onImported={() => {}}
+                       />
++                      <ConfirmDialogHost />
+                     </ProviderDetailFeedbackBoundary>
+                   </TooltipProvider>
+                 </ZCodeIntlProvider>
+@@ -86,12 +90,12 @@ async function run() {
+           ),
+         );
+         check(
+-          node.textContent?.includes(zh ? "账号登录" : "Account sign-in"),
+-          "Missing sign-in mechanism",
++          node.textContent?.includes(zh ? "订阅会员" : "Subscriptions"),
++          "Original subscription entry was lost",
+         );
+-        await click(zh ? "API 接入" : "API access");
++        check(buttons().some((b) => b.textContent?.startsWith("GitHub Copilot")), "Copilot subscription disappeared");
++        check(buttons().some((b) => b.textContent?.trim() === "Grok"), "Grok subscription disappeared");
+         await click("MiniMax", true);
+-        await click("MiniMax Token Plan");
+         check(node.querySelector("#provider-setup-url"), "API-key plan lost its URL/key form");
+         check(
+           !buttons().some(
+@@ -102,6 +106,16 @@ async function run() {
+         const back = node.querySelector<HTMLButtonElement>("button[aria-label]");
+         check(back, "missing back");
+         await act(async () => back.click());
++        await click("GitHub Copilot", true);
++        await click(zh ? "连接订阅账号" : "Connect subscription account");
++        check(created.at(-1)?.[0] === "fleet-github-copilot" && created.at(-1)?.[2] === true,
++          "Copilot no longer reaches its original subscription operation");
++        await click("Grok");
++        await click(zh ? "连接订阅账号" : "Connect subscription account");
++        check(created.at(-1)?.[0] === "fleet-xai" && created.at(-1)?.[2] === true,
++          "Grok no longer reaches its original subscription operation");
++        await click(zh ? "按量计费" : "Usage-based");
++        check(!buttons().some((b) => b.textContent?.includes("MiniMax Token Plan")), "Subscription plan moved into usage-based access");
+         await click(zh ? "终端接入" : "Terminal access");
+         check(
+           node.textContent?.includes("Pi"),
+@@ -130,14 +144,34 @@ async function run() {
+         );
+         await click(zh ? "连接当前账号" : "Connect current account");
+         check(
+-          created.length === 1 && created[0][0] === "fleet-claude-native" && created[0][2] === true,
++          created.length === 3 && created.at(-1)?.[0] === "fleet-claude-native" && created.at(-1)?.[2] === true,
+           "Native creation changed its route",
+         );
+-        check(JSON.stringify(created[0][1]) === "{}", "Native setup invented API credentials");
++        check(JSON.stringify(created.at(-1)?.[1]) === "{}", "Native setup invented API credentials");
++        await click("Antigravity", true);
++        await click(zh ? "连接当前账号" : "Connect current account");
++        check(document.querySelector('[role="dialog"]'), "Antigravity acknowledgement was skipped");
++        check(created.length === 3, "Warning opened after creating the connection");
++        const cancel = buttons().find((button) => button.textContent?.trim().startsWith(zh ? "取消" : "Cancel"));
++        check(cancel, "Missing cancel action");
++        await act(async () => {
++          cancel.focus();
++          const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
++          cancel.dispatchEvent(enter);
++          check(!enter.defaultPrevented, "Dialog Enter shortcut overrides the focused Cancel button");
++          // A synthetic key event has no native button activation; exercise that browser action.
++          cancel.click();
++        });
++        check(created.length === 3, "Cancelled warning created a connection");
++        await click(zh ? "连接当前账号" : "Connect current account");
++        await click(zh ? "了解风险并继续" : "Accept risk and continue", true);
++        check(created.length === 4 && created.at(-1)?.[0] === "fleet-antigravity-native",
++          "Confirmed Antigravity addition did not use its original native operation");
+         results.push({ name });
+       } catch (error) {
+         results.push({ name, error: error instanceof Error ? error.message : String(error) });
+       } finally {
++        await act(async () => useConfirmDialogStore.getState().settleChoice("dismiss"));
+         await act(async () => root.unmount());
+         node.remove();
+       }

@@ -39,7 +39,7 @@ eligibility checks both input and output. The [source comparison](../references.
 records producer/request/reopen proofs and live-provider limits. The composer consumes Registry-admitted native routes without an HTTP address; ordinary API
 endpoint checks remain. Non-composer leaf menus keep the portal; the combined composer uses the direct searchable list. Renderer tests cover groups, locales/themes
 and selection callbacks, with original controls/tokens. Native readiness retains the configured,
-unfilled dot and its CLI explanation. The intake category is API access / API 接入; wire-format
+unfilled dot and its CLI explanation. Intake preserves Subscriptions / Usage-based / Terminal access; wire-format
 and API-key terms remain. Effort submenus require multiple advertised choices; fixed-level legacy
 choices cause no false selection prompt or presentation-time write.
 
