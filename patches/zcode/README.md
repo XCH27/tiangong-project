@@ -292,3 +292,5 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0179 | [0179-plugin-views.patch](0179-plugin-views.patch) | `9df068232afeefab1881977365ca25fbfd8181f9` |
 
 | 0180 | [0180-agent-plugins-format.patch](0180-agent-plugins-format.patch) | `32160d1d8a196adeb75e31eb080de38b36d61892` |
+
+| 0181 | [0181-native-executor-list.patch](0181-native-executor-list.patch) | `62a4c8ccfd734d5d39138592c0a1285b1e515c15` |

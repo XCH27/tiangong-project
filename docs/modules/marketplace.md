@@ -96,8 +96,8 @@ one installable unit, typed views, two trust tiers, standards-compatible content
    shared plugin store keyed by host, Project and scope, so each embedded view must load it with
    the page's target. Subagents keep their own page (OV-088).
 5. **Catalog sources are adapters with provenance** — Fleet curated catalog, Claude/ZCode-format
-   marketplaces (existing), the official MCP Registry, Agent Skills indexes and the ACP Registry
-   (executors). Presence in a catalog is never trust; local folders and archives always install.
+   marketplaces (existing), the official MCP Registry and Agent Skills indexes (an ACP Registry
+   executor catalog was rejected by the owner, OV-102). Presence in a catalog is never trust; local folders and archives always install.
    *Implemented:* an `mcp-registry` source pages `GET /v0.1/servers?version=latest` and turns
    each active server into a `strict:false` one-server entry (npm, then PyPI, then hosted HTTP/SSE,
    then OCI); required secrets become sensitive `userConfig` used only in env and headers, URL

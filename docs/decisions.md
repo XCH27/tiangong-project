@@ -2951,3 +2951,13 @@ without interim reviews; checkpoints for paid calls, credentials, deletion and p
 stop only the affected item. Under this instruction the OV-100 grant boundary (phase 3) shipped as
 a tightening: third-party MCP servers and hooks now ask once, existing installs were recorded as
 already allowed, and no previously working plugin stopped.
+
+### OV-102 — No ACP Registry catalog; fixtures never left in review (2026-10-07)
+
+The owner, seeing an "ACP 注册表" entry and a test "计数器" view: these are unnecessary,
+over-engineered designs. Decision: Fleet does not import the ACP Registry as an executor catalog
+or offer its agents as connection templates; CLI executors stay the curated, profiled set
+(candidate 0182 reverted). Test fixtures (sample plugins, fake catalogs) are removed from the
+review profile and any configuration after verification; work that extrapolates beyond the
+owner's request is proposed first instead of built.
+

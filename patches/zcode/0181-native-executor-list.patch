@@ -1,0 +1,199 @@
+From 714d2cdee1e339e6055dcd14ec2c538df950a1be Mon Sep 17 00:00:00 2001
+From: XCH27 <49464716+XCH27@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 14:48:26 -0700
+Subject: [PATCH] One list of native executors instead of six hand-kept unions
+ (OV-099)
+
+Claude Code, Codex, Antigravity and the ACP CLIs are listed once in
+@zcode/shared; the model contract, adapter types, provider schema, services
+and the connection settings derive from it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../adapters/src/native-agent/acp-profiles.ts | 13 +++------
+ .../src/native-agent/native-network.ts        |  4 ++-
+ .../packages/contracts/src/model/model.ts     |  3 ++-
+ .../src/config/provider-data-schema.ts        |  3 ++-
+ .../src/model-provider/nativeCliConnection.ts |  3 ++-
+ .../nativeCliConnectionAdapter.ts             |  3 ++-
+ packages/shared/src/index.ts                  |  1 +
+ packages/shared/src/native-executors.ts       | 27 +++++++++++++++++++
+ .../NativeCliConnectionSection.tsx            |  3 ++-
+ 9 files changed, 44 insertions(+), 16 deletions(-)
+ create mode 100644 packages/shared/src/native-executors.ts
+
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+index 42a2a18..26d854c 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/acp-profiles.ts
+@@ -3,16 +3,9 @@ import { homedir } from "node:os";
+ import { join } from "node:path";
+ import type { CollaborationMode } from "@zcode/contracts";
+ 
+-export type AcpExecutorKind =
+-  | "cursor"
+-  | "kimi"
+-  | "opencode"
+-  | "hermes"
+-  | "openclaw"
+-  | "codebuddy"
+-  | "qwen"
+-  | "copilot"
+-  | "grok";
++import type { AcpExecutorKind } from "@zcode/shared";
++
++export type { AcpExecutorKind };
+ 
+ /**
+  * Per-CLI facts for the shared ACP executor, each verified against the installed binary with an
+diff --git a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+index 73b4f6e..40b3659 100644
+--- a/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
++++ b/apps/zcode-cli/packages/adapters/src/native-agent/native-network.ts
+@@ -1,7 +1,9 @@
+ import { FLEET_NATIVE_EXECUTOR_NETWORK_ENV_KEY } from "@zcode/shared";
+ import { applyNetworkEgressEnv, type NetworkEgressEnvPolicy } from "../network/subprocess-env.js";
+ 
+-export type NativeExecutorKind = "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok";
++import type { NativeExecutorKind } from "@zcode/shared";
++
++export type { NativeExecutorKind };
+ 
+ const PROXY_KEYS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
+ 
+diff --git a/apps/zcode-cli/packages/contracts/src/model/model.ts b/apps/zcode-cli/packages/contracts/src/model/model.ts
+index 485c88c..1ade153 100644
+--- a/apps/zcode-cli/packages/contracts/src/model/model.ts
++++ b/apps/zcode-cli/packages/contracts/src/model/model.ts
+@@ -1,3 +1,4 @@
++import type { NativeExecutorKind } from "@zcode/shared";
+ import type {
+   JsonSchema,
+   ModelInputMessage,
+@@ -45,7 +46,7 @@ export type ModelEvent = ModelStreamEvent;
+ export interface Model {
+   /** Official CLI connection, frozen with the admitted execution model; no tokens are copied. */
+   readonly nativeExecutor?: {
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok";
++    kind: NativeExecutorKind;
+     executable?: string;
+     configDir?: string;
+     accountId?: string;
+diff --git a/packages/provider/src/config/provider-data-schema.ts b/packages/provider/src/config/provider-data-schema.ts
+index 99bc143..bd0743c 100644
+--- a/packages/provider/src/config/provider-data-schema.ts
++++ b/packages/provider/src/config/provider-data-schema.ts
+@@ -1,3 +1,4 @@
++import { NATIVE_EXECUTOR_KINDS } from "@zcode/shared";
+ import { z } from "zod";
+ import { sparseShape } from "@zcode/shared/config-schema";
+ import { getEnabledApiKeys } from "../api-key-credentials.js";
+@@ -91,7 +92,7 @@ export const nativeCliSavedAccountDataSchema = z
+ export const nativeCliAccessDataSchema = z
+   .object({
+     type: z.literal("native-cli"),
+-    provider: z.enum(["claude", "codex", "antigravity", "cursor", "kimi", "opencode", "hermes", "openclaw", "codebuddy", "qwen", "copilot", "grok"]),
++    provider: z.enum(NATIVE_EXECUTOR_KINDS),
+     executable: z.string().optional(),
+     configDir: z.string().optional(),
+     accountId: z.string().optional(),
+diff --git a/packages/services/src/model-provider/nativeCliConnection.ts b/packages/services/src/model-provider/nativeCliConnection.ts
+index 8389cca..fdeec21 100644
+--- a/packages/services/src/model-provider/nativeCliConnection.ts
++++ b/packages/services/src/model-provider/nativeCliConnection.ts
+@@ -1,3 +1,4 @@
++import type { NativeExecutorKind } from "@zcode/shared";
+ import type { ProviderSettingsFacade, ProviderId } from "@zcode/provider";
+ import { connectionRouteRestriction } from "@zcode/provider";
+ import type { NativeCliAccessConfigObject } from "@zcode/provider";
+@@ -25,7 +26,7 @@ export interface NativeCliConnectionAdapter {
+     access: NativeCliAccessConfigObject,
+   ): Promise<{ id: string; name: string; terminal?: { command: string; args: string[] } }[]>;
+   login(options: {
+-    provider?: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok";
++    provider?: NativeExecutorKind;
+     executable?: string;
+     configDir?: string;
+     /** ACP sign-in method to run (CLIs that advertise `authenticate` methods). */
+diff --git a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+index 2152c05..03095ce 100644
+--- a/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
++++ b/packages/services/src/model-provider/nativeCliConnectionAdapter.ts
+@@ -1,3 +1,4 @@
++import type { NativeExecutorKind } from "@zcode/shared";
+ import {
+   inspectClaudeNativeConnection,
+   startClaudeNativeLogin,
+@@ -107,7 +108,7 @@ function acpScratch(): string {
+ export function createNativeCliConnectionAdapter(
+   /** 按执行器解析其官方端点的网络路由（PAC 可能对各厂商给出不同代理）。 */
+   resolveEnvironment: (
+-    kind: "claude" | "codex" | "antigravity" | "cursor" | "kimi" | "opencode" | "hermes" | "openclaw" | "codebuddy" | "qwen" | "copilot" | "grok",
++    kind: NativeExecutorKind,
+   ) => Promise<Record<string, string>> = async () => ({}),
+   /** 宿主网络所有者的 fetch；Claude 额度回退读取复用它，保持代理/证书一致。 */
+   hostFetch?: typeof fetch,
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index 79f3695..e81c338 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -1,4 +1,5 @@
+ export * from "./model-connectivity.js";
++export * from "./native-executors.js";
+ export type {
+   FileBinaryPreview,
+   FileEntry,
+diff --git a/packages/shared/src/native-executors.ts b/packages/shared/src/native-executors.ts
+new file mode 100644
+index 0000000..bc44df8
+--- /dev/null
++++ b/packages/shared/src/native-executors.ts
+@@ -0,0 +1,27 @@
++/**
++ * The one list of harnesses Fleet runs as whole executors (OV-099). Claude Code and Codex use their
++ * SDK/app-server; Antigravity and the rest speak ACP. Every schema, union and setting derives from
++ * this list instead of repeating it.
++ */
++export const ACP_EXECUTOR_KINDS = [
++  "cursor",
++  "kimi",
++  "opencode",
++  "hermes",
++  "openclaw",
++  "codebuddy",
++  "qwen",
++  "copilot",
++  "grok",
++] as const;
++
++export const NATIVE_EXECUTOR_KINDS = ["claude", "codex", "antigravity", ...ACP_EXECUTOR_KINDS] as const;
++
++export type AcpExecutorKind = (typeof ACP_EXECUTOR_KINDS)[number];
++export type NativeExecutorKind = (typeof NATIVE_EXECUTOR_KINDS)[number];
++
++const ACP_KIND_SET: ReadonlySet<string> = new Set(ACP_EXECUTOR_KINDS);
++
++export function isAcpExecutorKind(value: string): value is AcpExecutorKind {
++  return ACP_KIND_SET.has(value);
++}
+diff --git a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+index 7a3fad3..f154e4d 100644
+--- a/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
++++ b/packages/ui/src/settings/model-provider-section/NativeCliConnectionSection.tsx
+@@ -1,3 +1,4 @@
++import { ACP_EXECUTOR_KINDS } from "@zcode/shared";
+ import { useEffect, useCallback, useRef, useState } from "react";
+ import type { NativeCliAccessConfigObject } from "@zcode/provider";
+ import { ExternalLinkIcon, LoaderCircleIcon } from "lucide-react";
+@@ -11,7 +12,7 @@ import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
+ import { NativeCliAccounts } from "./NativeCliAccountList.js";
+ 
+ /** CLIs that advertise ACP sign-in methods Fleet can start. */
+-const ACP_SIGN_IN: ReadonlySet<string> = new Set(["cursor", "kimi", "opencode", "hermes", "openclaw", "codebuddy", "qwen", "copilot", "grok"]);
++const ACP_SIGN_IN: ReadonlySet<string> = new Set(ACP_EXECUTOR_KINDS);
+ 
+ /** Claude uses the base strings; other executors override only the fields whose wording differs. */
+ const PROVIDER_TEXT: Partial<Record<NativeCliAccessConfigObject["provider"], ReadonlySet<string>>> = {
+-- 
+2.54.0 (Apple Git-157)
+

@@ -225,8 +225,8 @@ suite's own page, which shows each harness's install, login and usable connectio
 
 **Contribution points the suite needs** (added to the [plugin contribution table](components.md#one-package-declared-contributions)
 when implemented): harness provider (detect, version, login state, model list, launch protocol;
-data from the official ACP Registry snapshot with Fleet overrides — agent-orchestrator
-`authprobe`/`modelcatalog`, Paseo `acp-provider-catalog.ts`); CLI configuration writer (MCP, Skills,
+Fleet's own executor profiles — agent-orchestrator `authprobe`/`modelcatalog`; an ACP Registry
+catalog was rejected, OV-102); CLI configuration writer (MCP, Skills,
 prompts, provider — cc-switch); session runtime (chat via ACP/SDK first, terminal/PTY later with a
 durable handoff — agent-orchestrator); status producer into one host-owned store with derived
 display status (orca `agent-status-store.md`, agent-orchestrator); task source (GitHub, Linear… —
