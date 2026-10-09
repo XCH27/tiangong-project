@@ -115,6 +115,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Existing permission card resolves host approval. Page edit adds update-target beside model switch. |
 | 2026-10-09 | draft v1.1 | An awaiting admit on the session kernel publishes the existing permission card. |
 | 2026-10-09 | draft v1.1 | Codex app-server and ACP stdio JSON-RPC executors run only after host admission. |
+| 2026-10-09 | draft v1.1 | AIGC job submit runs only after host approval. Subscription fields stay unknown when unobserved. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -134,6 +135,10 @@ Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popov
 
 `CliExecutorHost` in `app/packages/shared/src/protocol/cli-executors/` is the Codex app-server and ACP executor boundary. `HostTurnKernel.run` opens a plugin transport only after admit or approve. Codex speaks `codex app-server --stdio` JSON-RPC, including `thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`, and reverse `item/*/requestApproval` results. ACP speaks newline-delimited JSON-RPC, including `initialize`, `session/new`, `session/prompt`, `session/cancel`, and `session/request_permission`. Resume uses `session/load` or `session/resume` when the peer advertises it, and fails closed with `peer_resume_unsupported` otherwise. Reverse tool requests are admitted on the same kernel. The adapters never call `approve` or `reject`. File edits, deletes, and moves map onto the frozen file actions. Command execution, dynamic client tools, client filesystem writes, and any PTY stay `Locked`. A permissions grant is turn-scoped and includes only the admitted file write. Gemini, Qwen, and Kimi launch strings are `display-only` presets. Claude remains the native SDK channel in `claude-agent.ts`. Pi Agent Core is not the permission authority.
 
+`aigc.job_submit` still requires human approval before `run`. The native effect then calls the injected provider. A fake provider covers tests. The prompt is not written into the snapshot. Stop before submit does not call the provider. After the provider id is stored, recovery inspects that id and does not submit again. The artifact is previewed by the existing activity overlay when its kind is `aigc_artifact`.
+
+`observeSubscription` is the usage reading for quota, tier, and remaining. The AI settings section and `readSubscriptionForAgent` both use it. A missing field stays unknown. An explicit zero stays zero. Live billing fetch is not part of this slice.
+
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
@@ -146,6 +151,9 @@ Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popov
 | ACP stdio JSON-RPC executor after host admission | `wired` |
 | CLI command execution, dynamic client tools, client file writes, and PTY fallback | `Locked` |
 | Gemini, Qwen, and Kimi process launch presets | `display-only` |
+| `aigc.job_submit` after host approval: fake provider, artifact file, stop, and recover by provider id | `wired` |
+| Subscription observation shared by the settings reader and the agent DTO | `wired` |
+| Live paid image/video providers, canvas cards, and a quota ledger | `Locked` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |
 | Local `.fleet/zcode` apply | not in this checkout; see `patches/zcode/README.md` |

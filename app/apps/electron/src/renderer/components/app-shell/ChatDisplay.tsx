@@ -35,6 +35,7 @@ import {
   GenericOverlay,
   JSONPreviewOverlay,
   DocumentFormattedMarkdownOverlay,
+  MediaPreviewOverlay,
   detectLanguage,
   type ActivityItem,
   type FileChange,
@@ -2041,6 +2042,18 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               label: activityOutputOverlayData.toolName,
               variant: 'blue',
             }}
+            error={activityOutputOverlayData.error}
+          />
+        ) : activityOutputOverlayData.type === 'media' ? (
+          <MediaPreviewOverlay
+            isOpen={true}
+            onClose={handleCloseOverlay}
+            mediaKind={activityOutputOverlayData.mediaKind}
+            mimeType={activityOutputOverlayData.mimeType}
+            filePath={activityOutputOverlayData.filePath}
+            title={activityOutputOverlayData.title}
+            previewSrc={activityOutputOverlayData.previewSrc}
+            theme={isDark ? 'dark' : 'light'}
             error={activityOutputOverlayData.error}
           />
         ) : detectLanguage(activityOutputOverlayData.content) === 'markdown' ? (

@@ -19,6 +19,8 @@ The executable loop lives on the retained Craft tree and is declared in `docs/UP
 - `app/packages/shared/src/protocol/host-approval-bridge.ts`
 - `app/packages/shared/src/protocol/page-local-ops.ts`
 - `app/packages/shared/src/protocol/cli-executors/`
+- `app/packages/shared/src/protocol/aigc-job.ts`
+- `app/packages/shared/src/protocol/subscription-observation.ts`
 
 `app/` stays where it is. Do not delete or relocate it.
 
@@ -55,5 +57,7 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Codex app-server and ACP stdio JSON-RPC executors after admission | `wired` |
 | CLI command execution, dynamic client tools, and PTY fallback | `Locked` |
 | Gemini, Qwen, and Kimi launch presets | `display-only` |
+| Approval-gated AIGC submit, artifact, stop, and recover | `wired` |
+| Subscription observation for the settings reader and the agent DTO | `wired` |
 | `.fleet/zcode` integration | not applied in this checkout |
-| Automatic Pi tool admission, plugin marketplace, full Pi SDK host | `Locked` |
+| Live paid providers, quota ledger, automatic Pi tool admission, plugin marketplace, full Pi SDK host | `Locked` |

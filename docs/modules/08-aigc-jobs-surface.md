@@ -240,3 +240,20 @@ real-time workflow gates are never batch work.
 - No silent retry of paid/unknown work.
 - No raw credentials or sensitive prompts in timeline payloads.
 - No completed status before file and ArtifactRef commit.
+
+## 17. Host Submit Slice
+
+`createAigcHost` in `app/packages/shared/src/protocol/aigc-job.ts` is the smallest submit loop on the existing host.
+
+- An agent or human calls `aigc.job_submit`. Host admission stays approval-gated. `run` before approval does not call the provider.
+- The native effect submits only after approval. Tests use an injected provider. They do not call a paid API.
+- The provider id is written with the same temp-file rename as `session.jsonl`, in a caller-supplied directory. That file is the effect record used for recovery. It is not a second job database.
+- The prompt is handed to the provider from memory. The snapshot and the job file store a digest.
+- A previewable artifact is an `aigc_artifact` with media kind, mime type, path, and byte length. `previewSrc` is set only when the provider sent preview bytes. The existing activity overlay renders that as media, including video.
+- Stop before submit writes nothing. A crash after the provider id restores as `reconciling`. Recovery calls `inspect` and does not submit again.
+- The same idempotency key returns the existing artifact.
+
+| Slice | Status |
+|---|---|
+| Approval-gated submit, artifact, stop, and recover with a fake provider | `wired` |
+| Real provider, M05 provenance, canvas card, and durable ExternalJob contract | `Locked` |

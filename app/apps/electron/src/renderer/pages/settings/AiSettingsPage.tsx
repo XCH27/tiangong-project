@@ -47,6 +47,7 @@ import {
   SettingsMenuSelectRow,
   SettingsToggle,
 } from '@/components/settings'
+import { SubscriptionUsageSection } from './SubscriptionUsageSection'
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { useWorkspaceIcon } from '@/hooks/useWorkspaceIcon'
 import { OnboardingWizard, type ApiSetupMethod } from '@/components/onboarding'
@@ -1149,6 +1150,8 @@ export default function AiSettingsPage() {
                   </button>
                 </div>
               </SettingsSection>
+
+              <SubscriptionUsageSection />
 
               {/* Performance */}
               <SettingsSection title={t("settings.ai.performance")} description={t("settings.ai.performanceDesc")}>
