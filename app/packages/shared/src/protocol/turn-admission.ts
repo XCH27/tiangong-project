@@ -148,6 +148,7 @@ export class HostTurnKernel {
   private readonly controllers = new Map<string, AbortController>()
   private readonly nativeEffects: NativeEffectSource | undefined
   private eventNumber: number
+  private admissionObserver: ((outcome: TurnOutcome) => void) | undefined
 
   constructor(journal: TurnJournal = new MemoryTurnJournal(), options: HostTurnKernelOptions = {}) {
     this.journal = journal
@@ -160,7 +161,23 @@ export class HostTurnKernel {
     })
   }
 
+  /**
+   * SessionManager installs this so an awaiting admit publishes the existing
+   * permission card. approve() and reject() do not call it.
+   */
+  setAdmissionObserver(observer: ((outcome: TurnOutcome) => void) | undefined): void {
+    this.admissionObserver = observer
+  }
+
   admit(request: TurnRequest): TurnOutcome {
+    const outcome = this.evaluateAdmission(request)
+    if (outcome.status === 'approval_required') {
+      this.admissionObserver?.(outcome)
+    }
+    return outcome
+  }
+
+  private evaluateAdmission(request: TurnRequest): TurnOutcome {
     const invocationId = request.invocation?.invocationId ?? ''
     const existing = invocationId ? this.turns.get(invocationId) : undefined
     if (existing) return this.outcomeOf(existing)

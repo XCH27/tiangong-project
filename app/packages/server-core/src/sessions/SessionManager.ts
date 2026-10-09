@@ -32,6 +32,8 @@ import {
   invocationIdFromHostRequest,
   type HostPermissionCard,
   type HostTurnKernel,
+  type TurnOutcome,
+  type TurnRequest,
 } from '@craft-agent/shared/protocol'
 import {
   getWorkspaces,
@@ -66,6 +68,7 @@ import {
   ensureSessionDir,
   getSessionFilePath,
   generateSessionId,
+  modelForNewProjectConversation,
   sessionPersistenceQueue,
   getHeaderMetadataSignature,
   writeSessionJsonl,
@@ -1119,6 +1122,8 @@ export class SessionManager implements ISessionManager {
   // Pending credential request resolvers (keyed by requestId)
   private pendingCredentialResolvers: Map<string, (response: import('@craft-agent/shared/protocol').CredentialResponse) => void> = new Map()
   private hostApprovals = new Map<string, { kernel: HostTurnKernel; workspaceId?: string }>()
+  /** sessionId + invocationId pairs whose permission card was already delivered. */
+  private deliveredHostCards = new Set<string>()
   // Permission request metadata tracking (keyed by requestId)
   private pendingPermissionRequests: Map<string, {
     sessionId: string
@@ -2497,10 +2502,30 @@ export class SessionManager implements ISessionManager {
     // Get default enabled sources from workspace config
     const defaultEnabledSourceSlugs = options?.enabledSourceSlugs ?? wsConfig?.defaults?.enabledSourceSlugs
 
+    // New conversation: workspace default, then the connection default inside
+    // resolveBackendContext. A later conversation in this workspace reuses the
+    // newest stored project model. Explicit caller models, including tier hints, win.
+    let projectConversations: Array<{ id: string; model?: string; hidden?: boolean }> = []
+    try {
+      projectConversations = listStoredSessions(workspaceRootPath).map((session) => ({
+        id: session.id,
+        model: session.model,
+        hidden: session.hidden,
+      }))
+    } catch (err) {
+      sessionLog.warn('Could not read project conversations for model reuse', err)
+    }
+    const chosenModel = modelForNewProjectConversation({
+      explicitModel: options?.model,
+      branchFromSessionId: options?.branchFromSessionId,
+      workspaceDefaultModel: defaultModel,
+      conversations: projectConversations,
+    })
+
     // Resolve model tier hints ('fast' / 'default') to actual model IDs.
     // EditPopover uses tier hints instead of hardcoded Anthropic model names
     // so the right model is selected regardless of the active LLM provider.
-    let resolvedModelOption = options?.model || defaultModel
+    let resolvedModelOption = chosenModel
     if (resolvedModelOption === 'fast' || resolvedModelOption === 'default') {
       const tierConnection = resolveSessionConnection(
         options?.llmConnection,
@@ -2524,6 +2549,8 @@ export class SessionManager implements ISessionManager {
     const targetProviderType = targetBackendContext.connection?.providerType
       ?? (targetBackendContext.provider === 'pi' ? 'pi' : 'anthropic')
     const targetPiAuthProvider = targetBackendContext.connection?.piAuthProvider
+    const resolvedModel = targetBackendContext.resolvedModel
+    const persistedModel = resolvedModel || undefined
 
     // Resolve working directory from options:
     // - 'user_default' or undefined: Use workspace's configured default
@@ -2732,6 +2759,7 @@ export class SessionManager implements ISessionManager {
       name: options?.name,
       permissionMode: defaultPermissionMode,
       workingDirectory: resolvedWorkingDir,
+      model: persistedModel,
       hidden: options?.hidden,
       sessionStatus: options?.sessionStatus,
       labels: options?.labels,
@@ -2804,7 +2832,6 @@ export class SessionManager implements ISessionManager {
     // Resolve connection/provider/auth/model using the provider-agnostic backend resolver.
     // Reuse precomputed target context so branch validation and session construction share the same target identity.
     const resolvedContext = targetBackendContext
-    const resolvedModel = resolvedContext.resolvedModel
 
     // Log mini agent session creation
     if (options?.systemPromptPreset === 'mini' || options?.model) {
@@ -5409,7 +5436,7 @@ export class SessionManager implements ISessionManager {
     managed.autoRetryPending = undefined
 
     this.sessions.delete(sessionId)
-    this.hostApprovals.delete(sessionId)
+    this.detachHostTurnKernel(sessionId)
 
     // Clean up session metadata in AutomationSystem (prevents memory leak)
     const automationSystem = this.automationSystems.get(workspaceRootPath)
@@ -6482,13 +6509,65 @@ export class SessionManager implements ISessionManager {
   /**
    * Attach the process-local host kernel whose awaiting turns the existing
    * permission card can approve. This is the same kernel, not a second store.
+   * Later admits on this kernel publish the card when they await approval.
    */
   attachHostTurnKernel(sessionId: string, kernel: HostTurnKernel, workspaceId?: string): void {
     const existing = this.hostApprovals.get(sessionId)
+    if (existing && existing.kernel !== kernel) {
+      existing.kernel.setAdmissionObserver(undefined)
+      this.clearDeliveredHostCards(sessionId)
+    }
+    kernel.setAdmissionObserver((outcome) => {
+      this.publishAwaitingHostCard(sessionId, outcome.invocationId)
+    })
     this.hostApprovals.set(sessionId, {
       kernel,
       workspaceId: workspaceId ?? existing?.workspaceId,
     })
+    for (const turn of kernel.snapshot().turns) {
+      if (turn.phase === 'awaiting_approval') {
+        this.publishAwaitingHostCard(sessionId, turn.request.invocation.invocationId)
+      }
+    }
+  }
+
+  /**
+   * Agent and session callers admit host turns here.
+   * An approval_required outcome publishes the existing permission card.
+   * Callers do not also call publishHostApproval.
+   */
+  admitHostTurn(sessionId: string, request: TurnRequest): TurnOutcome {
+    const attachment = this.hostApprovals.get(sessionId)
+    const invocationId = request.invocation?.invocationId ?? ''
+    if (!attachment) {
+      return { status: 'failed', invocationId, reason: 'host_kernel_missing' }
+    }
+    return attachment.kernel.admit(request)
+  }
+
+  private detachHostTurnKernel(sessionId: string): void {
+    const attachment = this.hostApprovals.get(sessionId)
+    attachment?.kernel.setAdmissionObserver(undefined)
+    this.hostApprovals.delete(sessionId)
+    this.clearDeliveredHostCards(sessionId)
+  }
+
+  private hostCardKey(sessionId: string, invocationId: string): string {
+    return `${sessionId}\0${invocationId}`
+  }
+
+  private clearDeliveredHostCards(sessionId: string): void {
+    const prefix = `${sessionId}\0`
+    for (const key of this.deliveredHostCards) {
+      if (key.startsWith(prefix)) this.deliveredHostCards.delete(key)
+    }
+  }
+
+  private publishAwaitingHostCard(sessionId: string, invocationId: string): void {
+    const key = this.hostCardKey(sessionId, invocationId)
+    if (this.deliveredHostCards.has(key)) return
+    const published = this.publishHostApproval(sessionId, invocationId)
+    if (published?.delivered) this.deliveredHostCards.add(key)
   }
 
   /**

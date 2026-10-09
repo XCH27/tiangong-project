@@ -23,6 +23,12 @@ export type {
 // Field constants
 export { SESSION_PERSISTENT_FIELDS } from './types.ts';
 
+export { modelForNewProjectConversation } from './conversation-model.ts';
+export type {
+  NewProjectConversationModelInput,
+  ProjectConversationModel,
+} from './conversation-model.ts';
+
 // Storage functions
 export {
   // Directory utilities
