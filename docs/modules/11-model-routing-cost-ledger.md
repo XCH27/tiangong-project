@@ -232,3 +232,15 @@ Interactive chat, approval interception, PTY, and real-time workflow gates are n
 
 - No CLI model routing, cookie/token scraping, account rotation, invented cache savings, unknown-as-
   zero cost, or second Batch/job/cost store.
+
+## 17. Attribution Slice
+
+`attributeTurnUsage` in `app/packages/shared/src/protocol/usage-attribution.ts` is the process-local M11A vocabulary used by host turn admission.
+
+- A provider cache field may be `confirmed_hit` or `confirmed_miss`.
+- A missing cache field stays `unknown`. It is not stored as zero cached tokens.
+- Cost is `confirmed` only with a provider source, amount, currency, and pricing reference.
+- An estimate stays `estimated`. Every other cost stays `unknown` and omits the amount.
+- Credential material is rejected before a turn is admitted and is not copied into the timeline.
+
+Status of this function: `wired` by unit tests. Provider routing, native batch, quota, and the ledger UI remain `Locked`. There is no second cost store.

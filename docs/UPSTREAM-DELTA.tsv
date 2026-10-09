@@ -1,0 +1,8 @@
+path	classification	reason	evidence
+app/packages/shared/src/protocol/action-policy.ts	adapt	Fleet admission policy for the frozen v1.2 action table. Fail-closed when an L1 row has no undo contract. Does not add or rename action ids.	bun test src/protocol/__tests__/turn-admission.test.ts
+app/packages/shared/src/protocol/usage-attribution.ts	adapt	Host turn usage and cost confidence. Unknown cache and unknown price stay unknown.	bun test src/protocol/__tests__/turn-admission.test.ts
+app/packages/shared/src/protocol/turn-admission.ts	adapt	Process-local Fleet host admission, human approval, stop, and snapshot recovery. Journal port only; no second session database and no Pi import.	bun test src/protocol/__tests__/turn-admission.test.ts
+app/packages/shared/src/protocol/__tests__/turn-admission.test.ts	adapt	Closed-loop tests for admission, approval, stop/retry, crash recovery, credential redaction, and usage confidence.	bun test src/protocol/__tests__/turn-admission.test.ts
+app/packages/shared/src/protocol/index.ts	adapt	Export the host admission slice from the existing protocol entry.	bun test src/protocol/__tests__/turn-admission.test.ts
+app/packages/shared/src/agent/backend/internal/drivers/pi.ts	adapt	Connection-probe comment now matches the host mini-completion fallback. Pi Agent Core only sequences that default probe turn.	source assertion in turn-admission.test.ts
+app/packages/shared/src/agent/pi-agent.ts	adapt	Header states the retained Craft subprocess is a provider turn client, not the Fleet host.	docs/modules/00-platform-spine.md §13
