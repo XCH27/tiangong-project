@@ -243,11 +243,11 @@ Interactive chat, approval interception, PTY, and real-time workflow gates are n
 - An estimate stays `estimated`. Every other cost stays `unknown` and omits the amount.
 - Credential material is rejected before a turn is admitted and is not copied into the timeline.
 
-Status of this function: `wired` by unit tests. Provider routing, native batch, quota, and the ledger UI remain `Locked`. There is no second cost store.
+Status of this function: `wired` by unit tests. Provider routing, native batch, and the ledger UI remain `Locked`. The subscription observation in §19 is a separate reading and is not this cost store. There is no second cost store.
 
 `turnUsageFromClaude` and `turnUsageFromChatGpt` copy only numeric usage fields from those provider payloads. A missing cache field stays absent, so attribution remains `unknown` rather than a zero-token miss. A cost number without a pricing reference stays `unknown`. Access tokens, refresh tokens, and API keys on the raw payload are not copied into the usage record or the snapshot file.
 
-`sealHostRecord` is the serialization gate for `HostTurnKernel.snapshot` and `FileKernelSnapshotStore` save/load. A hand-built snapshot that already contains `cachedInputTokens: 0` or `cost.amount: 0` with `unknown` confidence loses those numbers before the file is written. A Craft complete-event `cacheReadTokens: 0` is treated as unobserved, because the Claude adapter fills that zero when the provider omitted the field. An explicit `cache_read_input_tokens: 0` or Pi `cacheRead: 0` stays `confirmed_miss`. A positive `cacheReadTokens` stays `confirmed_hit`. Routing, batch, quota, and the ledger UI remain `Locked`.
+`sealHostRecord` is the serialization gate for `HostTurnKernel.snapshot` and `FileKernelSnapshotStore` save/load. A hand-built snapshot that already contains `cachedInputTokens: 0` or `cost.amount: 0` with `unknown` confidence loses those numbers before the file is written. A Craft complete-event `cacheReadTokens: 0` is treated as unobserved, because the Claude adapter fills that zero when the provider omitted the field. An explicit `cache_read_input_tokens: 0` or Pi `cacheRead: 0` stays `confirmed_miss`. A positive `cacheReadTokens` stays `confirmed_hit`. Routing, batch, and the ledger UI remain `Locked`. Subscription quota in §19 is a separate observation and does not write this snapshot.
 
 ## 18. Conversation Model Choice
 
@@ -260,4 +260,20 @@ Status of this function: `wired` by unit tests. Provider routing, native batch, 
 - When that is also absent, the function returns undefined and the existing connection default in `resolveModelForProvider` remains the fallback.
 - The resolved id is written on the new session header, so the next conversation in that workspace can read it. There is no second model store.
 
-Status of this function: `wired` by unit tests. Provider routing, native batch, quota, and the ledger UI remain `Locked`.
+Status of this function: `wired` by unit tests. Provider routing, native batch, and the ledger UI remain `Locked`.
+
+## 19. Subscription Observation
+
+`observeSubscription` in `app/packages/shared/src/protocol/subscription-observation.ts` is the shared reading for provider quota, tier, and remaining.
+
+- `readSubscriptionForAgent` returns that DTO.
+- `readSubscriptionForHuman` formats the same DTO for the AI settings usage section.
+- A missing field stays `unknown`. An explicit provider zero stays known and displays as `0`.
+- Blank strings, numeric strings, and non-finite numbers stay unknown.
+- API keys and access tokens on the raw payload are not copied.
+- The settings section shows this reading. With no provider payload it shows unknown. It does not invent a balance.
+
+| Slice | Status |
+|---|---|
+| Shared observation for the settings reader and the agent DTO | `wired` |
+| Live billing fetch, routing, native batch, and the ledger UI | `Locked` |

@@ -164,6 +164,22 @@ export function ActivityCardsOverlay({
       return renderMarkdownCard(card, data.content)
     }
 
+    if (data.type === 'media') {
+      return (
+        <ContentFrame title={card.label}>
+          <div className="flex min-h-[240px] items-center justify-center p-6">
+            {data.previewSrc && data.mediaKind === 'image' ? (
+              <img src={data.previewSrc} alt={data.title} className="max-h-full max-w-full object-contain" />
+            ) : data.previewSrc && data.mediaKind === 'video' ? (
+              <video src={data.previewSrc} controls className="max-h-full max-w-full" />
+            ) : (
+              <p className="text-sm text-muted-foreground">{data.mimeType}</p>
+            )}
+          </div>
+        </ContentFrame>
+      )
+    }
+
     const lang = detectLanguage(data.content)
     if (lang === 'markdown') {
       return renderMarkdownCard(card, data.content)

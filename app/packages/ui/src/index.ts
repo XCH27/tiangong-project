@@ -205,6 +205,7 @@ export {
   DataTableOverlay,
   DocumentFormattedMarkdownOverlay,
   ImagePreviewOverlay,
+  MediaPreviewOverlay,
   PDFPreviewOverlay,
   detectLanguage,
   detectLanguageFromPath,
@@ -218,6 +219,7 @@ export {
   type DataTableOverlayProps,
   type DocumentFormattedMarkdownOverlayProps,
   type ImagePreviewOverlayProps,
+  type MediaPreviewOverlayProps,
   type PDFPreviewOverlayProps,
   ActivityCardsOverlay,
   type ActivityCardsOverlayProps,
@@ -271,6 +273,7 @@ export {
   type GenericOverlayData,
   type JSONOverlayData,
   type DocumentOverlayData,
+  type MediaOverlayData,
   type OverlayData,
   type OverlayCard,
 } from './lib/tool-parsers'

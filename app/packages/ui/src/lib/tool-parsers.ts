@@ -221,7 +221,18 @@ export interface DocumentOverlayData {
   error?: string
 }
 
-export type OverlayData = CodeOverlayData | TerminalOverlayData | GenericOverlayData | JSONOverlayData | DocumentOverlayData
+/** Image or video artifact. This is a preview, not a code or diff overlay. */
+export interface MediaOverlayData {
+  type: 'media'
+  mediaKind: 'image' | 'video'
+  mimeType: string
+  filePath: string
+  title: string
+  previewSrc?: string
+  error?: string
+}
+
+export type OverlayData = CodeOverlayData | TerminalOverlayData | GenericOverlayData | JSONOverlayData | DocumentOverlayData | MediaOverlayData
 
 /** Generic overlay card model (tab item) for activity details. */
 export interface OverlayCard {
@@ -233,6 +244,36 @@ export interface OverlayCard {
   data: OverlayData
   /** Optional CLI-style command preview (shown on Input cards) */
   commandPreview?: string
+}
+
+function mediaOverlayFromContent(rawContent: string, error?: string): MediaOverlayData | null {
+  const trimmed = rawContent.trim()
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const record = parsed as Record<string, unknown>
+  if (record.kind !== 'aigc_artifact') return null
+  if (record.mediaKind !== 'image' && record.mediaKind !== 'video') return null
+  if (typeof record.mimeType !== 'string' || record.mimeType.length === 0) return null
+  if (typeof record.path !== 'string' || record.path.length === 0) return null
+  const title = typeof record.name === 'string' && record.name.length > 0 ? record.name : record.mediaKind
+  const previewSrc = typeof record.previewSrc === 'string' && record.previewSrc.length > 0
+    ? record.previewSrc
+    : undefined
+  return {
+    type: 'media',
+    mediaKind: record.mediaKind,
+    mimeType: record.mimeType,
+    filePath: record.path,
+    title,
+    ...(previewSrc ? { previewSrc } : {}),
+    error,
+  }
 }
 
 // ============================================================================
@@ -399,6 +440,9 @@ export function extractOverlayData(activity: ActivityItem): OverlayData | null {
       error: activity.error,
     }
   }
+
+  const media = mediaOverlayFromContent(rawContent, activity.error)
+  if (media) return media
 
   // Try to detect JSON content for unknown tools (MCP tools, WebFetch, etc.)
   // JSON objects/arrays get interactive tree viewer, other content falls through to generic
