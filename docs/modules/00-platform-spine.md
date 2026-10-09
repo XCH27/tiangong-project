@@ -112,6 +112,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Added the session-directory KernelSnapshot v1 file adapter. |
 | 2026-10-09 | draft v1.1 | Admitted turns can run an in-process native effect after host admission. |
 | 2026-10-09 | draft v1.1 | Snapshot serialization drops unproven cache and price zeros and strips credentials. |
+| 2026-10-09 | draft v1.1 | Existing permission card resolves host approval. Page edit adds update-target beside model switch. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -123,14 +124,21 @@ Fleet host admission for the frozen action table is the process-local loop in `a
 
 `FileKernelSnapshotStore` writes `host-kernel-snapshot.json` in the existing session directory, beside `session.jsonl`, using the same write-to-temp-then-rename replace. It round-trips `KernelSnapshot` version 1 only. A different version throws `unsupported_snapshot_version` and leaves the previous file in place. `save`, `load`, and `HostTurnKernel.snapshot` pass through `sealHostRecord` before that JSON is written or returned. The gate removes credential-shaped keys and token strings, remaps raw Claude and ChatGPT/Pi usage, and omits cache or price numbers that were not observed. An explicit provider cache read of zero stays a confirmed miss. A price of zero stays confirmed only when a pricing reference is present. This file is the host execution projection of that session. It does not rewrite `session.jsonl` and it is not a new database. The broader M00 session adapter is still unresolved.
 
-`NativeEffectRegistry` is the executor behind `HostTurnKernel.run` when the caller does not pass an explicit executor. It runs only after admission. `applyAtomicJsonEffect` uses the same atomic replace as `session.jsonl`. A stop before `commit()` leaves the file unwritten. A throw after `commit()` restores as `reconciling` and does not run the effect again. Pi Agent Core is not the permission authority. Approval remains a direct `approve()` call. There is no new approval UI.
+`NativeEffectRegistry` is the executor behind `HostTurnKernel.run` when the caller does not pass an explicit executor. It runs only after admission. `applyAtomicJsonEffect` uses the same atomic replace as `session.jsonl`. A stop before `commit()` leaves the file unwritten. A throw after `commit()` restores as `reconciling` and does not run the effect again. Pi Agent Core is not the permission authority.
+
+Host approval uses the existing Craft permission card. `publishHostApproval` emits the same `permission_request` event that card already renders. Allow and Deny call `sessions:respondToPermission`. When the request id is `host:{invocationId}`, `SessionManager.respondToPermission` calls `HostTurnKernel.approve` or `reject` for the desktop human. Always Allow resolves that one invocation and does not store a standing grant. L3 and an L1 action with no undo contract share that card. A direct `approve()` call remains valid. This does not draw a new dialog and it does not make Pi the permission authority.
+
+Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popover model control, now through `selectPageModel`. `update-target` is the added closed loop: `applyEditPageFromHuman` and `applyEditPageFromAgent` both call `executePageLocalOp`, which admits `file.update` and writes with the native effect. Credential-shaped documents are denied before the write.
 
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
 | Session-directory KernelSnapshot v1 file, including usage and credential sealing | `wired` |
 | In-process native effect after admission, including atomic file replace | `wired` |
-| Electron approval UI and the rest of the M00 session adapter | `Locked` |
+| Existing permission card approves or rejects an awaiting host turn | `wired` |
+| Page-local set-model plus shared update-target for human and agent callers | `wired` |
+| Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
+| Plugin marketplace and a full Pi SDK host | `Locked` |
 | Local `.fleet/zcode` apply | not in this checkout; see `patches/zcode/README.md` |
 
 This note does not open W1 and does not change the module capability header above. Product surfaces stay `Locked` until the W0.1 re-freeze.
