@@ -117,6 +117,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Codex app-server and ACP stdio JSON-RPC executors run only after host admission. |
 | 2026-10-09 | draft v1.1 | AIGC job submit runs only after host approval. Subscription fields stay unknown when unobserved. |
 | 2026-10-09 | draft v1.1 | One DOCX suite opens, edits, undoes, saves, and reopens through file.update. XLSX and PPTX stay Locked. |
+| 2026-10-09 | draft v1.1 | Canvas cards bind an admitted DOCX and an admitted aigc artifact. Hide, stop, and delete keep the owner state. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -142,6 +143,8 @@ Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popov
 
 The document suite host is one built-in package, not a marketplace. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. Open and reopen read a DOCX package. Edit, undo, and a dirty save admit `file.update` and write the package with the same atomic replace as `session.jsonl`. The undo handle stores the previous bytes. The preview overlay shows those paragraphs in the existing preview chrome. Its Edit and Undo buttons apply the same paragraph replace to the bytes that overlay loaded and emit `DocumentPreviewCommand`. They do not admit a disk write. A parent that admits calls `applyDocumentFromHuman`. XLSX and PPTX return `Locked` and do not write. Library registration, file leases, and a plugin catalog stay out of this slice.
 
+`createCanvasCardHost` places those same objects on the existing `CanvasDocument`. A DOCX card edit calls `applyDocumentFromHuman` or `applyDocumentFromAgent`. An image or video card reads the `aigc_artifact` on the job turn. Hide and stop are view state. `canvas.node_delete` removes the binding after human approval. The DOCX bytes, the job file, and the owner kernel turns stay. `@xyflow/react` is not installed. Card positions are the `CanvasNode` frame. The renderer spike stays `Locked`.
+
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
@@ -158,8 +161,12 @@ The document suite host is one built-in package, not a marketplace. `applyDocume
 | Subscription observation shared by the settings reader and the agent DTO | `wired` |
 | DOCX open, human edit, agent edit, undo, save, and reopen through `file.update` | `wired` |
 | DOCX paragraph preview in the existing overlay | `wired` |
+| Canvas card for an admitted DOCX, sharing the document suite edit | `wired` |
+| Canvas card for an admitted image or video `aigc_artifact` | `wired` |
+| Hide, stop, and delete of a canvas card, leaving the admitted file and job | `wired` |
 | XLSX and PPTX document suites | `Locked` |
-| Live paid image/video providers, canvas cards, and a quota ledger | `Locked` |
+| `@xyflow/react` spatial renderer | `Locked` |
+| Live paid image/video providers and a quota ledger | `Locked` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |
 | Local `.fleet/zcode` apply | not in this checkout; see `patches/zcode/README.md` |

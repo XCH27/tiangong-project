@@ -119,6 +119,8 @@
   "browser.safetyHint": "Craft Agents steuert Browserfenster nur, wenn du es verlangst.",
   "browser.stopLoading": "Laden stoppen",
   "browser.urlPlaceholder": "URL eingeben oder suchen…",
+  "canvas.hideCard": "Ausblenden",
+  "canvas.stopCard": "Stopp",
   "chat.adminApprovalRequired": "Administratorgenehmigung erforderlich",
   "chat.annotationPlaceholder": "Kommentare hinzufügen, die der Agent im nächsten Schritt berücksichtigen soll…",
   "chat.attach": "Anhängen",

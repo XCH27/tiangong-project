@@ -256,4 +256,5 @@ real-time workflow gates are never batch work.
 | Slice | Status |
 |---|---|
 | Approval-gated submit, artifact, stop, and recover with a fake provider | `wired` |
-| Real provider, M05 provenance, canvas card, and durable ExternalJob contract | `Locked` |
+| Canvas card reading the admitted `aigc_artifact` | `wired` |
+| Real provider, M05 provenance, and durable ExternalJob contract | `Locked` |

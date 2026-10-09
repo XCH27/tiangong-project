@@ -63,6 +63,7 @@
     "./protocol": "./src/protocol/index.ts",
     "./protocol/docx-xml": "./src/protocol/docx-xml.ts",
     "./protocol/document-command": "./src/protocol/document-command.ts",
+    "./protocol/canvas-card-view": "./src/protocol/canvas-card-view.ts",
     "./i18n": "./src/i18n/index.ts",
     "./resources": "./src/resources/index.ts"
   },

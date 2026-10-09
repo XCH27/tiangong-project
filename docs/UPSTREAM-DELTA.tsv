@@ -53,3 +53,11 @@ app/packages/shared/package.json	adapt	Subpath exports for the paragraph parser 
 app/packages/ui/src/index.ts	adapt	Export DocxPreviewOverlay from the UI package.	bun test src/lib/__tests__/docx-preview.test.ts
 app/packages/ui/src/components/overlay/index.ts	adapt	Export DocxPreviewOverlay next to the other preview overlays.	bun test src/lib/__tests__/docx-preview.test.ts
 app/packages/ui/src/lib/__tests__/docx-preview.test.ts	adapt	Preview classification and paragraph agreement between the overlay reader and the host package.	bun test src/lib/__tests__/docx-preview.test.ts
+app/packages/shared/src/protocol/canvas-cards.ts	adapt	Canvas cards bind an admitted DOCX and an admitted aigc artifact. Hide and stop are view state. canvas.node_delete removes the binding after approval and leaves the file and job.	bun test src/protocol/__tests__/canvas-cards.test.ts
+app/packages/shared/src/protocol/canvas-card-view.ts	adapt	Card projection from a CanvasNode binding. Paragraphs and preview bytes stay with the owners.	bun test src/lib/__tests__/canvas-card-view.test.ts
+app/packages/shared/src/protocol/__tests__/canvas-cards.test.ts	adapt	Shared DOCX edit, artifact preview, and hide/stop/delete retention. No live provider.	bun test src/protocol/__tests__/canvas-cards.test.ts
+app/packages/ui/src/components/canvas/ArtifactCanvasBoard.tsx	adapt	ContentFrame cards for a DOCX and an image or video artifact. Positions use the CanvasNode frame.	bun test src/lib/__tests__/canvas-card-view.test.ts
+app/packages/ui/src/lib/__tests__/canvas-card-view.test.ts	adapt	Hidden cards leave the visible list. A stopped card keeps the artifact frame.	bun test src/lib/__tests__/canvas-card-view.test.ts
+app/packages/shared/src/protocol/index.ts	adapt	Export the canvas card host and the renderer-safe card view.	bun test src/protocol/__tests__/canvas-cards.test.ts
+app/packages/shared/package.json	adapt	Subpath export for the card view so the renderer does not import the host.	bun test src/lib/__tests__/canvas-card-view.test.ts
+app/packages/ui/src/index.ts	adapt	Export ArtifactCanvasBoard from the UI package.	bun test src/lib/__tests__/canvas-card-view.test.ts

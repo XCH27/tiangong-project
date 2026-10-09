@@ -287,3 +287,23 @@ design module.
 - No raw file paths or secret payloads in renderer cards.
 - No direct adapter timeline writes or permission checks.
 - No claim of `usable` from a mock canvas or unit tests alone.
+
+## 19. Host Card Slice
+
+`createCanvasCardHost` in `app/packages/shared/src/protocol/canvas-cards.ts` is the smallest card loop on the existing `CanvasDocument`.
+
+- A DOCX card binds `filePath` on a `text_frame` node. Edit and undo call `applyDocumentFromHuman` or `applyDocumentFromAgent`, the same suite the preview uses.
+- An image card is an `image_asset`. A video card is a `video_frame`. The node stores the job invocation id and media kind. Preview bytes stay on the `aigc_artifact`.
+- Place admits `canvas.node_create`. Delete admits `canvas.node_delete` and waits for human approval. The effect removes the node from the canvas document.
+- Hide and stop change view state. They do not admit a turn, and they do not call `stop` on the document kernel or the job kernel.
+- XLSX and PPTX return `Locked`. The canvas file does not receive their bytes.
+- `@xyflow/react` is not a dependency in this checkout. Positions are `CanvasNode` `cx` / `cy` / width / height. The renderer spike in §13 stays `Locked`.
+
+| Slice | Status |
+|---|---|
+| DOCX card and image/video artifact card on the existing canvas document | `wired` |
+| Hide, stop, and approved delete leaving the admitted file and job | `wired` |
+| XLSX and PPTX cards | `Locked` |
+| `@xyflow/react` renderer, workflow edges, and M05 ArtifactRef registration | `Locked` |
+
+This note does not open W3. The module header above stays Locked for the full spatial workspace.

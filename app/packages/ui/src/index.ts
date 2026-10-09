@@ -227,6 +227,11 @@ export {
   type ActivityCardsOverlayProps,
 } from './components/overlay'
 
+export {
+  ArtifactCanvasBoard,
+  type ArtifactCanvasBoardProps,
+} from './components/canvas/ArtifactCanvasBoard'
+
 // File classification (for link interceptor)
 export {
   classifyFile,
