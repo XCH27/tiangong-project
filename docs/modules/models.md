@@ -69,6 +69,7 @@ the human draft, and preserves data on an unsuccessful write. Default selection 
 rules below; an unavailable historical/admitted binding must not silently borrow a first available
 connection. No competing Provider writer, model catalog, secret store or navigation hierarchy is
 introduced by this comparison.
+Native catalog replacement fences its exact connection inside the locked write; unrelated settings survive, changed/deleted connections fail, and explicit whole-settings revisions retain their strict fence.
 ### Default resolution and remembered options
 
 Defaults use the existing Host model-preference owner and scoped composer preference; no new page,

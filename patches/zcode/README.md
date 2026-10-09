@@ -340,3 +340,13 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0203 | [0203-shared-decision-operation.patch](0203-shared-decision-operation.patch) | `f5b8579507bc5becc6b9a21f0076b97d9a51a946` |
 
 | 0204 | [0204-decision-source-draft.patch](0204-decision-source-draft.patch) | `f90c7ba72adce704d5f94aa4b8f58c48a1833021` |
+
+| 0205 | [0205-decision-stop-settlement.patch](0205-decision-stop-settlement.patch) | `15d2aa6b8700c6e011449732232b7bcc2e2e541b` |
+
+| 0206 | [0206-atomic-decision-source.patch](0206-atomic-decision-source.patch) | `fefef059f88a6a52aa7c4bd9e74b6d5c04e11deb` |
+
+| 0207 | [0207-source-draft-unlock.patch](0207-source-draft-unlock.patch) | `226edc8d8a7e7b9546c68424b0a46b9bef5bd900` |
+
+| 0208 | [0208-classifier-catalog-isolation.patch](0208-classifier-catalog-isolation.patch) | `30f2ab50a01cdc8d7b01861cbb446be40c2773f0` |
+
+| 0209 | [0209-typesafe-laya-catalog-contracts.patch](0209-typesafe-laya-catalog-contracts.patch) | `cd34b15cc6e025ad84ce0ad637b56e4da285dcc5` |

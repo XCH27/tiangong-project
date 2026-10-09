@@ -35,6 +35,9 @@ uses existing Personal/Provider persistence, catalogs and keys. Native System On
 compatible gateway classifiers stay separate from chat; a declared dual-operation model retains
 both lanes. TypeSafe and local Laya presets add no running service or dependency. Laya has no
 OpenAI model-directory endpoint; its preset catalog is not a verified server/model entitlement.
+Its local server directory read stays disabled; the existing manual-ID action remains available.
+Official TypeSafe's published `models[].name` directory remains readable through its scoped adapter;
+alias membership does not retire versioned pins.
 Under OV-097 an ordinary chat model may serve the same port (`adapters/src/model/decision-chat.ts`):
 the questions go out as one JSON request, and the reply passes only if it has the classifier shape:
 offered labels, a probability for every label summing to one with the choice most probable, and
@@ -73,9 +76,9 @@ selection. TypeSafe/Laya dedicated setup belongs inside this purpose section; th
 ordinary Add-provider cards or new chat backends. Configured chat/native/gateway connections remain
 reusable under OV-097, while each actual wire operation stays distinct. A dedicated source keeps
 its existing Provider record/credential owner, edits the existing sparse overlay with revision
-checks, and binds the existing Personal decision preference only after the connection/model write
-is acknowledged. Failed preference binding retains the saved connection for a retry; it never
-creates a replacement or implicitly enables inference. Existing alias selections and records stay
+checks. Connection, model membership and purpose binding commit in one existing Personal write;
+lost confirmation reconciles the same identity and never creates a replacement or implicitly
+enables inference. Existing alias selections and records stay
 readable; new direct TypeSafe setup starts with the published `jev-1.13.0` pin and new Laya setup uses its `auto`
 router, retaining previous multilingual/checkpoint entries. A source form never
 offers unrelated Anthropic/Chat/Responses formats. Local loopback may omit a key; remote URLs require
@@ -83,6 +86,10 @@ it. Saving Laya does not install, start or test a server. The original connectio
 reachable through the selected source's Connection settings, preserving advanced controls and
 confirmation paths. The local Help explains connected consumers and cost/authority limits.
 Phase handoff and the quantitative plugin remain separate unfinished consumers.
+Dedicated System One identifiers such as Laya `auto` do not inherit capacity or media capabilities
+from same-name chat catalog entries. Their own protocol and explicit model evidence govern those
+fields; unknown checkpoint limits stay unknown. Declared chat/gateway dual-operation models remain
+eligible through their existing lane.
 
 ## Frontend and backend design
 
@@ -122,23 +129,20 @@ Frontend interaction:
   configuration commit or recovery authority. Do not send keys in diagnostic labels, page context,
   general catalog DTOs or saved operation receipts; credential edits use their existing owner.
 
-Backend configuration target (specified, not yet delivered): one `saveDecisionSource` domain
-operation on the existing Provider settings facade accepts an explicit create/existing target,
-observed Personal revision, sparse connection edits, exact model and purpose binding. It validates
+Backend configuration: one `saveDecisionSource` domain operation on the existing Provider settings
+facade accepts an explicit create/existing target, observed Personal and builtin revisions,
+sparse connection edits, exact model and purpose binding. It validates
 protocol/key/eligibility without inference, then writes affected Provider/model/preference leaves in
 one existing Personal transaction. It preserves unrelated defaults, tiers, account and ordering
 facts. UI must not perform create → addModel → refresh → bind as a distributed transaction.
-A stable command/connection identity and the same owner's retained commit proof must reconcile a
-lost acknowledgement; blind creation replay and success-shaped errors are prohibited. The proof
-mechanism must be defined within the existing authority before implementation, not improvised as a
-second settings journal. No new credential store or migration is selected by this design.
-
-The current `DecisionSourceEditor` still performs several acknowledged writes and retains the
-committed source if final binding fails. Its unknown-creation fence avoids blind replay but is not
-an atomic source-save API or a crash-recoverable configuration command. This is a named integration
-gap. Close it before expanding source controls/health automation; do not claim merely moving fields
-has completed frontend/backend design. Separate preference controls may keep their existing
-revision-checked commands; the compound setup command is required only for their dependent write.
+The form freezes one request and stable `decision-source-<uuid>` creation identity before awaiting
+the backend. Current matching API/access, model membership and purpose binding establish that its
+effect is present, including generated name suffixes. After confirmation loss the same request may
+reconcile from that record through reopen; changed/deleted targets or later bindings conflict and
+are never replayed. This is current-effect reconciliation, not a historical command journal. A
+known commit followed by failed projection returns its identity with `publicationPending`; reload
+recovers presentation without another mutation. No second journal, credential store or migration
+is added. Existing independent preference controls retain their revision-checked commands.
 
 Shared execution: two policies enter one Host operation (`core/src/runtime/decision-operation.ts`). Decide prepares an immutable binding
 before its original per-call approval; automatic routing requires a marked interactive first input
@@ -150,10 +154,13 @@ application policy rather than a provider feature. The existing adapter `automat
 assembles that consumer policy; moving it into the Core application layer is a remaining code
 boundary, not justification for a new routing framework. Failed/unknown effects never replay merely
 to repair an output or receipt. Real acceptance includes both entrances' failure and cold consumers.
+Automatic routing's foreground wait observes Stop while slow storage remains owned by the existing
+residency barrier. Stop before intent acknowledgement prevents dispatch. Observed usage/result
+settles under the original identity after Stop; it cannot select a model or publish Guide into a
+later turn. Reopen never redispatches to repair that receipt.
 
-Delivery order: preserve active settings while drafting and unify the demonstrated Host receipt
-behaviour first; implement and prove the existing facade's atomic source-save/acknowledgement path
-next; then add scoped status/probe/test UX. Additional consumer switches need actual connected
+Delivery order: retain the now-wired draft, atomic save and Host Stop/recovery paths; complete their
+owner acceptance, then add scoped status/probe/test UX. Additional consumer switches need actual connected
 features, bounded evidence, cancellation and recorded outcomes. Per-feature confidence policy and
 hosted quality/latency evidence remain separate from catalog availability.
 

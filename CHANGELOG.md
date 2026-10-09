@@ -5,12 +5,21 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Prevent dedicated System One route names such as Laya `auto` from borrowing same-name chat
+  catalog capacity and media flags. Preserve existing typed protocol and explicit correction facts;
+  retain Laya manual IDs without suggesting a key verifies its local directory. Read official
+  TypeSafe model names through its actual response envelope, keeping existing version pins.
+- Commit dedicated source connection/model/purpose together through the existing Personal writer;
+  reconcile lost confirmation by the same connection identity and expose publication recovery.
+  Preserve unrelated defaults, keys, corrections and opt-in state. Native catalog reconnect now
+  fences its connection within the locked write instead of rejecting unrelated settings changes.
+- Release automatic routing's foreground wait on Stop while retaining late usage/result settlement
+  under existing residency and durable owners; slow intent completion cannot launch inference.
 - Keep new decision-source inspection in the unsaved form without withdrawing the enabled
   accepted source. Show its draft state and retain explicit save/clear semantics.
 - Share one prepared Host decision operation between Decide and automatic routing. Both retain
   pending usage for cold reconciliation; tool output preserves observed counters. Approval and
-  automatic first-input policy remain distinct. The configuration facade's atomic compound save
-  is a specified remaining boundary, not an implemented transaction.
+  automatic first-input policy remain distinct.
 
 - Move dedicated decision source setup into Auxiliary decisions, preserving existing Provider
   records, aliases, credentials and original management actions. New TypeSafe/Laya setup follows

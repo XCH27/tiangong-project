@@ -283,23 +283,53 @@ Craft's separate log/key namespace, and only Fleet's two connected consumers app
 health/probe UX, additional Craft consumers, hosted quality/latency, and API served-model identity
 below the chat return contract remain separate gaps; configured and tested are distinct.
 
-The frontend/backend design audit traces accepted Provider records and model preferences to the
-same Personal repository (`provider-node/src/model-selection-config-repository.ts:60`), while the
-Renderer currently sequences several dependent commands (`ui/src/settings/DecisionSourceEditor.ts:102`).
-Moving source fields did not close this compound-write gap. The owning contract specifies a
-single existing-facade transaction and lost-acknowledgement acceptance before further source UX;
-this target is not presented as implemented. Selecting a new setup draft was also found to clear
-an enabled accepted selection; a rendered counterexample now proves preview leaves it intact.
-Craft's source/resolve/RPC chain above supplies the interaction comparison without importing its
-settings/credential authority.
+The frontend/backend audit traced connection and purpose writes to the same existing Personal
+repository. The previous Renderer create/model/bind sequence could leave a partial setup. The
+candidate now invokes one Provider facade command; its locked transform retains unrelated keys,
+model corrections and preferences. Existing-record matching reconciles the same UUID after lost
+confirmation, including generated duplicate labels, without replaying a changed/deleted binding.
+Post-commit projection failure returns the committed identity and a reload path. Real filesystem,
+concurrent command, cold-reopen and renderer fixtures prove these paths. This adapts Craft's
+source/resolve/RPC interaction through Fleet's existing owners; Craft's separate credential and
+log namespace is not imported.
 
 Core previously duplicated the prepared operation in Decide and automatic routing. Shared
-`core/src/runtime/decision-operation.ts` now retains original IDs, version-1 artifact keys and
-existing pending-usage recovery for both; callers keep distinct approval/first-input policy.
-Real local SQLite failure/acknowledgement/cold-reopen fixtures check the previously missing Decide
-reconciliation and complete tool usage output. Source, focused tests and running draft checks are
-retained at `/Volumes/AIGC/天工参考/meta/fleet-decision-design/`; they do not prove hosted judgment,
-atomic source saving, calibrated latency or whole-kernel completion.
+`core/src/runtime/decision-operation.ts` retains original IDs, version-1 artifact keys and pending
+usage recovery for both; callers retain distinct approval/first-input policy. Slow intent, ledger
+and result writes also exposed a blocked foreground Stop. The automatic consumer now races its
+active signal while the same operation remains residency-owned; intent cancellation prevents
+inference, and known receipts settle without selecting a later turn's model. Public Host/SQLite
+and cold-reopen tests prove these boundaries, separately from hosted latency or judgment quality.
+
+The broader native suite exposed a lock/publication race: an unrelated settings commit could fail
+native account/catalog replacement. Deterministic tests insert both published and unpublished
+unrelated writes after membership capture. The existing transaction now verifies the exact
+connection, while builtin and selected account-source changes remain fenced. Changed/deleted
+connections still reject the late catalog, and dormant exact model corrections survive.
+Source, regressions, build and running evidence are retained at
+`/Volumes/AIGC/天工参考/meta/fleet-source-save-stop/`. Controlled transport, local persistence and
+source inspection do not establish paid provider entitlement, quality, other platforms or owner
+visual acceptance; no production dependency, credentials migration or service was added.
+The primary saved and re-saved a keyless local source through the rebuilt desktop in its isolated
+review profile. The single new record, purpose binding and off state persisted together; hashes
+confirmed all seven prior connection records and unrelated settings unchanged. Actual re-save
+also exposed permanently locked fields after success; the form now releases its frozen request
+only on acknowledged publication, retaining it for failure recovery. Renderer regressions cover
+that branch. Cold desktop restart retained the source and off state, and acknowledged re-save
+left all fields editable; owner acceptance remains separate.
+Opening that same record's original management page exposed a further collision: Laya `auto`
+borrowed the chat catalog's 128K/vision/image-generation facts. The pre-fix real-registry fixture
+reproduced this; the knowledge layer now excludes dedicated System One operations while protocol,
+curated and exact corrections retain priority. Source IDs and persisted data are unchanged. This
+does not suppress declared dual-operation gateway models or establish loaded local weights.
+The original local Laya directory footer incorrectly suggested a key would verify its server
+catalog. Its exact preset/loopback gate now reports the retained manual-ID path. TypeSafe is a
+different contract: current official `models.md` documents `GET /v1/models` with `models[].name`,
+while Fleet accepted only `data[].id`. The scoped official adapter now normalizes those exact names,
+preserves version pins not returned among aliases, and rejects invalid/duplicate envelopes without
+partial persistence. The new directory/credential/reopen fixtures use synthetic HTTP responses,
+not an authenticated provider read. Current document bytes and SHA-256 are retained with this
+slice's evidence; ordinary API/native and custom directory paths remain unchanged.
 
 The [typed-decision contract](modules/model-decisions.md) owns selected integration and acceptance.
 
