@@ -250,7 +250,7 @@ selected-file source review, not execution of current Craft or a whole-tree upgr
 
 | Traced Craft source | Mechanism and Fleet adaptation |
 |---|---|
-| `apps/electron/src/renderer/pages/settings/AiSettingsPage.tsx:1064,1487`; `packages/shared/src/decisions/{settings,providers,resolve,status,health}.ts`; `packages/server-core/src/handlers/rpc/decisions.ts` | One optional AI section chooses dedicated TypeSafe/custom/local Laya or a compatible existing OpenRouter/Vercel connection. Existing connection keys can be reused; dedicated keys use Craft's credential namespace. Local Laya defaults to loopback:8000 and no key. Health checks only prove reachability. Fleet reuses its Provider/Personal owner, adds recovery navigation and fixes its existing local-key exception; it does not copy a second key store or claim a health probe exists. |
+| `apps/electron/src/renderer/pages/settings/AiSettingsPage.tsx:1064,1487`; `packages/shared/src/decisions/{settings,providers,resolve,status,health}.ts`; `packages/server-core/src/handlers/rpc/decisions.ts` | One optional AI section chooses dedicated TypeSafe/custom/local Laya or a compatible existing OpenRouter/Vercel connection. Existing connection keys can be reused; dedicated keys use Craft's credential namespace. Local Laya defaults to loopback:8000 and no key. Health checks only prove reachability. Fleet keeps source/address/key/model configuration inside auxiliary settings, reusing its Provider/Personal owner and original sparse save/detail actions; it does not copy a second key store or claim a health probe exists. |
 | `packages/server-core/src/decisions/decision-point.ts`; consumers `adaptive-thinking.ts`, `suggestions.ts` plus the preserved v0.14.0 task/outcome/automation/risk/tool sources above | Master off plus explicit consumer gates; shared request deadline/caller cancellation and request/result/follow-up records. Thirteen toggles describe Craft consumers, not Fleet delivery. Fleet's two actual consumers retain existing Host receipts/accounting; automatic selection now participates in admission/Stop/recovery and respects explicit input origin and page/task scope. No permission grant or inert switches are imported. |
 
 Confirmed Fleet counterexamples were a blocked empty-key local form, missing settings recovery
@@ -259,6 +259,29 @@ post-response usage and stale returned tier choices. Evidence in
 `/Volumes/AIGC/天工参考/meta/fleet-decision-lifecycle/` distinguishes real local persistence/protocol
 and renderer checks from controlled inference. Hosted inference, local Laya weights/quality and
 owner appearance acceptance are not implied. No paid request or production dependency was added.
+
+Current source adaptation closes the owner-identified placement mismatch: dedicated TypeSafe/Laya
+creation is absent from ordinary Add provider and lives in the auxiliary source selector, alongside
+configured connection reuse and a custom System One source. Saved dedicated records retain their
+IDs, aliases and advanced management path. TypeSafe new-source defaults use `jev-1.13.0`; Laya uses
+its `auto` router, with previous checkpoint memberships preserved. Current vendor documents
+`https://docs.typesafe.ai/models.md` and `primitives/score.md` were read directly and retained with
+SHA-256 at `/Volumes/AIGC/天工参考/meta/fleet-decision-source-config/`: the documented model is
+`jev-1.13.0`, and the three-level score example is 1.43 on a zero-based rubric.
+
+The published score contract and installed Pi 1.0.2 validation expose actual chat-adapter defects:
+integer/one-based scoring, loose probability mass, invented confidence and ignoring non-stop
+completion. These are corrected with observed usage/cost retained on invalid/failed answers. The
+existing retry owner now supplies Single for auxiliary chat; loopback evidence distinguishes its
+one POST from ordinary credential/empty-response recovery. Native CLIs still run one whole executor,
+whose own provider retries remain opaque. Cache/reasoning/total/tool-use counts and matched error
+receipts keep the original ledger; API endpoint/header changes invalidate an approved binding.
+
+Intentional differences remain explicit: OV-097 permits ordinary/native chat decisions (Craft's
+source resolver instead uses typed System One), Fleet's Host owns permissions/receipts rather than
+Craft's separate log/key namespace, and only Fleet's two connected consumers appear. Missing
+health/probe UX, additional Craft consumers, hosted quality/latency, and API served-model identity
+below the chat return contract remain separate gaps; configured and tested are distinct.
 
 The [typed-decision contract](modules/model-decisions.md) owns selected integration and acceptance.
 

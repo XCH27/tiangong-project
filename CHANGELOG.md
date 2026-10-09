@@ -5,6 +5,13 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Move dedicated decision source setup into Auxiliary decisions, preserving existing Provider
+  records, aliases, credentials and original management actions. New TypeSafe/Laya setup follows
+  their published pin/router defaults; ordinary connection intake no longer lists those sources.
+- Align chat decision scores, distributions, confidence and completion with the typed contract;
+  preserve observed counters/cost through failure, apply one existing retry budget per optional
+  request, and withdraw approved evidence when its API endpoint or headers change.
+
 - Correct decision settings against Craft's current source: existing model connections remain
   reusable, Connection settings returns to their original owner, and local Laya setup permits
   an empty key only on an eligible loopback endpoint. Service cards identify TypeSafe Jev/Laya.

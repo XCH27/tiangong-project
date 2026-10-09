@@ -38,8 +38,13 @@ OpenAI model-directory endpoint; its preset catalog is not a verified server/mod
 Under OV-097 an ordinary chat model may serve the same port (`adapters/src/model/decision-chat.ts`):
 the questions go out as one JSON request, and the reply passes only if it has the classifier shape:
 offered labels, a probability for every label summing to one with the choice most probable, and
-scores inside the rubric. Anything else is an error result with no answers. The chat lane keeps the
-binding fingerprint, admission ticket, Stop signal, usage receipt and ten-second budget.
+finite scores in the zero-based rubric, and declared confidence inside [0,1]. Anything else is an error result with no answers. The chat lane keeps the
+binding fingerprint (including API endpoint/headers), admission ticket, Stop signal, usage receipt and
+ten-second budget. Single restricts this optional call through the existing runner and credential
+retry owners; normal-call recovery is unchanged. Only a stop completion can produce answers.
+Declared cache/reasoning/total/tool-use counters, cost and exact-model error observations retain
+the same ledger. Native served IDs are preserved when observed; chat API served identity is still
+unavailable below this return contract and never inferred from the requested alias.
 
 The second consumer is the automatic new-conversation default. Personal `automaticTiers` holds
 optional fast/standard/deep models validated by the existing preference writer; the standard model
@@ -63,13 +68,20 @@ executor determines Guide availability; cross-provider choices never copy the or
 Observed usage survives post-response validation/publication failures; unknown authentication kind
 is not labelled as API-key billing. The main conversation's context/account meter remains separate.
 
-Settings → Model settings → Default models owns auxiliary enablement and selection. Its local Help
-explains the two connected consumers and cost/authority limits. The picker reuses existing eligible
-connections and offers Connection settings back to their existing detail; an empty/missing selection
-returns to Add provider. Cards identify TypeSafe Jev and Laya (local service), preserving template
-IDs and records. Their existing category is labelled API & local services, avoiding a usage-billing
-claim for a local server while subscription products retain their group. The existing System One loopback exception also applies in the setup form; remote
-URLs and other protocols still require credentials. Saving Laya does not install, start or test it.
+Settings → Model settings → Default models owns auxiliary source, connection fields and model
+selection. TypeSafe/Laya dedicated setup belongs inside this purpose section; these are not
+ordinary Add-provider cards or new chat backends. Configured chat/native/gateway connections remain
+reusable under OV-097, while each actual wire operation stays distinct. A dedicated source keeps
+its existing Provider record/credential owner, edits the existing sparse overlay with revision
+checks, and binds the existing Personal decision preference only after the connection/model write
+is acknowledged. Failed preference binding retains the saved connection for a retry; it never
+creates a replacement or implicitly enables inference. Existing alias selections and records stay
+readable; new direct TypeSafe setup starts with the published `jev-1.13.0` pin and new Laya setup uses its `auto`
+router, retaining previous multilingual/checkpoint entries. A source form never
+offers unrelated Anthropic/Chat/Responses formats. Local loopback may omit a key; remote URLs require
+it. Saving Laya does not install, start or test a server. The original connection detail/actions stay
+reachable through the selected source's Connection settings, preserving advanced controls and
+confirmation paths. The local Help explains connected consumers and cost/authority limits.
 Phase handoff and the quantitative plugin remain separate unfinished consumers.
 
 ## Request and receipt contract

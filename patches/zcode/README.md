@@ -332,3 +332,7 @@ reconstruction and local execution do not declare whole-kernel, media or owner a
 | 0199 | [0199-decision-lifecycle.patch](0199-decision-lifecycle.patch) | `b0f34732b71ccf3f76203aade41e5543063ac911` |
 
 | 0200 | [0200-api-local-category.patch](0200-api-local-category.patch) | `df1163fb17d91fdb8369f5288bae26c91cee454f` |
+
+| 0201 | [0201-decision-answer-contract.patch](0201-decision-answer-contract.patch) | `20000159271c8e52c26c070593b964e2677a6b9b` |
+
+| 0202 | [0202-decision-source-settings.patch](0202-decision-source-settings.patch) | `8af4fce05d092d15241337681547509f17d2f2ce` |
