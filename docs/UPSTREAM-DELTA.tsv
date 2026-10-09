@@ -66,3 +66,15 @@ app/packages/shared/src/protocol/__tests__/browser-guest.test.ts	adapt	Fake gues
 app/packages/shared/src/protocol/index.ts	adapt	Export the browser guest host.	bun test src/protocol/__tests__/browser-guest.test.ts
 app/apps/electron/src/main/browser-pane-manager.ts	adapt	Page find, loading stop, back, forward, and reload go through the guest host. Governed DOM capture uses the same file.create loop.	bun test src/main/__tests__/browser-pane-manager.test.ts
 app/apps/electron/src/main/__tests__/browser-pane-manager.test.ts	adapt	Guest webContents find, stop, and a fixture DOM snapshot for the human and the owning agent.	bun test src/main/__tests__/browser-pane-manager.test.ts
+app/packages/shared/src/protocol/plugin-settings.ts	adapt	Settings Plugins page state. Five views and market content filters over the local skill and MCP catalog. Later plugin phases stay Locked.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/packages/shared/src/protocol/plugin-settings-host.ts	adapt	Install, enable, and disable admit file.update and write the workspace plugin loadout. Human and agent callers share one mutation. Third-party hook enable does not write.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/packages/shared/src/protocol/__tests__/plugin-settings.test.ts	adapt	View navigation, market filters, admitted loadout writes, and locked hook enablement.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/packages/shared/src/protocol/index.ts	adapt	Export the plugin settings state and the loadout host.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/packages/shared/package.json	adapt	Subpath exports so the settings page can import the view state and the loadout host.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/apps/electron/src/shared/settings-registry.ts	adapt	Plugins is one settings subpage on the existing navigator.	bun test src/shared/__tests__/route-parser-plugins.test.ts
+app/apps/electron/src/renderer/pages/settings/PluginsSettingsPage.tsx	adapt	Settings page renders the five views, market filters, and locked phases with the existing settings controls.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/apps/electron/src/renderer/pages/settings/settings-pages.ts	adapt	Registers the Plugins page on the existing settings component map.	bun test src/shared/__tests__/route-parser-plugins.test.ts
+app/apps/electron/src/renderer/components/icons/SettingsIcons.tsx	adapt	Plugins uses the existing settings icon map.	bun test src/shared/__tests__/route-parser-plugins.test.ts
+app/apps/electron/src/shared/menu-schema.ts	adapt	Plugins keeps a navigator icon name beside the other settings pages.	bun test src/shared/__tests__/route-parser-plugins.test.ts
+app/packages/shared/src/i18n/locales/	adapt	Plugins labels for the settings navigator, five views, and market filters.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/apps/electron/src/shared/__tests__/route-parser-plugins.test.ts	adapt	settings/plugins parses as a settings subpage. An unknown subpage stays rejected.	bun test src/shared/__tests__/route-parser-plugins.test.ts

@@ -388,6 +388,7 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   labels: 'Tag',
   messaging: 'MessageSquare',
   browser: 'Globe',
+  plugins: 'Puzzle',
   server: 'Server',
   shortcuts: 'Keyboard',
   preferences: 'UserCircle',

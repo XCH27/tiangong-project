@@ -119,6 +119,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | One DOCX suite opens, edits, undoes, saves, and reopens through file.update. XLSX and PPTX stay Locked. |
 | 2026-10-09 | draft v1.1 | Canvas cards bind an admitted DOCX and an admitted aigc artifact. Hide, stop, and delete keep the owner state. |
 | 2026-10-09 | draft v1.1 | Built-in Chromium guest find, loading stop, and a DOM snapshot admitted as file.create. Screenshot evidence and Chrome Store stay Locked. |
+| 2026-10-09 | draft v1.1 | Settings Plugins page has five views and local market filters. Loadout writes admit file.update. MCP Registry, third-party hook approval, MCP Apps, and Agent Plugins 1.0.0 stay Locked. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -148,6 +149,8 @@ The document suite host is one built-in package, not a marketplace. `applyDocume
 
 The built-in browser keeps the Craft `persist:browser-pane` profile and the session or manual owner on `BrowserPaneManager`. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create` and write a DOM snapshot only after that admission. An agent that does not own the guest does not read the page. Screenshot evidence and Chrome Store advertising stay `Locked`. `browser.screenshot` is still not a frozen action id.
 
+Settings → Plugins is one page on the existing settings navigator. The five views are Installed, Market, Skills, MCP, and Hooks. Market content filters are All, Skills, MCP, Hooks, and Commands, and they read the local catalog projected from workspace skills and MCP sources. `applyPluginMutationFromHuman` and `applyPluginMutationFromAgent` both call `executePluginMutation`. Install, enable, and disable admit `file.update` and write `.claude-plugin/loadout.json` with the same atomic replace as `session.jsonl`. Install does not enable. MCP Registry catalogs, third-party hook approval, the MCP Apps side pane, and Agent Plugins 1.0.0 stay `Locked`. This page is not a remote store and it is not a plugin marketplace.
+
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
@@ -172,6 +175,9 @@ The built-in browser keeps the Craft `persist:browser-pane` profile and the sess
 | Built-in Chromium page find, loading stop, and native guest back, forward, and reload | `wired` |
 | Governed DOM snapshot admitted as `file.create` for the human and the owning agent | `wired` |
 | Screenshot evidence bundle and Chrome Store advertising | `Locked` |
+| Settings Plugins page with five views and local market content filters | `wired` |
+| Install, enable, and disable of the local plugin loadout through `file.update` | `wired` |
+| MCP Registry catalogs, third-party hook approval, MCP Apps side pane, and Agent Plugins 1.0.0 | `Locked` |
 | Live paid image/video providers and a quota ledger | `Locked` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |

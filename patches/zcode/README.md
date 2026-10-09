@@ -27,6 +27,8 @@ The executable loop lives on the retained Craft tree and is declared in `docs/UP
 - `app/packages/shared/src/protocol/canvas-cards.ts`
 - `app/packages/shared/src/protocol/browser-guest.ts`
 - `app/packages/shared/src/protocol/canvas-card-view.ts`
+- `app/packages/shared/src/protocol/plugin-settings.ts`
+- `app/packages/shared/src/protocol/plugin-settings-host.ts`
 
 `app/` stays where it is. Do not delete or relocate it.
 
@@ -51,6 +53,7 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 7. DOCX edits use `createDocumentSuiteHost`. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. A write admits `file.update` and commits only after the byte replace. Leave XLSX and PPTX Locked. Do not add a plugin marketplace.
 8. Canvas cards use `createCanvasCardHost` with that document host and `createAigcHost`. Place admits `canvas.node_create`. Delete admits `canvas.node_delete` and waits for human approval. Hide and stop stay view state. Do not stop the job kernel when a card stops. `@xyflow/react` stays uninstalled until the renderer spike is promoted.
 9. Browser guest actions use `createBrowserGuestHost` on the retained `persist:browser-pane` profile. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create` for a DOM snapshot. Leave screenshot evidence and Chrome Store advertising Locked. Do not add a plugin marketplace.
+10. Plugin install, enable, and disable use `createPluginSettingsHost`. `applyPluginMutationFromHuman` and `applyPluginMutationFromAgent` both call `executePluginMutation` and admit `file.update` for `.claude-plugin/loadout.json`. Leave MCP Registry catalogs, third-party hook approval, the MCP Apps side pane, and Agent Plugins 1.0.0 Locked. Do not treat that loadout as a remote store.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
 
@@ -76,5 +79,8 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Built-in Chromium page find, loading stop, and native guest actions | `wired` |
 | Governed DOM snapshot through file.create | `wired` |
 | Screenshot evidence and Chrome Store advertising | `Locked` |
+| Settings Plugins page with five views and local market filters | `wired` |
+| Plugin loadout install, enable, and disable through file.update | `wired` |
+| MCP Registry catalogs, third-party hook approval, MCP Apps side pane, Agent Plugins 1.0.0 | `Locked` |
 | `.fleet/zcode` integration | not applied in this checkout |
 | Live paid providers, quota ledger, automatic Pi tool admission, plugin marketplace, full Pi SDK host | `Locked` |
