@@ -87,6 +87,33 @@ export async function applyAtomicJsonEffect(input: {
   return { output: input.next, previous }
 }
 
+export async function applyAtomicBytesEffect(input: {
+  filePath: string
+  next: Uint8Array
+  signal: AbortSignal
+  commit: () => void
+}): Promise<{ previous: Uint8Array | null }> {
+  if (input.signal.aborted) throw abortError()
+  let previous: Uint8Array | null = null
+  try {
+    previous = new Uint8Array(readFileSync(input.filePath))
+  } catch {
+    previous = null
+  }
+  if (input.signal.aborted) throw abortError()
+  mkdirSync(dirname(input.filePath), { recursive: true })
+  const tmpFile = `${input.filePath}.tmp`
+  writeFileSync(tmpFile, input.next)
+  try {
+    unlinkSync(input.filePath)
+  } catch {
+    // First write has no previous file.
+  }
+  renameSync(tmpFile, input.filePath)
+  input.commit()
+  return { previous }
+}
+
 function abortError(): Error {
   const error = new Error('aborted')
   error.name = 'AbortError'

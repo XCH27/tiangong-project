@@ -61,6 +61,7 @@ import {
   PlatformProvider,
   ImagePreviewOverlay,
   PDFPreviewOverlay,
+  DocxPreviewOverlay,
   CodePreviewOverlay,
   DocumentFormattedMarkdownOverlay,
   JSONPreviewOverlay,
@@ -2069,6 +2070,7 @@ function WindowCloseHandler() {
  * Handles all preview types from the link interceptor:
  * - image → ImagePreviewOverlay (binary, loaded via data URL)
  * - pdf → PDFPreviewOverlay (binary, embedded via Chromium viewer)
+ * - docx → DocxPreviewOverlay (paragraphs from the document package)
  * - code/text → CodePreviewOverlay (syntax highlighted)
  * - markdown → DocumentFormattedMarkdownOverlay
  * - json → JSONPreviewOverlay
@@ -2110,6 +2112,17 @@ function FilePreviewRenderer({
           onClose={onClose}
           filePath={state.filePath}
           loadPdfData={loadPdfData}
+          theme={theme}
+        />
+      )
+
+    case 'docx':
+      return (
+        <DocxPreviewOverlay
+          isOpen
+          onClose={onClose}
+          filePath={state.filePath}
+          loadBytes={loadPdfData}
           theme={theme}
         />
       )
@@ -2194,7 +2207,9 @@ function FilePreviewRenderer({
       )
     }
 
-    default:
-      return null
+    default: {
+      const unexpected: never = state
+      return unexpected
+    }
   }
 }

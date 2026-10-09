@@ -20,6 +20,7 @@ export { DocumentFormattedMarkdownOverlay, type DocumentFormattedMarkdownOverlay
 export { ImagePreviewOverlay, type ImagePreviewOverlayProps } from './ImagePreviewOverlay'
 export { MediaPreviewOverlay, type MediaPreviewOverlayProps } from './MediaPreviewOverlay'
 export { PDFPreviewOverlay, type PDFPreviewOverlayProps } from './PDFPreviewOverlay'
+export { DocxPreviewOverlay, type DocxPreviewOverlayProps } from './DocxPreviewOverlay'
 export { MermaidPreviewOverlay, type MermaidPreviewOverlayProps } from './MermaidPreviewOverlay'
 export { HTMLPreviewOverlay, type HTMLPreviewOverlayProps } from './HTMLPreviewOverlay'
 export { ActivityCardsOverlay, type ActivityCardsOverlayProps } from './ActivityCardsOverlay'
