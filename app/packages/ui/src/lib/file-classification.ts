@@ -7,7 +7,7 @@
  */
 
 /** Preview types that map to specific overlay components */
-export type FilePreviewType = 'image' | 'code' | 'markdown' | 'json' | 'text' | 'pdf'
+export type FilePreviewType = 'image' | 'code' | 'markdown' | 'json' | 'text' | 'pdf' | 'docx'
 
 export interface FileClassification {
   /** The preview type, or null if no in-app preview is available */
@@ -64,15 +64,18 @@ const TEXT_EXTENSIONS = new Set([
 /** PDF files — rendered in PDFPreviewOverlay via embedded viewer */
 const PDF_EXTENSIONS = new Set(['pdf'])
 
+/** WordprocessingML — rendered as paragraphs in DocxPreviewOverlay. */
+const DOCX_EXTENSIONS = new Set(['docx'])
+
 /**
  * External-only file extensions — recognized as file links but opened externally.
  * These are included in FILE_EXTENSIONS_PATTERN so linkify.ts detects them as file paths,
  * but classifyFile() returns canPreview: false so they route to the system opener.
  */
 const EXTERNAL_EXTENSIONS = new Set([
-  'xlsx', 'xls', 'xlsm',   // Spreadsheets
-  'docx', 'doc',             // Word documents
-  'pptx', 'ppt',             // Presentations
+  'xlsx', 'xls', 'xlsm',   // Spreadsheets — suite Locked
+  'doc',                     // Legacy Word — not the DOCX suite
+  'pptx', 'ppt',             // Presentations — suite Locked
   'zip', 'tar', 'gz', 'rar', '7z',  // Archives
   'dmg', 'pkg', 'exe', 'msi',       // Installers
   'mp3', 'wav', 'flac', 'aac',      // Audio
@@ -95,7 +98,7 @@ function getExtension(filePath: string): string {
  * Classify a file path by extension to determine preview capability.
  *
  * Priority order when an extension matches multiple sets (e.g. svg):
- * image > code > markdown > json > text > pdf
+ * image > code > markdown > json > text > pdf > docx
  */
 export function classifyFile(filePath: string): FileClassification {
   const ext = getExtension(filePath)
@@ -107,6 +110,7 @@ export function classifyFile(filePath: string): FileClassification {
   if (CODE_EXTENSIONS.has(ext))     return { type: 'code', canPreview: true }
   if (TEXT_EXTENSIONS.has(ext))     return { type: 'text', canPreview: true }
   if (PDF_EXTENSIONS.has(ext))      return { type: 'pdf', canPreview: true }
+  if (DOCX_EXTENSIONS.has(ext))     return { type: 'docx', canPreview: true }
 
   return { type: null, canPreview: false }
 }
@@ -123,5 +127,6 @@ export const FILE_EXTENSIONS_PATTERN = [
   ...JSON_EXTENSIONS,
   ...TEXT_EXTENSIONS,
   ...PDF_EXTENSIONS,
+  ...DOCX_EXTENSIONS,
   ...EXTERNAL_EXTENSIONS,
 ].join('|')

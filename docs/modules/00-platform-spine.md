@@ -116,6 +116,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | An awaiting admit on the session kernel publishes the existing permission card. |
 | 2026-10-09 | draft v1.1 | Codex app-server and ACP stdio JSON-RPC executors run only after host admission. |
 | 2026-10-09 | draft v1.1 | AIGC job submit runs only after host approval. Subscription fields stay unknown when unobserved. |
+| 2026-10-09 | draft v1.1 | One DOCX suite opens, edits, undoes, saves, and reopens through file.update. XLSX and PPTX stay Locked. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -139,6 +140,8 @@ Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popov
 
 `observeSubscription` is the usage reading for quota, tier, and remaining. The AI settings section and `readSubscriptionForAgent` both use it. A missing field stays unknown. An explicit zero stays zero. Live billing fetch is not part of this slice.
 
+The document suite host is one built-in package, not a marketplace. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. Open and reopen read a DOCX package. Edit, undo, and a dirty save admit `file.update` and write the package with the same atomic replace as `session.jsonl`. The undo handle stores the previous bytes. The preview overlay shows those paragraphs in the existing preview chrome. Its Edit and Undo buttons apply the same paragraph replace to the bytes that overlay loaded and emit `DocumentPreviewCommand`. They do not admit a disk write. A parent that admits calls `applyDocumentFromHuman`. XLSX and PPTX return `Locked` and do not write. Library registration, file leases, and a plugin catalog stay out of this slice.
+
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
@@ -153,6 +156,9 @@ Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popov
 | Gemini, Qwen, and Kimi process launch presets | `display-only` |
 | `aigc.job_submit` after host approval: fake provider, artifact file, stop, and recover by provider id | `wired` |
 | Subscription observation shared by the settings reader and the agent DTO | `wired` |
+| DOCX open, human edit, agent edit, undo, save, and reopen through `file.update` | `wired` |
+| DOCX paragraph preview in the existing overlay | `wired` |
+| XLSX and PPTX document suites | `Locked` |
 | Live paid image/video providers, canvas cards, and a quota ledger | `Locked` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |

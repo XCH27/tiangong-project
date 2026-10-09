@@ -207,6 +207,7 @@ export {
   ImagePreviewOverlay,
   MediaPreviewOverlay,
   PDFPreviewOverlay,
+  DocxPreviewOverlay,
   detectLanguage,
   detectLanguageFromPath,
   type CodePreviewOverlayProps,
@@ -221,6 +222,7 @@ export {
   type ImagePreviewOverlayProps,
   type MediaPreviewOverlayProps,
   type PDFPreviewOverlayProps,
+  type DocxPreviewOverlayProps,
   ActivityCardsOverlay,
   type ActivityCardsOverlayProps,
 } from './components/overlay'
