@@ -34,7 +34,7 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 1. Port the protocol modules listed above into the host admission path.
 2. Persist with `FileKernelSnapshotStore` at `hostKernelSnapshotPath(workspaceRoot, sessionId)`. That file is `sessions/{id}/host-kernel-snapshot.json`, beside the existing `session.jsonl`. Do not open another session or cost database, and do not rewrite `session.jsonl` from this adapter.
 3. Call `admit`, `approve` or `reject`, `run`, `stop`, `snapshot`, `save`, `load`, and `HostTurnKernel.restore` around any Pi default-turn sequencer. Pass a `NativeEffectRegistry` as `nativeEffects` so `run(invocationId)` executes the admitted effect. Call `commit()` only after the native write. Pi does not grant permission.
-4. Map Claude and ChatGPT/Pi usage through `turnUsageFromClaude` and `turnUsageFromChatGpt` before `attributeTurnUsage`. Do not copy auth tokens into the snapshot.
+4. Map Claude and ChatGPT/Pi usage through `turnUsageFromClaude` and `turnUsageFromChatGpt` before `attributeTurnUsage`. Persist only through `HostTurnKernel.snapshot` and `FileKernelSnapshotStore`, which call `sealHostRecord`. That gate drops cache and price numbers that were not observed, including a Craft `cacheReadTokens: 0` that the Claude adapter fills when the field was missing. An explicit provider cache read of zero stays a confirmed miss. Do not copy auth tokens into the snapshot.
 5. Keep feature pages and plugins unchanged. Approval stays a host `approve()` call until a real approval surface is attached.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
@@ -44,7 +44,7 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Slice | Status |
 |---|---|
 | Process-local admission, permission gate, stop/recovery, usage confidence | `wired` |
-| Session-directory KernelSnapshot v1 file and Claude/ChatGPT usage boundary | `wired` |
+| Session-directory KernelSnapshot v1 file and Claude/ChatGPT usage sealing | `wired` |
 | In-process native effect after admission | `wired` |
 | `.fleet/zcode` integration | not applied in this checkout |
 | Product approval UI | `Locked` |

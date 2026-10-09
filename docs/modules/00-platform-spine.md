@@ -111,6 +111,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Recorded the host/Pi execution boundary and the process-local admission slice. |
 | 2026-10-09 | draft v1.1 | Added the session-directory KernelSnapshot v1 file adapter. |
 | 2026-10-09 | draft v1.1 | Admitted turns can run an in-process native effect after host admission. |
+| 2026-10-09 | draft v1.1 | Snapshot serialization drops unproven cache and price zeros and strips credentials. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -120,14 +121,14 @@ The retained Craft subprocess in `app/packages/shared/src/agent/pi-agent.ts` sti
 
 Fleet host admission for the frozen action table is the process-local loop in `app/packages/shared/src/protocol/turn-admission.ts`. It appends canonical `SessionEvent` kinds through a journal port. `MemoryTurnJournal` is a test and process-local stand-in. It is not a second session database.
 
-`FileKernelSnapshotStore` writes `host-kernel-snapshot.json` in the existing session directory, beside `session.jsonl`, using the same write-to-temp-then-rename replace. It round-trips `KernelSnapshot` version 1 only. A different version throws `unsupported_snapshot_version` and leaves the previous file in place. Credential-shaped keys and token strings are removed before the file is written. This file is the host execution projection of that session. It does not rewrite `session.jsonl` and it is not a new database. The broader M00 session adapter is still unresolved.
+`FileKernelSnapshotStore` writes `host-kernel-snapshot.json` in the existing session directory, beside `session.jsonl`, using the same write-to-temp-then-rename replace. It round-trips `KernelSnapshot` version 1 only. A different version throws `unsupported_snapshot_version` and leaves the previous file in place. `save`, `load`, and `HostTurnKernel.snapshot` pass through `sealHostRecord` before that JSON is written or returned. The gate removes credential-shaped keys and token strings, remaps raw Claude and ChatGPT/Pi usage, and omits cache or price numbers that were not observed. An explicit provider cache read of zero stays a confirmed miss. A price of zero stays confirmed only when a pricing reference is present. This file is the host execution projection of that session. It does not rewrite `session.jsonl` and it is not a new database. The broader M00 session adapter is still unresolved.
 
 `NativeEffectRegistry` is the executor behind `HostTurnKernel.run` when the caller does not pass an explicit executor. It runs only after admission. `applyAtomicJsonEffect` uses the same atomic replace as `session.jsonl`. A stop before `commit()` leaves the file unwritten. A throw after `commit()` restores as `reconciling` and does not run the effect again. Pi Agent Core is not the permission authority. Approval remains a direct `approve()` call. There is no new approval UI.
 
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
-| Session-directory KernelSnapshot v1 file | `wired` |
+| Session-directory KernelSnapshot v1 file, including usage and credential sealing | `wired` |
 | In-process native effect after admission, including atomic file replace | `wired` |
 | Electron approval UI and the rest of the M00 session adapter | `Locked` |
 | Local `.fleet/zcode` apply | not in this checkout; see `patches/zcode/README.md` |

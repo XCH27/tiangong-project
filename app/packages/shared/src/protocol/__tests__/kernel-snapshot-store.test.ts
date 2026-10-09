@@ -155,6 +155,190 @@ describe('session-directory kernel snapshot', () => {
     expect(output.idToken).toBeUndefined()
   })
 
+  test('serialization drops unproven cache and price zeros and strips credentials', () => {
+    const root = workspace()
+    const secret = 'sk-testsecretvalue'
+    const snapshot = {
+      version: KERNEL_SNAPSHOT_VERSION,
+      nextEventNumber: 2,
+      events: [{
+        id: 'evt-1',
+        sessionId: 'session-1',
+        kind: 'action_completed' as const,
+        actorRef: agent,
+        payload: {
+          usage: {
+            input: 4,
+            output: 1,
+            api_key: secret,
+          },
+        },
+        evidenceRefs: [],
+        occurredAt: '2026-10-09T00:00:00.000Z',
+        seq: 1,
+      }],
+      turns: [
+        {
+          request: { invocation: invocation(InternalActionId.SESSION_FLAG, 'inv-claude'), actor: agent },
+          phase: 'completed' as const,
+          nativeCommitted: false,
+          stopRequested: false,
+          output: { note: `Bearer ${secret}` },
+          usage: {
+            input_tokens: 8,
+            output_tokens: 2,
+            access_token: secret,
+            total_cost_usd: 0,
+          },
+        },
+        {
+          request: { invocation: invocation(InternalActionId.SESSION_FLAG, 'inv-craft'), actor: agent },
+          phase: 'completed' as const,
+          nativeCommitted: false,
+          stopRequested: false,
+          usage: {
+            inputTokens: 100,
+            outputTokens: 5,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUsd: 0,
+          },
+        },
+        {
+          request: { invocation: invocation(InternalActionId.SESSION_FLAG, 'inv-hit'), actor: agent },
+          phase: 'completed' as const,
+          nativeCommitted: false,
+          stopRequested: false,
+          usage: {
+            inputTokens: 20,
+            outputTokens: 4,
+            cacheReadTokens: 6,
+            costUsd: 0.08,
+            pricingRef: 'price_craft_hit',
+          },
+        },
+        {
+          request: { invocation: invocation(InternalActionId.SESSION_FLAG, 'inv-zero'), actor: agent },
+          phase: 'completed' as const,
+          nativeCommitted: false,
+          stopRequested: false,
+          usage: {
+            input_tokens: 3,
+            output_tokens: 1,
+            cache_read_input_tokens: 0,
+            total_cost_usd: 0,
+            pricingRef: 'price_claude_zero',
+          },
+        },
+        {
+          request: { invocation: invocation(InternalActionId.SESSION_FLAG, 'inv-pi'), actor: agent },
+          phase: 'completed' as const,
+          nativeCommitted: false,
+          stopRequested: false,
+          usage: {
+            input: 9,
+            output: 2,
+            cacheRead: 0,
+            cost: { total: 0 },
+            pricingRef: 'price_pi_zero',
+            refresh_token: secret,
+          },
+        },
+        {
+          request: { invocation: invocation(InternalActionId.SESSION_FLAG, 'inv-craft-miss'), actor: agent },
+          phase: 'completed' as const,
+          nativeCommitted: false,
+          stopRequested: false,
+          usage: {
+            inputTokens: 11,
+            outputTokens: 1,
+            cacheReadTokens: 0,
+            cacheFieldPresent: true,
+            costUsd: 0,
+            pricingRef: 'price_craft_miss',
+          },
+        },
+        {
+          request: { invocation: invocation(InternalActionId.SESSION_FLAG, 'inv-unknown-zero'), actor: agent },
+          phase: 'completed' as const,
+          nativeCommitted: false,
+          stopRequested: false,
+          usage: {
+            inputTokens: 1,
+            outputTokens: 1,
+            cachedInputTokens: 0,
+            cache: { status: 'unknown' as const, source: 'none' as const },
+            cost: { confidence: 'unknown' as const, amount: 0, currency: 'USD' },
+          },
+        },
+      ],
+    } as KernelSnapshot
+
+    const store = new FileKernelSnapshotStore(hostKernelSnapshotPath(root, 'session-1'))
+    store.save(snapshot)
+    const onDisk = readFileSync(hostKernelSnapshotPath(root, 'session-1'), 'utf8')
+    expect(onDisk).not.toContain(secret)
+    expect(onDisk).toContain('[redacted]')
+
+    const loaded = store.load()
+    const claude = loaded.turns[0]?.usage
+    expect(claude?.inputTokens).toBe(8)
+    expect(claude?.cache.status).toBe('unknown')
+    expect(claude?.cachedInputTokens).toBeUndefined()
+    expect(claude?.cost).toEqual({ confidence: 'unknown' })
+    expect(JSON.stringify(claude)).not.toContain('cachedInputTokens')
+    expect(JSON.stringify(claude)).not.toContain('amount')
+
+    const craft = loaded.turns[1]?.usage
+    expect(craft?.cache.status).toBe('unknown')
+    expect(craft?.cachedInputTokens).toBeUndefined()
+    expect(craft?.cost).toEqual({ confidence: 'unknown' })
+
+    const hit = loaded.turns[2]?.usage
+    expect(hit?.cache).toEqual({ status: 'confirmed_hit', source: 'provider_response' })
+    expect(hit?.cachedInputTokens).toBe(6)
+    expect(hit?.cost).toMatchObject({ confidence: 'confirmed', amount: 0.08, pricingRef: 'price_craft_hit' })
+
+    const honest = loaded.turns[3]?.usage
+    expect(honest?.cache).toEqual({ status: 'confirmed_miss', source: 'provider_response' })
+    expect(honest?.cachedInputTokens).toBe(0)
+    expect(honest?.cost).toMatchObject({
+      confidence: 'confirmed',
+      amount: 0,
+      currency: 'USD',
+      pricingRef: 'price_claude_zero',
+    })
+
+    const pi = loaded.turns[4]?.usage
+    expect(pi?.cache).toEqual({ status: 'confirmed_miss', source: 'provider_response' })
+    expect(pi?.cachedInputTokens).toBe(0)
+    expect(pi?.cost).toMatchObject({ confidence: 'confirmed', amount: 0, pricingRef: 'price_pi_zero' })
+
+    const craftMiss = loaded.turns[5]?.usage
+    expect(craftMiss?.cache).toEqual({ status: 'confirmed_miss', source: 'provider_response' })
+    expect(craftMiss?.cachedInputTokens).toBe(0)
+    expect(craftMiss?.cost).toMatchObject({ confidence: 'confirmed', amount: 0, pricingRef: 'price_craft_miss' })
+
+    const stuffed = loaded.turns[6]?.usage
+    expect(stuffed?.cache.status).toBe('unknown')
+    expect(stuffed?.cachedInputTokens).toBeUndefined()
+    expect(stuffed?.cost).toEqual({ confidence: 'unknown' })
+    expect(JSON.stringify(stuffed)).not.toContain('cachedInputTokens')
+    expect(JSON.stringify(stuffed)).not.toContain('amount')
+
+    const eventUsage = loaded.events[0]?.payload.usage as {
+      cache: { status: string }
+      cachedInputTokens?: number
+      cost: { confidence: string; amount?: number }
+    }
+    expect(eventUsage.cache.status).toBe('unknown')
+    expect(eventUsage.cachedInputTokens).toBeUndefined()
+    expect(eventUsage.cost).toEqual({ confidence: 'unknown' })
+
+    const output = loaded.turns[0]?.output as { note?: string }
+    expect(output.note).toBe('[redacted]')
+  })
+
   test('a bad version does not replace a saved v1 snapshot, and corrupt files fail closed', () => {
     const root = workspace()
     const store = new FileKernelSnapshotStore(hostKernelSnapshotPath(root, 'session-1'))

@@ -6,12 +6,17 @@
  * `host-kernel-snapshot.json` in that same session directory using the same
  * replace. It is the host execution projection of the session, not a second
  * database, and it does not rewrite session.jsonl.
+ *
+ * save, load, and HostTurnKernel.snapshot all pass through sealHostRecord.
+ * That gate is the only serialization path into this file: credentials are
+ * removed, and missing Claude or ChatGPT/Pi cache and price fields are not
+ * written as zero.
  */
 
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { validateSessionId } from '../sessions/validation.ts'
-import { scrubCredentialMaterial } from './credential-boundary'
+import { sealHostRecord } from './provider-usage'
 import { KERNEL_SNAPSHOT_VERSION, type KernelSnapshot } from './turn-admission'
 
 export const HOST_KERNEL_SNAPSHOT_FILE = 'host-kernel-snapshot.json'
@@ -39,7 +44,7 @@ export class FileKernelSnapshotStore {
   constructor(private readonly filePath: string) {}
 
   save(snapshot: KernelSnapshot): void {
-    const safe = scrubCredentialMaterial(snapshot)
+    const safe = sealHostRecord(snapshot)
     if (safe.version !== KERNEL_SNAPSHOT_VERSION) {
       throw new Error('unsupported_snapshot_version')
     }
@@ -74,7 +79,7 @@ export class FileKernelSnapshotStore {
     if (envelope.version !== KERNEL_SNAPSHOT_VERSION || envelope.snapshot.version !== KERNEL_SNAPSHOT_VERSION) {
       throw new Error('unsupported_snapshot_version')
     }
-    return scrubCredentialMaterial(envelope.snapshot)
+    return sealHostRecord(envelope.snapshot)
   }
 }
 

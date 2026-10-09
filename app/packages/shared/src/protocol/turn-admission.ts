@@ -12,7 +12,8 @@ import type { ActorRef } from './actor'
 import type { ActionInvocation, UndoHandle } from './internal-action'
 import type { AuditSessionEvent } from './session-event'
 import { isInternalActionId, policyForAction, type FrozenActionPolicy, type UndoContract } from './action-policy'
-import { containsCredentialMaterial, scrubCredentialMaterial } from './credential-boundary'
+import { containsCredentialMaterial } from './credential-boundary'
+import { sealHostRecord } from './provider-usage'
 import { attributeTurnUsage, type TurnUsageInput, type UsageAttribution } from './usage-attribution'
 
 export const HOST_EXECUTION_ROLE = 'fleet_host_turn_admission' as const
@@ -355,7 +356,7 @@ export class HostTurnKernel {
   }
 
   snapshot(): KernelSnapshot {
-    return scrubCredentialMaterial({
+    return sealHostRecord({
       version: KERNEL_SNAPSHOT_VERSION,
       events: this.readAllEvents(),
       turns: [...this.turns.values()].map((turn) => ({
