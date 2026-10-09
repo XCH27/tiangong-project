@@ -6,6 +6,9 @@
  */
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const createdWindows: any[] = []
 let toolbarLoadFailuresRemaining = 0
@@ -45,6 +48,11 @@ function createMockWebContents() {
     goForward: mock(() => {}),
     reload: mock(() => {}),
     stop: mock(() => {}),
+    findInPage: mock((_text: string) => 4),
+    stopFindInPage: mock((_action: string) => {}),
+    removeListener: (event: string, cb: Function) => {
+      listeners[event] = (listeners[event] || []).filter((fn) => fn !== cb)
+    },
     setUserAgent: mock(() => {}),
     setBackgroundColor: mock(() => {}),
     capturePage: mock(async () => {
@@ -547,6 +555,83 @@ describe('BrowserPaneManager', () => {
     await manager.navigate('nav-1', 'example.com')
     const instance = (manager as any).instances.get('nav-1')
     expect(instance.pageView.webContents.loadURL).toHaveBeenCalledWith('https://example.com')
+  })
+
+  it('finds on the guest page and stops loading through the page webContents', async () => {
+    manager.createInstance('guest-find')
+    const instance = (manager as any).instances.get('guest-find')
+    instance.isLoading = true
+    const pending = manager.findInPage('guest-find', 'Alpha')
+    instance.pageView.webContents._emit('found-in-page', {
+      requestId: 4,
+      activeMatchOrdinal: 1,
+      matches: 3,
+      finalUpdate: true,
+    })
+    await expect(pending).resolves.toEqual({
+      requestId: 4,
+      activeMatchOrdinal: 1,
+      matches: 3,
+      finalUpdate: true,
+    })
+    expect(instance.pageView.webContents.findInPage).toHaveBeenCalledWith('Alpha')
+
+    instance.pageView.webContents.canGoBack = mock(() => true)
+    instance.pageView.webContents.canGoForward = mock(() => true)
+    await manager.goBack('guest-find')
+    await manager.goForward('guest-find')
+    manager.reload('guest-find')
+    manager.stop('guest-find')
+    await manager.stopFindInPage('guest-find', 'clearSelection')
+    expect(instance.pageView.webContents.goBack).toHaveBeenCalled()
+    expect(instance.pageView.webContents.goForward).toHaveBeenCalled()
+    expect(instance.pageView.webContents.reload).toHaveBeenCalled()
+    expect(instance.pageView.webContents.stop).toHaveBeenCalled()
+    expect(instance.pageView.webContents.stopFindInPage).toHaveBeenCalledWith('clearSelection')
+  })
+
+  it('writes a governed DOM snapshot for the human and the owning agent', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fleet-guest-pane-'))
+    const id = manager.createForSession('sess-guest', { workspaceId: 'ws-guest' })
+    const instance = (manager as any).instances.get(id)
+    let reads = 0
+    instance.pageView.webContents.executeJavaScript = mock(async () => {
+      reads += 1
+      return { url: 'https://example.com/owned', title: 'Owned', text: 'Page body' }
+    })
+
+    const humanFile = join(root, 'human.json')
+    const humanResult = await manager.captureGovernedDom(id, {
+      filePath: humanFile,
+      sessionId: 'sess-guest',
+      invocationId: 'pane-human',
+      actor: { kind: 'human', id: 'user-1', displayName: 'Ada' },
+    })
+    expect(humanResult.status).toBe('completed')
+    if (humanResult.status === 'completed') {
+      expect(humanResult.snapshot).toEqual({ url: 'https://example.com/owned', title: 'Owned', text: 'Page body' })
+    }
+
+    const agentFile = join(root, 'agent.json')
+    const agentResult = await manager.captureGovernedDom(id, {
+      filePath: agentFile,
+      sessionId: 'sess-guest',
+      invocationId: 'pane-agent',
+      actor: { kind: 'agent', id: 'seat-1', displayName: 'Worker' },
+    })
+    expect(agentResult.status).toBe('completed')
+    expect(reads).toBe(2)
+
+    reads = 0
+    const denied = await manager.captureGovernedDom(id, {
+      filePath: join(root, 'foreign.json'),
+      sessionId: 'other-session',
+      invocationId: 'pane-foreign',
+      actor: { kind: 'agent', id: 'seat-2', displayName: 'Other' },
+    })
+    expect(denied).toMatchObject({ status: 'failed', reason: 'owner_mismatch' })
+    expect(reads).toBe(0)
+    rmSync(root, { recursive: true, force: true })
   })
 
   it('navigate treats plain text as search query', async () => {
