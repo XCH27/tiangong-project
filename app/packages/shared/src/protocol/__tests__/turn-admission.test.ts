@@ -128,6 +128,21 @@ describe('host turn admission', () => {
     expect(driver.includes('full Pi SDK')).toBe(false)
   })
 
+  test('awaiting admit notifies once; a non-human approve does not', () => {
+    const host = kernel()
+    const seen: string[] = []
+    host.setAdmissionObserver((outcome) => {
+      seen.push(outcome.invocationId)
+    })
+    expect(host.admit(request(InternalActionId.SESSION_FLAG, 'inv-l0')).status).toBe('admitted')
+    expect(seen).toEqual([])
+    expect(host.admit(request(InternalActionId.FILE_DELETE, 'inv-l3')).status).toBe('approval_required')
+    expect(host.admit(request(InternalActionId.FILE_DELETE, 'inv-l3')).status).toBe('approval_required')
+    expect(seen).toEqual(['inv-l3', 'inv-l3'])
+    expect(host.approve('inv-l3', agent).status).toBe('approval_required')
+    expect(seen).toEqual(['inv-l3', 'inv-l3'])
+  })
+
   test('L0 turn admits, completes once, and records unknown usage when the provider sent none', async () => {
     const host = kernel()
     const admitted = host.admit(request(InternalActionId.SESSION_FLAG, 'inv-l0'))

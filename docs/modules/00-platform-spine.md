@@ -113,6 +113,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Admitted turns can run an in-process native effect after host admission. |
 | 2026-10-09 | draft v1.1 | Snapshot serialization drops unproven cache and price zeros and strips credentials. |
 | 2026-10-09 | draft v1.1 | Existing permission card resolves host approval. Page edit adds update-target beside model switch. |
+| 2026-10-09 | draft v1.1 | An awaiting admit on the session kernel publishes the existing permission card. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -126,7 +127,7 @@ Fleet host admission for the frozen action table is the process-local loop in `a
 
 `NativeEffectRegistry` is the executor behind `HostTurnKernel.run` when the caller does not pass an explicit executor. It runs only after admission. `applyAtomicJsonEffect` uses the same atomic replace as `session.jsonl`. A stop before `commit()` leaves the file unwritten. A throw after `commit()` restores as `reconciling` and does not run the effect again. Pi Agent Core is not the permission authority.
 
-Host approval uses the existing Craft permission card. `publishHostApproval` emits the same `permission_request` event that card already renders. Allow and Deny call `sessions:respondToPermission`. When the request id is `host:{invocationId}`, `SessionManager.respondToPermission` calls `HostTurnKernel.approve` or `reject` for the desktop human. Always Allow resolves that one invocation and does not store a standing grant. L3 and an L1 action with no undo contract share that card. A direct `approve()` call remains valid. This does not draw a new dialog and it does not make Pi the permission authority.
+Host approval uses the existing Craft permission card. `SessionManager.admitHostTurn` admits on the kernel attached for that session. When the outcome is `approval_required`, that admit calls `publishHostApproval` and emits the same `permission_request` event the card already renders. Callers do not make a second publish call. Allow and Deny call `sessions:respondToPermission`. When the request id is `host:{invocationId}`, `SessionManager.respondToPermission` calls `HostTurnKernel.approve` or `reject` for the desktop human. Always Allow resolves that one invocation and does not store a standing grant. L3 and an L1 action with no undo contract share that card. A direct `approve()` call remains valid. This does not draw a new dialog and it does not make Pi the permission authority. Pi tool calls are not admitted through this path.
 
 Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popover model control, now through `selectPageModel`. `update-target` is the added closed loop: `applyEditPageFromHuman` and `applyEditPageFromAgent` both call `executePageLocalOp`, which admits `file.update` and writes with the native effect. Credential-shaped documents are denied before the write.
 
@@ -136,6 +137,7 @@ Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popov
 | Session-directory KernelSnapshot v1 file, including usage and credential sealing | `wired` |
 | In-process native effect after admission, including atomic file replace | `wired` |
 | Existing permission card approves or rejects an awaiting host turn | `wired` |
+| Awaiting host admit on the session kernel publishes that permission card | `wired` |
 | Page-local set-model plus shared update-target for human and agent callers | `wired` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |

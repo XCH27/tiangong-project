@@ -248,3 +248,16 @@ Status of this function: `wired` by unit tests. Provider routing, native batch, 
 `turnUsageFromClaude` and `turnUsageFromChatGpt` copy only numeric usage fields from those provider payloads. A missing cache field stays absent, so attribution remains `unknown` rather than a zero-token miss. A cost number without a pricing reference stays `unknown`. Access tokens, refresh tokens, and API keys on the raw payload are not copied into the usage record or the snapshot file.
 
 `sealHostRecord` is the serialization gate for `HostTurnKernel.snapshot` and `FileKernelSnapshotStore` save/load. A hand-built snapshot that already contains `cachedInputTokens: 0` or `cost.amount: 0` with `unknown` confidence loses those numbers before the file is written. A Craft complete-event `cacheReadTokens: 0` is treated as unobserved, because the Claude adapter fills that zero when the provider omitted the field. An explicit `cache_read_input_tokens: 0` or Pi `cacheRead: 0` stays `confirmed_miss`. A positive `cacheReadTokens` stays `confirmed_hit`. Routing, batch, quota, and the ledger UI remain `Locked`.
+
+## 18. Conversation Model Choice
+
+`modelForNewProjectConversation` in `app/packages/shared/src/sessions/conversation-model.ts` is the choice `SessionManager.createSession` uses before tier resolution and `resolveBackendContext`.
+
+- An explicit model, including the `fast` and `default` tier hints, wins.
+- A branch reuses the parent session's stored model.
+- Another conversation in the same workspace reuses the newest visible session model. Hidden mini sessions and stored tier hints are skipped.
+- A workspace with no stored model uses `workspace.defaults.model`.
+- When that is also absent, the function returns undefined and the existing connection default in `resolveModelForProvider` remains the fallback.
+- The resolved id is written on the new session header, so the next conversation in that workspace can read it. There is no second model store.
+
+Status of this function: `wired` by unit tests. Provider routing, native batch, quota, and the ledger UI remain `Locked`.
