@@ -20,5 +20,6 @@ Read these files first in this exact order to understand the entry orientation a
 -   **No Second Systems**: Do not create a second session store, permission model, or memory database.
 -   **Status Transparency**: Status must be reported strictly as `usable`, `wired`, `display-only`, or `Locked`.
 -   **Grades & Audit**: CLI terminal, git operations, and local writes must route through the L0-L3 permission validator and log timeline evidence.
+-   **Pi boundary**: Pi Agent Core only sequences a default model turn after Fleet host admission. Do not describe or implement that path as a complete Pi execution host. The local candidate `.fleet/zcode` is gitignored; tracked host notes live in `patches/zcode/`, and `app/` changes are listed in `docs/UPSTREAM-DELTA.tsv`. Do not delete `app/`.
 
 For detailed parallel branch rules, see `docs/PARALLEL-AGENT-OPERATING-MODEL.md`.

@@ -4,8 +4,11 @@
  * Thin subprocess client for the Pi coding agent. Spawns a pi-agent-server
  * subprocess and communicates via JSONL over stdin/stdout.
  *
- * The subprocess runs the Pi SDK (@earendil-works/pi-coding-agent) in-process,
- * handles tool wrapping, permission enforcement, and LLM queries.
+ * The subprocess uses @earendil-works/pi-coding-agent to sequence provider
+ * turns, wrap tools, and apply Craft permission modes. Pi Agent Core is the
+ * default turn sequencer only. It is not the Fleet host. Admission, durable
+ * results, stop/recovery, and usage confidence live in
+ * src/protocol/turn-admission.ts.
  * This file manages subprocess lifecycle, JSONL protocol, event forwarding,
  * and proxy tool routing for MCP/API sources.
  *

@@ -298,7 +298,9 @@ export const piDriver: ProviderDriver = {
     } catch { /* ignore — fall through to subprocess */ }
 
     if (modelApi !== 'anthropic-messages') {
-      // Non-Anthropic API types need the full Pi SDK — let factory.ts handle it
+      // Non-Anthropic API types are not probed here. Returning null hands the
+      // probe back to the host connection test, which runs one mini-completion.
+      // Pi Agent Core only sequences that default probe turn.
       return null;
     }
 

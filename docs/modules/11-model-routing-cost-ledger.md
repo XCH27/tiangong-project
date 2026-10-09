@@ -232,3 +232,19 @@ Interactive chat, approval interception, PTY, and real-time workflow gates are n
 
 - No CLI model routing, cookie/token scraping, account rotation, invented cache savings, unknown-as-
   zero cost, or second Batch/job/cost store.
+
+## 17. Attribution Slice
+
+`attributeTurnUsage` in `app/packages/shared/src/protocol/usage-attribution.ts` is the process-local M11A vocabulary used by host turn admission.
+
+- A provider cache field may be `confirmed_hit` or `confirmed_miss`.
+- A missing cache field stays `unknown`. It is not stored as zero cached tokens.
+- Cost is `confirmed` only with a provider source, amount, currency, and pricing reference.
+- An estimate stays `estimated`. Every other cost stays `unknown` and omits the amount.
+- Credential material is rejected before a turn is admitted and is not copied into the timeline.
+
+Status of this function: `wired` by unit tests. Provider routing, native batch, quota, and the ledger UI remain `Locked`. There is no second cost store.
+
+`turnUsageFromClaude` and `turnUsageFromChatGpt` copy only numeric usage fields from those provider payloads. A missing cache field stays absent, so attribution remains `unknown` rather than a zero-token miss. A cost number without a pricing reference stays `unknown`. Access tokens, refresh tokens, and API keys on the raw payload are not copied into the usage record or the snapshot file.
+
+`sealHostRecord` is the serialization gate for `HostTurnKernel.snapshot` and `FileKernelSnapshotStore` save/load. A hand-built snapshot that already contains `cachedInputTokens: 0` or `cost.amount: 0` with `unknown` confidence loses those numbers before the file is written. A Craft complete-event `cacheReadTokens: 0` is treated as unobserved, because the Claude adapter fills that zero when the provider omitted the field. An explicit `cache_read_input_tokens: 0` or Pi `cacheRead: 0` stays `confirmed_miss`. A positive `cacheReadTokens` stays `confirmed_hit`. Routing, batch, quota, and the ledger UI remain `Locked`.
