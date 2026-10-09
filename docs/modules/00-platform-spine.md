@@ -114,6 +114,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Snapshot serialization drops unproven cache and price zeros and strips credentials. |
 | 2026-10-09 | draft v1.1 | Existing permission card resolves host approval. Page edit adds update-target beside model switch. |
 | 2026-10-09 | draft v1.1 | An awaiting admit on the session kernel publishes the existing permission card. |
+| 2026-10-09 | draft v1.1 | Codex app-server and ACP stdio JSON-RPC executors run only after host admission. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -131,6 +132,8 @@ Host approval uses the existing Craft permission card. `SessionManager.admitHost
 
 Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popover model control, now through `selectPageModel`. `update-target` is the added closed loop: `applyEditPageFromHuman` and `applyEditPageFromAgent` both call `executePageLocalOp`, which admits `file.update` and writes with the native effect. Credential-shaped documents are denied before the write.
 
+`CliExecutorHost` in `app/packages/shared/src/protocol/cli-executors/` is the Codex app-server and ACP executor boundary. `HostTurnKernel.run` opens a plugin transport only after admit or approve. Codex speaks `codex app-server --stdio` JSON-RPC, including `thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`, and reverse `item/*/requestApproval` results. ACP speaks newline-delimited JSON-RPC, including `initialize`, `session/new`, `session/prompt`, `session/cancel`, and `session/request_permission`. Resume uses `session/load` or `session/resume` when the peer advertises it, and fails closed with `peer_resume_unsupported` otherwise. Reverse tool requests are admitted on the same kernel. The adapters never call `approve` or `reject`. File edits, deletes, and moves map onto the frozen file actions. Command execution, dynamic client tools, client filesystem writes, and any PTY stay `Locked`. A permissions grant is turn-scoped and includes only the admitted file write. Gemini, Qwen, and Kimi launch strings are `display-only` presets. Claude remains the native SDK channel in `claude-agent.ts`. Pi Agent Core is not the permission authority.
+
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
@@ -139,6 +142,10 @@ Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popov
 | Existing permission card approves or rejects an awaiting host turn | `wired` |
 | Awaiting host admit on the session kernel publishes that permission card | `wired` |
 | Page-local set-model plus shared update-target for human and agent callers | `wired` |
+| Codex app-server stdio JSON-RPC executor after host admission | `wired` |
+| ACP stdio JSON-RPC executor after host admission | `wired` |
+| CLI command execution, dynamic client tools, client file writes, and PTY fallback | `Locked` |
+| Gemini, Qwen, and Kimi process launch presets | `display-only` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |
 | Local `.fleet/zcode` apply | not in this checkout; see `patches/zcode/README.md` |

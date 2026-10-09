@@ -18,6 +18,7 @@ The executable loop lives on the retained Craft tree and is declared in `docs/UP
 - `app/packages/shared/src/protocol/__tests__/native-effect-executor.test.ts`
 - `app/packages/shared/src/protocol/host-approval-bridge.ts`
 - `app/packages/shared/src/protocol/page-local-ops.ts`
+- `app/packages/shared/src/protocol/cli-executors/`
 
 `app/` stays where it is. Do not delete or relocate it.
 
@@ -38,6 +39,7 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 3. Call `admit`, `approve` or `reject`, `run`, `stop`, `snapshot`, `save`, `load`, and `HostTurnKernel.restore` around any Pi default-turn sequencer. Pass a `NativeEffectRegistry` as `nativeEffects` so `run(invocationId)` executes the admitted effect. Call `commit()` only after the native write. Pi does not grant permission.
 4. Map Claude and ChatGPT/Pi usage through `turnUsageFromClaude` and `turnUsageFromChatGpt` before `attributeTurnUsage`. Persist only through `HostTurnKernel.snapshot` and `FileKernelSnapshotStore`, which call `sealHostRecord`. That gate drops cache and price numbers that were not observed, including a Craft `cacheReadTokens: 0` that the Claude adapter fills when the field was missing. An explicit provider cache read of zero stays a confirmed miss. Do not copy auth tokens into the snapshot.
 5. Keep feature pages and plugins unchanged. Publish an awaiting turn with `publishHostApproval` so the existing Craft permission card can Allow or Deny it. That response calls `HostTurnKernel.approve` or `reject`. Do not add a second approval dialog or a plugin marketplace.
+6. Pass a `CliExecutorHost` as `nativeEffects` when a turn payload selects `executorId` `codex-app-server` or `acp`. The host opens pipe stdio only after `run`. Reverse tool requests admit frozen file actions on the same kernel. The adapter does not approve them and does not fall back to a PTY. Command execution stays `Locked`.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
 
@@ -50,5 +52,8 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | In-process native effect after admission | `wired` |
 | Existing permission card approves or rejects a published host turn | `wired` |
 | Page-local set-model and shared update-target | `wired` |
+| Codex app-server and ACP stdio JSON-RPC executors after admission | `wired` |
+| CLI command execution, dynamic client tools, and PTY fallback | `Locked` |
+| Gemini, Qwen, and Kimi launch presets | `display-only` |
 | `.fleet/zcode` integration | not applied in this checkout |
 | Automatic Pi tool admission, plugin marketplace, full Pi SDK host | `Locked` |
