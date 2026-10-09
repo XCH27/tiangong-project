@@ -119,6 +119,8 @@
   "browser.safetyHint": "Craft Agentsはあなたが依頼した時のみブラウザウィンドウを操作します。",
   "browser.stopLoading": "読み込み停止",
   "browser.urlPlaceholder": "URL を入力または検索...",
+  "canvas.hideCard": "非表示",
+  "canvas.stopCard": "停止",
   "chat.adminApprovalRequired": "管理者の承認が必要です",
   "chat.annotationPlaceholder": "次のターンでエージェントが考慮すべきコメントを追加...",
   "chat.attach": "添付",

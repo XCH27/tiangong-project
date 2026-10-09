@@ -119,6 +119,8 @@
   "browser.safetyHint": "A Craft Agents csak akkor irányítja a böngészőablakokat, ha te kéred.",
   "browser.stopLoading": "Betöltés leállítása",
   "browser.urlPlaceholder": "Írj be egy URL-t vagy keress…",
+  "canvas.hideCard": "Elrejtés",
+  "canvas.stopCard": "Leállítás",
   "chat.adminApprovalRequired": "Adminisztrátori jóváhagyás szükséges",
   "chat.annotationPlaceholder": "Adj meg megjegyzéseket, amelyeket az agent a következő körben figyelembe vegyen…",
   "chat.attach": "Csatolás",
