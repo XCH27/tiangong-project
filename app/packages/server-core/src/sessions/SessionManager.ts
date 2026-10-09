@@ -26,6 +26,14 @@ import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
 import { i18n } from '@craft-agent/shared/i18n'
 import {
+  applyCraftPermissionDecision,
+  craftCardForAwaitingTurn,
+  DESKTOP_APPROVER,
+  invocationIdFromHostRequest,
+  type HostPermissionCard,
+  type HostTurnKernel,
+} from '@craft-agent/shared/protocol'
+import {
   getWorkspaces,
   getWorkspaceByNameOrId,
   loadConfigDefaults,
@@ -1110,6 +1118,7 @@ export class SessionManager implements ISessionManager {
   private automationSystems: Map<string, AutomationSystem> = new Map()
   // Pending credential request resolvers (keyed by requestId)
   private pendingCredentialResolvers: Map<string, (response: import('@craft-agent/shared/protocol').CredentialResponse) => void> = new Map()
+  private hostApprovals = new Map<string, { kernel: HostTurnKernel; workspaceId?: string }>()
   // Permission request metadata tracking (keyed by requestId)
   private pendingPermissionRequests: Map<string, {
     sessionId: string
@@ -5400,6 +5409,7 @@ export class SessionManager implements ISessionManager {
     managed.autoRetryPending = undefined
 
     this.sessions.delete(sessionId)
+    this.hostApprovals.delete(sessionId)
 
     // Clean up session metadata in AutomationSystem (prevents memory leak)
     const automationSystem = this.automationSystems.get(workspaceRootPath)
@@ -6470,8 +6480,50 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Respond to a pending permission request
-   * Returns true if the response was delivered, false if agent/session is gone
+   * Attach the process-local host kernel whose awaiting turns the existing
+   * permission card can approve. This is the same kernel, not a second store.
+   */
+  attachHostTurnKernel(sessionId: string, kernel: HostTurnKernel, workspaceId?: string): void {
+    const existing = this.hostApprovals.get(sessionId)
+    this.hostApprovals.set(sessionId, {
+      kernel,
+      workspaceId: workspaceId ?? existing?.workspaceId,
+    })
+  }
+
+  /**
+   * Publish an awaiting host turn as the existing permission_request event.
+   * The Craft permission card already renders that event.
+   */
+  publishHostApproval(
+    sessionId: string,
+    invocationId: string,
+  ): { request: HostPermissionCard; delivered: boolean } | undefined {
+    const attachment = this.hostApprovals.get(sessionId)
+    if (!attachment) return undefined
+    const card = craftCardForAwaitingTurn(attachment.kernel, invocationId)
+    if (!card) return undefined
+    const managed = this.sessions.get(sessionId)
+    const workspaceId = managed?.workspace.id ?? attachment.workspaceId
+    if (!workspaceId || !this.eventSink) return { request: card, delivered: false }
+    this.sendEvent({
+      type: 'permission_request',
+      sessionId,
+      request: {
+        requestId: card.requestId,
+        sessionId: card.sessionId,
+        toolName: card.toolName,
+        description: card.description,
+        command: card.command,
+        type: card.type,
+      },
+    }, workspaceId)
+    return { request: card, delivered: true }
+  }
+
+  /**
+   * Respond to a pending permission request.
+   * Host-prefixed ids resolve through HostTurnKernel. Other ids keep the Craft agent path.
    */
   respondToPermission(
     sessionId: string,
@@ -6480,6 +6532,9 @@ export class SessionManager implements ISessionManager {
     alwaysAllow: boolean,
     options?: import('@craft-agent/shared/protocol').PermissionResponseOptions,
   ): boolean {
+    const hostDecision = this.resolveHostApproval(sessionId, requestId, allowed, alwaysAllow)
+    if (hostDecision !== undefined) return hostDecision
+
     const managed = this.sessions.get(sessionId)
     if (managed?.agent) {
       const requestMeta = this.pendingPermissionRequests.get(requestId)
@@ -6508,6 +6563,25 @@ export class SessionManager implements ISessionManager {
       sessionLog.warn(`Cannot respond to permission - no agent for session ${sessionId}`)
       return false
     }
+  }
+
+  private resolveHostApproval(
+    sessionId: string,
+    requestId: string,
+    allowed: boolean,
+    alwaysAllow: boolean,
+  ): boolean | undefined {
+    const invocationId = invocationIdFromHostRequest(requestId)
+    if (!invocationId) return undefined
+    const attachment = this.hostApprovals.get(sessionId)
+    if (!attachment) return false
+    const outcome = applyCraftPermissionDecision(attachment.kernel, invocationId, DESKTOP_APPROVER, {
+      allowed,
+      alwaysAllow,
+    })
+    sessionLog.info(`Host approval ${requestId}: ${outcome.status}`)
+    if (outcome.reason === 'unknown_invocation' || outcome.status === 'approval_required') return false
+    return true
   }
 
   /**

@@ -21,6 +21,7 @@ import type { ContentBadge, Session, CreateSessionOptions } from '../../../share
 import { useActiveWorkspace, useAppShellContext, useSession, usePendingPermission, usePendingCredential } from '@/context/AppShellContext'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { ChatDisplay } from '../app-shell/ChatDisplay'
+import { pageOpsForEditKey, selectPageModel, type EditPageKey, type PageLocalOpName } from '@craft-agent/shared/protocol'
 
 /** Rotating placeholder keys for compact mode input - short, action-oriented */
 const COMPACT_PLACEHOLDER_KEYS = [
@@ -64,29 +65,8 @@ export interface EditContext {
  * - Easy updates when context format changes
  * ============================================================================ */
 
-/** Available edit context keys - add new ones here */
-export type EditContextKey =
-  | 'workspace-permissions'
-  | 'default-permissions'
-  | 'skill-instructions'
-  | 'skill-metadata'
-  | 'source-guide'
-  | 'source-config'
-  | 'source-permissions'
-  | 'source-tool-permissions'
-  | 'preferences-notes'
-  | 'add-source'
-  | 'add-source-api'   // Filter-specific: user is viewing APIs
-  | 'add-source-mcp'   // Filter-specific: user is viewing MCPs
-  | 'add-source-local' // Filter-specific: user is viewing Local Folders
-  | 'add-skill'
-  | 'edit-statuses'
-  | 'edit-labels'
-  | 'edit-auto-rules'
-  | 'add-label'
-  | 'edit-views'
-  | 'edit-tool-icons'
-  | 'automation-config'
+/** Available edit context keys. The list lives with the page-op catalog. */
+export type EditContextKey = EditPageKey
 
 /**
  * Full edit configuration including context for agent and example for UI.
@@ -113,6 +93,8 @@ export interface EditConfig {
   systemPromptPreset?: 'default' | 'mini'
   /** When true, executes inline within the popover instead of opening a new window */
   inlineExecution?: boolean
+  /** Page-local operations for this edit surface. Model switch plus target update. */
+  pageOps?: readonly PageLocalOpName[]
 }
 
 /**
@@ -577,6 +559,7 @@ export function getEditConfig(key: EditContextKey, location: string): EditConfig
   // context.label remains in English for agent prompts; displayLabel is used in UI
   return {
     ...config,
+    pageOps: pageOpsForEditKey(key),
     displayLabel: config.displayLabelKey ? i18n.t(config.displayLabelKey) : config.context.label,
     example: config.exampleKey ? i18n.t(config.exampleKey) : config.example,
     overridePlaceholder: config.overridePlaceholderKey ? i18n.t(config.overridePlaceholderKey) : config.overridePlaceholder,
@@ -651,6 +634,8 @@ export interface EditPopoverProps {
    * opening a new window. Best for quick config edits with mini agents.
    */
   inlineExecution?: boolean
+  /** Page-local operations for this edit surface. Model switch plus target update. */
+  pageOps?: readonly PageLocalOpName[]
 }
 
 /**
@@ -731,6 +716,7 @@ export function EditPopover({
   modal = false,
   defaultValue = '',
   inlineExecution = false,
+  pageOps = ['set-model', 'update-target'],
 }: EditPopoverProps) {
   const { t } = useTranslation()
   const { onOpenFile, onOpenUrl } = usePlatform()
@@ -962,8 +948,10 @@ export function EditPopover({
     // Create session on first message
     let sessionId = inlineSessionId
     if (!sessionId && workspace?.id) {
+      const untouchedModel = currentModel === (model || 'haiku')
+      const sessionModel = untouchedModel ? (model || 'fast') : selectPageModel(model || 'fast', currentModel)
       const createOptions: CreateSessionOptions = {
-        model: model || 'fast',
+        model: sessionModel,
         systemPromptPreset: systemPromptPreset || 'mini',
         permissionMode,
         workingDirectory,
@@ -979,7 +967,7 @@ export function EditPopover({
     if (sessionId) {
       onSendMessage(sessionId, prompt, undefined, undefined, badges)
     }
-  }, [context, displayLabel, inlineSessionId, workspace?.id, model, systemPromptPreset, permissionMode, workingDirectory, onCreateSession, onSendMessage])
+  }, [context, displayLabel, inlineSessionId, workspace?.id, model, currentModel, systemPromptPreset, permissionMode, workingDirectory, onCreateSession, onSendMessage])
 
   // Legacy mode: navigates to chat in the same window
   const handleLegacySendMessage = useCallback((message: string) => {
@@ -988,14 +976,16 @@ export function EditPopover({
     const encodedBadges = encodeURIComponent(JSON.stringify(badges))
 
     const workdirParam = workingDirectory ? `&workdir=${encodeURIComponent(workingDirectory)}` : ''
-    const modelParam = model ? `&model=${encodeURIComponent(model)}` : ''
+    const untouchedModel = currentModel === (model || 'haiku')
+    const selectedModel = untouchedModel ? (model || '') : selectPageModel(model || '', currentModel)
+    const modelParam = selectedModel ? `&model=${encodeURIComponent(selectedModel)}` : ''
     const systemPromptParam = systemPromptPreset ? `&systemPrompt=${encodeURIComponent(systemPromptPreset)}` : ''
     // Navigate in same window by omitting window=focused parameter
     const url = `craftagents://action/new-session?input=${encodedInput}&send=true&mode=${permissionMode}&badges=${encodedBadges}${workdirParam}${modelParam}${systemPromptParam}`
 
     window.electronAPI.openUrl(url)
     setOpen(false)
-  }, [context, displayLabel, workingDirectory, model, systemPromptPreset, permissionMode, setOpen])
+  }, [context, displayLabel, workingDirectory, model, currentModel, systemPromptPreset, permissionMode, setOpen])
 
   return (
     <>
@@ -1059,7 +1049,10 @@ export function EditPopover({
                   onOpenFile={onOpenFile || (() => {})}
                   onOpenUrl={onOpenUrl || (() => {})}
                   currentModel={currentModel}
-                  onModelChange={setCurrentModel}
+                  onModelChange={(modelId) => {
+                    if (!pageOps.includes('set-model')) return
+                    setCurrentModel(selectPageModel(currentModel, modelId))
+                  }}
                   pendingPermission={pendingPermission}
                   onRespondToPermission={onRespondToPermission}
                   pendingCredential={pendingCredential}
