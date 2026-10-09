@@ -14,6 +14,8 @@ The executable loop lives on the retained Craft tree and is declared in `docs/UP
 - `app/packages/shared/src/protocol/provider-usage.ts`
 - `app/packages/shared/src/protocol/kernel-snapshot-store.ts`
 - `app/packages/shared/src/protocol/__tests__/kernel-snapshot-store.test.ts`
+- `app/packages/shared/src/protocol/native-effect-executor.ts`
+- `app/packages/shared/src/protocol/__tests__/native-effect-executor.test.ts`
 
 `app/` stays where it is. Do not delete or relocate it.
 
@@ -31,9 +33,9 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 
 1. Port the protocol modules listed above into the host admission path.
 2. Persist with `FileKernelSnapshotStore` at `hostKernelSnapshotPath(workspaceRoot, sessionId)`. That file is `sessions/{id}/host-kernel-snapshot.json`, beside the existing `session.jsonl`. Do not open another session or cost database, and do not rewrite `session.jsonl` from this adapter.
-3. Call `admit`, `approve` or `reject`, `run`, `stop`, `snapshot`, `save`, `load`, and `HostTurnKernel.restore` around any Pi default-turn sequencer.
+3. Call `admit`, `approve` or `reject`, `run`, `stop`, `snapshot`, `save`, `load`, and `HostTurnKernel.restore` around any Pi default-turn sequencer. Pass a `NativeEffectRegistry` as `nativeEffects` so `run(invocationId)` executes the admitted effect. Call `commit()` only after the native write. Pi does not grant permission.
 4. Map Claude and ChatGPT/Pi usage through `turnUsageFromClaude` and `turnUsageFromChatGpt` before `attributeTurnUsage`. Do not copy auth tokens into the snapshot.
-5. Keep feature pages and plugins unchanged until a real executor is attached and recovery is proven on that tree.
+5. Keep feature pages and plugins unchanged. Approval stays a host `approve()` call until a real approval surface is attached.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
 
@@ -43,5 +45,6 @@ Snapshot version `1` is the only readable version. A different version throws `u
 |---|---|
 | Process-local admission, permission gate, stop/recovery, usage confidence | `wired` |
 | Session-directory KernelSnapshot v1 file and Claude/ChatGPT usage boundary | `wired` |
+| In-process native effect after admission | `wired` |
 | `.fleet/zcode` integration | not applied in this checkout |
-| Product approval UI and native executor | `Locked` |
+| Product approval UI | `Locked` |

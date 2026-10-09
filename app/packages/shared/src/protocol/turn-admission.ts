@@ -114,9 +114,14 @@ export interface KernelSnapshot {
   nextEventNumber: number
 }
 
+export interface NativeEffectSource {
+  createExecutor(request: TurnRequest): TurnExecutor | undefined
+}
+
 export interface HostTurnKernelOptions {
   now?: () => string
   createId?: () => string
+  nativeEffects?: NativeEffectSource
 }
 
 function isHuman(actor: ActorRef | undefined): boolean {
@@ -140,10 +145,12 @@ export class HostTurnKernel {
   private readonly turns = new Map<string, TurnRecord>()
   private readonly seqBySession = new Map<string, number>()
   private readonly controllers = new Map<string, AbortController>()
+  private readonly nativeEffects: NativeEffectSource | undefined
   private eventNumber: number
 
   constructor(journal: TurnJournal = new MemoryTurnJournal(), options: HostTurnKernelOptions = {}) {
     this.journal = journal
+    this.nativeEffects = options.nativeEffects
     this.now = options.now ?? (() => new Date().toISOString())
     this.eventNumber = 0
     this.createId = options.createId ?? (() => {
@@ -232,7 +239,7 @@ export class HostTurnKernel {
     return { status: 'denied', invocationId, reason: 'approval_rejected' }
   }
 
-  async run(invocationId: string, executor: TurnExecutor): Promise<TurnOutcome> {
+  async run(invocationId: string, executor?: TurnExecutor): Promise<TurnOutcome> {
     const turn = this.turns.get(invocationId)
     if (!turn) return { status: 'failed', invocationId, reason: 'unknown_invocation' }
     if (turn.phase === 'completed' || turn.phase === 'failed' || turn.phase === 'denied' || turn.phase === 'reconciling') {
@@ -249,6 +256,14 @@ export class HostTurnKernel {
       return this.outcomeOf(turn)
     }
 
+    const selected = executor ?? this.nativeEffects?.createExecutor(turn.request)
+    if (!selected) {
+      turn.phase = 'failed'
+      turn.reason = 'no_executor'
+      this.append(turn, 'action_failed', turn.request.actor, { reason: 'no_executor' })
+      return { status: 'failed', invocationId, reason: 'no_executor' }
+    }
+
     turn.phase = 'running'
     turn.stopRequested = false
     const controller = new AbortController()
@@ -256,7 +271,7 @@ export class HostTurnKernel {
     this.append(turn, 'action_invoked', turn.request.actor, { executionBoundary: EXECUTION_BOUNDARY })
 
     try {
-      const result = await executor({
+      const result = await selected({
         signal: controller.signal,
         noteNativeCommit: () => {
           turn.nativeCommitted = true
