@@ -283,6 +283,24 @@ Craft's separate log/key namespace, and only Fleet's two connected consumers app
 health/probe UX, additional Craft consumers, hosted quality/latency, and API served-model identity
 below the chat return contract remain separate gaps; configured and tested are distinct.
 
+The frontend/backend design audit traces accepted Provider records and model preferences to the
+same Personal repository (`provider-node/src/model-selection-config-repository.ts:60`), while the
+Renderer currently sequences several dependent commands (`ui/src/settings/DecisionSourceEditor.ts:102`).
+Moving source fields did not close this compound-write gap. The owning contract specifies a
+single existing-facade transaction and lost-acknowledgement acceptance before further source UX;
+this target is not presented as implemented. Selecting a new setup draft was also found to clear
+an enabled accepted selection; a rendered counterexample now proves preview leaves it intact.
+Craft's source/resolve/RPC chain above supplies the interaction comparison without importing its
+settings/credential authority.
+
+Core previously duplicated the prepared operation in Decide and automatic routing. Shared
+`core/src/runtime/decision-operation.ts` now retains original IDs, version-1 artifact keys and
+existing pending-usage recovery for both; callers keep distinct approval/first-input policy.
+Real local SQLite failure/acknowledgement/cold-reopen fixtures check the previously missing Decide
+reconciliation and complete tool usage output. Source, focused tests and running draft checks are
+retained at `/Volumes/AIGC/天工参考/meta/fleet-decision-design/`; they do not prove hosted judgment,
+atomic source saving, calibrated latency or whole-kernel completion.
+
 The [typed-decision contract](modules/model-decisions.md) owns selected integration and acceptance.
 
 ## Composer defaults and selector comparison

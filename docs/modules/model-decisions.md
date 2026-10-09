@@ -84,6 +84,79 @@ reachable through the selected source's Connection settings, preserving advanced
 confirmation paths. The local Help explains connected consumers and cost/authority limits.
 Phase handoff and the quantitative plugin remain separate unfinished consumers.
 
+## Frontend and backend design
+
+Connection, model operation and consumer purpose are independent facts. A subscription/API/native
+connection owns credentials; `classifier`/`chat` owns the wire contract; the optional decision
+preference chooses which connection/model serves a purpose. Pi Core, a decision classifier and
+Claude/Codex executors are not alternative names for one core. Preserve OV-097's explicit ordinary
+and native chat choice while TypeSafe/Laya remain dedicated typed services. Reference UI placement
+does not transfer its credential or permission authority.
+
+| Responsibility | Existing owner | Reader/consumer |
+|---|---|---|
+| Unsaved source/model/address/key fields | Settings form, in memory, scoped to service/page | Validation and visible draft state; never a live request route |
+| Connection identity, sparse config and model membership | Provider facade/config service and Personal repository | Settings and contextual Agent operations invoke the same commands |
+| Purpose enablement and exact selection | ModelSelectionService over the same Personal repository | Human controls and runtime read one versioned preference |
+| Eligibility and disabled/missing diagnosis | Applied Provider registry | UI displays the projection; runtime revalidates before dispatch |
+| Approval, admission, deadline, unknown intent and outcome | Core Host decision operation over existing Artifact/Session owners | Explicit Decide and automatic-tier consumer policies |
+| Transport and strict response normalization | DecisionModelPort adapters, existing HTTP/chat/native executor owners | Host receives requested/reported identity, answers and observed usage |
+| Usage settlement and cold reconciliation | Existing Session usage ledger and pending-usage entries | Tool output, statistics and receipt projection read the same facts |
+
+Frontend interaction:
+
+- Auxiliary decisions has master enablement, source and model. A configured connection is reused
+  by reference; dedicated setup reveals only its actual address/key/model fields. Provider presets
+  and eligibility are read from the Host catalog; a UI-only custom setup descriptor is currently
+  transitional and must not become a second authoritative catalog.
+- Inspecting a new source is a draft action. It does not clear or disable the accepted source;
+  show an unsaved indication and prevent enablement from being confused with that draft. Saving
+  applies the intended change; returning to the unchanged source performs no write. An explicit
+  No decision model command disables that purpose without deleting the connection or its data.
+- Saved, eligible, reachable and successfully inferred are different states. A future read-only
+  health check reports only its reachability/loaded checkpoint evidence. A user-triggered inference
+  test declares possible cost, uses Host admission/accounting, and never implicitly enables a
+  consumer. Test results bind the exact connection/model/route revision.
+- Page/remote-service change discards only the form's draft/presentation callbacks; an already
+  admitted backend command has its own durable completion. Do not use a mounted React flag as
+  configuration commit or recovery authority. Do not send keys in diagnostic labels, page context,
+  general catalog DTOs or saved operation receipts; credential edits use their existing owner.
+
+Backend configuration target (specified, not yet delivered): one `saveDecisionSource` domain
+operation on the existing Provider settings facade accepts an explicit create/existing target,
+observed Personal revision, sparse connection edits, exact model and purpose binding. It validates
+protocol/key/eligibility without inference, then writes affected Provider/model/preference leaves in
+one existing Personal transaction. It preserves unrelated defaults, tiers, account and ordering
+facts. UI must not perform create → addModel → refresh → bind as a distributed transaction.
+A stable command/connection identity and the same owner's retained commit proof must reconcile a
+lost acknowledgement; blind creation replay and success-shaped errors are prohibited. The proof
+mechanism must be defined within the existing authority before implementation, not improvised as a
+second settings journal. No new credential store or migration is selected by this design.
+
+The current `DecisionSourceEditor` still performs several acknowledged writes and retains the
+committed source if final binding fails. Its unknown-creation fence avoids blind replay but is not
+an atomic source-save API or a crash-recoverable configuration command. This is a named integration
+gap. Close it before expanding source controls/health automation; do not claim merely moving fields
+has completed frontend/backend design. Separate preference controls may keep their existing
+revision-checked commands; the compound setup command is required only for their dependent write.
+
+Shared execution: two policies enter one Host operation (`core/src/runtime/decision-operation.ts`). Decide prepares an immutable binding
+before its original per-call approval; automatic routing requires a marked interactive first input
+and current enabled policy. Both share owner preflight, stable operation identity, durable unknown
+claim, admission/Stop/deadline, one dispatch, frozen usage, pending-ledger reconciliation and result
+receipt. Tool duplicate/denial errors and automatic abstention remain policy-specific. The adapter
+never owns permission, Session records or configuration mutation; consumer tier selection is
+application policy rather than a provider feature. The existing adapter `automaticModel` hook still
+assembles that consumer policy; moving it into the Core application layer is a remaining code
+boundary, not justification for a new routing framework. Failed/unknown effects never replay merely
+to repair an output or receipt. Real acceptance includes both entrances' failure and cold consumers.
+
+Delivery order: preserve active settings while drafting and unify the demonstrated Host receipt
+behaviour first; implement and prove the existing facade's atomic source-save/acknowledgement path
+next; then add scoped status/probe/test UX. Additional consumer switches need actual connected
+features, bounded evidence, cancellation and recorded outcomes. Per-feature confidence policy and
+hosted quality/latency evidence remain separate from catalog availability.
+
 ## Request and receipt contract
 
 1. Master enablement and the consuming feature's enablement default off. An explicit call has a

@@ -5,6 +5,13 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Keep new decision-source inspection in the unsaved form without withdrawing the enabled
+  accepted source. Show its draft state and retain explicit save/clear semantics.
+- Share one prepared Host decision operation between Decide and automatic routing. Both retain
+  pending usage for cold reconciliation; tool output preserves observed counters. Approval and
+  automatic first-input policy remain distinct. The configuration facade's atomic compound save
+  is a specified remaining boundary, not an implemented transaction.
+
 - Move dedicated decision source setup into Auxiliary decisions, preserving existing Provider
   records, aliases, credentials and original management actions. New TypeSafe/Laya setup follows
   their published pin/router defaults; ordinary connection intake no longer lists those sources.
