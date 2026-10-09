@@ -244,3 +244,5 @@ Interactive chat, approval interception, PTY, and real-time workflow gates are n
 - Credential material is rejected before a turn is admitted and is not copied into the timeline.
 
 Status of this function: `wired` by unit tests. Provider routing, native batch, quota, and the ledger UI remain `Locked`. There is no second cost store.
+
+`turnUsageFromClaude` and `turnUsageFromChatGpt` copy only numeric usage fields from those provider payloads. A missing cache field stays absent, so attribution remains `unknown` rather than a zero-token miss. A cost number without a pricing reference stays `unknown`. Access tokens, refresh tokens, and API keys on the raw payload are not copied into the usage record or the snapshot file.

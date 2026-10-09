@@ -12,6 +12,7 @@ import type { ActorRef } from './actor'
 import type { ActionInvocation, UndoHandle } from './internal-action'
 import type { AuditSessionEvent } from './session-event'
 import { isInternalActionId, policyForAction, type FrozenActionPolicy, type UndoContract } from './action-policy'
+import { containsCredentialMaterial, scrubCredentialMaterial } from './credential-boundary'
 import { attributeTurnUsage, type TurnUsageInput, type UsageAttribution } from './usage-attribution'
 
 export const HOST_EXECUTION_ROLE = 'fleet_host_turn_admission' as const
@@ -116,25 +117,6 @@ export interface KernelSnapshot {
 export interface HostTurnKernelOptions {
   now?: () => string
   createId?: () => string
-}
-
-const SECRET_KEY = /(api[-_]?key|access[-_]?token|refresh[-_]?token|secret|password|authorization|credential)/i
-
-function containsCredentialMaterial(value: unknown, depth = 0): boolean {
-  if (depth > 8 || value == null) return false
-  if (typeof value === 'string') {
-    return /bearer\s+\S+/i.test(value) || /\bsk-[a-z0-9]{8,}/i.test(value)
-  }
-  if (Array.isArray(value)) {
-    return value.some((item) => containsCredentialMaterial(item, depth + 1))
-  }
-  if (typeof value === 'object') {
-    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      if (SECRET_KEY.test(key) && typeof child === 'string' && child.length > 0) return true
-      if (containsCredentialMaterial(child, depth + 1)) return true
-    }
-  }
-  return false
 }
 
 function isHuman(actor: ActorRef | undefined): boolean {
@@ -358,7 +340,7 @@ export class HostTurnKernel {
   }
 
   snapshot(): KernelSnapshot {
-    return {
+    return scrubCredentialMaterial({
       version: KERNEL_SNAPSHOT_VERSION,
       events: this.readAllEvents(),
       turns: [...this.turns.values()].map((turn) => ({
@@ -372,7 +354,7 @@ export class HostTurnKernel {
         stopRequested: turn.stopRequested,
       })),
       nextEventNumber: this.eventNumber,
-    }
+    })
   }
 
   static restore(snapshot: KernelSnapshot, journal?: TurnJournal, options?: HostTurnKernelOptions): HostTurnKernel {

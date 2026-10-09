@@ -109,6 +109,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 |---|---|---|
 | 2026-07-09 | draft v1.1 | Rewritten as a closed spine contract; removes daemon ambiguity. |
 | 2026-10-09 | draft v1.1 | Recorded the host/Pi execution boundary and the process-local admission slice. |
+| 2026-10-09 | draft v1.1 | Added the session-directory KernelSnapshot v1 file adapter. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -116,12 +117,15 @@ Pi Agent Core sequences a default model turn. It does not own admission, L0-L3 p
 
 The retained Craft subprocess in `app/packages/shared/src/agent/pi-agent.ts` still uses `@earendil-works/pi-coding-agent` as the provider turn client. That client is the upstream chat backend. A connection probe that is not Anthropic-compatible falls through to one host mini-completion; that probe is one sequenced turn.
 
-Fleet host admission for the frozen action table is the process-local loop in `app/packages/shared/src/protocol/turn-admission.ts`. It appends canonical `SessionEvent` kinds through a journal port. `MemoryTurnJournal` is a test and process-local stand-in. It is not a second session database. M00 remains the durable authority, and the physical adapter is still unresolved.
+Fleet host admission for the frozen action table is the process-local loop in `app/packages/shared/src/protocol/turn-admission.ts`. It appends canonical `SessionEvent` kinds through a journal port. `MemoryTurnJournal` is a test and process-local stand-in. It is not a second session database.
+
+`FileKernelSnapshotStore` writes `host-kernel-snapshot.json` in the existing session directory, beside `session.jsonl`, using the same write-to-temp-then-rename replace. It round-trips `KernelSnapshot` version 1 only. A different version throws `unsupported_snapshot_version` and leaves the previous file in place. Credential-shaped keys and token strings are removed before the file is written. This file is the host execution projection of that session. It does not rewrite `session.jsonl` and it is not a new database. The broader M00 session adapter is still unresolved.
 
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
-| Electron approval UI, real file executor, and M00 persistence adapter | `Locked` |
+| Session-directory KernelSnapshot v1 file | `wired` |
+| Electron approval UI, real file executor, and the rest of the M00 session adapter | `Locked` |
 | Local `.fleet/zcode` apply | not in this checkout; see `patches/zcode/README.md` |
 
 This note does not open W1 and does not change the module capability header above. Product surfaces stay `Locked` until the W0.1 re-freeze.

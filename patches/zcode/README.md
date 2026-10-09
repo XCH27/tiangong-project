@@ -10,6 +10,10 @@ The executable loop lives on the retained Craft tree and is declared in `docs/UP
 - `app/packages/shared/src/protocol/usage-attribution.ts`
 - `app/packages/shared/src/protocol/turn-admission.ts`
 - `app/packages/shared/src/protocol/__tests__/turn-admission.test.ts`
+- `app/packages/shared/src/protocol/credential-boundary.ts`
+- `app/packages/shared/src/protocol/provider-usage.ts`
+- `app/packages/shared/src/protocol/kernel-snapshot-store.ts`
+- `app/packages/shared/src/protocol/__tests__/kernel-snapshot-store.test.ts`
 
 `app/` stays where it is. Do not delete or relocate it.
 
@@ -25,10 +29,11 @@ The retained `app/packages/shared/src/agent/pi-agent.ts` subprocess still uses `
 
 When `.fleet/zcode` is available on a machine that has the candidate:
 
-1. Port the three protocol modules into the host admission path.
-2. Persist `KernelSnapshot` through the existing M00 journal. Do not open another session or cost database.
-3. Call `admit`, `approve` or `reject`, `run`, `stop`, and `HostTurnKernel.restore` around any Pi default-turn sequencer.
-4. Keep feature pages and plugins unchanged until a real executor is attached and recovery is proven on that tree.
+1. Port the protocol modules listed above into the host admission path.
+2. Persist with `FileKernelSnapshotStore` at `hostKernelSnapshotPath(workspaceRoot, sessionId)`. That file is `sessions/{id}/host-kernel-snapshot.json`, beside the existing `session.jsonl`. Do not open another session or cost database, and do not rewrite `session.jsonl` from this adapter.
+3. Call `admit`, `approve` or `reject`, `run`, `stop`, `snapshot`, `save`, `load`, and `HostTurnKernel.restore` around any Pi default-turn sequencer.
+4. Map Claude and ChatGPT/Pi usage through `turnUsageFromClaude` and `turnUsageFromChatGpt` before `attributeTurnUsage`. Do not copy auth tokens into the snapshot.
+5. Keep feature pages and plugins unchanged until a real executor is attached and recovery is proven on that tree.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
 
@@ -37,5 +42,6 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Slice | Status |
 |---|---|
 | Process-local admission, permission gate, stop/recovery, usage confidence | `wired` |
+| Session-directory KernelSnapshot v1 file and Claude/ChatGPT usage boundary | `wired` |
 | `.fleet/zcode` integration | not applied in this checkout |
 | Product approval UI and native executor | `Locked` |
