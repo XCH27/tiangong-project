@@ -145,10 +145,28 @@ async function writeLoadout(
   }
   const admitted = shared.kernel.admit({ invocation, actor: input.actor })
   if (admitted.status === 'completed') return failed(input.invocationId, 'duplicate_invocation')
-  if (admitted.status !== 'admitted') return admitted
+  if (admitted.status !== 'admitted') return turnResult(admitted)
   const ran = await shared.kernel.run(input.invocationId)
-  if (ran.status !== 'completed') return ran
+  if (ran.status !== 'completed') return turnResult(ran)
   return { status: 'completed', invocationId: input.invocationId, loadout: next, persisted: true }
+}
+
+function turnResult(outcome: TurnOutcome): PluginMutationResult {
+  switch (outcome.status) {
+    case 'completed':
+      return failed(outcome.invocationId, outcome.reason ?? 'unexpected_completed')
+    case 'admitted':
+    case 'approval_required':
+    case 'denied':
+    case 'failed':
+    case 'interrupted':
+    case 'reconciling':
+      return { status: outcome.status, invocationId: outcome.invocationId, reason: outcome.reason }
+    default: {
+      const unexpected: never = outcome.status
+      return failed(outcome.invocationId, `unknown_turn_status:${String(unexpected)}`)
+    }
+  }
 }
 
 function readLoadout(filePath: string): PluginLoadoutFile | 'missing' | 'invalid' | 'credential' | 'version' {
