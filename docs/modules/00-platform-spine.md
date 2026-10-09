@@ -118,6 +118,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | AIGC job submit runs only after host approval. Subscription fields stay unknown when unobserved. |
 | 2026-10-09 | draft v1.1 | One DOCX suite opens, edits, undoes, saves, and reopens through file.update. XLSX and PPTX stay Locked. |
 | 2026-10-09 | draft v1.1 | Canvas cards bind an admitted DOCX and an admitted aigc artifact. Hide, stop, and delete keep the owner state. |
+| 2026-10-09 | draft v1.1 | Built-in Chromium guest find, loading stop, and a DOM snapshot admitted as file.create. Screenshot evidence and Chrome Store stay Locked. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -145,6 +146,8 @@ The document suite host is one built-in package, not a marketplace. `applyDocume
 
 `createCanvasCardHost` places those same objects on the existing `CanvasDocument`. A DOCX card edit calls `applyDocumentFromHuman` or `applyDocumentFromAgent`. An image or video card reads the `aigc_artifact` on the job turn. Hide and stop are view state. `canvas.node_delete` removes the binding after human approval. The DOCX bytes, the job file, and the owner kernel turns stay. `@xyflow/react` is not installed. Card positions are the `CanvasNode` frame. The renderer spike stays `Locked`.
 
+The built-in browser keeps the Craft `persist:browser-pane` profile and the session or manual owner on `BrowserPaneManager`. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create` and write a DOM snapshot only after that admission. An agent that does not own the guest does not read the page. Screenshot evidence and Chrome Store advertising stay `Locked`. `browser.screenshot` is still not a frozen action id.
+
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
@@ -166,6 +169,9 @@ The document suite host is one built-in package, not a marketplace. `applyDocume
 | Hide, stop, and delete of a canvas card, leaving the admitted file and job | `wired` |
 | XLSX and PPTX document suites | `Locked` |
 | `@xyflow/react` spatial renderer | `Locked` |
+| Built-in Chromium page find, loading stop, and native guest back, forward, and reload | `wired` |
+| Governed DOM snapshot admitted as `file.create` for the human and the owning agent | `wired` |
+| Screenshot evidence bundle and Chrome Store advertising | `Locked` |
 | Live paid image/video providers and a quota ledger | `Locked` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |

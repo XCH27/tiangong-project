@@ -19,7 +19,21 @@ import {
   type BrowserInstanceInfo,
 } from '../shared/types'
 import { DEFAULT_THEME, loadAppTheme, getAllowRemoteEvaluate } from '@craft-agent/shared/config'
-import { CodedError } from '@craft-agent/shared/protocol'
+import {
+  BUILTIN_BROWSER_PARTITION,
+  CodedError,
+  captureDomFromAgent,
+  captureDomFromHuman,
+  createBrowserGuestHost,
+  runGuestActionFromHuman,
+  type ActorRef,
+  type BrowserGuestShared,
+  type ChromiumGuestPort,
+  type FindStopAction,
+  type GuestCaller,
+  type GuestCaptureResult,
+  type PageFindResult,
+} from '@craft-agent/shared/protocol'
 import { getBrowserLiveFxCornerRadii } from '../shared/browser-live-fx'
 import type {
   IBrowserPaneManager,
@@ -122,7 +136,14 @@ const TOOLBAR_CHANNELS = {
   STATE_UPDATE: 'browser-toolbar:state-update',
   THEME_COLOR: 'browser-toolbar:theme-color',
 } as const
-export const BROWSER_PANE_SESSION_PARTITION = 'persist:browser-pane'
+export const BROWSER_PANE_SESSION_PARTITION = BUILTIN_BROWSER_PARTITION
+const GUEST_FIND_TIMEOUT_MS = 2_000
+const GUEST_DOM_SNAPSHOT_SCRIPT = `(() => ({
+  url: String(location.href || ''),
+  title: String(document.title || ''),
+  text: String((document.body && document.body.innerText) || '')
+}))()`
+const DESKTOP_GUEST_CALLER: GuestCaller = { kind: 'human_ui', sessionId: 'desktop' }
 const SESSION_PARTITION = BROWSER_PANE_SESSION_PARTITION
 
 interface AgentControlState {
@@ -337,6 +358,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
   private lastNetworkActivityByWebContentsId = new Map<number, number>()
   private popupWindowsByParentInstanceId = new Map<string, Set<BrowserWindow>>()
   private popupParentByWebContentsId = new Map<number, string>()
+  private browserGuestHost: BrowserGuestShared | null = null
   private windowManager: WindowManager | null = null
   private sessionPathResolver: ((sessionId: string) => string | null) | null = null
 
@@ -585,6 +607,85 @@ export class BrowserPaneManager implements IBrowserPaneManager {
    * Throws a clear error if the instance is missing or its window was closed.
    * Automatically cleans up stale entries from the instance map.
    */
+  private guestHost(): BrowserGuestShared {
+    if (!this.browserGuestHost) this.browserGuestHost = createBrowserGuestHost()
+    return this.browserGuestHost
+  }
+
+  private async finishFind(pending: ReturnType<typeof runGuestActionFromHuman>): Promise<PageFindResult> {
+    const result = await pending
+    if (result.status === 'completed' && result.action === 'find') return result.find
+    const reason = result.status === 'failed' || result.status === 'Locked' ? result.reason : 'find_failed'
+    throw new Error(reason)
+  }
+
+  private chromiumPort(instance: BrowserInstance): ChromiumGuestPort {
+    const page = instance.pageView.webContents
+    return {
+      id: instance.id,
+      partition: BROWSER_PANE_SESSION_PARTITION,
+      ownerType: instance.ownerType,
+      ownerSessionId: instance.ownerSessionId,
+      get isLoading() {
+        return instance.isLoading
+      },
+      findInPage: (text) => new Promise((resolve, reject) => {
+        const requestId = page.findInPage(text)
+        let settled = false
+        const finish = (result: PageFindResult | Error) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          page.removeListener('found-in-page', onFound)
+          if (result instanceof Error) reject(result)
+          else resolve(result)
+        }
+        const timer = setTimeout(() => finish(new Error('find_timeout')), GUEST_FIND_TIMEOUT_MS)
+        const onFound = (_event: unknown, found: { requestId?: number; activeMatchOrdinal?: number; matches?: number; finalUpdate?: boolean }) => {
+          if (found.requestId !== requestId || !found.finalUpdate) return
+          finish({
+            requestId,
+            activeMatchOrdinal: found.activeMatchOrdinal ?? 0,
+            matches: found.matches ?? 0,
+            finalUpdate: true,
+          })
+        }
+        page.on('found-in-page', onFound)
+      }),
+      stopFindInPage: (action) => {
+        page.stopFindInPage(action)
+      },
+      stopLoading: () => {
+        page.stop()
+      },
+      navigate: async (url) => {
+        await page.loadURL(url)
+      },
+      goBack: () => {
+        if (page.canGoBack()) page.goBack()
+      },
+      goForward: () => {
+        if (page.canGoForward()) page.goForward()
+      },
+      reload: () => {
+        page.reload()
+      },
+      readDom: async (signal) => {
+        if (signal.aborted) {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          throw error
+        }
+        const value = await page.executeJavaScript(GUEST_DOM_SNAPSHOT_SCRIPT) as { url?: unknown; title?: unknown; text?: unknown }
+        return {
+          url: typeof value?.url === 'string' ? value.url : instance.currentUrl,
+          title: typeof value?.title === 'string' ? value.title : instance.title,
+          text: typeof value?.text === 'string' ? value.text : '',
+        }
+      },
+    }
+  }
+
   private requireAliveInstance(id: string): BrowserInstance {
     const instance = this.instances.get(id)
     if (!instance) throw new Error(`Browser instance not found: ${id}`)
@@ -765,28 +866,62 @@ export class BrowserPaneManager implements IBrowserPaneManager {
 
   async goBack(id: string): Promise<void> {
     const instance = this.requireAliveInstance(id)
-    if (instance.pageView.webContents.canGoBack()) {
-      instance.pageView.webContents.goBack()
-    }
+    await runGuestActionFromHuman(this.chromiumPort(instance), { kind: 'goBack' }, DESKTOP_GUEST_CALLER)
   }
 
   async goForward(id: string): Promise<void> {
     const instance = this.requireAliveInstance(id)
-    if (instance.pageView.webContents.canGoForward()) {
-      instance.pageView.webContents.goForward()
-    }
+    await runGuestActionFromHuman(this.chromiumPort(instance), { kind: 'goForward' }, DESKTOP_GUEST_CALLER)
   }
 
   reload(id: string): void {
     const instance = this.instances.get(id)
     if (!instance || instance.window.isDestroyed()) return
-    instance.pageView.webContents.reload()
+    void runGuestActionFromHuman(this.chromiumPort(instance), { kind: 'reload' }, DESKTOP_GUEST_CALLER)
   }
 
   stop(id: string): void {
     const instance = this.instances.get(id)
     if (!instance || instance.window.isDestroyed()) return
-    instance.pageView.webContents.stop()
+    void runGuestActionFromHuman(this.chromiumPort(instance), { kind: 'stopLoading' }, DESKTOP_GUEST_CALLER)
+  }
+
+  findInPage(id: string, text: string): Promise<PageFindResult> {
+    const instance = this.requireAliveInstance(id)
+    return this.finishFind(runGuestActionFromHuman(this.chromiumPort(instance), { kind: 'find', query: text }, DESKTOP_GUEST_CALLER))
+  }
+
+  stopFindInPage(id: string, action: FindStopAction): Promise<void> {
+    const instance = this.requireAliveInstance(id)
+    return runGuestActionFromHuman(this.chromiumPort(instance), { kind: 'stopFind', action }, DESKTOP_GUEST_CALLER).then(() => undefined)
+  }
+
+  captureGovernedDom(id: string, input: {
+    filePath: string
+    sessionId: string
+    invocationId: string
+    actor: ActorRef
+  }): Promise<GuestCaptureResult> {
+    const instance = this.requireAliveInstance(id)
+    const call = {
+      guest: this.chromiumPort(instance),
+      filePath: input.filePath,
+      sessionId: input.sessionId,
+      invocationId: input.invocationId,
+      actor: input.actor,
+    }
+    switch (input.actor.kind) {
+      case 'human':
+        return captureDomFromHuman(this.guestHost(), call)
+      case 'agent':
+        return captureDomFromAgent(this.guestHost(), call)
+      case 'system':
+        return Promise.resolve({ status: 'failed', invocationId: input.invocationId, reason: 'actor_not_permitted' })
+      default: {
+        const unexpected: never = input.actor.kind
+        return Promise.resolve({ status: 'failed', invocationId: input.invocationId, reason: String(unexpected) })
+      }
+    }
   }
 
   focus(id: string): void {

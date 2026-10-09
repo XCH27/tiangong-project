@@ -61,3 +61,8 @@ app/packages/ui/src/lib/__tests__/canvas-card-view.test.ts	adapt	Hidden cards le
 app/packages/shared/src/protocol/index.ts	adapt	Export the canvas card host and the renderer-safe card view.	bun test src/protocol/__tests__/canvas-cards.test.ts
 app/packages/shared/package.json	adapt	Subpath export for the card view so the renderer does not import the host.	bun test src/lib/__tests__/canvas-card-view.test.ts
 app/packages/ui/src/index.ts	adapt	Export ArtifactCanvasBoard from the UI package.	bun test src/lib/__tests__/canvas-card-view.test.ts
+app/packages/shared/src/protocol/browser-guest.ts	adapt	Built-in Chromium guest find, loading stop, and native actions. DOM snapshot admits file.create for the human and the owning agent. Screenshot evidence and Chrome Store stay Locked.	bun test src/protocol/__tests__/browser-guest.test.ts
+app/packages/shared/src/protocol/__tests__/browser-guest.test.ts	adapt	Fake guest coverage for find, stop, owner mismatch, locked surfaces, and the shared DOM snapshot. No live page.	bun test src/protocol/__tests__/browser-guest.test.ts
+app/packages/shared/src/protocol/index.ts	adapt	Export the browser guest host.	bun test src/protocol/__tests__/browser-guest.test.ts
+app/apps/electron/src/main/browser-pane-manager.ts	adapt	Page find, loading stop, back, forward, and reload go through the guest host. Governed DOM capture uses the same file.create loop.	bun test src/main/__tests__/browser-pane-manager.test.ts
+app/apps/electron/src/main/__tests__/browser-pane-manager.test.ts	adapt	Guest webContents find, stop, and a fixture DOM snapshot for the human and the owning agent.	bun test src/main/__tests__/browser-pane-manager.test.ts

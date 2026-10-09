@@ -184,3 +184,22 @@ M06 consumes these settings. It does not duplicate toggles inside multiple panel
 - No external-page editing through DOM mutation.
 - No stealth, cookie/token extraction, or approval bypass.
 - No custom event-kind system beside SessionEvent.
+
+## 15. Host Guest Slice
+
+`createBrowserGuestHost` in `app/packages/shared/src/protocol/browser-guest.ts` is the smallest guest loop on the retained BrowserPane profile.
+
+- The profile id stays `persist:browser-pane`. A different partition is rejected. There is no second profile store.
+- Page find, find clear, loading stop, back, forward, and reload are native guest actions. The human toolbar path and an agent caller share `applyNativeGuestAction`. An agent can use only the session guest it owns.
+- The governed capture is a DOM snapshot. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create`. The page is read inside the admitted effect. Stop before run does not read. Credential-shaped text is not written.
+- Screenshot evidence stays `Locked`. The existing `capturePage` path is not this admission. `browser.screenshot` remains under discussion and is not used.
+- Chrome Store advertising stays `Locked` until a real extension lifecycle is proven. This slice is not a plugin marketplace.
+
+| Slice | Status |
+|---|---|
+| Page find, loading stop, and native guest back, forward, and reload | `wired` |
+| DOM snapshot admitted through `file.create` for the human and the owning agent | `wired` |
+| Screenshot evidence, selection overlay, and M05 ArtifactRef registration | `Locked` |
+| Chrome Store advertising and extension lifecycle | `Locked` |
+
+This note does not open W3. The module header above stays Locked for the full evidence surface.

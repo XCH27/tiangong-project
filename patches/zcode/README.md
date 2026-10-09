@@ -25,6 +25,7 @@ The executable loop lives on the retained Craft tree and is declared in `docs/UP
 - `app/packages/shared/src/protocol/docx-package.ts`
 - `app/packages/shared/src/protocol/docx-xml.ts`
 - `app/packages/shared/src/protocol/canvas-cards.ts`
+- `app/packages/shared/src/protocol/browser-guest.ts`
 - `app/packages/shared/src/protocol/canvas-card-view.ts`
 
 `app/` stays where it is. Do not delete or relocate it.
@@ -49,6 +50,7 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 6. Pass a `CliExecutorHost` as `nativeEffects` when a turn payload selects `executorId` `codex-app-server` or `acp`. The host opens pipe stdio only after `run`. Reverse tool requests admit frozen file actions on the same kernel. The adapter does not approve them and does not fall back to a PTY. Command execution stays `Locked`.
 7. DOCX edits use `createDocumentSuiteHost`. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. A write admits `file.update` and commits only after the byte replace. Leave XLSX and PPTX Locked. Do not add a plugin marketplace.
 8. Canvas cards use `createCanvasCardHost` with that document host and `createAigcHost`. Place admits `canvas.node_create`. Delete admits `canvas.node_delete` and waits for human approval. Hide and stop stay view state. Do not stop the job kernel when a card stops. `@xyflow/react` stays uninstalled until the renderer spike is promoted.
+9. Browser guest actions use `createBrowserGuestHost` on the retained `persist:browser-pane` profile. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create` for a DOM snapshot. Leave screenshot evidence and Chrome Store advertising Locked. Do not add a plugin marketplace.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
 
@@ -71,5 +73,8 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Hide, stop, and delete of a canvas card, with the file and job retained | `wired` |
 | XLSX and PPTX suites | `Locked` |
 | `@xyflow/react` spatial renderer | `Locked` |
+| Built-in Chromium page find, loading stop, and native guest actions | `wired` |
+| Governed DOM snapshot through file.create | `wired` |
+| Screenshot evidence and Chrome Store advertising | `Locked` |
 | `.fleet/zcode` integration | not applied in this checkout |
 | Live paid providers, quota ledger, automatic Pi tool admission, plugin marketplace, full Pi SDK host | `Locked` |
