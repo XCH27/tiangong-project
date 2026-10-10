@@ -12,12 +12,14 @@
 > **Follow-up (L3 card search, docs only):** After `25e53895`, Electron, `SessionManager`, and the RPC handlers still have no production caller for frozen `file.delete` or `canvas.node_delete`. `createCanvasCardHost.deleteCard` and `CliExecutorHost` admit those ids only in tests. `sessions:delete`, `skills:delete`, and `sources:delete` are not `file.delete`. No permission card was wired for either id. The D46 footnote in `docs/modules/19-presentation-motion-surface.md` §10 records the same search: the first-slide viewer leaves MotionDeck unmet, and Office edit and save stay Locked. `CONTRACT_VERSION` stays 1.2.0. This note does not close W0.1 and does not promote `usable`.
 >
 > **Lead-unblock packet:** `docs/audits/2026-10-10-w01-lead-unblock.md` (base `7c36bb6d`, after merged PR #37).
+>
+> **Lead decisions (2026-10-10):** `docs/audits/2026-10-10-w01-lead-decisions-oss.md`. `session.unflag` is frozen and the human command admits it. Four split ids are frozen and have no production caller. Settings plugin writes stay Locked. `CONTRACT_VERSION` is 1.3.0. This note does not close W0.1 and does not promote `usable`.
 
 ## Gate status (unchanged)
 
 W0.1 stays Locked for worker implementation. `docs/WAVE-MODULE-MAP.md` still records the Lead reconciliation row as In Progress and blocking all Workers. This note does not close that row and does not mark W0.1 or W1 Ready.
 
-`docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked pending the W0.1 contract re-freeze. Nothing in PRs #28–#33 is `usable`. Settings plugin writes stay Locked. `docs/contracts/action-ids.md` stays frozen v1.2.0. Those PRs add no action id and do not bump `CONTRACT_VERSION`.
+`docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked. Nothing in this checklist is `usable`. Settings plugin writes stay Locked. The later Lead freeze is v1.3.0 (`docs/audits/2026-10-10-w01-lead-decisions-oss.md`). PRs #28–#33 themselves added no action id.
 
 W1–W5, including W3A/W3B, stay Locked. M00 as a module stays Locked.
 
@@ -39,7 +41,7 @@ PRs #28 and #30–#33 admit existing frozen ids on the one Craft session kernel 
 | Send-time auto-labels (`applySendTimeAutoLabels`) | `session.set_labels`. A human send uses the desktop user. `send_agent_message` and `spawn_session` use the calling Craft session. A refused admit leaves the labels unchanged. | `wired` |
 | Mini-session auto-complete | Admits `session.set_status` as the host system actor. The L1 row denies `actor_not_permitted`. Status stays unchanged. | `fail-closed` |
 | Agent rename (`rename_session`) | `session.rename`, actor = calling Craft session. A blank or missing caller does not write. | `wired` |
-| Unflag (`unflagSession`) | No frozen id. The command clears the flag and does not call `admitHostTurn`. | `not implemented` |
+| Unflag (`unflagSession`) | `session.unflag` (L0). See the Lead-decisions follow-up. | `wired` |
 
 `session.flag` does not publish a permission card. The three L1 chrome ids auto-admit because the frozen rows already carry an undo contract, so those turns also do not publish a card.
 
@@ -49,15 +51,15 @@ The map's nine exit items stay open. BLK-001 (migration ledger and contract pari
 
 These slices stay blocked inside that exit, except agent rename, which the follow-up above records as its own `wired` row. A worker must not implement the remaining items from this note.
 
-1. **Unflag.** Admission stays `not implemented` until the Lead freezes an id in `docs/contracts/action-ids.md` under the extension process, in the same commit as any `CONTRACT_VERSION` bump. This note does not invent `session.unflag`. That string is not in the frozen table and is not in the under-discussion list.
+1. **Unflag.** Closed as its own §13 `wired` row by the Lead freeze of `session.unflag` in v1.3.0. A refused admit leaves the flag set. This row does not close W0.1.
 
 2. **Permission-card publish and approve, other than Settings workspace rename.** The generic §13 rows stay `test-only`. Settings workspace rename is the L2 shell caller and has its own `wired` row: Allow writes the folder name, and Deny or a missing session leaves it. A search after `25e53895` found no production shell or IPC caller for `file.delete` or `canvas.node_delete`, so neither id publishes a card. Shell `file.delete` is `not implemented` in §13. Canvas delete stays on the `test-only` card host. Session chrome that is L0 or L1-with-undo still does not publish a card.
 
-3. **Settings plugin writes.** Install, enable, and disable on Settings → Plugins stay Locked. The page does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only`: they build a `file.update` loadout request, admission refuses that verb, and no shell or IPC caller uses them. This note does not unlock Settings.
+3. **Settings plugin writes.** Install, enable, and disable on Settings → Plugins stay Locked (D49). `plugin.loadout_mutate` is frozen. The page does not call it and does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only`: they still build a `file.update` loadout request, and admission refuses that verb.
 
 4. **Agent `session.rename`.** Closed as its own §13 `wired` row by `rename_session`. A blank or missing caller does not write the name. Title generation still uses the desktop user and is not this row. This item no longer blocks W0.1. The other items in this list stay open.
 
-5. **Action-id owner mismatch.** `action-owner-policy.ts` refuses a plugin loadout, an MCP Apps sidebar focus, a DOM evidence snapshot, or a page-target write when the caller uses `file.update`, `file.create`, or `canvas.node_select`. That check is a payload heuristic on frozen v1.2.0. It is not the W0.1 re-freeze. The re-freeze still has to split risk, approval, undo, cancellation, retry, and evidence onto ids whose owners match the operation. Until that table exists, these refusals stay a guard, not a new contract.
+5. **Action-id owner mismatch.** v1.3.0 gives `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus` their own rows and policy columns. The old verbs still refuse those payloads. No production caller uses the new ids. `browser.screenshot` and binding deletion stay unfrozen. The columns do not close the rest of exit item 3.
 
 6. **D46 PPTX.** D46 in `docs/DECISIONS-LEDGER.md` is still Final: the native document is a MotionDeck, and PPTX, HTML, and video are explicit exports. The shell PPTX overlay is a first-slide text viewer (`wired` preview). Create, edit, undo, save, and reopen through the document host stay `test-only`. Office edit and save in the shell stay Locked. MotionDeck, animation, and a full slide editor stay Locked. M19's header stays Locked. The first-slide viewer leaves D46 unmet. The footnote is `docs/modules/19-presentation-motion-surface.md` §10. This note does not edit the ledger.
 
@@ -65,7 +67,7 @@ These slices stay blocked inside that exit, except agent rename, which the follo
 
 ## What this chain does not close
 
-- No new action id. Unflag, browser screenshot, workbench view open, and the other under-discussion names stay unfrozen.
+- The v1.3.0 freeze is recorded in the Lead-decisions follow-up. `browser.screenshot`, `workbench.view_open`, and the other under-discussion names stay unfrozen. Binding deletion has no id.
 - No Settings unlock, no plugin marketplace, no standing loadout grant.
 - No `usable` row. Only the Lead promotes `usable`.
 - No change to `DECISIONS-LEDGER.md`, `WAVE-MODULE-MAP.md`, or `OWNERSHIP-MATRIX.md`.

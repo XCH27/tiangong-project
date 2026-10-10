@@ -229,13 +229,13 @@ No Worker may implement these until the W0.1 namespace/schema decision is frozen
 
 ## 16. Settings Page Slice
 
-The Settings → Plugins subpage reuses the Craft settings navigator. It does not open W4 and it does not add action ids.
+The Settings → Plugins subpage reuses the Craft settings navigator. It does not open W4. `plugin.loadout_mutate` is frozen in v1.3.0. This page does not call it.
 
 | Slice | Status |
 |---|---|
 | Five views: Installed, Market, Skills, MCP, Hooks | `wired` |
 | Market content filters over workspace skills and MCP sources | `wired` |
-| Install, enable, and disable from Settings | `Locked` |
+| Install, enable, and disable from Settings. The frozen id is `plugin.loadout_mutate`. D49 keeps this row Locked until the session kernel is the caller. | `Locked` |
 | `createPluginSettingsHost` loadout writes | `test-only` |
 | Settings approval as the Craft session permission card | `display-only` |
 | MCP Registry and skill-repository catalogs as a trusted marketplace | `display-only` |

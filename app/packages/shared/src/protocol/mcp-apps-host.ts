@@ -2,10 +2,10 @@
  * MCP Apps side pane admission.
  *
  * Open, focus, and close ask for canvas.node_select. That id is M07 canvas
- * selection. A sidebar slot is not a canvas node, so HostTurnKernel refuses
- * the turn and the pane does not change. workbench.view_open is not frozen.
- * This host does not add an action id. It does not write a canvas document,
- * a session file, or the plugin loadout.
+ * selection. workbench.sidebar_focus is the frozen M16 id. This host does not
+ * use it. HostTurnKernel refuses the canvas payload and the pane does not
+ * change. workbench.view_open is not frozen. This host does not add an action
+ * id. It does not write a canvas document, a session file, or the plugin loadout.
  *
  * A human control and an agent caller share one function. Sandboxed ui://
  * rendering and tool invocation stay Locked and do not admit a turn.

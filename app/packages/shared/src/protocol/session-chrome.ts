@@ -9,8 +9,8 @@
  * Each row is L1 with an undo contract, so admission does not publish the
  * permission card. If the gate
  * returns approval_required, the caller waits for the existing card.
- * A system actor is not an agent seat. L1 denies it. Unflag has no frozen
- * id and is not in this file. This file does not add an action id.
+ * A system actor is not an agent seat. L1 denies it. Unflag is session.unflag
+ * in session-flag.ts. This file does not add an action id.
  */
 
 import type { ActorRef } from './actor'

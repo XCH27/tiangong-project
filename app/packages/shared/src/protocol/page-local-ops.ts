@@ -2,9 +2,9 @@
  * Page-local operations for the existing EDIT_CONFIGS seam.
  *
  * set-model is the control the edit popover already exposes. It does not admit.
- * update-target asks for file.update. That payload is a page-target write, so
- * HostTurnKernel refuses it and the file stays unwritten. Pi is not the
- * permission authority.
+ * update-target asks for file.update. file.page_target is the frozen M05 id.
+ * This caller does not use it. HostTurnKernel refuses the file.update payload
+ * and the file stays unwritten. Pi is not the permission authority.
  */
 
 import type { ActorRef } from './actor'

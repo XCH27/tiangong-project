@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { InternalActionId, type ActionInvocation } from '../internal-action'
-import { FROZEN_ACTION_POLICY } from '../action-policy'
+import { approvalForGate, FROZEN_ACTION_POLICY } from '../action-policy'
 import { attributeTurnUsage } from '../usage-attribution'
 import {
   EXECUTION_BOUNDARY,
@@ -51,8 +51,17 @@ function kernel(): HostTurnKernel {
 describe('frozen action policy', () => {
   test('every frozen action id has one admission policy', () => {
     for (const actionId of Object.values(InternalActionId)) {
-      expect(FROZEN_ACTION_POLICY[actionId]).toBeDefined()
+      const row = FROZEN_ACTION_POLICY[actionId]
+      expect(row).toBeDefined()
+      expect(row.approval).toBe(approvalForGate(row))
+      expect(row.callers.includes('human_ui')).toBe(true)
+      expect(row.evidence).toBe('session_journal')
     }
+    expect(FROZEN_ACTION_POLICY[InternalActionId.SESSION_UNFLAG].sinceVersion).toBe('1.3.0')
+    expect(FROZEN_ACTION_POLICY[InternalActionId.PLUGIN_LOADOUT_MUTATE].sideEffect).toBe('capability_scope')
+    expect(FROZEN_ACTION_POLICY[InternalActionId.BROWSER_DOM_SNAPSHOT].sideEffect).toBe('evidence_capture')
+    expect(FROZEN_ACTION_POLICY[InternalActionId.WORKBENCH_SIDEBAR_FOCUS].sideEffect).toBe('view_state')
+    expect(FROZEN_ACTION_POLICY[InternalActionId.FILE_PAGE_TARGET].sideEffect).toBe('file_bytes')
   })
 })
 
@@ -297,6 +306,26 @@ describe('host turn admission', () => {
       op: 'open',
       nodeId: 'n1',
     })).status).toBe('admitted')
+
+    expect(host.admit(request(InternalActionId.PLUGIN_LOADOUT_MUTATE, 'inv-loadout', agent, {
+      pluginId: 'hook:lint',
+      op: 'enable',
+    }))).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
+    expect(host.admit(request(InternalActionId.PLUGIN_LOADOUT_MUTATE, 'inv-grant', agent, {
+      pluginId: 'hook:lint',
+      op: 'grant',
+    }))).toMatchObject({ status: 'denied', reason: 'standing_grant_rejected' })
+    expect(host.admit(request(InternalActionId.BROWSER_DOM_SNAPSHOT, 'inv-dom-id', agent, {
+      captureKind: 'dom_snapshot',
+    }))).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
+    expect(host.admit(request(InternalActionId.WORKBENCH_SIDEBAR_FOCUS, 'inv-focus-id', agent, {
+      surface: 'mcp_apps',
+      op: 'focus',
+    })).status).toBe('admitted')
+    expect(host.admit(request(InternalActionId.FILE_PAGE_TARGET, 'inv-page-id', agent, {
+      editKey: 'preferences-notes',
+    }))).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
+    expect(host.admit(request(InternalActionId.SESSION_UNFLAG, 'inv-unflag')).status).toBe('admitted')
 
     const sneaky = request(InternalActionId.FILE_UPDATE, 'inv-sneak', agent, {
       filePath: 'notes.txt',

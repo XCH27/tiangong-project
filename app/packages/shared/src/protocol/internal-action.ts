@@ -1,5 +1,5 @@
 /**
- * Internal Action Protocol — FROZEN CONTRACT v1.2.0
+ * Internal Action Protocol — FROZEN CONTRACT v1.3.0
  *
  * Lead-owned. No Worker may add, rename, or remove action ids without bumping
  * CONTRACT_VERSION and updating docs/contracts/action-ids.md in the same commit.
@@ -20,7 +20,7 @@ import { z } from 'zod'
 // Contract version sentinel
 // ---------------------------------------------------------------------------
 
-export const CONTRACT_VERSION = '1.2.0' as const
+export const CONTRACT_VERSION = '1.3.0' as const
 
 // ---------------------------------------------------------------------------
 // Action ID registry  (FROZEN — see extension rule above)
@@ -37,10 +37,12 @@ export const InternalActionId = {
   FILE_DELETE:        'file.delete',
   FILE_RENAME:        'file.rename',
   FILE_MOVE:          'file.move',
+  FILE_PAGE_TARGET:   'file.page_target',
 
   // --- Session domain ---
   SESSION_RENAME:     'session.rename',
   SESSION_FLAG:       'session.flag',
+  SESSION_UNFLAG:     'session.unflag',
   SESSION_SET_STATUS: 'session.set_status',
   SESSION_SET_LABELS: 'session.set_labels',
 
@@ -55,6 +57,15 @@ export const InternalActionId = {
   CANVAS_EXPORT_SELECTION: 'canvas.export_selection',
   CANVAS_VIEWPORT_SET: 'canvas.viewport_set',
   CANVAS_ZOOM_TO_NODE: 'canvas.zoom_to_node',
+
+  // --- Browser evidence (M06). Screenshot bundle stays unfrozen. ---
+  BROWSER_DOM_SNAPSHOT: 'browser.dom_snapshot',
+
+  // --- Workbench view state (M16). view_open stays unfrozen. ---
+  WORKBENCH_SIDEBAR_FOCUS: 'workbench.sidebar_focus',
+
+  // --- Capability loadout (M12). Not a file byte write. ---
+  PLUGIN_LOADOUT_MUTATE: 'plugin.loadout_mutate',
 
   // --- AIGC domain ---
   AIGC_JOB_SUBMIT:    'aigc.job_submit',

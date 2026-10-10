@@ -1,15 +1,15 @@
 /**
- * Owner check for a frozen action id.
+ * Owner check beside the frozen v1.3.0 ids.
  *
- * docs/contracts/action-ids.md stays at v1.2.0. This module does not add ids.
- * file.* is M05 file bytes. canvas.* is M07 canvas. session.* is M00 session
- * state. A payload that is a plugin loadout, an MCP Apps sidebar focus, a DOM
- * evidence snapshot, or a page-target write is a different operation. Admission
- * refuses it. Approval stays on the frozen row: there is no side channel that
- * upgrades an L1 id to approval-required.
+ * plugin.loadout_mutate, browser.dom_snapshot, workbench.sidebar_focus, and
+ * file.page_target own those operations. The same payload on any other id,
+ * including file.update, file.create, and canvas.node_select, is still refused.
+ * op "grant" is not a loadout mutation. There is no standing grant.
+ * Approval stays on the frozen row. This check does not upgrade an L1 id.
  */
 
 import type { ActionTargetRef } from './internal-action'
+import { InternalActionId } from './internal-action'
 
 export const ACTION_OWNER_MISMATCH_REASONS = [
   'action_owner_mismatch:plugin_loadout',
@@ -19,6 +19,10 @@ export const ACTION_OWNER_MISMATCH_REASONS = [
 ] as const
 
 export type ActionOwnerMismatchReason = (typeof ACTION_OWNER_MISMATCH_REASONS)[number]
+
+export const STANDING_GRANT_REJECTED = 'standing_grant_rejected'
+
+export type ActionOwnerRefusal = ActionOwnerMismatchReason | typeof STANDING_GRANT_REJECTED
 
 const PLUGIN_LOADOUT_OPS = ['install', 'enable', 'disable', 'grant'] as const
 
@@ -68,14 +72,32 @@ export function isActionOwnerMismatch(reason: string | undefined): reason is Act
  * Undefined means this check does not refuse the turn.
  */
 export function actionOwnerMismatchReason(
+  actionId: string,
   payload: Record<string, unknown> | undefined,
   targets: readonly ActionTargetRef[] | undefined,
-): ActionOwnerMismatchReason | undefined {
+): ActionOwnerRefusal | undefined {
   const body = payload ?? {}
   const refs = targets ?? []
-  if (isPluginLoadout(body)) return 'action_owner_mismatch:plugin_loadout'
-  if (isSidebarFocus(body, refs)) return 'action_owner_mismatch:sidebar_focus'
-  if (isDomEvidence(body, refs)) return 'action_owner_mismatch:dom_evidence'
-  if (isPageTarget(body)) return 'action_owner_mismatch:page_target'
+  if (isPluginLoadout(body)) {
+    if (actionId === InternalActionId.PLUGIN_LOADOUT_MUTATE) {
+      return body.op === 'grant' ? STANDING_GRANT_REJECTED : undefined
+    }
+    return 'action_owner_mismatch:plugin_loadout'
+  }
+  if (isSidebarFocus(body, refs)) {
+    return actionId === InternalActionId.WORKBENCH_SIDEBAR_FOCUS
+      ? undefined
+      : 'action_owner_mismatch:sidebar_focus'
+  }
+  if (isDomEvidence(body, refs)) {
+    return actionId === InternalActionId.BROWSER_DOM_SNAPSHOT
+      ? undefined
+      : 'action_owner_mismatch:dom_evidence'
+  }
+  if (isPageTarget(body)) {
+    return actionId === InternalActionId.FILE_PAGE_TARGET
+      ? undefined
+      : 'action_owner_mismatch:page_target'
+  }
   return undefined
 }

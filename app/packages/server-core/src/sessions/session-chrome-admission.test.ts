@@ -228,10 +228,11 @@ describe('human session chrome on the session kernel', () => {
     expect(isRefusedSessionChrome(labels)).toBe(true)
   })
 
-  it('keeps unflag off the kernel and points the shell at the three chrome commands', () => {
+  it('admits unflag on the kernel and points the shell at the three chrome commands', () => {
     const manager = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
     const unflag = manager.slice(manager.indexOf('async unflagSession'), manager.indexOf('async archiveSession'))
-    expect(unflag.includes('admitHostTurn')).toBe(false)
+    expect(unflag.includes('admitHostTurn')).toBe(true)
+    expect(unflag.includes('sessionUnflagRequest')).toBe(true)
     expect(manager.includes('requireHumanApproval')).toBe(false)
 
     const shell = readFileSync(new URL(
@@ -410,7 +411,7 @@ describe('agent session chrome on the session kernel', () => {
     }
   })
 
-  it('keeps agent tools on the kernel and leaves unflag off it', () => {
+  it('keeps agent tools on the kernel and admits unflag on its own id', () => {
     const manager = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
     const tools = manager.slice(manager.indexOf('setSessionLabelsFn:'), manager.indexOf('getSessionInfoFn:'))
     expect(tools.includes('setSessionLabelsFromAgent')).toBe(true)
@@ -428,11 +429,11 @@ describe('agent session chrome on the session kernel', () => {
     expect(stopped.includes('writeSessionStatusHeader')).toBe(false)
 
     const unflag = manager.slice(manager.indexOf('async unflagSession'), manager.indexOf('async archiveSession'))
-    expect(unflag.includes('admitHostTurn')).toBe(false)
+    expect(unflag.includes('admitHostTurn')).toBe(true)
+    expect(unflag.includes('sessionUnflagRequest')).toBe(true)
     expect(unflag.includes('admitSessionChrome')).toBe(false)
     expect(manager.includes('requireHumanApproval')).toBe(false)
     expect(manager.includes('setSessionNameFromAgent')).toBe(false)
-    expect(manager.includes('session.unflag')).toBe(false)
 
     const agentRename = manager.slice(
       manager.indexOf('async renameSessionFromAgent'),
@@ -668,8 +669,8 @@ describe('send-time auto-labels on the session kernel', () => {
 
       const unflag = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
       const unflagBody = unflag.slice(unflag.indexOf('async unflagSession'), unflag.indexOf('async archiveSession'))
-      expect(unflagBody.includes('admitHostTurn')).toBe(false)
-      expect(unflagBody.includes('session.unflag')).toBe(false)
+      expect(unflagBody.includes('admitHostTurn')).toBe(true)
+      expect(unflagBody.includes('sessionUnflagRequest')).toBe(true)
     } finally {
       rmSync(held.root, { recursive: true, force: true })
     }
