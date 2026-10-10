@@ -89,6 +89,12 @@ describe('canvas artifact cards', () => {
       filePath: join(root, 'talk.pptx'),
       actor: agent,
     })
+    const legacyDeck = await host.placeDocx({
+      nodeId: 'legacy-deck',
+      invocationId: 'place-legacy-deck',
+      filePath: join(root, 'talk.ppt'),
+      actor: human,
+    })
     const escaped = await host.placeDocx({
       nodeId: 'escaped',
       invocationId: 'place-escaped',
@@ -97,6 +103,7 @@ describe('canvas artifact cards', () => {
     })
     expect(sheet).toEqual({ status: 'Locked', suite: 'xlsx', reason: 'suite_locked' })
     expect(deck).toEqual({ status: 'Locked', suite: 'pptx', reason: 'suite_locked' })
+    expect(legacyDeck).toEqual({ status: 'Locked', suite: 'ppt', reason: 'suite_locked' })
     expect(escaped).toMatchObject({ status: 'failed', reason: 'unsafe_file_path' })
     expect(host.readBoard()).toEqual([])
     expect(host.kernel.snapshot().turns).toEqual([])

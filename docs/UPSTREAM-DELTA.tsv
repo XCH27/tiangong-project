@@ -146,3 +146,20 @@ app/packages/ui/src/lib/__tests__/xlsx-preview.test.ts	adapt	Preview classificat
 app/packages/ui/src/components/overlay/index.ts	adapt	Export XlsxPreviewOverlay next to the other preview overlays.	bun test src/lib/__tests__/xlsx-preview.test.ts
 app/packages/ui/src/index.ts	adapt	Export XlsxPreviewOverlay from the UI package.	bun test src/lib/__tests__/xlsx-preview.test.ts
 app/packages/shared/src/protocol/canvas-cards.ts	adapt	A wired XLSX workbook still does not place a canvas card. PPTX stays Locked.	bun test src/protocol/__tests__/canvas-cards.test.ts
+app/packages/shared/src/protocol/pptx-xml.ts	adapt	First-slide PresentationML read and one text-block write. Macros, field codes, path traversal, and decks past 20 slides or 40 text blocks fail closed.	bun test src/protocol/__tests__/pptx-suite.test.ts
+app/packages/shared/src/protocol/pptx-package.ts	adapt	PPTX zip around the first slide. Other slides, notes, and timing stay in the package.	bun test src/protocol/__tests__/pptx-suite.test.ts
+app/packages/shared/src/protocol/__tests__/pptx-suite.test.ts	adapt	Fixture deck create, first-slide text update, undo, field-code refusal, and locked legacy decks.	bun test src/protocol/__tests__/pptx-suite.test.ts
+app/packages/shared/src/protocol/__tests__/fixtures/pptx/	adapt	Two-slide deck with notes and animation timing. No slide editor.	bun test src/protocol/__tests__/pptx-suite.test.ts
+app/packages/shared/src/protocol/document-suite.ts	adapt	PPTX create admits file.create and a first-slide text update admits file.update. Legacy PPT and macro decks return Locked.	bun test src/protocol/__tests__/pptx-suite.test.ts src/protocol/__tests__/document-suite.test.ts
+app/packages/shared/src/protocol/document-command.ts	adapt	PPTX is a wired suite. Legacy ppt and pptm stay Locked.	bun test src/protocol/__tests__/document-suite.test.ts src/protocol/__tests__/pptx-suite.test.ts
+app/packages/shared/src/protocol/index.ts	adapt	Export the PPTX package reader beside the XLSX suite.	bun test src/protocol/__tests__/pptx-suite.test.ts
+app/packages/shared/package.json	adapt	Subpath export for the slide parser so the renderer does not import the host.	bun test src/lib/__tests__/pptx-preview.test.ts
+app/packages/shared/src/protocol/canvas-cards.ts	adapt	A wired PPTX deck still does not place a canvas card. Legacy ppt stays Locked there too.	bun test src/protocol/__tests__/canvas-cards.test.ts
+app/packages/ui/src/lib/pptx-preview.ts	adapt	Renderer reads the same first-slide text the host writes.	bun test src/lib/__tests__/pptx-preview.test.ts
+app/packages/ui/src/components/overlay/PptxPreviewOverlay.tsx	adapt	Existing preview chrome for first-slide text. Animation editing stays out.	bun test src/lib/__tests__/pptx-preview.test.ts
+app/packages/ui/src/lib/__tests__/pptx-preview.test.ts	adapt	Preview classification and text agreement between the overlay reader and the host package.	bun test src/lib/__tests__/pptx-preview.test.ts
+app/packages/ui/src/lib/file-classification.ts	adapt	pptx opens in the preview. Legacy ppt and pptm stay external.	bun test src/lib/__tests__/pptx-preview.test.ts src/lib/__tests__/docx-preview.test.ts
+app/packages/ui/src/components/overlay/index.ts	adapt	Export PptxPreviewOverlay next to the other preview overlays.	bun test src/lib/__tests__/pptx-preview.test.ts
+app/packages/ui/src/index.ts	adapt	Export PptxPreviewOverlay from the UI package.	bun test src/lib/__tests__/pptx-preview.test.ts
+app/apps/electron/src/renderer/App.tsx	adapt	File preview routes a pptx path to PptxPreviewOverlay.	bun test src/lib/__tests__/pptx-preview.test.ts
+app/apps/electron/src/renderer/hooks/useLinkInterceptor.ts	adapt	A pptx link opens the in-app preview instead of the external application.	bun test src/lib/__tests__/pptx-preview.test.ts

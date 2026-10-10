@@ -22,13 +22,14 @@ afterEach(() => {
 })
 
 describe('docx document suite', () => {
-  test('xlsx is wired and legacy xls and pptx stay locked', () => {
+  test('pptx is wired and legacy ppt stays locked', () => {
     expect(DOCUMENT_OPS).toEqual(['open', 'create', 'edit', 'update', 'undo', 'save', 'reopen'])
     expect(listDocumentSuites()).toEqual([
       { id: 'docx', extensions: ['docx'], status: 'wired' },
       { id: 'xlsx', extensions: ['xlsx'], status: 'wired' },
       { id: 'xls', extensions: ['xls', 'xlsm'], status: 'Locked' },
-      { id: 'pptx', extensions: ['pptx', 'ppt'], status: 'Locked' },
+      { id: 'pptx', extensions: ['pptx'], status: 'wired' },
+      { id: 'ppt', extensions: ['ppt', 'pptm'], status: 'Locked' },
     ])
   })
 
@@ -96,7 +97,7 @@ describe('docx document suite', () => {
     const shared = createDocumentSuiteHost()
     const sheet = join(dir, 'budget.xls')
     const macro = join(dir, 'budget.xlsm')
-    const deck = join(dir, 'talk.pptx')
+    const deck = join(dir, 'talk.ppt')
     expect(await applyDocumentFromHuman(shared, call('edit', sheet, 'sheet-1', human, { paragraphIndex: 0, text: 'no' }))).toEqual({
       status: 'Locked',
       suite: 'xls',
@@ -109,7 +110,7 @@ describe('docx document suite', () => {
     })
     expect(await applyDocumentFromAgent(shared, call('open', deck, 'deck-1'))).toEqual({
       status: 'Locked',
-      suite: 'pptx',
+      suite: 'ppt',
       reason: 'suite_locked',
     })
     expect(await applyDocumentFromAgent(shared, call('edit', `${dir}/../escape.docx`, 'bad-path', agent, {

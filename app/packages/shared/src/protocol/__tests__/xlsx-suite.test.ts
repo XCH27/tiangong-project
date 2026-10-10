@@ -181,7 +181,8 @@ describe('xlsx document suite', () => {
     const shared = createDocumentSuiteHost()
     const legacy = join(dir, 'legacy.xls')
     const macroName = join(dir, 'macro.xlsm')
-    const deck = join(dir, 'talk.pptx')
+    const deck = join(dir, 'talk.ppt')
+    const macroDeck = join(dir, 'macro.pptm')
     expect(await applyDocumentFromHuman(shared, call('create', legacy, 'legacy-1'))).toEqual({
       status: 'Locked',
       suite: 'xls',
@@ -194,7 +195,12 @@ describe('xlsx document suite', () => {
     })
     expect(await applyDocumentFromAgent(shared, call('update', deck, 'deck-1', agent, { cell: 'A1', value: 'no' }))).toEqual({
       status: 'Locked',
-      suite: 'pptx',
+      suite: 'ppt',
+      reason: 'suite_locked',
+    })
+    expect(await applyDocumentFromHuman(shared, call('open', macroDeck, 'pptm-1'))).toEqual({
+      status: 'Locked',
+      suite: 'ppt',
       reason: 'suite_locked',
     })
     expect(await applyDocumentFromAgent(shared, call('create', `${dir}/../escape.xlsx`, 'escape-1', agent, {

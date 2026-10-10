@@ -91,3 +91,13 @@ successful artifact unchanged. Deck editing remains usable when a single media a
 - no separate asset library or render queue;
 - no live full deck editor embedded in a canvas node.
 
+## 10. Document Suite Text Slice
+
+This module stays Locked. The platform spine document host can create a PPTX and replace text on the first slide through `executeDocumentOp`. That path is the Craft pptx-tool title and body surface. It is not a MotionDeck, not an animation editor, and not a canvas card. See `docs/modules/00-platform-spine.md`.
+
+| Slice | Status |
+|---|---|
+| PPTX create and first-slide text update, undo, save, and reopen through the document host | `wired` |
+| First-slide text preview in the existing overlay | `wired` |
+| Motion timeline, animation editing, HTML or video export, and canvas deck cards | `Locked` |
+

@@ -86,7 +86,7 @@ export interface DeleteCanvasCard {
 
 export type CanvasMutationResult =
   | { status: 'completed'; nodeId: string; invocationId: string }
-  | { status: 'Locked'; suite: 'xlsx' | 'xls' | 'pptx'; reason: 'suite_locked' }
+  | { status: 'Locked'; suite: 'xlsx' | 'xls' | 'pptx' | 'ppt'; reason: 'suite_locked' }
   | {
     status: Exclude<TurnOutcome['status'], 'completed'>
     invocationId: string
@@ -615,6 +615,8 @@ function lockedCard(id: DocumentSuiteId): CanvasMutationResult {
       return { status: 'Locked', suite: 'xls', reason: 'suite_locked' }
     case 'pptx':
       return { status: 'Locked', suite: 'pptx', reason: 'suite_locked' }
+    case 'ppt':
+      return { status: 'Locked', suite: 'ppt', reason: 'suite_locked' }
     default: {
       const unexpected: never = id
       return unexpected

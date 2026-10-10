@@ -22,6 +22,7 @@ export { MediaPreviewOverlay, type MediaPreviewOverlayProps } from './MediaPrevi
 export { PDFPreviewOverlay, type PDFPreviewOverlayProps } from './PDFPreviewOverlay'
 export { DocxPreviewOverlay, type DocxPreviewOverlayProps } from './DocxPreviewOverlay'
 export { XlsxPreviewOverlay, type XlsxPreviewOverlayProps } from './XlsxPreviewOverlay'
+export { PptxPreviewOverlay, type PptxPreviewOverlayProps } from './PptxPreviewOverlay'
 export { MermaidPreviewOverlay, type MermaidPreviewOverlayProps } from './MermaidPreviewOverlay'
 export { HTMLPreviewOverlay, type HTMLPreviewOverlayProps } from './HTMLPreviewOverlay'
 export { ActivityCardsOverlay, type ActivityCardsOverlayProps } from './ActivityCardsOverlay'

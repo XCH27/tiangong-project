@@ -5,6 +5,7 @@
  */
 
 import type { ActorRef } from './actor'
+import type { DeckSlideDraft } from './pptx-xml'
 import type { SheetValueType } from './xlsx-xml'
 
 export const DOCUMENT_OPS = ['open', 'create', 'edit', 'update', 'undo', 'save', 'reopen'] as const
@@ -14,7 +15,8 @@ export const DOCUMENT_SUITES = [
   { id: 'docx', extensions: ['docx'], status: 'wired' },
   { id: 'xlsx', extensions: ['xlsx'], status: 'wired' },
   { id: 'xls', extensions: ['xls', 'xlsm'], status: 'Locked' },
-  { id: 'pptx', extensions: ['pptx', 'ppt'], status: 'Locked' },
+  { id: 'pptx', extensions: ['pptx'], status: 'wired' },
+  { id: 'ppt', extensions: ['ppt', 'pptm'], status: 'Locked' },
 ] as const
 
 export type DocumentSuiteId = (typeof DOCUMENT_SUITES)[number]['id']
@@ -42,6 +44,7 @@ export interface DocumentCall {
   valueType?: SheetValueType
   rows?: string[][]
   sheetName?: string
+  slides?: DeckSlideDraft[]
 }
 
 export function listDocumentSuites(): readonly DocumentSuiteDeclaration[] {

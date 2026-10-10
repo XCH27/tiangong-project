@@ -7,7 +7,7 @@
  */
 
 /** Preview types that map to specific overlay components */
-export type FilePreviewType = 'image' | 'code' | 'markdown' | 'json' | 'text' | 'pdf' | 'docx' | 'xlsx'
+export type FilePreviewType = 'image' | 'code' | 'markdown' | 'json' | 'text' | 'pdf' | 'docx' | 'xlsx' | 'pptx'
 
 export interface FileClassification {
   /** The preview type, or null if no in-app preview is available */
@@ -70,6 +70,9 @@ const DOCX_EXTENSIONS = new Set(['docx'])
 /** SpreadsheetML — rendered as first-sheet cells in XlsxPreviewOverlay. */
 const XLSX_EXTENSIONS = new Set(['xlsx'])
 
+/** PresentationML — rendered as first-slide text in PptxPreviewOverlay. */
+const PPTX_EXTENSIONS = new Set(['pptx'])
+
 /**
  * External-only file extensions — recognized as file links but opened externally.
  * These are included in FILE_EXTENSIONS_PATTERN so linkify.ts detects them as file paths,
@@ -78,7 +81,7 @@ const XLSX_EXTENSIONS = new Set(['xlsx'])
 const EXTERNAL_EXTENSIONS = new Set([
   'xls', 'xlsm',             // Legacy and macro workbooks — suite Locked
   'doc',                     // Legacy Word — not the DOCX suite
-  'pptx', 'ppt',             // Presentations — suite Locked
+  'ppt', 'pptm',             // Legacy and macro presentations — suite Locked
   'zip', 'tar', 'gz', 'rar', '7z',  // Archives
   'dmg', 'pkg', 'exe', 'msi',       // Installers
   'mp3', 'wav', 'flac', 'aac',      // Audio
@@ -101,7 +104,7 @@ function getExtension(filePath: string): string {
  * Classify a file path by extension to determine preview capability.
  *
  * Priority order when an extension matches multiple sets (e.g. svg):
- * image > code > markdown > json > text > pdf > docx > xlsx
+ * image > code > markdown > json > text > pdf > docx > xlsx > pptx
  */
 export function classifyFile(filePath: string): FileClassification {
   const ext = getExtension(filePath)
@@ -115,6 +118,7 @@ export function classifyFile(filePath: string): FileClassification {
   if (PDF_EXTENSIONS.has(ext))      return { type: 'pdf', canPreview: true }
   if (DOCX_EXTENSIONS.has(ext))     return { type: 'docx', canPreview: true }
   if (XLSX_EXTENSIONS.has(ext))     return { type: 'xlsx', canPreview: true }
+  if (PPTX_EXTENSIONS.has(ext))     return { type: 'pptx', canPreview: true }
 
   return { type: null, canPreview: false }
 }
@@ -133,5 +137,6 @@ export const FILE_EXTENSIONS_PATTERN = [
   ...PDF_EXTENSIONS,
   ...DOCX_EXTENSIONS,
   ...XLSX_EXTENSIONS,
+  ...PPTX_EXTENSIONS,
   ...EXTERNAL_EXTENSIONS,
 ].join('|')
