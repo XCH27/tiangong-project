@@ -209,6 +209,7 @@ export {
   PDFPreviewOverlay,
   DocxPreviewOverlay,
   XlsxPreviewOverlay,
+  PptxPreviewOverlay,
   detectLanguage,
   detectLanguageFromPath,
   type CodePreviewOverlayProps,
@@ -225,6 +226,7 @@ export {
   type PDFPreviewOverlayProps,
   type DocxPreviewOverlayProps,
   type XlsxPreviewOverlayProps,
+  type PptxPreviewOverlayProps,
   ActivityCardsOverlay,
   type ActivityCardsOverlayProps,
 } from './components/overlay'

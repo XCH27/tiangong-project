@@ -9,7 +9,9 @@ describe('docx preview', () => {
     expect(classifyFile('/work/budget.xlsx')).toEqual({ type: 'xlsx', canPreview: true })
     expect(classifyFile('/work/legacy.xls').canPreview).toBe(false)
     expect(classifyFile('/work/macros.xlsm').canPreview).toBe(false)
-    expect(classifyFile('/work/talk.pptx').canPreview).toBe(false)
+    expect(classifyFile('/work/talk.pptx')).toEqual({ type: 'pptx', canPreview: true })
+    expect(classifyFile('/work/legacy.ppt').canPreview).toBe(false)
+    expect(classifyFile('/work/macros.pptm').canPreview).toBe(false)
     expect(classifyFile('/work/legacy.doc').canPreview).toBe(false)
   })
 

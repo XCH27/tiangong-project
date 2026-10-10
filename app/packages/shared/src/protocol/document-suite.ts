@@ -4,9 +4,11 @@
  * DOCX open, edit, undo, save, and reopen share one paragraph operation.
  * XLSX create writes a new workbook through file.create. A cell update, undo,
  * and dirty save use file.update. A human control and an agent caller both
- * use executeDocumentOp. The undo handle stores the previous bytes. Legacy
- * .xls, macro-enabled .xlsm, and PPTX stay Locked. This is not a plugin
- * marketplace and it is not a spreadsheet editor.
+ * use executeDocumentOp. The undo handle stores the previous bytes. PPTX
+ * create writes a new deck through file.create. A first-slide text update,
+ * undo, and dirty save use file.update. Legacy .xls, macro-enabled .xlsm,
+ * legacy .ppt, and macro-enabled .pptm stay Locked. This is not a plugin
+ * marketplace, a spreadsheet editor, or a slide editor.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -18,6 +20,8 @@ import {
 } from './document-command'
 import { DocxPackageError, readDocxParagraphs, replaceDocxParagraph } from './docx-package'
 import { InternalActionId, type ActionInvocation } from './internal-action'
+import { PptxPackageError, buildPptx, readPptxSlide, replacePptxText } from './pptx-package'
+import { type DeckSlideDraft } from './pptx-xml'
 import { applyAtomicBytesEffect, type NativeEffect, NativeEffectRegistry } from './native-effect-executor'
 import { HostTurnKernel, MemoryTurnJournal, type TurnOutcome } from './turn-admission'
 import { XlsxPackageError, buildXlsx, readXlsxSheet, replaceXlsxCell } from './xlsx-package'
@@ -34,12 +38,13 @@ export interface DocumentOpSuccess {
   paragraphs: string[]
   cells: SheetCell[]
   sheetName: string | null
+  texts: string[]
   persisted: boolean
 }
 
 export type DocumentOpResult =
   | DocumentOpSuccess
-  | { status: 'Locked'; suite: 'xls' | 'pptx'; reason: 'suite_locked' }
+  | { status: 'Locked'; suite: 'xls' | 'ppt'; reason: 'suite_locked' }
   | { status: Exclude<TurnOutcome['status'], 'completed'>; invocationId: string; reason?: string }
 
 interface OpenDocument {
@@ -102,8 +107,10 @@ export async function executeDocumentOp(
       return runDocx(shared, input)
     case 'xlsx':
       return runXlsx(shared, input)
+    case 'pptx':
+      return runPptx(shared, input)
     default: {
-      const unexpected: never = suite.id
+      const unexpected: never = suite
       return failed(input.invocationId, `unknown_suite:${String(unexpected)}`)
     }
   }
@@ -144,6 +151,28 @@ async function runXlsx(shared: DocumentSuiteShared, input: DocumentCaller): Prom
       return undoWorkbook(shared, input)
     case 'save':
       return saveWorkbook(shared, input)
+    case 'edit':
+      return failed(input.invocationId, 'unsupported_suite_op')
+    default: {
+      const unexpected: never = input.op
+      return failed(input.invocationId, `unknown_document_op:${String(unexpected)}`)
+    }
+  }
+}
+
+async function runPptx(shared: DocumentSuiteShared, input: DocumentCaller): Promise<DocumentOpResult> {
+  switch (input.op) {
+    case 'open':
+    case 'reopen':
+      return openDeck(shared, input)
+    case 'create':
+      return createDeck(shared, input)
+    case 'update':
+      return updateDeck(shared, input)
+    case 'undo':
+      return undoDeck(shared, input)
+    case 'save':
+      return saveDeck(shared, input)
     case 'edit':
       return failed(input.invocationId, 'unsupported_suite_op')
     default: {
@@ -285,12 +314,87 @@ async function saveWorkbook(shared: DocumentSuiteShared, input: DocumentCaller):
   return completedSheet(input.invocationId, projected.sheet, true)
 }
 
+async function openDeck(shared: DocumentSuiteShared, input: DocumentCaller): Promise<DocumentOpResult> {
+  const bytes = readDocumentFile(input.filePath)
+  if (!bytes) return failed(input.invocationId, 'file_missing')
+  const projected = projectDeck(bytes)
+  if (!projected.ok) return failed(input.invocationId, projected.reason)
+  sessions(shared).set(input.filePath, { bytes: Uint8Array.from(bytes), undo: [] })
+  return completedDeck(input.invocationId, projected.texts, false)
+}
+
+async function createDeck(shared: DocumentSuiteShared, input: DocumentCaller): Promise<DocumentOpResult> {
+  if (existsSync(input.filePath)) return failed(input.invocationId, 'file_exists')
+  const slides = deckSlides(input.slides)
+  if (!slides) return failed(input.invocationId, 'invalid_value')
+  let next: Uint8Array
+  try {
+    next = buildPptx({ slides })
+  } catch (error) {
+    if (error instanceof PptxPackageError) return failed(input.invocationId, error.reason)
+    throw error
+  }
+  const projected = projectDeck(next)
+  if (!projected.ok) return failed(input.invocationId, projected.reason)
+  const written = await persistDocument(shared, input, InternalActionId.FILE_CREATE, 'pptx', next, slides)
+  if (written.status !== 'completed') return unwritten(written)
+  sessions(shared).set(input.filePath, { bytes: Uint8Array.from(next), undo: [] })
+  return completedDeck(input.invocationId, projected.texts, true)
+}
+
+async function updateDeck(shared: DocumentSuiteShared, input: DocumentCaller): Promise<DocumentOpResult> {
+  const current = sessions(shared).get(input.filePath)
+  if (!current) return failed(input.invocationId, 'not_open')
+  if (input.paragraphIndex === undefined || input.text === undefined) return failed(input.invocationId, 'missing_text')
+  let next: Uint8Array
+  try {
+    next = replacePptxText(current.bytes, input.paragraphIndex, input.text)
+  } catch (error) {
+    if (error instanceof PptxPackageError) return failed(input.invocationId, error.reason)
+    throw error
+  }
+  const projected = projectDeck(next)
+  if (!projected.ok) return failed(input.invocationId, projected.reason)
+  const written = await persistDocument(shared, input, InternalActionId.FILE_UPDATE, 'pptx', next)
+  if (written.status !== 'completed') return unwritten(written)
+  current.undo.push(Uint8Array.from(current.bytes))
+  current.bytes = Uint8Array.from(next)
+  return completedDeck(input.invocationId, projected.texts, true)
+}
+
+async function undoDeck(shared: DocumentSuiteShared, input: DocumentCaller): Promise<DocumentOpResult> {
+  const current = sessions(shared).get(input.filePath)
+  if (!current) return failed(input.invocationId, 'not_open')
+  const previous = current.undo[current.undo.length - 1]
+  if (!previous) return failed(input.invocationId, 'nothing_to_undo')
+  const written = await persistDocument(shared, input, InternalActionId.FILE_UPDATE, 'pptx', previous)
+  if (written.status !== 'completed') return unwritten(written)
+  current.undo.pop()
+  current.bytes = Uint8Array.from(previous)
+  const projected = projectDeck(current.bytes)
+  if (!projected.ok) return failed(input.invocationId, projected.reason)
+  return completedDeck(input.invocationId, projected.texts, true)
+}
+
+async function saveDeck(shared: DocumentSuiteShared, input: DocumentCaller): Promise<DocumentOpResult> {
+  const current = sessions(shared).get(input.filePath)
+  if (!current) return failed(input.invocationId, 'not_open')
+  const projected = projectDeck(current.bytes)
+  if (!projected.ok) return failed(input.invocationId, projected.reason)
+  const disk = readDocumentFile(input.filePath)
+  if (disk && sameBytes(disk, current.bytes)) return completedDeck(input.invocationId, projected.texts, false)
+  const written = await persistDocument(shared, input, InternalActionId.FILE_UPDATE, 'pptx', current.bytes)
+  if (written.status !== 'completed') return unwritten(written)
+  return completedDeck(input.invocationId, projected.texts, true)
+}
+
 async function persistDocument(
   shared: DocumentSuiteShared,
   input: DocumentCaller,
   actionId: typeof InternalActionId.FILE_CREATE | typeof InternalActionId.FILE_UPDATE,
-  suite: 'docx' | 'xlsx',
+  suite: 'docx' | 'xlsx' | 'pptx',
   next: Uint8Array,
+  slides?: DeckSlideDraft[],
 ): Promise<TurnOutcome> {
   const invocation: ActionInvocation = {
     invocationId: input.invocationId,
@@ -305,6 +409,7 @@ async function persistDocument(
       valueType: input.valueType,
       rows: input.rows,
       sheetName: input.sheetName,
+      slides: slides ?? input.slides,
       nextBytesBase64: encodeBytes(next),
     },
     targets: [{ kind: 'file', id: input.filePath, label: input.op }],
@@ -326,7 +431,7 @@ function sessions(shared: DocumentSuiteShared): Map<string, OpenDocument> {
 function locked(suite: Extract<DocumentSuiteDeclaration, { status: 'Locked' }>): DocumentOpResult {
   switch (suite.id) {
     case 'xls':
-    case 'pptx':
+    case 'ppt':
       return { status: 'Locked', suite: suite.id, reason: 'suite_locked' }
     default: {
       const unexpected: never = suite
@@ -354,7 +459,7 @@ function unwritten(outcome: TurnOutcome): DocumentOpResult {
 }
 
 function completed(invocationId: string, paragraphs: string[], persisted: boolean): DocumentOpSuccess {
-  return { status: 'completed', invocationId, paragraphs, cells: [], sheetName: null, persisted }
+  return { status: 'completed', invocationId, paragraphs, cells: [], sheetName: null, texts: [], persisted }
 }
 
 function completedSheet(invocationId: string, sheet: SheetProjection, persisted: boolean): DocumentOpSuccess {
@@ -364,8 +469,13 @@ function completedSheet(invocationId: string, sheet: SheetProjection, persisted:
     paragraphs: [],
     cells: sheet.cells,
     sheetName: sheet.sheetName,
+    texts: [],
     persisted,
   }
+}
+
+function completedDeck(invocationId: string, texts: string[], persisted: boolean): DocumentOpSuccess {
+  return { status: 'completed', invocationId, paragraphs: [], cells: [], sheetName: null, texts, persisted }
 }
 
 function failed(invocationId: string, reason: string): DocumentOpResult {
@@ -387,6 +497,26 @@ function paragraphsOf(bytes: Uint8Array): string[] | null {
     if (error instanceof DocxPackageError) return null
     throw error
   }
+}
+
+function projectDeck(bytes: Uint8Array): { ok: true; texts: string[] } | { ok: false; reason: string } {
+  try {
+    return { ok: true, texts: readPptxSlide(bytes).texts }
+  } catch (error) {
+    if (error instanceof PptxPackageError) return { ok: false, reason: error.reason }
+    throw error
+  }
+}
+
+function deckSlides(value: DeckSlideDraft[] | undefined): DeckSlideDraft[] | null {
+  if (value === undefined || value.length === 0) return [{ title: '', body: '' }]
+  if (!Array.isArray(value)) return null
+  const slides: DeckSlideDraft[] = []
+  for (const slide of value) {
+    if (!slide || typeof slide.title !== 'string' || typeof slide.body !== 'string') return null
+    slides.push({ title: slide.title, body: slide.body })
+  }
+  return slides
 }
 
 function projectSheet(bytes: Uint8Array): { ok: true; sheet: SheetProjection } | { ok: false; reason: string } {
