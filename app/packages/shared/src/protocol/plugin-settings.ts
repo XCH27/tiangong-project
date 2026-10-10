@@ -3,9 +3,9 @@
  *
  * Five views share one catalog. Workspace skills and MCP sources are local.
  * Catalog reads can add Market entries. Market content filters narrow that
- * list. Install still admits file.update. Third-party hook approval, the MCP
- * Apps side pane, and Agent Plugins 1.0.0 stay Locked. This is not a remote
- * store and it is not a plugin marketplace.
+ * list. Install still admits file.update. Enabling a third-party hook or MCP
+ * server waits for the existing permission card. MCP Apps and Agent Plugins
+ * 1.0.0 stay Locked. This is not a remote store and it is not a plugin marketplace.
  */
 
 export const PLUGIN_VIEWS = ['installed', 'market', 'skills', 'mcp', 'hooks'] as const
@@ -14,12 +14,25 @@ export type PluginView = (typeof PLUGIN_VIEWS)[number]
 export const MARKET_CONTENT_FILTERS = ['all', 'skill', 'mcp', 'hook', 'command'] as const
 export type MarketContentFilter = (typeof MARKET_CONTENT_FILTERS)[number]
 
-export const LOCKED_PLUGIN_PHASES = [
+export const PLUGIN_PHASES = [
   'third_party_hook_approval',
   'mcp_apps_side_pane',
   'agent_plugins_1_0_0',
 ] as const
+export type PluginPhase = (typeof PLUGIN_PHASES)[number]
+
+export const LOCKED_PLUGIN_PHASES = [
+  'mcp_apps_side_pane',
+  'agent_plugins_1_0_0',
+] as const
 export type LockedPluginPhase = (typeof LOCKED_PLUGIN_PHASES)[number]
+
+export type PluginGrantDecision = 'approved' | 'denied'
+
+export interface PluginGrantRecord {
+  id: string
+  decision: PluginGrantDecision
+}
 
 export type PluginContentKind = Exclude<MarketContentFilter, 'all'>
 export type PluginTrust = 'first_party' | 'third_party'
@@ -43,6 +56,8 @@ export interface PluginLoadoutRecord {
 export interface PluginLoadoutFile {
   version: 1
   records: PluginLoadoutRecord[]
+  /** Per-plugin human decision. Absence is not an approval. */
+  grants?: PluginGrantRecord[]
 }
 
 export interface PluginSettingsState {
@@ -92,9 +107,10 @@ export function parseMarketFilter(value: string): MarketContentFilter | null {
   return isMarketContentFilter(value) ? value : null
 }
 
-export function pluginPhaseStatus(phase: LockedPluginPhase): 'Locked' {
+export function pluginPhaseStatus(phase: PluginPhase): 'wired' | 'Locked' {
   switch (phase) {
     case 'third_party_hook_approval':
+      return 'wired'
     case 'mcp_apps_side_pane':
     case 'agent_plugins_1_0_0':
       return 'Locked'
@@ -103,6 +119,32 @@ export function pluginPhaseStatus(phase: LockedPluginPhase): 'Locked' {
       return unexpected
     }
   }
+}
+
+export function needsThirdPartyEnableApproval(entry: PluginCatalogEntry): boolean {
+  if (entry.trust !== 'third_party') return false
+  switch (entry.kind) {
+    case 'hook':
+    case 'mcp':
+      return true
+    case 'skill':
+    case 'command':
+      return false
+    default: {
+      const unexpected: never = entry.kind
+      return unexpected
+    }
+  }
+}
+
+export function pluginGrant(loadout: PluginLoadoutFile, id: string): PluginGrantRecord | undefined {
+  return loadout.grants?.find((grant) => grant.id === id)
+}
+
+export function withPluginGrant(loadout: PluginLoadoutFile, grant: PluginGrantRecord): PluginLoadoutFile {
+  const grants = (loadout.grants ?? []).filter((item) => item.id !== grant.id)
+  grants.push(grant)
+  return { version: 1, records: loadout.records, grants }
 }
 
 export function projectWorkspacePlugins(input: {
@@ -192,6 +234,7 @@ export type PluginMutationName = 'install' | 'enable' | 'disable'
 export type PluginMutationPlan =
   | { status: 'unchanged'; loadout: PluginLoadoutFile }
   | { status: 'write'; loadout: PluginLoadoutFile }
+  | { status: 'approval'; loadout: PluginLoadoutFile }
   | { status: 'failed'; reason: string }
   | { status: 'Locked'; phase: LockedPluginPhase }
 
@@ -212,16 +255,18 @@ export function planPluginMutation(
         status: 'write',
         loadout: upsert(loadout, { id: pluginId, installed: true, enabled: false }),
       }
-    case 'enable':
-      if (entry.kind === 'hook' && entry.trust === 'third_party') {
-        return { status: 'Locked', phase: 'third_party_hook_approval' }
-      }
+    case 'enable': {
       if (!current?.installed) return { status: 'failed', reason: 'not_installed' }
       if (current.enabled) return { status: 'unchanged', loadout }
-      return {
-        status: 'write',
-        loadout: upsert(loadout, { id: pluginId, installed: true, enabled: true }),
+      const enabled = upsert(loadout, { id: pluginId, installed: true, enabled: true })
+      if (needsThirdPartyEnableApproval(entry) && pluginGrant(loadout, pluginId)?.decision !== 'approved') {
+        return {
+          status: 'approval',
+          loadout: withPluginGrant(enabled, { id: pluginId, decision: 'approved' }),
+        }
       }
+      return { status: 'write', loadout: enabled }
+    }
     case 'disable':
       if (!current?.installed) return { status: 'failed', reason: 'not_installed' }
       if (!current.enabled) return { status: 'unchanged', loadout }
@@ -238,12 +283,20 @@ export function planPluginMutation(
 
 export function isPluginLoadoutFile(value: unknown): value is PluginLoadoutFile {
   if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.records)) return false
-  return value.records.every((record) => {
+  if (!value.records.every((record) => {
     if (!isRecord(record)) return false
     return typeof record.id === 'string'
       && record.id.trim().length > 0
       && typeof record.installed === 'boolean'
       && typeof record.enabled === 'boolean'
+  })) return false
+  if (value.grants === undefined) return true
+  if (!Array.isArray(value.grants)) return false
+  return value.grants.every((grant) => {
+    if (!isRecord(grant)) return false
+    return typeof grant.id === 'string'
+      && grant.id.trim().length > 0
+      && (grant.decision === 'approved' || grant.decision === 'denied')
   })
 }
 
@@ -269,7 +322,11 @@ function filterMarket(
 function upsert(loadout: PluginLoadoutFile, record: PluginLoadoutRecord): PluginLoadoutFile {
   const records = loadout.records.filter((item) => item.id !== record.id)
   records.push(record)
-  return { version: 1, records }
+  return {
+    version: 1,
+    records,
+    ...(loadout.grants ? { grants: loadout.grants } : {}),
+  }
 }
 
 function safeSlug(value: string): boolean {

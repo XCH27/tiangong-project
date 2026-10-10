@@ -54,6 +54,11 @@ export interface TurnRequest {
   invocation: ActionInvocation
   actor: ActorRef
   preAuthorizedBy?: ActorRef
+  /**
+   * Wait for a human even when the frozen row would auto-admit.
+   * Third-party plugin enable sets this. It does not add an action id.
+   */
+  requireHumanApproval?: boolean
 }
 
 export type TurnPhase =
@@ -504,6 +509,7 @@ export class HostTurnKernel {
   }
 
   private gateFor(policy: FrozenActionPolicy, request: TurnRequest): 'allow' | 'approval' {
+    if (request.requireHumanApproval === true) return 'approval'
     switch (policy.permissionLevel) {
       case 'L0_read_only':
         return 'allow'
