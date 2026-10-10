@@ -36,7 +36,7 @@ app/apps/electron/src/renderer/pages/settings/SubscriptionUsageSection.tsx	adapt
 app/packages/shared/src/protocol/index.ts	adapt	Export the AIGC job loop and the subscription observation.	bun test src/protocol/__tests__/aigc-job.test.ts src/protocol/__tests__/subscription-observation.test.ts
 app/apps/electron/src/renderer/components/app-shell/ChatDisplay.tsx	adapt	Activity overlay renders an aigc artifact with MediaPreviewOverlay instead of a code view.	bun test src/lib/__tests__/tool-parsers-media.test.ts
 app/packages/ui/src/components/overlay/ActivityCardsOverlay.tsx	adapt	Stacked activity cards render a media artifact as a preview frame.	bun test src/lib/__tests__/tool-parsers-media.test.ts
-app/packages/shared/src/protocol/document-suite.ts	adapt	DOCX open, edit, undo, save, and reopen. Human and agent callers admit file.update for writes. XLSX and PPTX return Locked.	bun test src/protocol/__tests__/document-suite.test.ts
+app/packages/shared/src/protocol/document-suite.ts	adapt	DOCX writes admit file.update. XLSX create admits file.create and a first-sheet cell update admits file.update. Legacy XLS and PPTX return Locked.	bun test src/protocol/__tests__/document-suite.test.ts src/protocol/__tests__/xlsx-suite.test.ts
 app/packages/shared/src/protocol/docx-package.ts	adapt	Minimal DOCX package read and paragraph replace. Other parts stay in the zip.	bun test src/protocol/__tests__/document-suite.test.ts
 app/packages/shared/src/protocol/docx-xml.ts	adapt	Paragraph text inside word/document.xml. Shared by the host and the preview.	bun test src/protocol/__tests__/document-suite.test.ts
 app/packages/shared/src/protocol/zip-store.ts	adapt	Stored and deflated ZIP parts for one Office package. ZIP64 and data descriptors fail closed.	bun test src/protocol/__tests__/document-suite.test.ts
@@ -45,9 +45,9 @@ app/packages/shared/src/protocol/native-effect-executor.ts	adapt	Atomic byte rep
 app/packages/shared/src/protocol/__tests__/document-suite.test.ts	adapt	Closed loop for human and agent DOCX edits, undo, save, reopen, credential denial, and locked suites.	bun test src/protocol/__tests__/document-suite.test.ts
 app/packages/ui/src/components/overlay/DocxPreviewOverlay.tsx	adapt	Existing preview chrome for DOCX paragraphs.	bun test src/lib/__tests__/docx-preview.test.ts
 app/packages/ui/src/lib/docx-preview.ts	adapt	Renderer reads the same document.xml paragraphs the host writes.	bun test src/lib/__tests__/docx-preview.test.ts
-app/packages/ui/src/lib/file-classification.ts	adapt	docx opens in the preview. xlsx and pptx stay external while those suites are Locked.	bun test src/lib/__tests__/docx-preview.test.ts
-app/apps/electron/src/renderer/App.tsx	adapt	File preview routes a docx path to DocxPreviewOverlay.	bun test src/lib/__tests__/docx-preview.test.ts
-app/apps/electron/src/renderer/hooks/useLinkInterceptor.ts	adapt	A docx link opens the in-app preview instead of the external application.	bun test src/lib/__tests__/docx-preview.test.ts
+app/packages/ui/src/lib/file-classification.ts	adapt	docx and xlsx open in the preview. Legacy xls, xlsm, and pptx stay external.	bun test src/lib/__tests__/docx-preview.test.ts src/lib/__tests__/xlsx-preview.test.ts
+app/apps/electron/src/renderer/App.tsx	adapt	File preview routes a docx path to DocxPreviewOverlay and an xlsx path to XlsxPreviewOverlay.	bun test src/lib/__tests__/docx-preview.test.ts src/lib/__tests__/xlsx-preview.test.ts
+app/apps/electron/src/renderer/hooks/useLinkInterceptor.ts	adapt	A docx or xlsx link opens the in-app preview instead of the external application.	bun test src/lib/__tests__/docx-preview.test.ts src/lib/__tests__/xlsx-preview.test.ts
 app/packages/shared/src/protocol/index.ts	adapt	Export the DOCX suite, package reader, and preview command.	bun test src/protocol/__tests__/document-suite.test.ts
 app/packages/shared/package.json	adapt	Subpath exports for the paragraph parser and the preview command, so the renderer does not import the host.	bun test src/lib/__tests__/docx-preview.test.ts
 app/packages/ui/src/index.ts	adapt	Export DocxPreviewOverlay from the UI package.	bun test src/lib/__tests__/docx-preview.test.ts
@@ -133,3 +133,16 @@ app/scripts/verify-packaging-dry-run.ts	adapt	Local entry for the unsigned packa
 app/scripts/build/fixtures/packaging-dry-run.json	adapt	Checked-in unsigned layout contract. Relative artifact names and sha512 only.	bun test src/protocol/__tests__/release-independence.test.ts
 app/scripts/build/fixtures/packaging-dry-run/	adapt	Per-channel dry-run payloads and local latest-mac.yml, latest.yml, and latest-linux.yml files. These are not installers.	bun test src/protocol/__tests__/release-independence.test.ts
 app/apps/electron/src/renderer/pages/settings/AppSettingsPage.tsx	adapt	About shows the packaging dry-run status from the existing release model. The Craft update button is unchanged.	bun test src/protocol/__tests__/release-independence.test.ts
+app/packages/shared/src/protocol/xlsx-xml.ts	adapt	First-sheet SpreadsheetML read and one-cell write. Formulas, rich text, macros, and grids past 200 by 26 fail closed.	bun test src/protocol/__tests__/xlsx-suite.test.ts
+app/packages/shared/src/protocol/xlsx-package.ts	adapt	XLSX zip around the first worksheet. Other parts stay in the package.	bun test src/protocol/__tests__/xlsx-suite.test.ts
+app/packages/shared/src/protocol/__tests__/xlsx-suite.test.ts	adapt	Fixture workbook create, cell update, undo, formula refusal, and locked legacy workbooks.	bun test src/protocol/__tests__/xlsx-suite.test.ts
+app/packages/shared/src/protocol/__tests__/fixtures/xlsx/	adapt	Shared-string workbook and a formula sheet. No live spreadsheet editor.	bun test src/protocol/__tests__/xlsx-suite.test.ts
+app/packages/shared/src/protocol/document-command.ts	adapt	XLSX is a wired suite. Create and update are document ops. Legacy xls and pptx stay Locked.	bun test src/protocol/__tests__/document-suite.test.ts src/protocol/__tests__/xlsx-suite.test.ts
+app/packages/shared/src/protocol/index.ts	adapt	Export the XLSX package reader beside the DOCX suite.	bun test src/protocol/__tests__/xlsx-suite.test.ts
+app/packages/shared/package.json	adapt	Subpath export for the worksheet parser so the renderer does not import the host.	bun test src/lib/__tests__/xlsx-preview.test.ts
+app/packages/ui/src/lib/xlsx-preview.ts	adapt	Renderer reads the same first-sheet cells the host writes.	bun test src/lib/__tests__/xlsx-preview.test.ts
+app/packages/ui/src/components/overlay/XlsxPreviewOverlay.tsx	adapt	Existing preview chrome for first-sheet cells. Formula cells stay read-only.	bun test src/lib/__tests__/xlsx-preview.test.ts
+app/packages/ui/src/lib/__tests__/xlsx-preview.test.ts	adapt	Preview classification and cell agreement between the overlay reader and the host package.	bun test src/lib/__tests__/xlsx-preview.test.ts
+app/packages/ui/src/components/overlay/index.ts	adapt	Export XlsxPreviewOverlay next to the other preview overlays.	bun test src/lib/__tests__/xlsx-preview.test.ts
+app/packages/ui/src/index.ts	adapt	Export XlsxPreviewOverlay from the UI package.	bun test src/lib/__tests__/xlsx-preview.test.ts
+app/packages/shared/src/protocol/canvas-cards.ts	adapt	A wired XLSX workbook still does not place a canvas card. PPTX stays Locked.	bun test src/protocol/__tests__/canvas-cards.test.ts

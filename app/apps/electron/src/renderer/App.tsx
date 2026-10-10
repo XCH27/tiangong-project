@@ -62,6 +62,7 @@ import {
   ImagePreviewOverlay,
   PDFPreviewOverlay,
   DocxPreviewOverlay,
+  XlsxPreviewOverlay,
   CodePreviewOverlay,
   DocumentFormattedMarkdownOverlay,
   JSONPreviewOverlay,
@@ -2071,6 +2072,7 @@ function WindowCloseHandler() {
  * - image → ImagePreviewOverlay (binary, loaded via data URL)
  * - pdf → PDFPreviewOverlay (binary, embedded via Chromium viewer)
  * - docx → DocxPreviewOverlay (paragraphs from the document package)
+ * - xlsx → XlsxPreviewOverlay (first-sheet cells from the workbook package)
  * - code/text → CodePreviewOverlay (syntax highlighted)
  * - markdown → DocumentFormattedMarkdownOverlay
  * - json → JSONPreviewOverlay
@@ -2119,6 +2121,17 @@ function FilePreviewRenderer({
     case 'docx':
       return (
         <DocxPreviewOverlay
+          isOpen
+          onClose={onClose}
+          filePath={state.filePath}
+          loadBytes={loadPdfData}
+          theme={theme}
+        />
+      )
+
+    case 'xlsx':
+      return (
+        <XlsxPreviewOverlay
           isOpen
           onClose={onClose}
           filePath={state.filePath}

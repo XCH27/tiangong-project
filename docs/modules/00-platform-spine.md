@@ -117,6 +117,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Codex app-server and ACP stdio JSON-RPC executors run only after host admission. |
 | 2026-10-09 | draft v1.1 | AIGC job submit runs only after host approval. Subscription fields stay unknown when unobserved. |
 | 2026-10-09 | draft v1.1 | One DOCX suite opens, edits, undoes, saves, and reopens through file.update. XLSX and PPTX stay Locked. |
+| 2026-10-10 | draft v1.1 | XLSX create admits file.create and a first-sheet cell update admits file.update. Formulas, legacy .xls, macro workbooks, and PPTX stay Locked. |
 | 2026-10-09 | draft v1.1 | Canvas cards bind an admitted DOCX and an admitted aigc artifact. Hide, stop, and delete keep the owner state. |
 | 2026-10-09 | draft v1.1 | Built-in Chromium guest find, loading stop, and a DOM snapshot admitted as file.create. Screenshot evidence and Chrome Store stay Locked. |
 | 2026-10-09 | draft v1.1 | Settings Plugins page has five views and local market filters. Loadout writes admit file.update. MCP Registry, third-party hook approval, MCP Apps, and Agent Plugins 1.0.0 stay Locked. |
@@ -149,9 +150,9 @@ Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popov
 
 `observeSubscription` is the usage reading for quota, tier, and remaining. The AI settings section and `readSubscriptionForAgent` both use it. A missing field stays unknown. An explicit zero stays zero. Live billing fetch is not part of this slice.
 
-The document suite host is one built-in package, not a marketplace. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. Open and reopen read a DOCX package. Edit, undo, and a dirty save admit `file.update` and write the package with the same atomic replace as `session.jsonl`. The undo handle stores the previous bytes. The preview overlay shows those paragraphs in the existing preview chrome. Its Edit and Undo buttons apply the same paragraph replace to the bytes that overlay loaded and emit `DocumentPreviewCommand`. They do not admit a disk write. A parent that admits calls `applyDocumentFromHuman`. XLSX and PPTX return `Locked` and do not write. Library registration, file leases, and a plugin catalog stay out of this slice.
+The document suite host is one built-in package, not a marketplace. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. Open and reopen read a DOCX package or the first sheet of an XLSX workbook. A DOCX edit, undo, and dirty save admit `file.update`. An XLSX create admits `file.create` and writes a new workbook. An XLSX cell update, undo, and dirty save admit `file.update`. Both writes use the same atomic replace as `session.jsonl`. The undo handle stores the previous bytes. Craft's xlsx tool writes one cell as a string, number, or bool. This slice keeps that surface for the first sheet. A formula cell, a rich-text cell, a macro part, a second sheet name, and a sheet larger than 200 rows or 26 columns fail closed and do not write. The preview overlay shows DOCX paragraphs and those XLSX cells in the existing preview chrome. Its Edit and Undo buttons apply the same replace to the bytes that overlay loaded and emit `DocumentPreviewCommand`. They do not admit a disk write. A parent that admits calls `applyDocumentFromHuman`. Legacy `.xls`, macro-enabled `.xlsm`, and PPTX return `Locked` and do not write. Library registration, file leases, and a plugin catalog stay out of this slice.
 
-`createCanvasCardHost` places those same objects on the existing `CanvasDocument`. A DOCX card edit calls `applyDocumentFromHuman` or `applyDocumentFromAgent`. An image or video card reads the `aigc_artifact` on the job turn. Hide and stop are view state. `canvas.node_delete` removes the binding after human approval. The DOCX bytes, the job file, and the owner kernel turns stay. `@xyflow/react` is not installed. Card positions are the `CanvasNode` frame. The renderer spike stays `Locked`.
+`createCanvasCardHost` places an admitted DOCX and an admitted image or video artifact on the existing `CanvasDocument`. An XLSX workbook stays on the document suite and does not become a card. A DOCX card edit calls `applyDocumentFromHuman` or `applyDocumentFromAgent`. An image or video card reads the `aigc_artifact` on the job turn. Hide and stop are view state. `canvas.node_delete` removes the binding after human approval. The DOCX bytes, the job file, and the owner kernel turns stay. `@xyflow/react` is not installed. Card positions are the `CanvasNode` frame. The renderer spike stays `Locked`.
 
 The built-in browser keeps the Craft `persist:browser-pane` profile and the session or manual owner on `BrowserPaneManager`. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create` and write a DOM snapshot only after that admission. An agent that does not own the guest does not read the page. Screenshot evidence and Chrome Store advertising stay `Locked`. `browser.screenshot` is still not a frozen action id.
 
@@ -177,10 +178,14 @@ Release independence reads the admitted workspace packages and the bundled runti
 | Subscription observation shared by the settings reader and the agent DTO | `wired` |
 | DOCX open, human edit, agent edit, undo, save, and reopen through `file.update` | `wired` |
 | DOCX paragraph preview in the existing overlay | `wired` |
+| XLSX create through `file.create`, and first-sheet cell update, undo, save, and reopen through `file.update` | `wired` |
+| XLSX first-sheet cell preview in the existing overlay | `wired` |
+| XLSX formulas, rich text, charts, extra sheets, and a full spreadsheet editor | `Locked` |
+| Legacy `.xls`, macro-enabled `.xlsm`, and PPTX | `Locked` |
 | Canvas card for an admitted DOCX, sharing the document suite edit | `wired` |
 | Canvas card for an admitted image or video `aigc_artifact` | `wired` |
 | Hide, stop, and delete of a canvas card, leaving the admitted file and job | `wired` |
-| XLSX and PPTX document suites | `Locked` |
+| XLSX and PPTX canvas cards | `Locked` |
 | `@xyflow/react` spatial renderer | `Locked` |
 | Built-in Chromium page find, loading stop, and native guest back, forward, and reload | `wired` |
 | Governed DOM snapshot admitted as `file.create` for the human and the owning agent | `wired` |

@@ -4,9 +4,11 @@ import { classifyFile } from '../file-classification'
 import { paragraphsFromDocxBytes, replaceDocxParagraphBytes } from '../docx-preview'
 
 describe('docx preview', () => {
-  test('a docx opens in the preview and xlsx and pptx stay outside it', () => {
+  test('a docx opens in the preview and legacy workbooks stay outside it', () => {
     expect(classifyFile('/work/note.docx')).toEqual({ type: 'docx', canPreview: true })
-    expect(classifyFile('/work/budget.xlsx').canPreview).toBe(false)
+    expect(classifyFile('/work/budget.xlsx')).toEqual({ type: 'xlsx', canPreview: true })
+    expect(classifyFile('/work/legacy.xls').canPreview).toBe(false)
+    expect(classifyFile('/work/macros.xlsm').canPreview).toBe(false)
     expect(classifyFile('/work/talk.pptx').canPreview).toBe(false)
     expect(classifyFile('/work/legacy.doc').canPreview).toBe(false)
   })

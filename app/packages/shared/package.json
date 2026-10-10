@@ -62,6 +62,7 @@
     "./automations/resolve-config-path": "./src/automations/resolve-config-path.ts",
     "./protocol": "./src/protocol/index.ts",
     "./protocol/docx-xml": "./src/protocol/docx-xml.ts",
+    "./protocol/xlsx-xml": "./src/protocol/xlsx-xml.ts",
     "./protocol/document-command": "./src/protocol/document-command.ts",
     "./protocol/canvas-card-view": "./src/protocol/canvas-card-view.ts",
     "./protocol/plugin-settings": "./src/protocol/plugin-settings.ts",
