@@ -531,6 +531,7 @@ function getToolDisplayName(name: string): string {
     'TodoWrite': 'Todo List Updated',
     'set_session_labels': 'Set Session Labels',
     'set_session_status': 'Set Session Status',
+    'rename_session': 'Rename Session',
     'get_session_info': 'Get Session Info',
     'list_sessions': 'List Sessions',
   }

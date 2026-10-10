@@ -36,6 +36,7 @@ import { handleRenderTemplate } from './handlers/render-template.ts';
 import { handleSendDeveloperFeedback } from './handlers/send-developer-feedback.ts';
 import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
+import { handleRenameSession } from './handlers/rename-session.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
 import { handleSendAgentMessage } from './handlers/send-agent-message.ts';
@@ -187,6 +188,11 @@ export const SetSessionLabelsSchema = z.object({
 export const SetSessionStatusSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
   status: z.string().describe('Status to set (e.g., "todo", "in_progress", "done")'),
+});
+
+export const RenameSessionSchema = z.object({
+  sessionId: z.string().optional().describe('Session ID to rename. Omit to rename the current session.'),
+  name: z.string().describe('Name to set on the session'),
 });
 
 export const GetSessionInfoSchema = z.object({
@@ -460,6 +466,10 @@ Pass an empty array to clear all labels. Omit sessionId to target the current se
 Use this to signal completion or trigger status-based automations (SessionStatusChange events).
 Omit sessionId to target the current session.`,
 
+  rename_session: `Rename the current session or a specific session by ID.
+
+Sets the session name. Omit sessionId to rename the current session. This does not generate a title.`,
+
   get_session_info: `Get metadata about the current session or a specific session by ID.
 
 Returns labels, status, name, permission mode, and other details.
@@ -550,6 +560,7 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   // Session self-management tools (registry — use context callbacks to reach SessionManager)
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
+  { name: 'rename_session', description: TOOL_DESCRIPTIONS.rename_session, inputSchema: RenameSessionSchema, executionMode: 'registry', safeMode: 'block', handler: handleRenameSession },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
   // Inter-session messaging

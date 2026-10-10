@@ -415,8 +415,10 @@ describe('agent session chrome on the session kernel', () => {
     const tools = manager.slice(manager.indexOf('setSessionLabelsFn:'), manager.indexOf('getSessionInfoFn:'))
     expect(tools.includes('setSessionLabelsFromAgent')).toBe(true)
     expect(tools.includes('setSessionStatusFromAgent')).toBe(true)
+    expect(tools.includes('renameSessionFromAgent')).toBe(true)
     expect(tools.includes('writeSessionLabelsHeader')).toBe(false)
     expect(tools.includes('writeSessionStatusHeader')).toBe(false)
+    expect(tools.includes('writeSessionNameHeader')).toBe(false)
 
     const stopped = manager.slice(
       manager.indexOf('private async onProcessingStopped'),
@@ -430,6 +432,16 @@ describe('agent session chrome on the session kernel', () => {
     expect(unflag.includes('admitSessionChrome')).toBe(false)
     expect(manager.includes('requireHumanApproval')).toBe(false)
     expect(manager.includes('setSessionNameFromAgent')).toBe(false)
+    expect(manager.includes('session.unflag')).toBe(false)
+
+    const agentRename = manager.slice(
+      manager.indexOf('async renameSessionFromAgent'),
+      manager.indexOf('private applyGeneratedSessionName'),
+    )
+    expect(agentRename.includes('renameSessionAs')).toBe(true)
+    expect(agentRename.includes('agentActorForCallingSession')).toBe(true)
+    expect(agentRename.includes('writeSessionNameHeader')).toBe(false)
+    expect(agentRename.includes('DESKTOP_APPROVER')).toBe(false)
 
     const titles = manager.slice(manager.indexOf('async refreshTitle'), manager.indexOf('updateWorkingDirectory'))
     expect(titles.includes('applyGeneratedSessionName')).toBe(true)
@@ -474,6 +486,58 @@ describe('agent session chrome on the session kernel', () => {
     )
     expect(apply.includes('DESKTOP_APPROVER')).toBe(true)
     expect(apply.includes('SESSION_HOST_ACTOR')).toBe(false)
+    expect(apply.includes('renameSessionFromAgent')).toBe(false)
+    expect(apply.includes('agentActorForCallingSession')).toBe(false)
+  })
+
+  it('journals rename_session as the calling session and leaves the name unchanged when refused', async () => {
+    const held = await holdSession()
+    try {
+      const caller = await addHeldSession(held, 'Worker')
+      const blank = createManagedSession(
+        { id: '   ', name: 'Blank', sessionStatus: 'todo', labels: [] },
+        { id: 'ws-test', name: 'Test', rootPath: held.root, createdAt: Date.now() } as never,
+      )
+      ;(held.sm as unknown as { sessions: Map<string, unknown> }).sessions.set('   ', blank)
+
+      const malformed = await held.sm.renameSessionFromAgent('   ', held.created.id, 'Stolen name')
+      expect(malformed).toMatchObject({ status: 'denied', reason: 'malformed_actor' })
+      expect(isRefusedSessionChrome(malformed)).toBe(true)
+      expect(loadSession(held.root, held.created.id)?.name).toBe('Old name')
+
+      const secret = await held.sm.renameSessionFromAgent(caller.id, held.created.id, 'Bearer tokentoken')
+      expect(secret).toMatchObject({ status: 'denied', reason: 'credential_material_rejected' })
+      expect(loadSession(held.root, held.created.id)?.name).toBe('Old name')
+
+      const missingCaller = await held.sm.renameSessionFromAgent('missing-caller', held.created.id, 'Missing name')
+      expect(missingCaller).toMatchObject({ status: 'failed', reason: 'caller_missing' })
+      expect(loadSession(held.root, held.created.id)?.name).toBe('Old name')
+
+      const missingTarget = await held.sm.renameSessionFromAgent(caller.id, 'missing-target', 'Nowhere')
+      expect(missingTarget).toMatchObject({ status: 'failed', reason: 'session_missing' })
+
+      const refused = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      expect(refused.some((event) => event.kind === 'action_completed')).toBe(false)
+      expect(refused.some((event) => event.payload?.reason === 'malformed_actor')).toBe(true)
+      expect(refused.some((event) => event.payload?.reason === 'credential_material_rejected')).toBe(true)
+
+      const renamed = await held.sm.renameSessionFromAgent(caller.id, held.created.id, 'Agent name')
+      expect(renamed.status).toBe('completed')
+      expect(isRefusedSessionChrome(renamed)).toBe(false)
+
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      const completed = events.filter((event) => event.kind === 'action_completed' && event.actionId === 'session.rename')
+      expect(completed).toHaveLength(1)
+      expect(completed[0]?.actorRef).toEqual({ kind: 'agent', id: caller.id, displayName: 'Worker' })
+      expect(events.some((event) => event.actorRef.id === 'desktop-user')).toBe(false)
+      expect(events.some((event) => event.kind === 'supervision_requested')).toBe(false)
+      expect(loadSession(held.root, held.created.id)?.name).toBe('Agent name')
+      expect(loadSession(held.root, caller.id)?.name).toBe('Worker')
+      expect(held.events.some((event) => event.type === 'title_generated' && (event as { title?: string }).title === 'Agent name')).toBe(true)
+      expect(held.events.some((event) => event.type === 'permission_request')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
   })
 })
 

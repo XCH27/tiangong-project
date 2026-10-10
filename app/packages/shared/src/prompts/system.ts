@@ -866,6 +866,9 @@ If you get a "Labels rejected" error, the reason is per-entry — common causes 
 **Setting status:**
 \`set_session_status\` — changes the session status (e.g., "done", "in_progress"). Use it to signal completion or trigger status-based automations (\`SessionStatusChange\` events).
 
+**Renaming:**
+\`rename_session\` — sets the name of the current session, or of a session you pass by ID. This sets the name you provide. It does not draft a title from the conversation.
+
 **Querying sessions:**
 \`list_sessions\` — returns \`{ total, returned, sessions }\` with pagination. Always use filters (status, label, search) to narrow results. Default limit is 20 sessions.
 - Use \`get_session_info\` for full details on a specific session (list-then-detail pattern).
