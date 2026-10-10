@@ -2,15 +2,17 @@
  * Page-local operations for the existing EDIT_CONFIGS seam.
  *
  * set-model is the control the edit popover already exposes. It does not admit.
- * update-target asks for file.update. file.page_target is the frozen M05 id.
- * This caller does not use it. HostTurnKernel refuses the file.update payload
- * and the file stays unwritten. Pi is not the permission authority.
+ * update-target admits file.page_target. The row is L2. The request does not
+ * set preAuthorizedBy, so the turn waits for a human allow and does not write
+ * before that. A missing baseRevision is not admitted. file.update still
+ * refuses this payload. EditPopover does not call this host. Pi is not the
+ * permission authority.
  */
 
 import type { ActorRef } from './actor'
 import { InternalActionId, type ActionInvocation } from './internal-action'
 import { applyAtomicJsonEffect, NativeEffectRegistry } from './native-effect-executor'
-import { HostTurnKernel, MemoryTurnJournal, type TurnOutcome } from './turn-admission'
+import { HostTurnKernel, MemoryTurnJournal, type TurnOutcome, type TurnPhase } from './turn-admission'
 
 export const EDIT_PAGE_KEYS = [
   'workspace-permissions',
@@ -57,8 +59,15 @@ export interface EditPageCall {
   actor: ActorRef
   filePath?: string
   nextDocument?: unknown
+  baseRevision?: number
   modelId?: string
 }
+
+interface PageLocalHostOptions {
+  beforeRun?: (invocationId: string, kernel: HostTurnKernel) => void
+}
+
+const beforeRuns = new WeakMap<PageLocalShared, PageLocalHostOptions['beforeRun']>()
 
 export function isEditPageKey(value: string): value is EditPageKey {
   return (EDIT_PAGE_KEYS as readonly string[]).includes(value)
@@ -101,10 +110,13 @@ export function selectPageModel(current: string, next: string): string {
   return trimmed
 }
 
-export function createPageLocalShared(modelId = 'fast'): PageLocalShared {
+export function createPageLocalShared(modelId = 'fast', options: PageLocalHostOptions = {}): PageLocalShared {
   const effects = new NativeEffectRegistry()
-  effects.register(InternalActionId.FILE_UPDATE, async (request) => {
+  effects.register(InternalActionId.FILE_PAGE_TARGET, async (request) => {
     const filePath = typeof request.payload.filePath === 'string' ? request.payload.filePath : ''
+    if (!isSafePagePath(filePath) || !isBaseRevision(request.payload.baseRevision)) {
+      throw new Error('page_target_not_writable')
+    }
     const applied = await applyAtomicJsonEffect({
       filePath,
       next: request.payload.nextDocument,
@@ -112,7 +124,12 @@ export function createPageLocalShared(modelId = 'fast'): PageLocalShared {
       commit: request.commit,
     })
     return {
-      output: { editKey: request.payload.editKey, filePath },
+      output: {
+        editKey: request.payload.editKey,
+        filePath,
+        actionId: InternalActionId.FILE_PAGE_TARGET,
+        baseRevision: request.payload.baseRevision,
+      },
       undoHandle: {
         undoId: `undo-${request.sessionId}`,
         label: 'Restore previous page target',
@@ -121,7 +138,9 @@ export function createPageLocalShared(modelId = 'fast'): PageLocalShared {
     }
   })
   const kernel = new HostTurnKernel(new MemoryTurnJournal(), { nativeEffects: effects })
-  return { modelId, kernel, effects }
+  const shared = { modelId, kernel, effects }
+  beforeRuns.set(shared, options.beforeRun)
+  return shared
 }
 
 export async function executePageLocalOp(
@@ -165,17 +184,21 @@ async function updatePageTarget(
     return { status: 'failed', invocationId: input.invocationId, reason: 'unknown_edit_page' }
   }
   const filePath = input.filePath ?? ''
-  if (!filePath.trim() || filePath.split(/[\\/]/).includes('..')) {
+  if (!isSafePagePath(filePath)) {
     return { status: 'failed', invocationId: input.invocationId, reason: 'unsafe_file_path' }
+  }
+  if (!isBaseRevision(input.baseRevision)) {
+    return { status: 'failed', invocationId: input.invocationId, reason: 'base_revision_required' }
   }
 
   const invocation: ActionInvocation = {
     invocationId: input.invocationId,
-    actionId: InternalActionId.FILE_UPDATE,
+    actionId: InternalActionId.FILE_PAGE_TARGET,
     payload: {
       editKey: input.editKey,
       filePath,
       nextDocument: input.nextDocument ?? null,
+      baseRevision: input.baseRevision,
     },
     targets: [{ kind: 'file', id: filePath, label: input.editKey }],
     callerKind: input.callerKind,
@@ -183,6 +206,41 @@ async function updatePageTarget(
     createdAt: '2026-10-09T00:00:00.000Z',
   }
   const admitted = shared.kernel.admit({ invocation, actor: input.actor })
+  // L2 waits here. A later call with the same invocation id continues after
+  // HostTurnKernel.approve. The request does not set preAuthorizedBy.
   if (admitted.status !== 'admitted') return admitted
+  beforeRuns.get(shared)?.(input.invocationId, shared.kernel)
+  const stopped = shared.kernel.snapshot().turns.find((turn) => turn.request.invocation.invocationId === input.invocationId)
+  if (stopped && stopped.phase !== 'admitted') return outcomeFromPhase(input.invocationId, stopped.phase, stopped.reason)
   return shared.kernel.run(input.invocationId)
+}
+
+function isSafePagePath(filePath: string): boolean {
+  if (!filePath.trim()) return false
+  return !filePath.split(/[\\/]/).includes('..')
+}
+
+function isBaseRevision(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function outcomeFromPhase(invocationId: string, phase: TurnPhase, reason?: string): TurnOutcome {
+  switch (phase) {
+    case 'admitted':
+    case 'running':
+      return { status: 'admitted', invocationId, reason }
+    case 'awaiting_approval':
+      return { status: 'approval_required', invocationId, reason }
+    case 'completed':
+      return { status: 'completed', invocationId }
+    case 'denied':
+    case 'failed':
+    case 'interrupted':
+    case 'reconciling':
+      return { status: phase, invocationId, reason }
+    default: {
+      const unexpected: never = phase
+      return { status: 'failed', invocationId, reason: String(unexpected) }
+    }
+  }
 }

@@ -65,6 +65,7 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 10. `createPluginSettingsHost` is test-only. The Settings page does not call it, does not write `.claude-plugin/loadout.json`, and does not render the Craft session permission card. Install, enable, and disable stay Locked until `SessionManager` owns that loadout. `applyPluginMutationFromHuman` and `resolvePluginGrant` are not `SessionManager.respondToPermission`. Market catalog reads use `readCatalogSource`. A local Agent Plugins 1.0.0 package is read by `readAgentPluginPackage` and lists only safe skills and MCP servers. Leave the sandboxed MCP App view and any remote plugin store Locked. Do not treat that loadout as a remote store.
 11. Release notices use `readReleaseDispositionForHuman` and `readReleaseDispositionForAgent`. Do not write a session journal for that read. Leave the signed production update feed Locked. Do not point a Fleet updater at a production URL.
 12. The MCP Apps side pane uses `createMcpAppsHost`. Open, focus, and close admit `canvas.node_select` and then set the existing right-sidebar slot. The list is the enabled MCP rows in the plugin loadout plus a local inventory. Leave the sandboxed `ui://` view, live `tools/list`, and tool invocation Locked. Do not add a marketplace.
+13. Page-local `update-target` uses `applyEditPageFromHuman` and `applyEditPageFromAgent`. Both admit `file.page_target`. Send `baseRevision` or the host does not admit. The row is L2, so the file is not written until a human allows the turn. `EditPopover` calls `selectPageModel` only. Do not add a Settings write. `file.update` still refuses a page-target payload.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
 
@@ -78,7 +79,8 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Session-directory KernelSnapshot v1 file and Claude/ChatGPT usage sealing | `wired` |
 | In-process native effect after admission | `wired` |
 | Existing permission card approves or rejects a published host turn | `wired` |
-| Page-local set-model and shared update-target | `wired` |
+| Page-local set-model in the edit popover | `wired` |
+| Page-local update-target through `file.page_target`. No shell caller. | `test-only` |
 | Codex app-server and ACP stdio JSON-RPC executors after admission | `display-only` |
 | CLI command execution, dynamic client tools, and PTY fallback | `Locked` |
 | Gemini, Qwen, and Kimi launch presets | `display-only` |
