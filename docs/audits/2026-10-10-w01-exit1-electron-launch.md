@@ -8,10 +8,17 @@
 > **Correction (2026-10-10):** the first draft of this note treated a System Events window titled `Fleet` as Craft. That was wrong. On the Mac, `ps` shows pid `4855` command is `Fleet 项目审查`, a separate local app. The AX title and the `Cmd+,` sent at that process are retracted. They are not Craft window evidence.
 > **Capability:** `not implemented` for the clean v0.11 baseline. Nothing in this note is `usable`.
 > **Gates:** W0.1 stays In Progress. W1 stays Locked. No wave is Ready.
-> **Exit item 1:** stays open. Launch and relaunch do not close it. `typecheck:all` remains the #52 failure. The migration branch is still absent.
+> **Exit item 1:** stays open. Launch and relaunch do not close it. `typecheck:all` remains the #52 failure. At this launch record the migration branch was still absent. The later route note records the branch open and does not close item 1.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not check item 1 off.
 > **Earlier source-tree note:** `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`.
 > **Later RPC note:** `docs/audits/2026-10-10-w01-exit1-rpc-loop.md`. That pass does not close Exit item 1.
+> **Later route note:** `docs/audits/2026-10-10-w01-exit1-routes-migration.md`. That pass records `route=board` and `route=settings` restores and branch `fleet/migration-from-v0.11.0`. It does not close Exit item 1.
+
+## Follow-up after #54 (`20a8d2fd`)
+
+The later route record is `docs/audits/2026-10-10-w01-exit1-routes-migration.md`. `bun run electron:dev` restored window-state `route=board` (log `Restoring window ... route=board`; AX title `Craft Agents`; sessions board navigator `routes.view.board()` → `board`) and later `route=settings` (log `Restoring window ... route=settings`; window title stayed `Craft Agents`). Those are route restores. They are not an AX click on Kanban chrome and not `tasks:list`. `Cmd+,` and Craft Agents → 设置... were not verified: the frontmost menu bar stayed on pid `4855` `Fleet 项目审查` (also Electron, `com.github.Electron`). Branch `fleet/migration-from-v0.11.0` is open on the pin. Adapt row ports are not started. Fleet `app/` stays `0.10.5`. `typecheck:all` remains the #52 failure. Exit item 1 stays open.
+
+The checklist below stays the launch record. The #54 note supersedes the "Kanban board UI not verified", "Settings panel UI not verified", and "migration branch still absent" rows only in the sense that note records.
 
 ## Follow-up after #53 (`9824a1a3`)
 
@@ -135,7 +142,7 @@ Log-backed rows stay. The evidence file's own checklist marked "window title Fle
 
 ## What is still required before Exit item 1 can close
 
-The list below is what this launch record still required. The RPC follow-up records items 1, 3, and 5 as WebSocket results, not as AX clicks or screenshots. Item 2 (Kanban board UI) and item 4 (Settings panel UI) stay required. Items 6 and 7 stay required. Detail: `docs/audits/2026-10-10-w01-exit1-rpc-loop.md`.
+The list below is what this launch record still required. The RPC follow-up records items 1, 3, and 5 as WebSocket results, not as AX clicks or screenshots. `docs/audits/2026-10-10-w01-exit1-routes-migration.md` later records item 2 as a `route=board` restore and item 4 as a `route=settings` restore, and records item 7 as branch `fleet/migration-from-v0.11.0` open with adapt ports not started. Those restores are not an AX click and not a menu click. Item 6 stays the #52 failure. Exit item 1 stays open. Detail: `docs/audits/2026-10-10-w01-exit1-rpc-loop.md` and `docs/audits/2026-10-10-w01-exit1-routes-migration.md`.
 
 On the same Mac path:
 

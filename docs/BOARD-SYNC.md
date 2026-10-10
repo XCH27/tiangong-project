@@ -300,7 +300,7 @@ Board Cards section. Do not create a new file format for this; append the block 
 - Validation:
   - Documentation consistency check after the reconciliation block
 - Remaining Not Implemented:
-  - Mac source tree at the v0.11 pin is recorded. Non-frozen `bun install` finished. `typecheck:all` failed (exit 2). Electron launch and relaunch are recorded. RPC project create, session turn, and `browser-pane:create` are recorded. Kanban board UI and Settings panel UI are not verified. Migration branch is not yet run (pin is D51; `app/` is still 0.10.5; `docs/audits/2026-10-10-w01-exit1-rpc-loop.md`)
+  - Mac source tree at the v0.11 pin is recorded. Non-frozen `bun install` finished. `typecheck:all` failed (exit 2) and remains that #52 failure. Electron launch and relaunch are recorded. RPC project create, session turn, and `browser-pane:create` are recorded. `route=board` and `route=settings` restores are recorded (not an AX click, not a `Cmd+,` or 设置... menu click). Branch `fleet/migration-from-v0.11.0` is open on the pin; adapt ports are not started; `app/` is still 0.10.5. Exit item 1 stays open (`docs/audits/2026-10-10-w01-exit1-routes-migration.md`)
   - fleet-old rows and the file-by-file `app/` diff (behaviour ledger is D52; BLK-001 stays open)
   - Canonical implementation parity for AgentSeat, caller provenance, idempotency, revisions, and typed events
   - Freeze or explicit version gate for ArtifactRef, capability, ExternalJob, workflow, spatial, and view contracts
