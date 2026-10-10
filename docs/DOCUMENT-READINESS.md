@@ -87,7 +87,7 @@ canonical re-freeze are incomplete.
    Mac-verified recovery. Exit item 5 stays open. Detail:
    `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`. Active docs must not assume a
    SQLite authority.
-4. Align wave gates, phase mapping, ownership precedence, and the hidden upstream gate.
+4. Wave gates and the upstream gate stay open with W0.1. Ownership precedence for the paths D55 lists is recorded in `docs/audits/2026-10-10-w01-exit7-ownership-domains.md`. Exit item 7 stays open because no-path holds and unlisted host packages are not packets.
 5. Rewrite M10, M13, M14, and M15 before their waves; do not treat file presence as readiness.
 6. Complete required engine/adapter spikes before promoting M06/M07/M09/M16/M18/M19.
 

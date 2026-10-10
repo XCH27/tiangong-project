@@ -292,7 +292,7 @@ Board Cards section. Do not create a new file format for this; append the block 
 - Status: not implemented
 - UI State: not started
 - Backend State: not started
-- Contracts: action IDs v1.3.0 (D47–D49) frozen; composable contracts still proposed and version-gated by D53, Exit item 4 still open (`docs/audits/2026-10-10-w01-exit4-contract-version-gate.md`); pin D51; behaviour ledger D52; Exit 3 parity note recorded and item 3 still open (`docs/audits/2026-10-10-w01-exit3-canonical-parity.md`); logical persistence stance D54, Exit item 5 still open (`docs/audits/2026-10-10-w01-exit5-persistence-authority.md`)
+- Contracts: action IDs v1.3.0 (D47–D49) frozen; composable contracts still proposed and version-gated by D53, Exit item 4 still open (`docs/audits/2026-10-10-w01-exit4-contract-version-gate.md`); pin D51; behaviour ledger D52; Exit 3 parity note recorded and item 3 still open (`docs/audits/2026-10-10-w01-exit3-canonical-parity.md`); logical persistence stance D54, Exit item 5 still open (`docs/audits/2026-10-10-w01-exit5-persistence-authority.md`); ownership domains D55, Exit item 7 still open (`docs/audits/2026-10-10-w01-exit7-ownership-domains.md`)
 - Allowed Files:
   - Lead-owned docs and canonical protocol implementation files
 - Forbidden Files:
@@ -305,6 +305,7 @@ Board Cards section. Do not create a new file format for this; append the block 
   - Canonical implementation parity stays open. The Exit 3 note records action ids as frozen at 1.3.0 and AgentSeat, caller provenance, idempotency, revisions, typed events, and HostTurnKernel admission as partial. `CONTRACT_VERSION` stays 1.3.0
   - ArtifactRef, capability, ExternalJob, workflow, spatial, and view contracts are version-gated (D53) and stay unfrozen. Exit item 4 stays open. `CONTRACT_VERSION` stays 1.3.0
   - Physical persistence: logical map recorded (D54). Craft file store retained. SQLite is not decided. The physical-store gate stays open. Exit item 5 stays open (`docs/audits/2026-10-10-w01-exit5-persistence-authority.md`). Product/internal namespace strings are recorded in D50.
+  - Ownership: listed v0.11 paths have one owner (D55). No-path surfaces are explicit Lead holds. Exit item 7 stays open (`docs/audits/2026-10-10-w01-exit7-ownership-domains.md`).
   - Documentation Readiness promotion for the exact W1 slices
   - Replacement W1/W2+ packets
 - Blocker:
