@@ -23,6 +23,8 @@
 > **Status after the loadout host:** `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` admit `plugin.loadout_mutate`. The row is L2, so an unapproved call does not write. `op: grant` is `standing_grant_rejected`. No shell or IPC caller. §13 stays `test-only`. `file.update` still refuses that payload. Settings stays Locked. D50 is unchanged. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
 > **Status after the sidebar shell:** the MCP Apps pane constructs one host. Human open, focus, and close admit `workbench.sidebar_focus`. §13 labels that path `wired`. Agent helpers stay `test-only`. Settings does not construct the host. DOM capture and page-target stay `test-only`. `canvas.node_select` still refuses the payload. W0.1 stays Locked. This note does not mark Ready or `usable`.
+>
+> **Status after the v0.11 pin (D51/D52):** the tag pin and the behaviour ledger are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`. Exit items 1 and 2 stay open. BLK-001 stays open. Settings stays Locked. W0.1 stays Locked. This note does not mark Ready or `usable`.
 
 ## Gate status (unchanged)
 
@@ -122,8 +124,8 @@ This packet leaves the methods `test-only` and the Settings rows `Locked`. A lat
 
 The unflag freeze and the split-id freeze are on the spine. `browser.dom_snapshot` and `file.page_target` admit on their test hosts and stay `test-only`. The MCP Apps pane admits `workbench.sidebar_focus` and §13 labels that human path `wired`. Settings stays Locked. Exit item 6 is D50. The other exit items stay open:
 
-1. A clean Craft Agents OSS v0.11.0 baseline is still unrecorded. `docs/UPSTREAM-BASELINE.md` still requires that baseline before W1 packets.
-2. The retain/adapt/drop/defer ledger for Fleet-only behaviour is still unrecorded (BLK-001).
+1. The v0.11.0 pin is D51. A populated checkout, desktop loop, and migration branch are still absent. `docs/UPSTREAM-BASELINE.md` still requires that loop before W1 packets.
+2. The behaviour ledger is D52. `fleet-old` rows, the file-by-file `app/` diff, and contract parity are still open, so BLK-001 stays open.
 3. Canonical parity for AgentSeat, identity, caller provenance, idempotency, revisions, typed events, and action policy is still open. An action-id bump covers only the action-id slice of this item.
 4. ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts are still unfrozen and not version-gated for their first consumer wave.
 5. Physical persistence authority and recovery from `docs/PERSISTENCE-AUTHORITY-MAP.md` are still unrecorded as the W0.1 exit.

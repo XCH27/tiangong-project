@@ -3,6 +3,7 @@
 > **Status:** binding ownership rules; physical storage adapters remain pending v0.11 migration
 > evidence and W0.1 re-freeze.  
 > **Updated:** 2026-07-09
+> **Inspection footnote (2026-10-10):** At pin `f4e172bf`, sessions are `{workspace}/sessions/{id}/session.jsonl`, projects are `{workspace}/projects/{slug}/`, and tasks are `{workspace}/tasks/<slug>/task.yaml` plus a run log. `CONFIG_DIR` is `~/.craft-agent/`. Those three stores are files. A repo-wide SQLite search on a checkout was not run. The decision gate below stays open (D51, D52).
 
 ## Rule
 

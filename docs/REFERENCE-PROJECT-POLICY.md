@@ -8,11 +8,11 @@ The following projects may be copied or adapted within the stated boundary, with
 
 | Source | License Boundary | Allowed Use |
 |---|---|---|
-| `craft-agents-oss` | Apache-2.0 | Main application base. The verified target is v0.11.0; see `docs/UPSTREAM-BASELINE.md`. |
+| `craft-agents-oss` | Apache-2.0 | Main application base. Pin: tag `v0.11.0` → commit `f4e172bf372f4ccc7389a189be1e0b0541f96282` (lightweight tag; parent `c9d9a26fbefa3a5165ee9aa50cb30c25466afd81` is v0.10.5). See `docs/UPSTREAM-BASELINE.md` and D51. |
 | `AionUi` | Apache-2.0 | CLI runtime catalog, custom agents, ACP, process lifecycle, team/skill patterns. Must adapt into Craft session/permission/timeline. |
 | `open-design` | Apache-2.0 | Runtime definitions, prompt transport, artifact/eval/design workflow patterns. Check subdirectory licenses before copying assets/templates. |
 | `rtk` | Apache-2.0 | Output compression, savings discovery, hook matrix ideas. Do not auto-install global hooks without permission. |
-| `fleet-old` | Internal Reference | Older Fleet-derived checkout. Selectively port documented Fleet-specific behaviour only through the v0.11 migration ledger; never merge or copy the old shell wholesale. |
+| `fleet-old` | Internal Reference | Older Fleet-derived checkout. Selectively port documented Fleet-specific behaviour only through the v0.11 migration ledger; never merge or copy the old shell wholesale. The cloud tree at the 2026-10-10 audit had no `源码参考/software/fleet-old` directory and no gitlink. Those rows stay deferred (D52). |
 | `codegraph` | MIT | Local code graph, indexing, structured queries, MCP installer experience. |
 | `DeepSeek-Reasonix` | MIT | ACP/stdio, stable prefix cache, planner/executor, permission/sandbox ideas. |
 | `deepcode-cli` | MIT | Skill paths, MCP, reasoning intensity, CLI/session management. |
@@ -104,3 +104,16 @@ To promote a candidate to green-light:
 6. Update attribution records before copying code.
 
 MIT or Apache-2.0 alone does not promote a project.
+
+## Recorded cloud pins (2026-10-10)
+
+These SHAs are the gitlinks in this repository. On the 2026-10-10 cloud inspection their working trees were empty. They are evidence pins, not a checkout, and they do not change the allowed-use column above.
+
+| Source | Gitlink SHA | Verified remotely |
+|---|---|---|
+| `craft-agents-oss` | `c9d9a26fbefa3a5165ee9aa50cb30c25466afd81` | This gitlink is v0.10.5, the parent of the v0.11.0 pin. It is not the baseline. |
+| `AionUi` | `ac2ad627c002748fe4ea2cb1a7e519f8d9b03e7b` | Commit date 2026-07-02. License API: Apache-2.0. |
+| `open-design` | `31dcadbda4f77c1331e02aa6d5349c303bc22adf` | Commit date 2026-07-02. License API: Apache-2.0. |
+| `rtk` | `b52e02b4375f4415a0d8a11d45066e1cf856da80` | Commit date 2026-07-01. License API: Apache-2.0. |
+
+The comparison that uses these pins is `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`.

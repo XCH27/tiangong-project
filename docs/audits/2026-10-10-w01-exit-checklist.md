@@ -2,7 +2,7 @@
 
 > **Date:** 2026-10-10
 > **Base inspected:** `4f12779d` (`work/fresh-base-spine` after merged PR #33)
-> **Current base:** `92ee3ea5` (`work/fresh-base-spine` after merged PR #43)
+> **Current base:** `9ddee3cc` (`work/fresh-base-spine` after merged PR #47)
 > **What this file is:** a review note for the Lead. It inventories the session-chrome host-admit chain and the items that still block closing W0.1. It does not promote a decision, mark a wave Ready, add an action id, or change capability status.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not replace that list and does not check any item off.
 > **Earlier review:** `docs/audits/2026-10-10-spine-honesty-audit.md` still describes base `89b2e8a6`. That body is not rewritten.
@@ -29,6 +29,8 @@
 > **Follow-up (plugin loadout):** `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` admit frozen `plugin.loadout_mutate`. The row is L2. The request does not set `preAuthorizedBy`. An unapproved call does not write. A later call after a human allow writes the loadout. `op: grant` is `standing_grant_rejected` and writes nothing. `file.update` still refuses the payload. No shell or IPC caller, so §13 stays `test-only`. Settings install, enable, and disable stay Locked. D50 is unchanged. This note does not close W0.1 and does not promote `usable`.
 >
 > **Follow-up (sidebar shell):** The MCP Apps pane constructs one `createMcpAppsHost`. Human open, focus, and close admit `workbench.sidebar_focus`. L0 does not wait for a card. The right-sidebar slot changes after the kernel completes. §13 labels that human path `wired`. Agent helpers stay `test-only`. `canvas.node_select` still refuses the payload. Settings plugin writes, DOM capture, and page-target are not this caller. This note does not close W0.1 and does not promote `usable`.
+>
+> **Follow-up (v0.11 pin and BLK-001 ledger):** `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`, D51, and D52. The pin is tag `v0.11.0` at `f4e172bf`. The behaviour ledger is recorded. Exit items 1 and 2 stay open: there is no populated checkout, no desktop loop, no fleet-old tree, and no file-by-file `app/` diff. Items 3–5 and 7–9 stay open. Item 6 stays D50. BLK-001 stays open. Settings stays Locked. This note does not close W0.1 and does not promote `usable`.
 
 ## Gate status (unchanged)
 

@@ -14,6 +14,19 @@
 > **Migration notice:** existing `app/` paths below are provisional historical mappings until the
 > M01 v0.11 migration ledger verifies them. They do not authorize a packet on the current tree.
 >
+> **Observed v0.11 paths (2026-10-10, D51/D52):** these paths exist on tag `v0.11.0`
+> (`f4e172bf`) and are absent from the current `app/` tree. They are Lead-held until a later
+> packet. Holding them here does not assign a Worker and does not open W1.
+>
+> | Path on the v0.11 pin | Owner until a packet |
+> |---|---|
+> | `app/packages/shared/src/projects/` | Lead |
+> | `app/packages/shared/src/tasks/` | Lead |
+> | `app/packages/server-core/src/tasks/` | Lead |
+> | `app/apps/electron/src/renderer/components/app-shell/kanban/` | Lead |
+> | `app/apps/electron/src/renderer/components/app-shell/ProjectsListPanel.tsx` | Lead |
+> | `app/apps/electron/src/renderer/pages/ProjectInfoPage.tsx` | Lead |
+>
 > Parenthetical "namespace" labels in this matrix are file-ownership domains. Identifier
 > prefixes are D50. This matrix does not assign those prefixes.
 

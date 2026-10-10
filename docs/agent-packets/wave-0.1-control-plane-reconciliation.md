@@ -2,6 +2,7 @@
 
 > **Wave:** W0.1 — Lead only.  
 > **Status:** `not implemented` until the Lead records canonical protocol implementation parity.  
+> **2026-10-10:** D51 records the v0.11.0 pin and D52 records the behaviour ledger. Both exit items stay open. This packet stays Lead-only and grants no Worker write to frozen protocol files. W1 stays Locked. See `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`.  
 > **Purpose:** Make the documentation and frozen implementation contract one coherent baseline before W1 worker implementation.
 
 ## Required Outcomes

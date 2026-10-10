@@ -7,6 +7,8 @@
 > **What this does not do:** It does not mark W0.1 or W1 Ready. It does not promote any capability to `usable`. It does not edit Ready cells in `docs/WAVE-MODULE-MAP.md`. Settings plugin writes stay Locked.
 >
 > **Amendment (2026-10-10, D50):** Criterion 2 below is met. The product and internal strings are `docs/audits/2026-10-10-blk002-namespace-oss.md`. Criteria 3, 4, and 5 are not met. Settings stays Locked. W0.1 stays Locked. The body of this note is otherwise unchanged.
+>
+> **Amendment (2026-10-10, D51/D52):** The v0.11.0 pin and the behaviour ledger are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`. Exit items 1 and 2 stay open. This freeze still does not replace `app/`. Settings stays Locked. W0.1 stays Locked.
 
 ## How the comparison was bounded
 
@@ -142,7 +144,7 @@ ACP `allow_always`, OpenCode session `always`, Cline `auto_approve`, goose Alway
 
 ## Remaining Lead exit work
 
-W0.1 stays Locked. These exit items in `docs/WAVE-MODULE-MAP.md` §3 remain, and item 6 is the only one decided:
+W0.1 stays Locked. These exit items in `docs/WAVE-MODULE-MAP.md` §3 remain. Item 6 is decided (D50). Items 1 and 2 have a pin and a behaviour ledger (D51, D52) and stay open:
 
 1. Clean Craft Agents OSS v0.11.0 baseline.
 2. Retain/adapt/drop/defer ledger (BLK-001).
