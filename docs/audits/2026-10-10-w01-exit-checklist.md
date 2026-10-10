@@ -2,6 +2,7 @@
 
 > **Date:** 2026-10-10
 > **Base inspected:** `4f12779d` (`work/fresh-base-spine` after merged PR #33)
+> **Current base:** `31b2e1b` (`work/fresh-base-spine` after merged PR #39)
 > **What this file is:** a review note for the Lead. It inventories the session-chrome host-admit chain and the items that still block closing W0.1. It does not promote a decision, mark a wave Ready, add an action id, or change capability status.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not replace that list and does not check any item off.
 > **Earlier review:** `docs/audits/2026-10-10-spine-honesty-audit.md` still describes base `89b2e8a6`. That body is not rewritten.
@@ -9,17 +10,17 @@
 >
 > **Follow-up (workspace rename):** Settings → Workspace name admits frozen `workspace.rename` (L2) on an existing session kernel. That path publishes the existing permission card and writes the folder name only after Allow. The generic card rows stay `test-only` for every other awaiting turn. `file.delete` and `canvas.node_delete` are still not shell callers. D46 stays unmet: the PPTX shell is a first-slide viewer, and Office edit and save stay Locked. This note does not close W0.1 and does not promote `usable`.
 >
-> **Follow-up (L3 card search, docs only):** After `25e53895`, Electron, `SessionManager`, and the RPC handlers still have no production caller for frozen `file.delete` or `canvas.node_delete`. `createCanvasCardHost.deleteCard` and `CliExecutorHost` admit those ids only in tests. `sessions:delete`, `skills:delete`, and `sources:delete` are not `file.delete`. No permission card was wired for either id. The D46 footnote in `docs/modules/19-presentation-motion-surface.md` §10 records the same search: the first-slide viewer leaves MotionDeck unmet, and Office edit and save stay Locked. `CONTRACT_VERSION` stays 1.2.0. This note does not close W0.1 and does not promote `usable`.
+> **Follow-up (L3 card search, docs only):** After `25e53895`, Electron, `SessionManager`, and the RPC handlers still have no production caller for frozen `file.delete` or `canvas.node_delete`. `createCanvasCardHost.deleteCard` and `CliExecutorHost` admit those ids only in tests. `sessions:delete`, `skills:delete`, and `sources:delete` are not `file.delete`. No permission card was wired for either id. The D46 footnote in `docs/modules/19-presentation-motion-surface.md` §10 records the same search: the first-slide viewer leaves MotionDeck unmet, and Office edit and save stay Locked. `CONTRACT_VERSION` at that search was 1.2.0. The current constant is 1.3.0, recorded in the #39 follow-up. This note does not close W0.1 and does not promote `usable`.
 >
-> **Lead-unblock packet:** `docs/audits/2026-10-10-w01-lead-unblock.md` (base `7c36bb6d`, after merged PR #37).
+> **Lead-unblock packet:** `docs/audits/2026-10-10-w01-lead-unblock.md` (written at `7c36bb6d`, after merged PR #37). Its status block records what #39 landed.
 >
-> **Lead decisions (2026-10-10):** `docs/audits/2026-10-10-w01-lead-decisions-oss.md`. `session.unflag` is frozen and the human command admits it. Four split ids are frozen and have no production caller. Settings plugin writes stay Locked. `CONTRACT_VERSION` is 1.3.0. This note does not close W0.1 and does not promote `usable`.
+> **Lead decisions after #39 (`31b2e1b`):** `docs/audits/2026-10-10-w01-lead-decisions-oss.md` and D47–D49 in `docs/DECISIONS-LEDGER.md`. The freeze is on the spine. `CONTRACT_VERSION` is 1.3.0. `session.unflag` is frozen and §13 labels the human command `wired` (D47). `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus` are frozen and have no production caller (D48). Settings plugin writes stay Locked (D49). W0.1 stays Locked. The nine exit items in `docs/WAVE-MODULE-MAP.md` §3 stay open. This note does not mark Ready or `usable`.
 
 ## Gate status (unchanged)
 
 W0.1 stays Locked for worker implementation. `docs/WAVE-MODULE-MAP.md` still records the Lead reconciliation row as In Progress and blocking all Workers. This note does not close that row and does not mark W0.1 or W1 Ready.
 
-`docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked. Nothing in this checklist is `usable`. Settings plugin writes stay Locked. The later Lead freeze is v1.3.0 (`docs/audits/2026-10-10-w01-lead-decisions-oss.md`). PRs #28–#33 themselves added no action id.
+`docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked. Nothing in this checklist is `usable`. Settings plugin writes stay Locked (D49). The #39 freeze is CONTRACT 1.3.0, recorded as D47–D49. PRs #28–#33 themselves added no action id.
 
 W1–W5, including W3A/W3B, stay Locked. M00 as a module stays Locked.
 
@@ -49,7 +50,7 @@ PRs #28 and #30–#33 admit existing frozen ids on the one Craft session kernel 
 
 The map's nine exit items stay open. BLK-001 (migration ledger and contract parity), BLK-002 (product/internal namespace), and BLK-003 (adapter spikes) are still the named blockers. `docs/UPSTREAM-BASELINE.md` still records `app/` short of the clean v0.11.0 baseline and still requires a retain/adapt/drop/defer ledger before W1 packets. Session chrome does not supply that evidence.
 
-These slices stay blocked inside that exit, except agent rename, which the follow-up above records as its own `wired` row. A worker must not implement the remaining items from this note.
+These slices stay blocked inside that exit, except agent rename and unflag, which are their own §13 `wired` rows. A worker must not implement the remaining items from this note.
 
 1. **Unflag.** Closed as its own §13 `wired` row by the Lead freeze of `session.unflag` in v1.3.0. A refused admit leaves the flag set. This row does not close W0.1.
 
@@ -57,7 +58,7 @@ These slices stay blocked inside that exit, except agent rename, which the follo
 
 3. **Settings plugin writes.** Install, enable, and disable on Settings → Plugins stay Locked (D49). `plugin.loadout_mutate` is frozen. The page does not call it and does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only`: they still build a `file.update` loadout request, and admission refuses that verb.
 
-4. **Agent `session.rename`.** Closed as its own §13 `wired` row by `rename_session`. A blank or missing caller does not write the name. Title generation still uses the desktop user and is not this row. This item no longer blocks W0.1. The other items in this list stay open.
+4. **Agent `session.rename`.** Closed as its own §13 `wired` row by `rename_session`. A blank or missing caller does not write the name. Title generation still uses the desktop user and is not this row. This item no longer blocks W0.1. Unflag is the other closed slice in this list. The remaining items stay open.
 
 5. **Action-id owner mismatch.** v1.3.0 gives `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus` their own rows and policy columns. The old verbs still refuse those payloads. No production caller uses the new ids. `browser.screenshot` and binding deletion stay unfrozen. The columns do not close the rest of exit item 3.
 
@@ -67,7 +68,7 @@ These slices stay blocked inside that exit, except agent rename, which the follo
 
 ## What this chain does not close
 
-- The v1.3.0 freeze is recorded in the Lead-decisions follow-up. `browser.screenshot`, `workbench.view_open`, and the other under-discussion names stay unfrozen. Binding deletion has no id.
-- No Settings unlock, no plugin marketplace, no standing loadout grant.
-- No `usable` row. Only the Lead promotes `usable`.
-- No change to `DECISIONS-LEDGER.md`, `WAVE-MODULE-MAP.md`, or `OWNERSHIP-MATRIX.md`.
+- The v1.3.0 freeze is D47–D49 in `docs/DECISIONS-LEDGER.md` and the Lead-decisions follow-up. `browser.screenshot`, `workbench.view_open`, and the other under-discussion names stay unfrozen. Binding deletion has no id.
+- Settings plugin writes stay Locked under D49. There is no plugin marketplace and no standing loadout grant.
+- No `usable` row. Only the Lead promotes `usable`. W0.1 stays Locked. The nine §3 exit items stay open.
+- This note does not edit `docs/WAVE-MODULE-MAP.md` or `docs/OWNERSHIP-MATRIX.md`. D47–D49 are the ledger rows #39 added for this freeze.
