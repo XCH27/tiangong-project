@@ -98,6 +98,11 @@ The clean upstream baseline is validated before Fleet contract additions. W0.1 t
 canonical protocol/action implementation and re-freezes parity. M01 does not add a second session,
 task, settings, permission, panel, or browser authority to preserve an old feature.
 
+`docs/audits/2026-10-10-w01-exit3-canonical-parity.md` names the current Fleet files and the Craft
+v0.11.0 surfaces for Exit item 3. Action ids and the v1.3.0 policy table are frozen. The other
+fields are partial. Adapt row A-01 is not started. `CONTRACT_VERSION` stays `1.3.0`. Exit item 3
+stays open. Exit item 1 stays open.
+
 ## 8. Baseline Verification
 
 On the migration branch:
