@@ -252,3 +252,187 @@ describe('human session chrome on the session kernel', () => {
     expect(navigation.includes('isRefusedSessionChrome')).toBe(true)
   })
 })
+
+function hostEvents(text: string): Array<{
+  kind: string
+  actionId: string
+  actorRef: { kind: string; id: string; displayName: string }
+  payload?: { reason?: string }
+}> {
+  return text
+    .split('\n')
+    .filter((line) => line.includes('"record":"fleet_host_session_event"'))
+    .map((line) => (JSON.parse(line) as { event: {
+      kind: string
+      actionId: string
+      actorRef: { kind: string; id: string; displayName: string }
+      payload?: { reason?: string }
+    } }).event)
+}
+
+async function addHeldSession(
+  held: Awaited<ReturnType<typeof holdSession>>,
+  name: string,
+) {
+  const created = await createSession(held.root, { name })
+  const stored = loadSession(held.root, created.id)
+  if (!stored) throw new Error('session missing')
+  stored.sessionStatus = 'todo'
+  stored.labels = []
+  await saveSession(stored)
+  const managed = createManagedSession(
+    { id: created.id, name, sessionStatus: 'todo', labels: [] },
+    { id: 'ws-test', name: 'Test', rootPath: held.root, createdAt: Date.now() } as never,
+  )
+  ;(held.sm as unknown as { sessions: Map<string, unknown> }).sessions.set(created.id, managed)
+  return created
+}
+
+describe('agent session chrome on the session kernel', () => {
+  it('journals status and labels as the calling session, not the desktop user', async () => {
+    const held = await holdSession()
+    try {
+      const caller = await addHeldSession(held, 'Worker')
+      const status = await held.sm.setSessionStatusFromAgent(caller.id, held.created.id, 'in-progress')
+      expect(status.status).toBe('completed')
+      expect(isRefusedSessionChrome(status)).toBe(false)
+
+      const labels = await held.sm.setSessionLabelsFromAgent(caller.id, held.created.id, ['bug'])
+      expect(labels.status).toBe('completed')
+
+      const human = await held.sm.setSessionStatus(held.created.id, 'done')
+      expect(human.status).toBe('completed')
+
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      const agentStatus = events.find((event) => event.kind === 'action_completed' && event.actionId === 'session.set_status' && event.actorRef.kind === 'agent')
+      const agentLabels = events.find((event) => event.kind === 'action_completed' && event.actionId === 'session.set_labels')
+      const humanStatus = events.find((event) => event.kind === 'action_completed' && event.actorRef.id === 'desktop-user')
+      expect(agentStatus?.actorRef).toEqual({ kind: 'agent', id: caller.id, displayName: 'Worker' })
+      expect(agentLabels?.actorRef).toEqual({ kind: 'agent', id: caller.id, displayName: 'Worker' })
+      expect(humanStatus?.actionId).toBe('session.set_status')
+      expect(events.some((event) => event.kind === 'supervision_requested')).toBe(false)
+      expect(events.some((event) => event.actorRef.kind === 'agent' && event.actorRef.id === 'desktop-user')).toBe(false)
+
+      const reloaded = loadSession(held.root, held.created.id)
+      expect(reloaded?.sessionStatus).toBe('done')
+      expect(reloaded?.labels).toEqual(['bug'])
+      expect(loadSession(held.root, caller.id)?.sessionStatus).toBe('todo')
+      expect(held.events.some((event) => event.type === 'permission_request')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('denies a malformed caller, a credential label, a missing caller, and a misowned payload', async () => {
+    const held = await holdSession()
+    try {
+      const caller = await addHeldSession(held, 'Worker')
+      const blank = createManagedSession(
+        { id: '   ', name: 'Blank', sessionStatus: 'todo', labels: [] },
+        { id: 'ws-test', name: 'Test', rootPath: held.root, createdAt: Date.now() } as never,
+      )
+      ;(held.sm as unknown as { sessions: Map<string, unknown> }).sessions.set('   ', blank)
+
+      const malformed = await held.sm.setSessionStatusFromAgent('   ', held.created.id, 'done')
+      expect(malformed).toMatchObject({ status: 'denied', reason: 'malformed_actor' })
+      expect(isRefusedSessionChrome(malformed)).toBe(true)
+      expect(loadSession(held.root, held.created.id)?.sessionStatus).toBe('todo')
+
+      const secret = await held.sm.setSessionLabelsFromAgent(caller.id, held.created.id, ['Bearer tokentoken'])
+      expect(secret).toMatchObject({ status: 'denied', reason: 'credential_material_rejected' })
+      expect(loadSession(held.root, held.created.id)?.labels ?? []).toEqual([])
+
+      const missingCaller = await held.sm.setSessionStatusFromAgent('missing-caller', held.created.id, 'done')
+      expect(missingCaller).toMatchObject({ status: 'failed', reason: 'caller_missing' })
+
+      const missingTarget = await held.sm.setSessionLabelsFromAgent(caller.id, 'missing-target', ['bug'])
+      expect(missingTarget).toMatchObject({ status: 'failed', reason: 'session_missing' })
+
+      expect(held.sm.admitHostTurn(held.created.id, smuggle(
+        held.created.id,
+        InternalActionId.SESSION_SET_STATUS,
+        'inv-plugin-status',
+        {
+          sessionStatus: 'done',
+          pluginId: 'hook:lint',
+          op: 'install',
+          nextDocument: { version: 1, records: [{ id: 'hook:lint', installed: true, enabled: false }] },
+        },
+      ))).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+
+      expect(loadSession(held.root, held.created.id)?.sessionStatus).toBe('todo')
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      expect(events.some((event) => event.kind === 'action_completed')).toBe(false)
+      expect(events.some((event) => event.payload?.reason === 'malformed_actor')).toBe(true)
+      expect(held.events.some((event) => event.type === 'permission_request')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves mini-session status unchanged when the host actor is denied', async () => {
+    const held = await holdSession()
+    try {
+      const managed = (held.sm as unknown as { sessions: Map<string, { systemPromptPreset?: string }> })
+        .sessions.get(held.created.id)
+      if (!managed) throw new Error('managed missing')
+      managed.systemPromptPreset = 'mini'
+      await (held.sm as unknown as {
+        onProcessingStopped(sessionId: string, reason: 'complete'): Promise<void>
+      }).onProcessingStopped(held.created.id, 'complete')
+      await held.sm.flushSession(held.created.id)
+
+      expect(loadSession(held.root, held.created.id)?.sessionStatus).toBe('todo')
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      expect(events.some((event) => event.actionId === 'session.set_status' && event.actorRef.kind === 'system' && event.payload?.reason === 'actor_not_permitted')).toBe(true)
+      expect(events.some((event) => event.kind === 'action_completed')).toBe(false)
+      expect(events.some((event) => event.actorRef.id === 'desktop-user')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not admit a host turn when a normal session finishes', async () => {
+    const held = await holdSession()
+    try {
+      await (held.sm as unknown as {
+        onProcessingStopped(sessionId: string, reason: 'complete'): Promise<void>
+      }).onProcessingStopped(held.created.id, 'complete')
+      await held.sm.flushSession(held.created.id)
+      const text = readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8')
+      expect(text.includes('fleet_host_session_event')).toBe(false)
+      expect(loadSession(held.root, held.created.id)?.sessionStatus).toBe('todo')
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps agent tools on the kernel and leaves title generation and unflag off it', () => {
+    const manager = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
+    const tools = manager.slice(manager.indexOf('setSessionLabelsFn:'), manager.indexOf('getSessionInfoFn:'))
+    expect(tools.includes('setSessionLabelsFromAgent')).toBe(true)
+    expect(tools.includes('setSessionStatusFromAgent')).toBe(true)
+    expect(tools.includes('writeSessionLabelsHeader')).toBe(false)
+    expect(tools.includes('writeSessionStatusHeader')).toBe(false)
+
+    const stopped = manager.slice(
+      manager.indexOf('private async onProcessingStopped'),
+      manager.indexOf('private processNextQueuedMessage'),
+    )
+    expect(stopped.includes('admitMiniSessionAutoComplete')).toBe(true)
+    expect(stopped.includes('writeSessionStatusHeader')).toBe(false)
+
+    const unflag = manager.slice(manager.indexOf('async unflagSession'), manager.indexOf('async archiveSession'))
+    expect(unflag.includes('admitHostTurn')).toBe(false)
+    expect(manager.includes('requireHumanApproval')).toBe(false)
+    expect(manager.includes('setSessionNameFromAgent')).toBe(false)
+
+    const titles = manager.slice(manager.indexOf('async refreshTitle'), manager.indexOf('updateWorkingDirectory'))
+    expect(titles.includes('admitHostTurn')).toBe(false)
+    expect(titles.includes('admitSessionChrome')).toBe(false)
+    const generated = manager.slice(manager.indexOf('private async generateTitle'), manager.indexOf('private async processEvent'))
+    expect(generated.includes('admitHostTurn')).toBe(false)
+    expect(generated.includes('admitSessionChrome')).toBe(false)
+    expect(generated.includes('managed.name = title')).toBe(true)
+  })
+})

@@ -289,4 +289,23 @@ describe('Claude/Pi session self-management parity', () => {
     expect(listResult.isError).toBe(true);
     expect(listResult.content[0]!.text).toContain('not available in this context');
   });
+
+  it('a refused header admission is an error, and a completed one is not', async () => {
+    mergeSessionScopedToolCallbacks(sessionId, {
+      setSessionStatusFn: async () => ({ status: 'denied', reason: 'malformed_actor' }),
+      setSessionLabelsFn: async () => ({ status: 'completed' }),
+    });
+    const ctx = createBaseContext(sessionId);
+    attachSessionSelfManagementBindings(ctx, sessionId);
+
+    const statusHandler = SESSION_TOOL_REGISTRY.get('set_session_status')!.handler!;
+    const statusResult = await statusHandler(ctx, { status: 'done' });
+    expect(statusResult.isError).toBe(true);
+    expect(statusResult.content[0]!.text).toContain('malformed_actor');
+
+    const labelsHandler = SESSION_TOOL_REGISTRY.get('set_session_labels')!.handler!;
+    const labelsResult = await labelsHandler(ctx, { labels: ['bug'] });
+    expect(labelsResult.isError).toBe(false);
+    expect(labelsResult.content[0]!.text).toContain('bug');
+  });
 });

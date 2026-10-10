@@ -1,6 +1,7 @@
 import type { SessionToolContext } from '../context.ts';
 import type { ToolResult } from '../types.ts';
 import { successResponse, errorResponse } from '../response.ts';
+import { refusedSessionWrite } from './refused-session-write.ts';
 
 export interface SetSessionLabelsArgs {
   sessionId?: string;
@@ -35,7 +36,11 @@ export async function handleSetSessionLabels(
       labels = resolved;
     }
 
-    await ctx.setSessionLabels(args.sessionId, labels);
+    const written = await ctx.setSessionLabels(args.sessionId, labels);
+    const refused = refusedSessionWrite(written);
+    if (refused) {
+      return errorResponse(`Labels were not set: ${refused}.`);
+    }
     const target = args.sessionId ? `session ${args.sessionId}` : 'current session';
     return successResponse(
       labels.length === 0

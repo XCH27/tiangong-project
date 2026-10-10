@@ -148,6 +148,12 @@ export interface ValidatorInterface {
  * - Claude: createClaudeContext() with direct access to Electron internals
  * - Codex: createCodexContext() with callback IPC and limited capabilities
  */
+/** Result a session-header callback returns when the kernel admits or refuses the write. */
+export interface SessionHeaderWriteResult {
+  status: string;
+  reason?: string;
+}
+
 export interface SessionToolContext {
   // ============================================================
   // Session Info
@@ -311,10 +317,16 @@ export interface SessionToolContext {
   // ============================================================
 
   /** Set labels on a session. Defaults to current session if no ID given. Injected by backend. */
-  setSessionLabels?(sessionId: string | undefined, labels: string[]): void | Promise<void>;
+  setSessionLabels?(
+    sessionId: string | undefined,
+    labels: string[],
+  ): void | Promise<void | SessionHeaderWriteResult>;
 
   /** Set status on a session. Defaults to current session if no ID given. Injected by backend. */
-  setSessionStatus?(sessionId: string | undefined, status: string): void | Promise<void>;
+  setSessionStatus?(
+    sessionId: string | undefined,
+    status: string,
+  ): void | Promise<void | SessionHeaderWriteResult>;
 
   /** Get detailed info about a session. Defaults to current session if no ID given. Injected by backend. */
   getSessionInfo?(sessionId?: string): SessionInfo | null;
