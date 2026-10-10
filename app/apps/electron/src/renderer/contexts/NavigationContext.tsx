@@ -49,6 +49,7 @@ import {
 } from '../../shared/route-parser'
 import { routes, type Route, type ViewRoute } from '../../shared/routes'
 import { parsePermissionMode } from '@craft-agent/shared/agent/mode-types'
+import { isRefusedSessionChrome } from '@craft-agent/shared/protocol'
 import { NAVIGATE_EVENT, type NavigateOptions } from '../lib/navigate'
 import { normalizePanelRouteForReconcile } from './navigation-reconcile'
 import { buildSemanticHistoryKey, canRunInitialRestore } from './navigation-history'
@@ -698,6 +699,7 @@ export function NavigationProvider({
             await window.electronAPI.sessionCommand(session.id, { type: 'rename', name: parsed.params.name })
           }
 
+          const metaBefore = store.get(sessionMetaMapAtom).get(session.id)
           if (parsed.params.status) {
             updateSessionMeta(session.id, { sessionStatus: parsed.params.status })
           }
@@ -706,10 +708,16 @@ export function NavigationProvider({
           }
 
           if (parsed.params.status) {
-            await window.electronAPI.sessionCommand(session.id, { type: 'setSessionStatus', state: parsed.params.status })
+            const statusResult = await window.electronAPI.sessionCommand(session.id, { type: 'setSessionStatus', state: parsed.params.status })
+            if (isRefusedSessionChrome(statusResult)) {
+              updateSessionMeta(session.id, { sessionStatus: metaBefore?.sessionStatus })
+            }
           }
           if (parsed.params.label) {
-            await window.electronAPI.sessionCommand(session.id, { type: 'setLabels', labels: [parsed.params.label] })
+            const labelResult = await window.electronAPI.sessionCommand(session.id, { type: 'setLabels', labels: [parsed.params.label] })
+            if (isRefusedSessionChrome(labelResult)) {
+              updateSessionMeta(session.id, { labels: metaBefore?.labels })
+            }
           }
 
           // Determine navigation filter

@@ -23,6 +23,7 @@ import type {
   UnreadSummary,
   ShareResult,
   SessionFlagAdmission,
+  SessionChromeAdmission,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -55,8 +56,8 @@ export interface ISessionManager {
   unflagSession(sessionId: string): Promise<void>
   archiveSession(sessionId: string): Promise<void>
   unarchiveSession(sessionId: string): Promise<void>
-  renameSession(sessionId: string, name: string): Promise<void>
-  setSessionStatus(sessionId: string, status: SessionStatus): Promise<void>
+  renameSession(sessionId: string, name: string): Promise<SessionChromeAdmission>
+  setSessionStatus(sessionId: string, status: SessionStatus): Promise<SessionChromeAdmission>
   markSessionRead(sessionId: string): Promise<void>
   markSessionUnread(sessionId: string): Promise<void>
   markAllSessionsRead(workspaceId: string): Promise<void>
@@ -71,7 +72,7 @@ export interface ISessionManager {
   setSessionThinkingLevel(sessionId: string, level: ThinkingLevel): void
   updateWorkingDirectory(sessionId: string, path: string): void
   setSessionSources(sessionId: string, sourceSlugs: string[]): Promise<void>
-  setSessionLabels(sessionId: string, labels: string[]): void
+  setSessionLabels(sessionId: string, labels: string[]): Promise<SessionChromeAdmission>
   setSessionConnection(sessionId: string, connectionSlug: string): Promise<void>
   updateSessionModel(sessionId: string, workspaceId: string, model: string | null, connection?: string): Promise<void>
 

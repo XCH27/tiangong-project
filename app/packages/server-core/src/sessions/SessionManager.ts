@@ -39,8 +39,15 @@ import {
   type PluginMutationResult,
   HostTurnKernel,
   SessionFileTurnJournal,
+  planSessionChrome,
+  sessionChromeUndo,
   sessionFlagRequest,
+  sessionLabelsRequest,
+  sessionRenameRequest,
+  sessionStatusRequest,
+  type SessionChromeAdmission,
   type SessionFlagAdmission,
+  type TurnExecutorResult,
   type TurnOutcome,
   type TurnRequest,
 } from '@craft-agent/shared/protocol'
@@ -1133,6 +1140,16 @@ export class SessionManager implements ISessionManager {
   private hostApprovals = new Map<string, { kernel: HostTurnKernel; workspaceId?: string }>()
   /** sessionId + invocationId pairs whose permission card was already delivered. */
   private deliveredHostCards = new Set<string>()
+  /**
+   * Human chrome turns that are waiting on the existing permission card.
+   * The header write runs after Allow. Deny drops the job.
+   */
+  private pendingSessionChrome = new Map<string, {
+    sessionId: string
+    effect: (noteNativeCommit: () => void) => Promise<TurnExecutorResult>
+    rollback: () => Promise<void>
+  }>()
+  private sessionChromeTail = new Map<string, Promise<unknown>>()
   // Permission request metadata tracking (keyed by requestId)
   private pendingPermissionRequests: Map<string, {
     sessionId: string
@@ -4112,10 +4129,10 @@ export class SessionManager implements ISessionManager {
       // Wire up session self-management tools (set_session_labels, set_session_status, etc.)
       mergeSessionScopedToolCallbacks(managed.id, {
         setSessionLabelsFn: async (sessionId: string | undefined, labels: string[]) => {
-          await this.setSessionLabels(sessionId ?? managed.id, labels)
+          await this.writeSessionLabelsHeader(sessionId ?? managed.id, labels)
         },
         setSessionStatusFn: async (sessionId: string | undefined, status: string) => {
-          await this.setSessionStatus(sessionId ?? managed.id, status as SessionStatus)
+          await this.writeSessionStatusHeader(sessionId ?? managed.id, status as SessionStatus)
         },
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id
@@ -4454,22 +4471,57 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  async setSessionStatus(sessionId: string, sessionStatus: SessionStatus): Promise<void> {
+  /**
+   * Human status command. Admits session.set_status on this session's
+   * HostTurnKernel and journals the run in session.jsonl. The frozen row is
+   * L1 with an undo contract, so this does not publish a permission card.
+   * A refused admit does not change the header.
+   */
+  async setSessionStatus(sessionId: string, sessionStatus: SessionStatus): Promise<SessionChromeAdmission> {
+    const invocationId = randomUUID()
     const managed = this.sessions.get(sessionId)
-    if (managed) {
-      managed.sessionStatus = sessionStatus
-      this.setMetadataWriteGuard(managed)
-      // Persist in-memory state directly to avoid race with pending queue writes
-      this.persistSession(managed)
-      await this.flushSession(managed.id)
-      // Notify all windows for this workspace
-      this.sendEvent({ type: 'session_status_changed', sessionId, sessionStatus }, managed.workspace.id)
-      // Workaround: Bun's fs.watch({ recursive: true }) on Linux doesn't track
-      // directories created after the watcher started.
-      // https://github.com/oven-sh/bun/issues/15939
-      const watcher = this.configWatchers.get(managed.workspace.rootPath)
-      watcher?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
-    }
+    if (!managed) return { status: 'failed', invocationId, reason: 'session_missing' }
+    let previous = managed.sessionStatus
+    const request = sessionStatusRequest(sessionId, invocationId, sessionStatus)
+    return this.admitHumanSessionChrome(
+      sessionId,
+      request,
+      async (noteNativeCommit) => {
+        previous = this.sessions.get(sessionId)?.sessionStatus
+        await this.writeSessionStatusHeader(sessionId, sessionStatus)
+        noteNativeCommit()
+        return {
+          output: { sessionStatus, actionId: request.invocation.actionId },
+          undoHandle: sessionChromeUndo(invocationId, 'Restore session status', { sessionStatus: previous ?? null }),
+        }
+      },
+      () => this.restoreSessionStatusHeader(sessionId, previous),
+    )
+  }
+
+  /**
+   * Header write for status. The human command runs this inside the admitted
+   * turn. Agent tools and mini-session auto-complete call it directly and do
+   * not admit.
+   */
+  private async writeSessionStatusHeader(sessionId: string, sessionStatus: SessionStatus): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    managed.sessionStatus = sessionStatus
+    this.setMetadataWriteGuard(managed)
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+    this.sendEvent({ type: 'session_status_changed', sessionId, sessionStatus }, managed.workspace.id)
+    this.notifySessionJsonl(managed)
+  }
+
+  private async restoreSessionStatusHeader(sessionId: string, sessionStatus: string | undefined): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    managed.sessionStatus = sessionStatus
+    this.setMetadataWriteGuard(managed)
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
   }
 
   /**
@@ -4978,19 +5030,50 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  async renameSession(sessionId: string, name: string): Promise<void> {
+  /**
+   * Human rename command. Admits session.rename on this session's
+   * HostTurnKernel and journals the run in session.jsonl. The frozen row is
+   * L1 with an undo contract, so this does not publish a permission card.
+   * A refused admit does not change the name.
+   */
+  async renameSession(sessionId: string, name: string): Promise<SessionChromeAdmission> {
+    const invocationId = randomUUID()
     const managed = this.sessions.get(sessionId)
-    if (managed) {
-      managed.name = name
-      this.persistSession(managed)
-      // Notify renderer of the name change
-      this.sendEvent({ type: 'title_generated', sessionId, title: name }, managed.workspace.id)
-      // Workaround: Bun's fs.watch({ recursive: true }) on Linux doesn't track
-      // directories created after the watcher started.
-      // https://github.com/oven-sh/bun/issues/15939
-      const watcher = this.configWatchers.get(managed.workspace.rootPath)
-      watcher?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
-    }
+    if (!managed) return { status: 'failed', invocationId, reason: 'session_missing' }
+    let previous = managed.name
+    const request = sessionRenameRequest(sessionId, invocationId, name)
+    return this.admitHumanSessionChrome(
+      sessionId,
+      request,
+      async (noteNativeCommit) => {
+        previous = this.sessions.get(sessionId)?.name
+        await this.writeSessionNameHeader(sessionId, name)
+        noteNativeCommit()
+        return {
+          output: { name, actionId: request.invocation.actionId },
+          undoHandle: sessionChromeUndo(invocationId, 'Restore session name', { name: previous ?? null }),
+        }
+      },
+      () => this.restoreSessionNameHeader(sessionId, previous),
+    )
+  }
+
+  private async writeSessionNameHeader(sessionId: string, name: string): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    managed.name = name
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+    this.sendEvent({ type: 'title_generated', sessionId, title: name }, managed.workspace.id)
+    this.notifySessionJsonl(managed)
+  }
+
+  private async restoreSessionNameHeader(sessionId: string, name: string | undefined): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    managed.name = name
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
   }
 
   /**
@@ -6333,7 +6416,7 @@ export class SessionManager implements ISessionManager {
     //    and should automatically move to 'done' when finished
     if (reason === 'complete' && managed.systemPromptPreset === 'mini' && managed.sessionStatus !== 'done') {
       sessionLog.info(`Auto-completing mini agent session ${sessionId}`)
-      await this.setSessionStatus(sessionId, 'done')
+      await this.writeSessionStatusHeader(sessionId, 'done')
     }
 
     // 4. Apply deferred external metadata updates captured while processing.
@@ -6665,6 +6748,7 @@ export class SessionManager implements ISessionManager {
     attachment?.kernel.setAdmissionObserver(undefined)
     this.hostApprovals.delete(sessionId)
     this.clearDeliveredHostCards(sessionId)
+    this.dropPendingSessionChrome(sessionId)
   }
 
   private hostCardKey(sessionId: string, invocationId: string): string {
@@ -6774,6 +6858,15 @@ export class SessionManager implements ISessionManager {
       alwaysAllow,
     })
     sessionLog.info(`Host approval ${requestId}: ${outcome.status}`)
+    const pending = this.pendingSessionChrome.get(invocationId)
+    if (pending) this.pendingSessionChrome.delete(invocationId)
+    if (pending && outcome.status === 'admitted') {
+      void this.enqueueSessionChrome(sessionId, () => (
+        this.executeSessionChrome(sessionId, invocationId, pending.effect, pending.rollback)
+      )).catch((error) => {
+        sessionLog.warn(`session chrome continuation failed for ${sessionId}`, error)
+      })
+    }
     if (outcome.reason === 'unknown_invocation' || outcome.status === 'approval_required') return false
     return true
   }
@@ -6930,25 +7023,129 @@ export class SessionManager implements ISessionManager {
    * Set labels for a session (additive tags, many-per-session).
    * Labels are IDs referencing workspace labels/config.json.
    */
-  async setSessionLabels(sessionId: string, labels: string[]): Promise<void> {
+  /**
+   * Human labels command. Admits session.set_labels on this session's
+   * HostTurnKernel and journals the run in session.jsonl. The frozen row is
+   * L1 with an undo contract, so this does not publish a permission card.
+   * A refused admit does not change the labels.
+   */
+  async setSessionLabels(sessionId: string, labels: string[]): Promise<SessionChromeAdmission> {
+    const invocationId = randomUUID()
     const managed = this.sessions.get(sessionId)
-    if (managed) {
-      managed.labels = labels
-      this.setMetadataWriteGuard(managed)
+    if (!managed) return { status: 'failed', invocationId, reason: 'session_missing' }
+    let previous = [...(managed.labels ?? [])]
+    const request = sessionLabelsRequest(sessionId, invocationId, labels)
+    return this.admitHumanSessionChrome(
+      sessionId,
+      request,
+      async (noteNativeCommit) => {
+        previous = [...(this.sessions.get(sessionId)?.labels ?? [])]
+        await this.writeSessionLabelsHeader(sessionId, labels)
+        noteNativeCommit()
+        return {
+          output: { labels: [...labels], actionId: request.invocation.actionId },
+          undoHandle: sessionChromeUndo(invocationId, 'Restore session labels', { labels: previous }),
+        }
+      },
+      () => this.restoreSessionLabelsHeader(sessionId, previous),
+    )
+  }
 
-      this.sendEvent({
-        type: 'labels_changed',
-        sessionId: managed.id,
-        labels: managed.labels,
-      }, managed.workspace.id)
-      // Persist in-memory state directly to avoid race with pending queue writes
-      this.persistSession(managed)
-      await this.flushSession(managed.id)
-      // Workaround: Bun's fs.watch({ recursive: true }) on Linux doesn't track
-      // directories created after the watcher started.
-      // https://github.com/oven-sh/bun/issues/15939
-      const watcher = this.configWatchers.get(managed.workspace.rootPath)
-      watcher?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
+  /**
+   * Header write for labels. The human command runs this inside the admitted
+   * turn. The agent tool calls it directly and does not admit.
+   */
+  private async writeSessionLabelsHeader(sessionId: string, labels: string[]): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    managed.labels = [...labels]
+    this.setMetadataWriteGuard(managed)
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+    this.sendEvent({
+      type: 'labels_changed',
+      sessionId: managed.id,
+      labels: managed.labels,
+    }, managed.workspace.id)
+    this.notifySessionJsonl(managed)
+  }
+
+  private async restoreSessionLabelsHeader(sessionId: string, labels: string[]): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    managed.labels = [...labels]
+    this.setMetadataWriteGuard(managed)
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+  }
+
+  // Workaround: Bun's fs.watch({ recursive: true }) on Linux doesn't track
+  // directories created after the watcher started.
+  // https://github.com/oven-sh/bun/issues/15939
+  private notifySessionJsonl(managed: ManagedSession): void {
+    const watcher = this.configWatchers.get(managed.workspace.rootPath)
+    watcher?.notifyFileChange(`sessions/${managed.id}/session.jsonl`)
+  }
+
+  private enqueueSessionChrome<T>(sessionId: string, job: () => Promise<T>): Promise<T> {
+    const previous = this.sessionChromeTail.get(sessionId) ?? Promise.resolve()
+    const run = previous.then(job, job)
+    this.sessionChromeTail.set(sessionId, run.then(() => undefined, () => undefined))
+    return run
+  }
+
+  /**
+   * Admit one human session-chrome turn. L1 rows with an undo contract run
+   * immediately. approval_required stores the effect for respondToPermission.
+   * admitHostTurn publishes the existing card in that case. Callers do not
+   * publish a second card.
+   */
+  private admitHumanSessionChrome(
+    sessionId: string,
+    request: TurnRequest,
+    effect: (noteNativeCommit: () => void) => Promise<TurnExecutorResult>,
+    rollback: () => Promise<void>,
+  ): Promise<SessionChromeAdmission> {
+    const invocationId = request.invocation.invocationId
+    return this.enqueueSessionChrome(sessionId, async () => {
+      const admitted = this.admitHostTurn(sessionId, request)
+      const plan = planSessionChrome(admitted.status)
+      switch (plan) {
+        case 'await_card':
+          this.pendingSessionChrome.set(invocationId, { sessionId, effect, rollback })
+          return { status: 'approval_required', invocationId, reason: admitted.reason }
+        case 'run':
+          return this.executeSessionChrome(sessionId, invocationId, effect, rollback)
+        case 'refuse':
+          sessionLog.warn(`session chrome refused for ${sessionId}: ${admitted.status} ${admitted.reason ?? ''}`)
+          return { status: admitted.status, invocationId, reason: admitted.reason }
+        default: {
+          const unexpected: never = plan
+          return { status: 'failed', invocationId, reason: `unexpected_plan:${String(unexpected)}` }
+        }
+      }
+    })
+  }
+
+  private async executeSessionChrome(
+    sessionId: string,
+    invocationId: string,
+    effect: (noteNativeCommit: () => void) => Promise<TurnExecutorResult>,
+    rollback: () => Promise<void>,
+  ): Promise<SessionChromeAdmission> {
+    this.pendingSessionChrome.delete(invocationId)
+    const kernel = this.hostApprovals.get(sessionId)?.kernel
+    if (!kernel) return { status: 'failed', invocationId, reason: 'host_kernel_missing' }
+    const ran = await kernel.run(invocationId, async ({ noteNativeCommit }) => effect(noteNativeCommit))
+    if (ran.status !== 'completed' && ran.status !== 'reconciling') {
+      await rollback()
+    }
+    return { status: ran.status, invocationId: ran.invocationId, reason: ran.reason }
+  }
+
+  private dropPendingSessionChrome(sessionId: string): void {
+    for (const [invocationId, job] of this.pendingSessionChrome) {
+      if (job.sessionId === sessionId) this.pendingSessionChrome.delete(invocationId)
     }
   }
 
