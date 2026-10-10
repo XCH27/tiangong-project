@@ -11,5 +11,5 @@ Commercial Terms of Service: https://www.anthropic.com/legal/commercial-terms
 
 ---
 
-Third-party dependencies are listed in package.json files and are subject
-to their respective licenses.
+Third-party notices for admitted dependencies are in THIRD-PARTY-NOTICES.txt.
+The release check fails when an admitted dependency has no license.

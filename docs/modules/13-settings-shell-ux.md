@@ -51,6 +51,8 @@ Do not scatter browser switches across BrowserPane, capability settings, and dev
 
 The Plugins settings page is the one home for the local plugin loadout. It reuses this settings navigator. Its five views and Market filters are a projection of workspace skills and MCP sources. MCP Registry catalogs, third-party hook approval, the MCP Apps side pane, and Agent Plugins 1.0.0 stay `Locked` on that page.
 
+About, licenses, and diagnostics stay on the App settings page. The notices row and the Fleet update row read `releaseAboutModel`. The notices row is `wired` when every admitted dependency has a license. The signed production feed row stays `Locked`. The existing Check for Updates control remains the Craft updater. It is not a Fleet release feed.
+
 M16's settings include only preference projections such as default layout, reset, and whether an
 Agent may reveal/focus views. M13 must not duplicate live panel registration or layout state.
 

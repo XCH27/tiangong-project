@@ -66,6 +66,7 @@
     "./protocol/canvas-card-view": "./src/protocol/canvas-card-view.ts",
     "./protocol/plugin-settings": "./src/protocol/plugin-settings.ts",
     "./protocol/plugin-settings-host": "./src/protocol/plugin-settings-host.ts",
+    "./protocol/release-independence": "./src/protocol/release-independence.ts",
     "./i18n": "./src/i18n/index.ts",
     "./resources": "./src/resources/index.ts"
   },
