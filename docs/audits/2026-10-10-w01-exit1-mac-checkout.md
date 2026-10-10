@@ -16,11 +16,13 @@ Electron `electron:dev` was run on the same Mac path. The detail is `docs/audits
 
 The first `electron:dev` failed. `extract-zip` left an incomplete Electron dist (`version` and `LICENSES.chromium.html` only, no `Electron.app`). The recorded fix unzipped cached `electron-v39.2.7-darwin-arm64.zip` into `node_modules/electron/dist` and wrote `path.txt` with no trailing newline. `electron --version` then printed `v39.2.7`. The attached first log is the launch after that repair, not a transcript of the failed spawn.
 
-That launch initialized the app, bound `ws://0.0.0.0:9100`, restored workspace `my-workspace`, and System Events saw window title `Fleet`. Build warnings named the missing `../../tsconfig.base.json`. That is the same pin gap as the #52 `TS5083` failure. No typecheck fix is recorded. `typecheck:all` stays failed.
+That launch initialized the app, bound `ws://0.0.0.0:9100`, restored workspace `my-workspace`, and the renderer `ws-rpc-server` client connected. Those are Craft log lines. Build warnings named the missing `../../tsconfig.base.json`. That is the same pin gap as the #52 `TS5083` failure. No typecheck fix is recorded. `typecheck:all` stays failed.
+
+Corrected 2026-10-10: the first draft of this follow-up said System Events saw window title `Fleet` and that `Cmd+,` left that title. That window was pid `4855`. Mac `ps` shows its command is `Fleet 项目审查`, a separate local app, not Craft. Those two claims are retracted. Craft evidence for this launch is the Electron logs only.
 
 Quit of parent pid `67450` is recorded as `QUIT_OK`. Relaunch is recorded as `RELAUNCH_OK`. The relaunch log shows `Loaded 3 sessions from disk (metadata only)` and `App initialized successfully` again. SHA-256 of `session.jsonl` for `260909-fit-tide`, `260909-ruby-bear`, and `260912-misty-tiger` was unchanged. `projects/project/config.json` was still present. That project directory was not created in this pass.
 
-Still not done: create a new project, open Kanban, send an ordinary session turn, verify the Settings panel (`Cmd+,` left the title `Fleet`), open BrowserPane. `screencapture` failed. The migration branch is still absent. `app/` is not replaced. Exit item 1 stays open. W0.1 stays In Progress. W1 stays Locked. The clean v0.11 baseline stays `not implemented`.
+Still not done: create a new project, open Kanban, send an ordinary session turn, verify the Settings panel on the Craft window, open BrowserPane. The migration branch is still absent. `app/` is not replaced. Exit item 1 stays open. W0.1 stays In Progress. W1 stays Locked. The clean v0.11 baseline stays `not implemented`.
 
 ## Follow-up after #51 (`8cd1365d`)
 
@@ -107,7 +109,7 @@ Install and `typecheck:all` are recorded. Typecheck failed, so it does not satis
 
 The acceptance already written in `docs/audits/2026-10-10-w01-v011-baseline-blk001.md` is only partly recorded:
 
-1. Open existing workspace `my-workspace`: done by restore. Create a new project: not done. `projects/project/` was already present. Open the Kanban board: not verified. Send one ordinary session turn: not run. Open settings: `Cmd+,` attempted, title stayed `Fleet`, panel not verified. Open BrowserPane: not opened. Quit and relaunch: done (`QUIT_OK`, `RELAUNCH_OK`). `session.jsonl` hashes and `projects/project/config.json`: still present and unchanged.
+1. Open existing workspace `my-workspace`: done by restore in the Craft log. Create a new project: not done. `projects/project/` was already present. Open the Kanban board: not verified. Send one ordinary session turn: not run. Settings panel on Craft: not verified. The earlier `Cmd+,` targeted pid `4855` (`Fleet 项目审查`), not Craft, and is retracted. Open BrowserPane: not opened. Quit and relaunch: done (`QUIT_OK`, `RELAUNCH_OK`). `session.jsonl` hashes and `projects/project/config.json`: still present and unchanged.
 2. A migration branch whose base is that checkout: still absent.
 
 Until the unfinished steps are written down, Exit item 1 stays open. A recorded install, a failed typecheck, and this launch without the rest of the loop still leave Exit item 1 open. `app/` is not replaced.
