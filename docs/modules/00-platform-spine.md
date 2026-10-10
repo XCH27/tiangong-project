@@ -98,9 +98,9 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 
 | Question | Owner | Required before |
 |---|---|---|
-| Exact AgentSeat fields and tag projection | Lead | W0.1 re-freeze |
-| Event payload schemas and action-version policy | Lead | W0.1 re-freeze |
-| Canonical implementation parity evidence | Lead | W1 opening |
+| Exact AgentSeat fields and tag projection. Recorded as partial in `docs/audits/2026-10-10-w01-exit3-canonical-parity.md`. The projection is not re-frozen. | Lead | W0.1 re-freeze |
+| Event payload schemas and action-version policy. The v1.2 journal payload stays untyped. The Exit 3 note does not freeze a typed payload. | Lead | W0.1 re-freeze |
+| Canonical implementation parity evidence. The Exit 3 note is that record and item 3 stays open. | Lead | W1 opening |
 | Physical persistence adapter and migration/recovery contract | Lead | W1 opening |
 
 ## 12. Change Log
@@ -150,6 +150,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-10 | draft v1.1 | SessionManager plugin install, enable, and disable admit `plugin.loadout_mutate` on the session kernel. The row is L2, so an unapproved call does not write. `op: grant` is `standing_grant_rejected`. No shell or IPC caller. The same payload on `file.update` is still refused. The row stays `test-only`. Settings writes stay Locked. |
 | 2026-10-10 | draft v1.1 | The MCP Apps pane constructs one host. Human open, focus, and close admit `workbench.sidebar_focus`. L0 does not wait for a card. A refused open closes the slot. Focus and close write the slot after the kernel completes. Agent helpers stay `test-only`. `canvas.node_select` still refuses the payload. Settings plugin writes, DOM capture, and page-target stay unchanged. |
 | 2026-10-10 | draft v1.1 | Settings → Plugins install, enable, and disable call `SessionManager.applySessionPluginMutation` through `plugins:mutateLoadout`. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow writes the loadout of the skills and MCP sources the agent loads. Deny writes nothing. `op: grant` stays `standing_grant_rejected`. `file.update` still refuses the payload. The caller is `wired`, not `usable`. W0.1 stays Locked. |
+| 2026-10-10 | draft v1.1 | Exit 3 parity note records AgentSeat, caller, idempotency, revisions, typed events, and host admission as partial. Action ids stay 1.3.0. Item 3 stays open. |
 
 ## 13. Host And Pi Execution Boundary
 
