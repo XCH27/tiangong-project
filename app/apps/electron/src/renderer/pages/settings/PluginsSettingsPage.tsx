@@ -1,9 +1,10 @@
 /**
  * PluginsSettingsPage
  *
- * One settings page on the existing navigator. Five views and the Market
- * content filters use the same state as the host loadout. Install, enable,
- * and disable write through HostTurnKernel. Later plugin phases stay Locked.
+ * One settings page on the existing navigator. Five views, Market content
+ * filters, and catalog source filters use the same list as the host loadout.
+ * Install, enable, and disable write through HostTurnKernel. Later plugin
+ * phases stay Locked.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -27,7 +28,6 @@ import {
   parsePluginView,
   pluginLoadoutPath,
   pluginPhaseStatus,
-  projectWorkspacePlugins,
   selectMarketFilter,
   selectPluginView,
   type MarketContentFilter,
@@ -37,6 +37,17 @@ import {
   type PluginView,
   emptyPluginLoadout,
 } from '@craft-agent/shared/protocol/plugin-settings'
+import {
+  CATALOG_SOURCE_KINDS,
+  MCP_REGISTRY_LIST_URL,
+  MCP_REGISTRY_SOURCE,
+  catalogSourceStatus,
+  listCatalogMarket,
+  parseCatalogSourceKind,
+  readCatalogSource,
+  type CatalogRead,
+  type CatalogSourceKind,
+} from '@craft-agent/shared/protocol/plugin-catalog-sources'
 import {
   applyPluginMutationFromHuman,
   createPluginSettingsHost,
@@ -66,21 +77,34 @@ export default function PluginsSettingsPage() {
   const invocationCount = useRef(0)
   const [view, setView] = useState<PluginView>('installed')
   const [marketFilter, setMarketFilter] = useState<MarketContentFilter>('all')
+  const [sourceKind, setSourceKind] = useState<CatalogSourceKind | 'all'>('all')
+  const [reads, setReads] = useState<CatalogRead[]>([])
   const [loadout, setLoadout] = useState<PluginLoadoutFile>(emptyPluginLoadout())
 
-  const catalog = useMemo(() => projectWorkspacePlugins({
-    skills: (shell?.skills ?? []).map((skill) => ({
-      slug: skill.slug,
-      name: skill.metadata.name,
-      description: skill.metadata.description,
-    })),
-    sources: (shell?.enabledSources ?? []).map((source) => ({
-      slug: source.config.slug,
-      name: source.config.name,
-      type: source.config.type,
-      description: source.config.tagline,
-    })),
-  }), [shell?.skills, shell?.enabledSources])
+  const workspaceSkills = useMemo(() => (shell?.skills ?? []).map((skill) => ({
+    slug: skill.slug,
+    name: skill.metadata.name,
+    description: skill.metadata.description,
+  })), [shell?.skills])
+  const workspaceSources = useMemo(() => (shell?.enabledSources ?? []).map((source) => ({
+    slug: source.config.slug,
+    name: source.config.name,
+    type: source.config.type,
+    description: source.config.tagline,
+  })), [shell?.enabledSources])
+  const catalog = useMemo(() => listCatalogMarket({
+    skills: workspaceSkills,
+    sources: workspaceSources,
+    reads,
+    contentFilter: 'all',
+  }), [workspaceSkills, workspaceSources, reads])
+  const marketEntries = useMemo(() => listCatalogMarket({
+    skills: workspaceSkills,
+    sources: workspaceSources,
+    reads,
+    sourceFilter: sourceKind === 'all' ? null : { kind: 'type', sourceKind },
+    contentFilter: marketFilter,
+  }), [workspaceSkills, workspaceSources, reads, sourceKind, marketFilter])
 
   useEffect(() => {
     if (!filePath) {
@@ -95,7 +119,7 @@ export default function PluginsSettingsPage() {
     selectPluginView({ view: 'installed', marketFilter: 'all', catalog, loadout }, view),
     marketFilter,
   )
-  const entries = entriesForView(state)
+  const entries = view === 'market' ? marketEntries : entriesForView(state)
 
   const changeView = useCallback((next: string) => {
     const parsed = parsePluginView(next)
@@ -105,6 +129,24 @@ export default function PluginsSettingsPage() {
   const changeFilter = useCallback((next: string) => {
     const parsed = parseMarketFilter(next)
     if (parsed) setMarketFilter(parsed)
+  }, [])
+
+  const changeSource = useCallback((next: string) => {
+    if (next === 'all') {
+      setSourceKind('all')
+      return
+    }
+    const parsed = parseCatalogSourceKind(next)
+    if (parsed) setSourceKind(parsed)
+  }, [])
+
+  const refreshCatalogs = useCallback(async () => {
+    const mcp = await readCatalogSource({
+      source: MCP_REGISTRY_SOURCE,
+      allowNetwork: true,
+      url: MCP_REGISTRY_LIST_URL,
+    })
+    setReads((current) => [mcp, ...current.filter((item) => item.source.kind !== 'mcp_registry')])
   }, [])
 
   const mutate = useCallback(async (op: PluginMutationName, pluginId: string) => {
@@ -129,7 +171,7 @@ export default function PluginsSettingsPage() {
   }, [catalog, filePath, host, t])
 
   return (
-    <div className="h-full flex flex-col" data-plugin-view={view} data-market-filter={marketFilter}>
+    <div className="h-full flex flex-col" data-plugin-view={view} data-market-filter={marketFilter} data-catalog-source={sourceKind}>
       <PanelHeader
         title={t('settings.plugins.title')}
         actions={<HeaderMenu route={routes.view.settings('plugins')} helpFeature="app-settings" />}
@@ -156,7 +198,20 @@ export default function PluginsSettingsPage() {
                     />
                   </div>
                   {view === 'market' && (
-                    <div className="px-4 py-3.5">
+                    <div className="px-4 py-3.5 space-y-3">
+                      <SettingsSegmentedControl
+                        value={sourceKind}
+                        onValueChange={changeSource}
+                        size="sm"
+                        className="flex-wrap"
+                        options={[
+                          { value: 'all', label: t('settings.plugins.catalog.all') },
+                          ...CATALOG_SOURCE_KINDS.map((item) => ({
+                            value: item,
+                            label: catalogSourceLabel(item, t),
+                          })),
+                        ]}
+                      />
                       <SettingsSegmentedControl
                         value={marketFilter}
                         onValueChange={changeFilter}
@@ -191,6 +246,29 @@ export default function PluginsSettingsPage() {
                   ))}
                 </SettingsCard>
               </SettingsSection>
+
+              {view === 'market' && (
+                <SettingsSection title={t('settings.plugins.catalog.sources')}>
+                  <SettingsCard>
+                    {CATALOG_SOURCE_KINDS.map((kind) => {
+                      const read = reads.find((item) => item.source.kind === kind)
+                      return (
+                        <SettingsRow
+                          key={kind}
+                          label={catalogSourceLabel(kind, t)}
+                          description={catalogReadDescription(read, catalogSourceDescription(kind, t), t)}
+                          action={<span className="text-xs text-muted-foreground">{catalogSourceStatus(kind)}</span>}
+                        />
+                      )
+                    })}
+                    <div className="px-4 py-3.5">
+                      <Button variant="secondary" size="sm" onClick={() => { void refreshCatalogs() }}>
+                        {t('settings.plugins.catalog.refresh')}
+                      </Button>
+                    </div>
+                  </SettingsCard>
+                </SettingsSection>
+              )}
 
               <SettingsSection title={t('settings.plugins.statusLocked')} description={t('settings.plugins.manageDesc')}>
                 <SettingsCard>
@@ -303,10 +381,54 @@ function filterLabel(filter: MarketContentFilter, t: (key: string) => string): s
   }
 }
 
+function catalogSourceLabel(kind: CatalogSourceKind, t: (key: string) => string): string {
+  switch (kind) {
+    case 'mcp_registry':
+      return t('settings.plugins.catalog.mcpRegistry')
+    case 'skill_repository':
+      return t('settings.plugins.catalog.skillRepository')
+    default: {
+      const unexpected: never = kind
+      return unexpected
+    }
+  }
+}
+
+function catalogSourceDescription(kind: CatalogSourceKind, t: (key: string) => string): string {
+  switch (kind) {
+    case 'mcp_registry':
+      return t('settings.plugins.catalog.mcpRegistryDesc')
+    case 'skill_repository':
+      return t('settings.plugins.catalog.skillRepositoryDesc')
+    default: {
+      const unexpected: never = kind
+      return unexpected
+    }
+  }
+}
+
+function catalogReadDescription(
+  read: CatalogRead | undefined,
+  idle: string,
+  t: (key: string) => string,
+): string {
+  if (!read) return idle
+  switch (read.status) {
+    case 'ok':
+      return t('settings.plugins.catalog.ready')
+    case 'closed':
+      return t('settings.plugins.catalog.closed')
+    case 'Locked':
+      return t(lockedLabelKey(read.phase))
+    default: {
+      const unexpected: never = read
+      return unexpected
+    }
+  }
+}
+
 function lockedLabelKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
   switch (phase) {
-    case 'mcp_registry_catalogs':
-      return 'settings.plugins.locked.mcpRegistry'
     case 'third_party_hook_approval':
       return 'settings.plugins.locked.hooks'
     case 'mcp_apps_side_pane':
@@ -322,8 +444,6 @@ function lockedLabelKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
 
 function lockedDescriptionKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
   switch (phase) {
-    case 'mcp_registry_catalogs':
-      return 'settings.plugins.locked.mcpRegistryDesc'
     case 'third_party_hook_approval':
       return 'settings.plugins.locked.hooksDesc'
     case 'mcp_apps_side_pane':
