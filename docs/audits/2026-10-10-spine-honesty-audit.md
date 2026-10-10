@@ -12,6 +12,8 @@
 > **Follow-up after PR #28 (2026-10-10):** squash `12df4540` on `work/fresh-base-spine`. This note is not rewritten. The human Flag command admits `session.flag` on the session kernel. Admission refuses a plugin loadout, sidebar focus, DOM snapshot, or page-target write on a misowned frozen id. Settings writes stay Locked. W0.1 stays Locked. Nothing in that slice is `usable`. The §3 item 1 leftover is closed here: `AGENTS.md` uses the wave-map capability set, and `Locked` is the execution gate.
 >
 > **Follow-up after PR #33 (2026-10-10):** the W0.1 exit inventory for the session-chrome chain is `docs/audits/2026-10-10-w01-exit-checklist.md`. This audit body is not rewritten.
+>
+> **Follow-up after PR #39 (2026-10-10):** squash `31b2e1b` on `work/fresh-base-spine`. This audit body is not rewritten. The action-id freeze landed. `CONTRACT_VERSION` is 1.3.0. `session.unflag` is frozen and §13 labels the human command `wired` (D47). `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus` are frozen (D48) and have no production caller. Settings plugin writes stay Locked (D49). W0.1 stays Locked. The nine items in `docs/WAVE-MODULE-MAP.md` §3 stay open. Nothing in that freeze is `usable`. The §3 item 3 re-freeze recommendation below is historical for the audited base.
 
 ## Verdict
 
