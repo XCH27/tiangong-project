@@ -1,12 +1,11 @@
 /**
- * Plugin loadout writes.
+ * Plugin loadout writes. Test host only.
  *
- * Install, enable, and disable admit file.update on HostTurnKernel and write
- * `.claude-plugin/loadout.json` with the same atomic replace as session.jsonl.
- * A human control and an agent caller share executePluginMutation. Installing
- * does not enable. Enabling a third-party hook or MCP server waits on the
- * existing permission card. An agent cannot approve that card. Denial does not
- * enable the plugin. The grant decision is stored on the loadout.
+ * The settings page does not call this factory. Install, enable, and disable
+ * admit file.update on a private HostTurnKernel and write
+ * `.claude-plugin/loadout.json`. That kernel is not a Craft session.
+ * resolvePluginGrant is not SessionManager.respondToPermission. Installing
+ * does not enable. An agent caller cannot approve the test grant.
  */
 
 import { readFileSync } from 'node:fs'

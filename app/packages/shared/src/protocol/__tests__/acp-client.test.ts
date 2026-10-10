@@ -29,9 +29,12 @@ describe('ACP executor', () => {
     expect(source.includes('terminal: false')).toBe(true)
     expect(source.includes('.approve(')).toBe(false)
     expect(source.includes('permission authority')).toBe(true)
+    expect(ACP_CAPABILITIES.status).toBe('display-only')
     expect(hiddenCliSurfaces(ACP_CAPABILITIES)).toEqual(['commandExecution', 'dynamicClientTool', 'pty'])
-    expect(surfaceVisibility(ACP_CAPABILITIES.effects.fileDelete)).toBe('show')
-    expect(CLI_PEER_PRESETS.filter((preset) => preset.id !== 'codex').map((preset) => preset.status)).toEqual([
+    expect(surfaceVisibility(ACP_CAPABILITIES.status)).toBe('label-only')
+    expect(surfaceVisibility(ACP_CAPABILITIES.effects.fileDelete)).toBe('label-only')
+    expect(CLI_PEER_PRESETS.map((preset) => preset.status)).toEqual([
+      'display-only',
       'display-only',
       'display-only',
       'display-only',

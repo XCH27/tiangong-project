@@ -74,6 +74,20 @@ afterEach(() => {
 })
 
 describe('plugin settings navigation and market filters', () => {
+  test('the settings page does not write a loadout or render the session card', () => {
+    const source = readFileSync(new URL(
+      '../../../../../apps/electron/src/renderer/pages/settings/PluginsSettingsPage.tsx',
+      import.meta.url,
+    ), 'utf8')
+    expect(source.includes('createPluginSettingsHost()')).toBe(false)
+    expect(source.includes('applyPluginMutationFromHuman')).toBe(false)
+    expect(source.includes('applyPluginMutationFromAgent')).toBe(false)
+    expect(source.includes('resolvePluginGrant')).toBe(false)
+    expect(source.includes('PLUGIN_SETTINGS_SESSION_ID')).toBe(false)
+    expect(source.includes('PermissionRequest')).toBe(false)
+    expect(source.includes('data-plugin-writes="locked"')).toBe(true)
+  })
+
   test('five views stay distinct and an unknown view is rejected', () => {
     expect(PLUGIN_VIEWS).toEqual(['installed', 'market', 'skills', 'mcp', 'hooks'])
     expect(new Set(PLUGIN_VIEWS).size).toBe(5)

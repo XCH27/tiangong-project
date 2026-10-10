@@ -35,14 +35,18 @@ describe('codex app-server executor', () => {
     expect(source.includes('.reject(')).toBe(false)
     expect(source.includes('permission authority')).toBe(true)
     expect(source.includes("stdio: ['pipe', 'pipe', 'pipe']")).toBe(true)
+    expect(CODEX_APP_SERVER_CAPABILITIES.status).toBe('display-only')
     expect(hiddenCliSurfaces(CODEX_APP_SERVER_CAPABILITIES)).toEqual([
       'fileMove',
       'commandExecution',
       'dynamicClientTool',
       'pty',
     ])
+    expect(surfaceVisibility(CODEX_APP_SERVER_CAPABILITIES.status)).toBe('label-only')
     expect(surfaceVisibility('Locked')).toBe('hide')
-    expect(CLI_PEER_PRESETS.find((preset) => preset.id === 'codex')?.args).toEqual(['app-server', '--stdio'])
+    const codex = CLI_PEER_PRESETS.find((preset) => preset.id === 'codex')
+    expect(codex?.args).toEqual(['app-server', '--stdio'])
+    expect(codex?.status).toBe('display-only')
   })
 
   test('spawn uses pipe stdio and forwards one JSON line', async () => {
