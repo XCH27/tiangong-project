@@ -237,9 +237,9 @@ The Settings → Plugins subpage reuses the Craft settings navigator. It does no
 | Market content filters over workspace skills, MCP sources, and catalog reads | `wired` |
 | Install, enable, and disable writing `.claude-plugin/loadout.json` through `file.update` | `wired` |
 | MCP Registry and skill-repository catalog sources | `wired` |
-| Third-party hook approval | `Locked` |
+| Per-plugin approval for a third-party hook or MCP server | `wired` |
 | MCP Apps side pane | `Locked` |
 | Agent Plugins 1.0.0 | `Locked` |
 | Remote store or plugin marketplace | `Locked` |
 
-Installing a listed entry does not enable it. A third-party hook can be recorded as installed. Enabling that hook returns `Locked` and does not write. The Market list is the workspace skill list, the MCP sources already loaded by Craft, and catalog reads. API and local sources stay on the Sources navigator. Catalog source filters use that same type-filter shape. A failed or rejected read adds no entries. Live fetch is optional. Agent Plugins 1.0.0 and a plugin marketplace document stay out of the list.
+Installing a listed entry does not enable it. A third-party hook or MCP server can be recorded as installed. Enabling it waits for the existing permission card. Deny does not enable it and stores that decision on the loadout. Allow enables that plugin once and stores the approved grant. An agent cannot approve the card. The Market list is the workspace skill list, the MCP sources already loaded by Craft, and catalog reads. API and local sources stay on the Sources navigator. Catalog source filters use that same type-filter shape. A failed or rejected read adds no entries. Live fetch is optional. Agent Plugins 1.0.0 and a plugin marketplace document stay out of the list.

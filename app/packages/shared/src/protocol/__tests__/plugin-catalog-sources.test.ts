@@ -262,11 +262,13 @@ describe('catalog source adapters', () => {
       filePath,
       catalog,
     })
-    expect(enabled).toEqual({
-      status: 'Locked',
-      phase: 'third_party_hook_approval',
+    expect(enabled).toMatchObject({
+      status: 'approval_required',
+      reason: 'human_approval_required',
       invocationId: 'invoke-catalog-hook-enable',
     })
+    const written = JSON.parse(readFileSync(filePath, 'utf8')) as { records: Array<{ id: string; enabled: boolean }> }
+    expect(written.records.find((record) => record.id === 'hook:lint-hook')?.enabled).toBe(false)
     expect(InternalActionId.FILE_UPDATE).toBe('file.update')
   })
 })

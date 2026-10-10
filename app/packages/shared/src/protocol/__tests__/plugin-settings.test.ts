@@ -4,15 +4,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ActorRef } from '../actor'
 import { InternalActionId } from '../internal-action'
+import { DESKTOP_APPROVER } from '../host-approval-bridge'
 import {
   applyPluginMutationFromAgent,
   applyPluginMutationFromHuman,
   createPluginSettingsHost,
+  pendingPluginCard,
   readPluginLoadout,
+  resolvePluginGrant,
 } from '../plugin-settings-host'
 import {
   LOCKED_PLUGIN_PHASES,
   MARKET_CONTENT_FILTERS,
+  PLUGIN_SETTINGS_SESSION_ID,
   PLUGIN_VIEWS,
   createPluginSettingsState,
   entriesForView,
@@ -128,19 +132,23 @@ describe('plugin settings navigation and market filters', () => {
     expect(projected.every((entry) => entry.trust === 'first_party' && entry.origin === 'workspace')).toBe(true)
   })
 
-  test('later plugin phases stay Locked', () => {
+  test('MCP Apps and Agent Plugins stay Locked while hook approval is wired', () => {
+    expect(pluginPhaseStatus('third_party_hook_approval')).toBe('wired')
     expect(LOCKED_PLUGIN_PHASES).toEqual([
-      'third_party_hook_approval',
       'mcp_apps_side_pane',
       'agent_plugins_1_0_0',
     ])
     expect(LOCKED_PLUGIN_PHASES.map((phase) => pluginPhaseStatus(phase))).toEqual([
       'Locked',
       'Locked',
-      'Locked',
     ])
-    const blocked = planPluginMutation(catalog, { version: 1, records: [] }, 'enable', 'hook:lint')
-    expect(blocked).toEqual({ status: 'Locked', phase: 'third_party_hook_approval' })
+    const waiting = planPluginMutation(
+      catalog,
+      { version: 1, records: [{ id: 'hook:lint', installed: true, enabled: false }] },
+      'enable',
+      'hook:lint',
+    )
+    expect(waiting.status).toBe('approval')
   })
 })
 
@@ -221,35 +229,244 @@ describe('plugin loadout admission', () => {
     expect(disabled.loadout.records[0]?.installed).toBe(true)
   })
 
-  test('a third-party hook enable stays Locked and does not write', async () => {
+  test('deny blocks the enable write and approve enables a third-party hook once', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-plugin-hook-'))
     dirs.push(dir)
     const filePath = join(dir, 'loadout.json')
     const shared = createPluginSettingsHost()
-    const installed = await applyPluginMutationFromHuman(shared, {
+    const approvalCatalog: PluginCatalogEntry[] = [
+      ...catalog,
+      {
+        id: 'mcp:remote',
+        name: 'Remote',
+        description: 'Catalog MCP server',
+        kind: 'mcp',
+        origin: 'catalog',
+        trust: 'third_party',
+      },
+      {
+        id: 'skill:extra',
+        name: 'Extra',
+        description: 'Catalog skill',
+        kind: 'skill',
+        origin: 'catalog',
+        trust: 'third_party',
+      },
+    ]
+    await applyPluginMutationFromHuman(shared, {
       op: 'install',
       pluginId: 'hook:lint',
       invocationId: 'invoke-install-hook',
       actor: human,
       filePath,
-      catalog,
+      catalog: approvalCatalog,
     })
-    expect(installed.status).toBe('completed')
+    await applyPluginMutationFromHuman(shared, {
+      op: 'install',
+      pluginId: 'mcp:docs',
+      invocationId: 'invoke-install-docs',
+      actor: human,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    await applyPluginMutationFromHuman(shared, {
+      op: 'install',
+      pluginId: 'mcp:remote',
+      invocationId: 'invoke-install-remote',
+      actor: human,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    await applyPluginMutationFromHuman(shared, {
+      op: 'install',
+      pluginId: 'skill:extra',
+      invocationId: 'invoke-install-skill',
+      actor: human,
+      filePath,
+      catalog: approvalCatalog,
+    })
     const before = readFileSync(filePath, 'utf8')
-    const enabled = await applyPluginMutationFromAgent(shared, {
+
+    const firstParty = await applyPluginMutationFromAgent(shared, {
+      op: 'enable',
+      pluginId: 'mcp:docs',
+      invocationId: 'invoke-enable-docs',
+      actor: agent,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    expect(firstParty.status).toBe('completed')
+    if (firstParty.status !== 'completed') return
+    expect(firstParty.loadout.records.find((record) => record.id === 'mcp:docs')?.enabled).toBe(true)
+
+    const skill = await applyPluginMutationFromAgent(shared, {
+      op: 'enable',
+      pluginId: 'skill:extra',
+      invocationId: 'invoke-enable-skill',
+      actor: agent,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    expect(skill.status).toBe('completed')
+
+    const requested = await applyPluginMutationFromAgent(shared, {
       op: 'enable',
       pluginId: 'hook:lint',
       invocationId: 'invoke-enable-hook',
       actor: agent,
       filePath,
-      catalog,
+      catalog: approvalCatalog,
     })
-    expect(enabled).toEqual({
-      status: 'Locked',
-      phase: 'third_party_hook_approval',
+    expect(requested).toMatchObject({
+      status: 'approval_required',
       invocationId: 'invoke-enable-hook',
+      reason: 'human_approval_required',
     })
-    expect(readFileSync(filePath, 'utf8')).toBe(before)
+    const waiting = readFileSync(filePath, 'utf8')
+    expect(JSON.parse(waiting).records.find((record: { id: string }) => record.id === 'hook:lint').enabled).toBe(false)
+    await expect(shared.kernel.run('invoke-enable-hook')).resolves.toMatchObject({ status: 'approval_required' })
+    expect(readFileSync(filePath, 'utf8')).toBe(waiting)
+
+    const humanRequest = await applyPluginMutationFromHuman(shared, {
+      op: 'enable',
+      pluginId: 'hook:lint',
+      invocationId: 'invoke-enable-hook-human',
+      actor: human,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    expect(humanRequest.status).toBe('approval_required')
+    const card = pendingPluginCard(shared, 'invoke-enable-hook')
+    expect(card).toMatchObject({
+      requestId: 'host:invoke-enable-hook',
+      toolName: 'file.update',
+      command: 'hook:lint',
+      type: 'file_write',
+    })
+
+    const selfApproved = await resolvePluginGrant(shared, {
+      invocationId: card!.requestId,
+      approver: agent,
+      decision: { allowed: true, alwaysAllow: true },
+      filePath,
+    })
+    expect(selfApproved).toMatchObject({ status: 'approval_required', invocationId: 'invoke-enable-hook' })
+    expect(readFileSync(filePath, 'utf8')).toBe(waiting)
+    expect(shared.kernel.snapshot().turns.find((turn) => turn.request.invocation.invocationId === 'invoke-enable-hook')?.phase)
+      .toBe('awaiting_approval')
+
+    const denied = await resolvePluginGrant(shared, {
+      invocationId: 'host:invoke-enable-hook',
+      approver: DESKTOP_APPROVER,
+      decision: { allowed: false, alwaysAllow: true },
+      filePath,
+    })
+    expect(denied).toMatchObject({ status: 'denied', reason: 'approval_rejected' })
+    const afterDeny = JSON.parse(readFileSync(filePath, 'utf8')) as {
+      records: Array<{ id: string; enabled: boolean }>
+      grants: Array<{ id: string; decision: string }>
+    }
+    expect(afterDeny.records.find((record) => record.id === 'hook:lint')?.enabled).toBe(false)
+    expect(afterDeny.grants).toEqual([{ id: 'hook:lint', decision: 'denied' }])
+    expect(enableWrites(shared)).toEqual([])
+
+    const askedAgain = await applyPluginMutationFromAgent(shared, {
+      op: 'enable',
+      pluginId: 'hook:lint',
+      invocationId: 'invoke-enable-hook-again',
+      actor: agent,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    expect(askedAgain.status).toBe('approval_required')
+    const allowed = await resolvePluginGrant(shared, {
+      invocationId: 'invoke-enable-hook-again',
+      approver: DESKTOP_APPROVER,
+      decision: { allowed: true, alwaysAllow: true },
+      filePath,
+    })
+    expect(allowed.status).toBe('completed')
+    if (allowed.status !== 'completed') return
+    expect(allowed.persisted).toBe(true)
+    expect(allowed.loadout.records.find((record) => record.id === 'hook:lint')).toEqual({
+      id: 'hook:lint',
+      installed: true,
+      enabled: true,
+    })
+    expect(allowed.loadout.grants).toEqual([{ id: 'hook:lint', decision: 'approved' }])
+    expect(enableWrites(shared)).toEqual(['invoke-enable-hook-again'])
+    const once = readFileSync(filePath, 'utf8')
+
+    const repeat = await applyPluginMutationFromAgent(shared, {
+      op: 'enable',
+      pluginId: 'hook:lint',
+      invocationId: 'invoke-enable-hook-repeat',
+      actor: agent,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    expect(repeat).toMatchObject({ status: 'completed', persisted: false })
+    expect(readFileSync(filePath, 'utf8')).toBe(once)
+    expect(enableWrites(shared)).toEqual(['invoke-enable-hook-again'])
+
+    const other = await applyPluginMutationFromAgent(shared, {
+      op: 'enable',
+      pluginId: 'mcp:remote',
+      invocationId: 'invoke-enable-remote',
+      actor: agent,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    expect(other).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
+    expect(JSON.parse(readFileSync(filePath, 'utf8')).records.find((record: { id: string }) => record.id === 'mcp:remote').enabled)
+      .toBe(false)
+
+    const remoteCard = pendingPluginCard(shared, 'invoke-enable-remote')
+    const remoteAllowed = await resolvePluginGrant(shared, {
+      invocationId: remoteCard!.requestId,
+      approver: human,
+      decision: { allowed: true },
+      filePath,
+    })
+    expect(remoteAllowed.status).toBe('completed')
+    if (remoteAllowed.status !== 'completed') return
+    expect(remoteAllowed.loadout.records.find((record) => record.id === 'mcp:remote')?.enabled).toBe(true)
+    expect(remoteAllowed.loadout.grants).toEqual([
+      { id: 'hook:lint', decision: 'approved' },
+      { id: 'mcp:remote', decision: 'approved' },
+    ])
+
+    const restored = createPluginSettingsHost()
+    const disabled = await applyPluginMutationFromHuman(restored, {
+      op: 'disable',
+      pluginId: 'hook:lint',
+      invocationId: 'invoke-disable-hook',
+      actor: human,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    expect(disabled.status).toBe('completed')
+    const restoredEnable = await applyPluginMutationFromAgent(restored, {
+      op: 'enable',
+      pluginId: 'hook:lint',
+      invocationId: 'invoke-restore-hook',
+      actor: agent,
+      filePath,
+      catalog: approvalCatalog,
+    })
+    expect(restoredEnable).toMatchObject({ status: 'completed', persisted: true })
+    if (restoredEnable.status !== 'completed') return
+    expect(restoredEnable.loadout.records.find((record) => record.id === 'hook:lint')?.enabled).toBe(true)
+    expect(restoredEnable.loadout.grants).toEqual([
+      { id: 'hook:lint', decision: 'approved' },
+      { id: 'mcp:remote', decision: 'approved' },
+    ])
+    expect(restored.kernel.snapshot().turns.find((turn) => turn.request.invocation.invocationId === 'invoke-restore-hook')?.phase)
+      .toBe('completed')
+    expect(shared.kernel.events(PLUGIN_SETTINGS_SESSION_ID).some((event) => (
+      event.kind === 'supervision_resolved' && event.actorRef.kind === 'human'
+    ))).toBe(true)
+    expect(before).not.toBe(once)
   })
 
   test('an unadmitted caller and a credential loadout do not write', async () => {
@@ -296,3 +513,13 @@ describe('plugin loadout admission', () => {
     expect(InternalActionId.FILE_UPDATE).toBe('file.update')
   })
 })
+
+function enableWrites(shared: ReturnType<typeof createPluginSettingsHost>, pluginId = 'hook:lint'): string[] {
+  return shared.kernel.snapshot().turns
+    .filter((turn) => (
+      turn.phase === 'completed'
+      && turn.request.invocation.payload.op === 'enable'
+      && turn.request.invocation.payload.pluginId === pluginId
+    ))
+    .map((turn) => turn.request.invocation.invocationId)
+}

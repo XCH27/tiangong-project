@@ -3,14 +3,17 @@
  *
  * One settings page on the existing navigator. Five views, Market content
  * filters, and catalog source filters use the same list as the host loadout.
- * Install, enable, and disable write through HostTurnKernel. Later plugin
- * phases stay Locked.
+ * Install, enable, and disable write through HostTurnKernel. A third-party
+ * hook or MCP server waits for the existing permission card. MCP Apps and
+ * Agent Plugins 1.0.0 stay Locked.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
+import { PermissionRequest } from '@/components/app-shell/input/structured/PermissionRequest'
+import type { PermissionResponse } from '@/components/app-shell/input/structured/types'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
@@ -51,7 +54,11 @@ import {
 import {
   applyPluginMutationFromHuman,
   createPluginSettingsHost,
+  DESKTOP_APPROVER,
+  pendingPluginCard,
   readPluginLoadout,
+  resolvePluginGrant,
+  type HostPermissionCard,
 } from '@craft-agent/shared/protocol/plugin-settings-host'
 import {
   SettingsCard,
@@ -80,6 +87,7 @@ export default function PluginsSettingsPage() {
   const [sourceKind, setSourceKind] = useState<CatalogSourceKind | 'all'>('all')
   const [reads, setReads] = useState<CatalogRead[]>([])
   const [loadout, setLoadout] = useState<PluginLoadoutFile>(emptyPluginLoadout())
+  const [pendingCard, setPendingCard] = useState<HostPermissionCard | null>(null)
 
   const workspaceSkills = useMemo(() => (shell?.skills ?? []).map((skill) => ({
     slug: skill.slug,
@@ -163,6 +171,11 @@ export default function PluginsSettingsPage() {
     })
     if (result.status === 'completed') {
       setLoadout(result.loadout)
+      setPendingCard(null)
+      return
+    }
+    if (result.status === 'approval_required') {
+      setPendingCard(pendingPluginCard(host, result.invocationId) ?? null)
       return
     }
     if (result.status === 'Locked') {
@@ -170,8 +183,25 @@ export default function PluginsSettingsPage() {
     }
   }, [catalog, filePath, host, t])
 
+  const respondToCard = useCallback(async (response: PermissionResponse) => {
+    if (!filePath || !pendingCard) return
+    const result = await resolvePluginGrant(host, {
+      invocationId: pendingCard.requestId,
+      approver: DESKTOP_APPROVER,
+      decision: { allowed: response.allowed, alwaysAllow: response.alwaysAllow },
+      filePath,
+    })
+    setPendingCard(null)
+    if (result.status === 'completed') {
+      setLoadout(result.loadout)
+      return
+    }
+    const read = readPluginLoadout(filePath)
+    if (read.status === 'ok' || read.status === 'missing') setLoadout(read.loadout)
+  }, [filePath, host, pendingCard])
+
   return (
-    <div className="h-full flex flex-col" data-plugin-view={view} data-market-filter={marketFilter} data-catalog-source={sourceKind}>
+    <div className="h-full flex flex-col" data-plugin-view={view} data-market-filter={marketFilter} data-catalog-source={sourceKind} data-plugin-approval={pendingCard ? 'awaiting' : 'idle'}>
       <PanelHeader
         title={t('settings.plugins.title')}
         actions={<HeaderMenu route={routes.view.settings('plugins')} helpFeature="app-settings" />}
@@ -227,8 +257,22 @@ export default function PluginsSettingsPage() {
                 </SettingsCard>
               </SettingsSection>
 
-              <SettingsSection title={viewLabel(view, t)}>
+              <SettingsSection title={viewLabel(view, t)} description={viewApprovalDescription(view, t)}>
                 <SettingsCard>
+                  {pendingCard && (
+                    <div className="px-4 py-3.5">
+                      <PermissionRequest
+                        request={{
+                          requestId: pendingCard.requestId,
+                          toolName: pendingCard.toolName,
+                          description: pendingCard.description,
+                          command: pendingCard.command,
+                          type: pendingCard.type,
+                        }}
+                        onResponse={(response) => { void respondToCard(response) }}
+                      />
+                    </div>
+                  )}
                   {entries.length === 0 ? (
                     <SettingsRow label={t('settings.plugins.empty')} />
                   ) : entries.map((entry) => (
@@ -237,9 +281,8 @@ export default function PluginsSettingsPage() {
                       entry={entry}
                       installed={loadoutRecord(loadout, entry.id)?.installed === true}
                       enabled={loadoutRecord(loadout, entry.id)?.enabled === true}
-                      canWrite={filePath !== null}
+                      canWrite={filePath !== null && pendingCard === null}
                       installLabel={t('settings.plugins.install')}
-                      lockedLabel={t('settings.plugins.statusLocked')}
                       onInstall={() => { void mutate('install', entry.id) }}
                       onEnabledChange={(checked) => { void mutate(checked ? 'enable' : 'disable', entry.id) }}
                     />
@@ -296,7 +339,6 @@ function PluginEntryRow({
   enabled,
   canWrite,
   installLabel,
-  lockedLabel,
   onInstall,
   onEnabledChange,
 }: {
@@ -305,11 +347,9 @@ function PluginEntryRow({
   enabled: boolean
   canWrite: boolean
   installLabel: string
-  lockedLabel: string
   onInstall: () => void
   onEnabledChange: (checked: boolean) => void
 }) {
-  const thirdPartyHook = entry.kind === 'hook' && entry.trust === 'third_party'
   if (!installed) {
     return (
       <SettingsRow
@@ -323,15 +363,6 @@ function PluginEntryRow({
       />
     )
   }
-  if (thirdPartyHook) {
-    return (
-      <SettingsRow
-        label={entry.name}
-        description={entry.description}
-        action={<span className="text-xs text-muted-foreground">{lockedLabel}</span>}
-      />
-    )
-  }
   return (
     <SettingsToggle
       label={entry.name}
@@ -341,6 +372,23 @@ function PluginEntryRow({
       onCheckedChange={onEnabledChange}
     />
   )
+}
+
+function viewApprovalDescription(view: PluginView, t: (key: string) => string): string | undefined {
+  switch (view) {
+    case 'hooks':
+      return t('settings.plugins.locked.hooksDesc')
+    case 'mcp':
+      return t('settings.plugins.approval.mcpDesc')
+    case 'installed':
+    case 'market':
+    case 'skills':
+      return undefined
+    default: {
+      const unexpected: never = view
+      return unexpected
+    }
+  }
 }
 
 function viewLabel(view: PluginView, t: (key: string) => string): string {
@@ -429,8 +477,6 @@ function catalogReadDescription(
 
 function lockedLabelKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
   switch (phase) {
-    case 'third_party_hook_approval':
-      return 'settings.plugins.locked.hooks'
     case 'mcp_apps_side_pane':
       return 'settings.plugins.locked.mcpApps'
     case 'agent_plugins_1_0_0':
@@ -444,8 +490,6 @@ function lockedLabelKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
 
 function lockedDescriptionKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
   switch (phase) {
-    case 'third_party_hook_approval':
-      return 'settings.plugins.locked.hooksDesc'
     case 'mcp_apps_side_pane':
       return 'settings.plugins.locked.mcpAppsDesc'
     case 'agent_plugins_1_0_0':
