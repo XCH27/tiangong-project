@@ -1,0 +1,8 @@
+version: 0.10.5
+files:
+  - url: Craft-Agents-x64.AppImage
+    sha512: N3QpL0S1XteUO5GlR2gTvjEs8i41lEyXmSFrvsd8IHrOJ18o2n0m76QlKxR/ONFXcBaNKWr5xffaF3Nsxrk3KA==
+    size: 86
+path: Craft-Agents-x64.AppImage
+sha512: N3QpL0S1XteUO5GlR2gTvjEs8i41lEyXmSFrvsd8IHrOJ18o2n0m76QlKxR/ONFXcBaNKWr5xffaF3Nsxrk3KA==
+releaseDate: '2026-10-09T00:00:00.000Z'

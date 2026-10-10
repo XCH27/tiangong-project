@@ -51,7 +51,7 @@ Do not scatter browser switches across BrowserPane, capability settings, and dev
 
 The Plugins settings page is the one home for the local plugin loadout. It reuses this settings navigator. Its five views and Market filters project workspace skills, MCP sources, and catalog reads from the MCP Registry and skill repositories. Those catalog sources are `wired`. The Hooks view asks the existing permission card before a third-party hook is enabled. That approval is `wired`. Opening the MCP Apps side pane uses that loadout and the existing right-sidebar slot. The sandboxed MCP App view stays `Locked`. A local Agent Plugins 1.0.0 package is `wired` when a skill or MCP server maps onto the loadout. The page is not a remote store.
 
-About, licenses, and diagnostics stay on the App settings page. The notices row and the Fleet update row read `releaseAboutModel`. The notices row is `wired` when every admitted dependency has a license. The signed production feed row stays `Locked`. The existing Check for Updates control remains the Craft updater. It is not a Fleet release feed.
+About, licenses, and diagnostics stay on the App settings page. The notices row, the Fleet update row, and the packaging dry-run row read `releaseAboutModel`. The notices row is `wired` when every admitted dependency has a license. The packaging dry-run row is `wired` when version metadata and the unsigned artifact layout pass. The signed production feed row stays `Locked`. The existing Check for Updates control remains the Craft updater. It is not a Fleet release feed.
 
 M16's settings include only preference projections such as default layout, reset, and whether an
 Agent may reveal/focus views. M13 must not duplicate live panel registration or layout state.

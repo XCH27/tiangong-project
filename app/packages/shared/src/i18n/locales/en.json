@@ -788,6 +788,7 @@
   "settings.about.notices": "Third-party notices",
   "settings.about.noticesCount": "{{count}} admitted dependencies",
   "settings.about.noticesFailed": "Notice check failed",
+  "settings.about.packagingDryRun": "Packaging dry run",
   "settings.about.restartToUpdate": "Restart to Update to v{{version}}",
   "settings.about.title": "About",
   "settings.about.updateReady": "Update ready",

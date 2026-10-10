@@ -1,0 +1,4 @@
+fleet-packaging-dry-run
+channel=darwin-x64
+role=updater
+name=Craft-Agents-x64.zip

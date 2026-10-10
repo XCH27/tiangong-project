@@ -788,6 +788,7 @@
   "settings.about.notices": "サードパーティ表記",
   "settings.about.noticesCount": "認めた依存関係 {{count}} 件",
   "settings.about.noticesFailed": "表記の確認に失敗しました",
+  "settings.about.packagingDryRun": "パッケージのドライラン",
   "settings.about.restartToUpdate": "v{{version}}に更新するために再起動",
   "settings.about.title": "このアプリについて",
   "settings.about.updateReady": "アップデート準備完了",

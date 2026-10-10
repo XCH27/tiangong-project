@@ -1,0 +1,8 @@
+version: 0.10.5
+files:
+  - url: Craft-Agents-arm64.zip
+    sha512: eSdjUS5Jnturw4vK64l/VG1CSBtFEReJijnEzLvUMT1RPrk6wmpRVCniB/JPbfXmBDmN49H82d5b6Eqw1wJGzQ==
+    size: 86
+path: Craft-Agents-arm64.zip
+sha512: eSdjUS5Jnturw4vK64l/VG1CSBtFEReJijnEzLvUMT1RPrk6wmpRVCniB/JPbfXmBDmN49H82d5b6Eqw1wJGzQ==
+releaseDate: '2026-10-09T00:00:00.000Z'

@@ -1,0 +1,163 @@
+{
+  "publish": "never",
+  "identityDiscovery": false,
+  "version": "0.10.5",
+  "channels": [
+    {
+      "platform": "darwin",
+      "arch": "arm64",
+      "manifest": "latest-mac.yml",
+      "feed": {
+        "schemaVersion": 1,
+        "disposition": "dry-run",
+        "platform": "darwin",
+        "arch": "arm64",
+        "version": "0.10.5",
+        "files": [
+          {
+            "url": "Craft-Agents-arm64.zip",
+            "sha512": "eSdjUS5Jnturw4vK64l/VG1CSBtFEReJijnEzLvUMT1RPrk6wmpRVCniB/JPbfXmBDmN49H82d5b6Eqw1wJGzQ==",
+            "size": 86
+          }
+        ],
+        "path": "Craft-Agents-arm64.zip",
+        "sha512": "eSdjUS5Jnturw4vK64l/VG1CSBtFEReJijnEzLvUMT1RPrk6wmpRVCniB/JPbfXmBDmN49H82d5b6Eqw1wJGzQ==",
+        "releaseDate": "2026-10-09T00:00:00.000Z"
+      },
+      "files": [
+        {
+          "name": "Craft-Agents-arm64.zip",
+          "role": "updater",
+          "size": 86,
+          "sha512": "eSdjUS5Jnturw4vK64l/VG1CSBtFEReJijnEzLvUMT1RPrk6wmpRVCniB/JPbfXmBDmN49H82d5b6Eqw1wJGzQ=="
+        },
+        {
+          "name": "Craft-Agents-arm64.dmg",
+          "role": "installer",
+          "size": 88,
+          "sha512": "clTEFHaeUnFhf4Y3MHxVOqvwRbbf4EnaKpTtIIIEaZ64vQoRLTaZFCzGnXqj/iQ7t5mG3QiV/X9GzD64bb2rPg=="
+        },
+        {
+          "name": "latest-mac.yml",
+          "role": "manifest",
+          "size": 335,
+          "sha512": "BkbYCOUeeqoSG8/YRrrI1ldVULpxgIxXSsiCAoyORWK5qfcg/riLPWsUNVvR+usdZJv6VR3Py5h7nWIuM1FdgQ=="
+        }
+      ]
+    },
+    {
+      "platform": "darwin",
+      "arch": "x64",
+      "manifest": "latest-mac.yml",
+      "feed": {
+        "schemaVersion": 1,
+        "disposition": "dry-run",
+        "platform": "darwin",
+        "arch": "x64",
+        "version": "0.10.5",
+        "files": [
+          {
+            "url": "Craft-Agents-x64.zip",
+            "sha512": "ERtLgZOtScq05Yt0jgnEA1YRddGtRU7dAOI2T0mEvyZ4z3G/fCalODP97K7QuLM2wvyWHnTRq/1s02cJwI86wA==",
+            "size": 82
+          }
+        ],
+        "path": "Craft-Agents-x64.zip",
+        "sha512": "ERtLgZOtScq05Yt0jgnEA1YRddGtRU7dAOI2T0mEvyZ4z3G/fCalODP97K7QuLM2wvyWHnTRq/1s02cJwI86wA==",
+        "releaseDate": "2026-10-09T00:00:00.000Z"
+      },
+      "files": [
+        {
+          "name": "Craft-Agents-x64.zip",
+          "role": "updater",
+          "size": 82,
+          "sha512": "ERtLgZOtScq05Yt0jgnEA1YRddGtRU7dAOI2T0mEvyZ4z3G/fCalODP97K7QuLM2wvyWHnTRq/1s02cJwI86wA=="
+        },
+        {
+          "name": "Craft-Agents-x64.dmg",
+          "role": "installer",
+          "size": 84,
+          "sha512": "BSN1jycrYbkW/Pj12tNBu6WMsyT2iK1MYP/12DFGs0ae/usiKUpk3T/+KyOtjcNfZ+CL2vuFDbYoOTDPipuRvg=="
+        },
+        {
+          "name": "latest-mac.yml",
+          "role": "manifest",
+          "size": 331,
+          "sha512": "XjZ55875f1yntMtbnSnj+1iuwtQXkddS/xloR53AtgSIuw1d2DZwQylNAwkB0AwMRj9rRMuyXyscK8+mSPH+Pg=="
+        }
+      ]
+    },
+    {
+      "platform": "win32",
+      "arch": "x64",
+      "manifest": "latest.yml",
+      "feed": {
+        "schemaVersion": 1,
+        "disposition": "dry-run",
+        "platform": "win32",
+        "arch": "x64",
+        "version": "0.10.5",
+        "files": [
+          {
+            "url": "Craft-Agents-x64.exe",
+            "sha512": "k0Ka1uZGfz5biiIVzmrdByjER7AHufIUzhSYxS/vW1IzJfYiPJflqhgSbAwKq65MAaENhR7VkpK0OH/MbmJG4A==",
+            "size": 81
+          }
+        ],
+        "path": "Craft-Agents-x64.exe",
+        "sha512": "k0Ka1uZGfz5biiIVzmrdByjER7AHufIUzhSYxS/vW1IzJfYiPJflqhgSbAwKq65MAaENhR7VkpK0OH/MbmJG4A==",
+        "releaseDate": "2026-10-09T00:00:00.000Z"
+      },
+      "files": [
+        {
+          "name": "Craft-Agents-x64.exe",
+          "role": "updater",
+          "size": 81,
+          "sha512": "k0Ka1uZGfz5biiIVzmrdByjER7AHufIUzhSYxS/vW1IzJfYiPJflqhgSbAwKq65MAaENhR7VkpK0OH/MbmJG4A=="
+        },
+        {
+          "name": "latest.yml",
+          "role": "manifest",
+          "size": 331,
+          "sha512": "7+0gACI5JEPDknJFPYmR0kDT5mk6j+TGvZtzbq0eOZ43Il4OJGyqRKMiAOA+OxBJcY0a2PF5oy0MPDLZT/cyYA=="
+        }
+      ]
+    },
+    {
+      "platform": "linux",
+      "arch": "x64",
+      "manifest": "latest-linux.yml",
+      "feed": {
+        "schemaVersion": 1,
+        "disposition": "dry-run",
+        "platform": "linux",
+        "arch": "x64",
+        "version": "0.10.5",
+        "files": [
+          {
+            "url": "Craft-Agents-x64.AppImage",
+            "sha512": "N3QpL0S1XteUO5GlR2gTvjEs8i41lEyXmSFrvsd8IHrOJ18o2n0m76QlKxR/ONFXcBaNKWr5xffaF3Nsxrk3KA==",
+            "size": 86
+          }
+        ],
+        "path": "Craft-Agents-x64.AppImage",
+        "sha512": "N3QpL0S1XteUO5GlR2gTvjEs8i41lEyXmSFrvsd8IHrOJ18o2n0m76QlKxR/ONFXcBaNKWr5xffaF3Nsxrk3KA==",
+        "releaseDate": "2026-10-09T00:00:00.000Z"
+      },
+      "files": [
+        {
+          "name": "Craft-Agents-x64.AppImage",
+          "role": "updater",
+          "size": 86,
+          "sha512": "N3QpL0S1XteUO5GlR2gTvjEs8i41lEyXmSFrvsd8IHrOJ18o2n0m76QlKxR/ONFXcBaNKWr5xffaF3Nsxrk3KA=="
+        },
+        {
+          "name": "latest-linux.yml",
+          "role": "manifest",
+          "size": 341,
+          "sha512": "Ys2o1oxi3+dwFJ/hra+/KEK94/heAZvHhLeU6GM5BWC5DrU+HBTPVkbfCNyFqdUa/8rsCAOWLZQHKT1JThEydA=="
+        }
+      ]
+    }
+  ]
+}

@@ -97,6 +97,7 @@
     "marketing:preview": "vite preview --config apps/marketing/vite.config.ts",
     "docs:dev": "cd apps/online-docs && npm install && npx mintlify dev",
     "verify:release": "bun run scripts/verify-release-independence.ts",
+    "verify:packaging-dry-run": "bun run scripts/verify-packaging-dry-run.ts",
     "build": "bun run scripts/build.ts",
     "release": "bun run scripts/release.ts",
     "check-version": "bun run scripts/check-version.ts",

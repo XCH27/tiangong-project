@@ -788,6 +788,7 @@
   "settings.about.notices": "Harmadik felek közleményei",
   "settings.about.noticesCount": "{{count}} engedélyezett függőség",
   "settings.about.noticesFailed": "A közleményellenőrzés sikertelen",
+  "settings.about.packagingDryRun": "Csomagolási próba",
   "settings.about.restartToUpdate": "Újraindítás a v{{version}} verzióra való frissítéshez",
   "settings.about.title": "Névjegy",
   "settings.about.updateReady": "A frissítés készen áll",

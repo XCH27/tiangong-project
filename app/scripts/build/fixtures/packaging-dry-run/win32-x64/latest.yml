@@ -1,0 +1,8 @@
+version: 0.10.5
+files:
+  - url: Craft-Agents-x64.exe
+    sha512: k0Ka1uZGfz5biiIVzmrdByjER7AHufIUzhSYxS/vW1IzJfYiPJflqhgSbAwKq65MAaENhR7VkpK0OH/MbmJG4A==
+    size: 81
+path: Craft-Agents-x64.exe
+sha512: k0Ka1uZGfz5biiIVzmrdByjER7AHufIUzhSYxS/vW1IzJfYiPJflqhgSbAwKq65MAaENhR7VkpK0OH/MbmJG4A==
+releaseDate: '2026-10-09T00:00:00.000Z'
