@@ -3,7 +3,9 @@
  *
  * session.rename, session.set_status, and session.set_labels are the frozen
  * M00 ids. The shell commands use the desktop human. The session tools use
- * the calling Craft session as the agent actor. Each row is L1 with an undo
+ * the calling Craft session as the agent actor. Title generation uses the
+ * desktop human as well: the row is L1, so the host system actor is denied,
+ * and there is no agent rename tool to borrow. Each row is L1 with an undo
  * contract, so admission does not publish the permission card. If the gate
  * returns approval_required, the caller waits for the existing card.
  * A system actor is not an agent seat. L1 denies it. Unflag has no frozen
@@ -17,7 +19,7 @@ import type { TurnRequest, TurnStatus } from './turn-admission'
 
 /**
  * The host process. Not the desktop user and not an agent seat.
- * session.set_status is L1, so this actor is denied.
+ * session.rename and session.set_status are L1, so this actor is denied.
  */
 export const SESSION_HOST_ACTOR: ActorRef = {
   kind: 'system',
@@ -119,12 +121,22 @@ export function sessionRenameRequest(
   name: string,
   now = new Date().toISOString(),
 ): TurnRequest {
+  return sessionRenameRequestForActor(sessionId, invocationId, name, DESKTOP_APPROVER, now)
+}
+
+export function sessionRenameRequestForActor(
+  sessionId: string,
+  invocationId: string,
+  name: string,
+  actor: ActorRef,
+  now = new Date().toISOString(),
+): TurnRequest {
   return sessionChromeRequest(
     sessionId,
     invocationId,
     InternalActionId.SESSION_RENAME,
     { name },
-    DESKTOP_APPROVER,
+    actor,
     now,
   )
 }

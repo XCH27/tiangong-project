@@ -6,6 +6,7 @@ import type { ActorRef, TurnExecutor, TurnRequest } from '@craft-agent/shared/pr
 import {
   isRefusedSessionChrome,
   planSessionChrome,
+  SESSION_HOST_ACTOR,
 } from '@craft-agent/shared/protocol'
 import { InternalActionId, type ActionInvocation } from '../../../shared/src/protocol/internal-action.ts'
 import {
@@ -407,7 +408,7 @@ describe('agent session chrome on the session kernel', () => {
     }
   })
 
-  it('keeps agent tools on the kernel and leaves title generation and unflag off it', () => {
+  it('keeps agent tools on the kernel and leaves unflag and auto-labels off it', () => {
     const manager = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
     const tools = manager.slice(manager.indexOf('setSessionLabelsFn:'), manager.indexOf('getSessionInfoFn:'))
     expect(tools.includes('setSessionLabelsFromAgent')).toBe(true)
@@ -424,15 +425,124 @@ describe('agent session chrome on the session kernel', () => {
 
     const unflag = manager.slice(manager.indexOf('async unflagSession'), manager.indexOf('async archiveSession'))
     expect(unflag.includes('admitHostTurn')).toBe(false)
+    expect(unflag.includes('admitSessionChrome')).toBe(false)
     expect(manager.includes('requireHumanApproval')).toBe(false)
     expect(manager.includes('setSessionNameFromAgent')).toBe(false)
 
     const titles = manager.slice(manager.indexOf('async refreshTitle'), manager.indexOf('updateWorkingDirectory'))
-    expect(titles.includes('admitHostTurn')).toBe(false)
-    expect(titles.includes('admitSessionChrome')).toBe(false)
+    expect(titles.includes('applyGeneratedSessionName')).toBe(true)
+    expect(titles.includes('managed.name =')).toBe(false)
     const generated = manager.slice(manager.indexOf('private async generateTitle'), manager.indexOf('private async processEvent'))
-    expect(generated.includes('admitHostTurn')).toBe(false)
-    expect(generated.includes('admitSessionChrome')).toBe(false)
-    expect(generated.includes('managed.name = title')).toBe(true)
+    expect(generated.includes('applyGeneratedSessionName')).toBe(true)
+    expect(generated.includes('managed.name =')).toBe(false)
+    expect(generated.includes('SESSION_HOST_ACTOR')).toBe(false)
+    expect(generated.includes('agentActorForCallingSession')).toBe(false)
+
+    const firstName = manager.slice(
+      manager.indexOf('If this is the first user message'),
+      manager.indexOf('Evaluate auto-label rules'),
+    )
+    expect(firstName.includes('applyGeneratedSessionName')).toBe(true)
+    expect(firstName.includes('managed.name =')).toBe(false)
+
+    const autoLabels = manager.slice(
+      manager.indexOf('Evaluate auto-label rules'),
+      manager.indexOf('managed.lastMessageAt = Date.now()'),
+    )
+    expect(autoLabels.includes('admitSessionChrome')).toBe(false)
+    expect(autoLabels.includes('managed.labels =')).toBe(true)
+
+    const apply = manager.slice(
+      manager.indexOf('private applyGeneratedSessionName'),
+      manager.indexOf('private renameSessionAs'),
+    )
+    expect(apply.includes('DESKTOP_APPROVER')).toBe(true)
+    expect(apply.includes('SESSION_HOST_ACTOR')).toBe(false)
+  })
+})
+
+function titleAgent(title: string | null) {
+  return {
+    generateTitle: async () => title,
+    regenerateTitle: async () => title,
+    destroy() {},
+  }
+}
+
+describe('title generation on the session kernel', () => {
+  it('journals generateTitle and refreshTitle as session.rename for the desktop user', async () => {
+    const held = await holdSession()
+    try {
+      const managed = (held.sm as unknown as { sessions: Map<string, { agent: unknown }> })
+        .sessions.get(held.created.id)
+      if (!managed) throw new Error('managed missing')
+      managed.agent = titleAgent('Kernel title')
+
+      await (held.sm as unknown as {
+        generateTitle(session: unknown, message: string): Promise<void>
+      }).generateTitle(managed, 'name this chat')
+
+      const refreshed = await held.sm.refreshTitle(held.created.id)
+      expect(refreshed).toEqual({ success: true, title: 'Kernel title' })
+
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      const completed = events.filter((event) => event.kind === 'action_completed' && event.actionId === 'session.rename')
+      expect(completed.length).toBeGreaterThanOrEqual(2)
+      expect(completed.every((event) => event.actorRef.kind === 'human' && event.actorRef.id === 'desktop-user')).toBe(true)
+      expect(events.some((event) => event.kind === 'supervision_requested')).toBe(false)
+      expect(events.some((event) => event.actorRef.kind === 'agent')).toBe(false)
+      expect(events.some((event) => event.actorRef.kind === 'system')).toBe(false)
+
+      expect(loadSession(held.root, held.created.id)?.name).toBe('Kernel title')
+      expect(held.events.some((event) => event.type === 'title_generated')).toBe(true)
+      expect(held.events.some((event) => event.type === 'permission_request')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not write a title when session.rename is refused', async () => {
+    const held = await holdSession()
+    try {
+      const managed = (held.sm as unknown as { sessions: Map<string, { agent: unknown }> })
+        .sessions.get(held.created.id)
+      if (!managed) throw new Error('managed missing')
+      managed.agent = titleAgent('Bearer tokentoken')
+
+      await (held.sm as unknown as {
+        generateTitle(session: unknown, message: string): Promise<void>
+      }).generateTitle(managed, 'name this chat')
+      const refreshed = await held.sm.refreshTitle(held.created.id)
+      expect(refreshed.success).toBe(false)
+      expect(refreshed.error).toBe('credential_material_rejected')
+      expect(isRefusedSessionChrome({ status: 'denied' })).toBe(true)
+
+      expect(loadSession(held.root, held.created.id)?.name).toBe('Old name')
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      expect(events.some((event) => event.actionId === 'session.rename' && event.payload?.reason === 'credential_material_rejected')).toBe(true)
+      expect(events.some((event) => event.kind === 'action_completed')).toBe(false)
+      expect(held.events.some((event) => event.type === 'title_generated')).toBe(false)
+      expect(held.events.some((event) => event.type === 'permission_request')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not write a title when the host system actor is denied session.rename', async () => {
+    const held = await holdSession()
+    try {
+      const named = await (held.sm as unknown as {
+        renameSessionAs(sessionId: string, name: string, actor: typeof SESSION_HOST_ACTOR): Promise<{ status: string; reason?: string }>
+      }).renameSessionAs(held.created.id, 'System title', SESSION_HOST_ACTOR)
+      expect(named).toMatchObject({ status: 'denied', reason: 'actor_not_permitted' })
+      expect(isRefusedSessionChrome(named)).toBe(true)
+      expect(loadSession(held.root, held.created.id)?.name).toBe('Old name')
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      expect(events.some((event) => event.actionId === 'session.rename' && event.actorRef.kind === 'system' && event.payload?.reason === 'actor_not_permitted')).toBe(true)
+      expect(events.some((event) => event.kind === 'action_completed')).toBe(false)
+      expect(held.events.some((event) => event.type === 'title_generated')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
   })
 })

@@ -47,7 +47,7 @@ import {
   sessionChromeUndo,
   sessionFlagRequest,
   sessionLabelsRequest,
-  sessionRenameRequest,
+  sessionRenameRequestForActor,
   sessionStatusRequest,
   sessionStatusRequestForActor,
   type SessionChromeAdmission,
@@ -5076,11 +5076,30 @@ export class SessionManager implements ISessionManager {
    * A refused admit does not change the name.
    */
   async renameSession(sessionId: string, name: string): Promise<SessionChromeAdmission> {
+    return this.renameSessionAs(sessionId, name, DESKTOP_APPROVER)
+  }
+
+  /**
+   * Automatic title and the human regenerate command. session.rename is L1,
+   * so the host system actor is denied. There is no agent rename tool, and
+   * this does not borrow the Craft session as an agent. The desktop user is
+   * the permitted caller that already renames the session. A refused admit
+   * does not change the name.
+   */
+  private applyGeneratedSessionName(sessionId: string, name: string): Promise<SessionChromeAdmission> {
+    return this.renameSessionAs(sessionId, name, DESKTOP_APPROVER)
+  }
+
+  private renameSessionAs(
+    sessionId: string,
+    name: string,
+    actor: ActorRef,
+  ): Promise<SessionChromeAdmission> {
     const invocationId = randomUUID()
     const managed = this.sessions.get(sessionId)
-    if (!managed) return { status: 'failed', invocationId, reason: 'session_missing' }
+    if (!managed) return Promise.resolve({ status: 'failed', invocationId, reason: 'session_missing' })
     let previous = managed.name
-    const request = sessionRenameRequest(sessionId, invocationId, name)
+    const request = sessionRenameRequestForActor(sessionId, invocationId, name, actor)
     return this.admitSessionChrome(
       sessionId,
       request,
@@ -5119,6 +5138,8 @@ export class SessionManager implements ISessionManager {
    * Regenerate the session title based on recent messages.
    * Uses the last few user messages to capture what the session has evolved into.
    * Automatically uses the same provider as the session (Claude or OpenAI).
+   * The name write admits session.rename as the desktop user. A refusal leaves
+   * the current name in place.
    */
   async refreshTitle(sessionId: string): Promise<{ success: boolean; title?: string; error?: string }> {
     sessionLog.info(`refreshTitle called for session ${sessionId}`)
@@ -5210,12 +5231,14 @@ export class SessionManager implements ISessionManager {
       const title = await agent.regenerateTitle(userMessages, assistantResponse, titleOptions)
       sessionLog.info(`refreshTitle: regenerateTitle returned: ${title ? `"${title}"` : 'null'}`)
       if (title) {
-        managed.name = title
-        this.persistSession(managed)
-        // title_generated will also clear isRegeneratingTitle via the event handler
-        this.sendEvent({ type: 'title_generated', sessionId, title }, managed.workspace.id)
-        sessionLog.info(`Refreshed title for session ${sessionId}: "${title}"`)
-        return { success: true, title }
+        const named = await this.applyGeneratedSessionName(sessionId, title)
+        if (named.status === 'completed' || named.status === 'reconciling') {
+          sessionLog.info(`Refreshed title for session ${sessionId}: "${title}"`)
+          return { success: true, title }
+        }
+        this.sendEvent({ type: 'title_regenerating', sessionId, isRegenerating: false }, managed.workspace.id)
+        sessionLog.warn(`refreshTitle refused for ${sessionId}: ${named.status} ${named.reason ?? ''}`)
+        return { success: false, error: named.reason ?? named.status }
       }
       // Failed to generate - clear regenerating state
       this.sendEvent({ type: 'title_regenerating', sessionId, isRegenerating: false }, managed.workspace.id)
@@ -5781,9 +5804,10 @@ export class SessionManager implements ISessionManager {
         optimisticMessageId: options?.optimisticMessageId
       }, managed.workspace.id)
 
-      // If this is the first user message and no title exists, set one immediately
-      // AI generation will enhance it later, but we always have a title from the start
-      // Automation sessions (triggeredBy set) already have a title and skip AI generation entirely
+      // If this is the first user message and no title exists, admit a slice of
+      // that message as session.rename. AI generation may replace it later.
+      // Automation sessions (triggeredBy set) already have a title and skip this.
+      // A refused admit leaves the name unchanged.
       const isFirstUserMessage = managed.messages.filter(m => m.role === 'user').length === 1
       if (isFirstUserMessage && !managed.name && !managed.triggeredBy) {
         // Replace bracket mentions with their display labels (e.g. [skill:ws:commit] -> "Commit")
@@ -5799,15 +5823,12 @@ export class SessionManager implements ISessionManager {
         // Sanitize: strip any remaining bracket mentions, XML blocks, tags
         const sanitized = sanitizeForTitle(titleSource)
         const initialTitle = sanitized.slice(0, 50) + (sanitized.length > 50 ? '…' : '')
-        managed.name = initialTitle
-        this.persistSession(managed)
-        // Flush immediately so disk is authoritative before notifying renderer
-        await this.flushSession(managed.id)
-        this.sendEvent({
-          type: 'title_generated',
-          sessionId,
-          title: initialTitle,
-        }, managed.workspace.id)
+        const named = await this.applyGeneratedSessionName(sessionId, initialTitle)
+        if (named.status !== 'completed' && named.status !== 'reconciling') {
+          sessionLog.info(
+            `Initial title left name unchanged for ${sessionId}: ${named.status} ${named.reason ?? ''}`,
+          )
+        }
 
         // Generate AI title asynchronously using agent's SDK
         // (waits briefly for agent creation if needed)
@@ -7279,6 +7300,8 @@ export class SessionManager implements ISessionManager {
    * Generate an AI title for a session from the user's first message.
    * Uses the agent's generateTitle() method which handles provider-specific SDK calls.
    * If no agent exists, creates a temporary one using the session's connection.
+   * The name write admits session.rename as the desktop user. A refusal leaves
+   * the current name in place.
    */
   private async generateTitle(managed: ManagedSession, userMessage: string): Promise<void> {
     sessionLog.info(`[generateTitle] Starting for session ${managed.id}`)
@@ -7339,15 +7362,12 @@ export class SessionManager implements ISessionManager {
       })
       const title = await agent.generateTitle(userMessage, { language: titleLanguage })
       if (title) {
-        managed.name = title
-        this.persistSession(managed)
-        // Flush immediately to ensure disk is up-to-date before notifying renderer.
-        // This prevents race condition where lazy loading reads stale disk data
-        // (the persistence queue has a 500ms debounce).
-        await this.flushSession(managed.id)
-        // Now safe to notify renderer - disk is authoritative
-        this.sendEvent({ type: 'title_generated', sessionId: managed.id, title }, managed.workspace.id)
-        sessionLog.info(`Generated title for session ${managed.id}: "${title}"`)
+        const named = await this.applyGeneratedSessionName(managed.id, title)
+        if (named.status === 'completed' || named.status === 'reconciling') {
+          sessionLog.info(`Generated title for session ${managed.id}: "${title}"`)
+        } else {
+          sessionLog.warn(`Generated title refused for session ${managed.id}: ${named.status} ${named.reason ?? ''}`)
+        }
       } else {
         sessionLog.warn(`Title generation returned null for session ${managed.id}`)
       }
