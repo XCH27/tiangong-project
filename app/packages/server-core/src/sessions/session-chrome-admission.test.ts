@@ -4,10 +4,12 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type { ActorRef, TurnExecutor, TurnRequest } from '@craft-agent/shared/protocol'
 import {
+  agentActorForCallingSession,
   isRefusedSessionChrome,
   planSessionChrome,
   SESSION_HOST_ACTOR,
 } from '@craft-agent/shared/protocol'
+import { saveLabelConfig } from '@craft-agent/shared/labels/storage'
 import { InternalActionId, type ActionInvocation } from '../../../shared/src/protocol/internal-action.ts'
 import {
   createSession,
@@ -408,7 +410,7 @@ describe('agent session chrome on the session kernel', () => {
     }
   })
 
-  it('keeps agent tools on the kernel and leaves unflag and auto-labels off it', () => {
+  it('keeps agent tools on the kernel and leaves unflag off it', () => {
     const manager = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
     const tools = manager.slice(manager.indexOf('setSessionLabelsFn:'), manager.indexOf('getSessionInfoFn:'))
     expect(tools.includes('setSessionLabelsFromAgent')).toBe(true)
@@ -449,8 +451,22 @@ describe('agent session chrome on the session kernel', () => {
       manager.indexOf('Evaluate auto-label rules'),
       manager.indexOf('managed.lastMessageAt = Date.now()'),
     )
-    expect(autoLabels.includes('admitSessionChrome')).toBe(false)
-    expect(autoLabels.includes('managed.labels =')).toBe(true)
+    expect(autoLabels.includes('applySendTimeAutoLabels')).toBe(true)
+    expect(autoLabels.includes('managed.labels =')).toBe(false)
+
+    const merge = manager.slice(
+      manager.indexOf('private async applySendTimeAutoLabels'),
+      manager.indexOf('private applySessionLabelsAs'),
+    )
+    expect(merge.includes('applySessionLabelsAs')).toBe(true)
+    expect(merge.includes('managed.labels =')).toBe(false)
+    expect(merge.includes('session.unflag')).toBe(false)
+
+    const spawn = manager.slice(manager.indexOf('onSpawnSession'), manager.indexOf('sendAgentMessageFn:'))
+    expect(spawn.includes('agentActorForCallingSession')).toBe(true)
+    const agentSend = manager.slice(manager.indexOf('sendAgentMessageFn:'), manager.indexOf('activateSourceInSessionFn:'))
+    expect(agentSend.includes('agentActorForCallingSession')).toBe(true)
+    expect(agentSend.includes('labelActor:')).toBe(true)
 
     const apply = manager.slice(
       manager.indexOf('private applyGeneratedSessionName'),
@@ -541,6 +557,120 @@ describe('title generation on the session kernel', () => {
       expect(events.some((event) => event.actionId === 'session.rename' && event.actorRef.kind === 'system' && event.payload?.reason === 'actor_not_permitted')).toBe(true)
       expect(events.some((event) => event.kind === 'action_completed')).toBe(false)
       expect(held.events.some((event) => event.type === 'title_generated')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('send-time auto-labels on the session kernel', () => {
+  function writeRules(
+    root: string,
+    pattern: string,
+    id = 'ticket',
+  ) {
+    saveLabelConfig(root, {
+      version: 1,
+      labels: [{
+        id,
+        name: 'Ticket',
+        valueType: 'string',
+        autoRules: [{ pattern, valueTemplate: '$1' }],
+      }],
+    })
+  }
+
+  async function send(held: Awaited<ReturnType<typeof holdSession>>, text: string) {
+    await held.sm.sendMessage(held.created.id, text).catch(() => {
+      // Agent init has no connection in this harness. Labels are admitted first.
+    })
+  }
+
+  it('journals a regex merge as session.set_labels for the desktop user', async () => {
+    const held = await holdSession()
+    try {
+      writeRules(held.root, '\\b(BUG-\\d+)\\b')
+      await send(held, 'please look at BUG-42')
+
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      const completed = events.filter((event) => event.kind === 'action_completed' && event.actionId === 'session.set_labels')
+      expect(completed).toHaveLength(1)
+      expect(completed[0]?.actorRef).toMatchObject({ kind: 'human', id: 'desktop-user' })
+      expect(events.some((event) => event.kind === 'supervision_requested')).toBe(false)
+      expect(events.some((event) => event.actorRef.kind === 'system')).toBe(false)
+      expect(loadSession(held.root, held.created.id)?.labels).toEqual(['ticket::BUG-42'])
+      expect(held.events.some((event) => event.type === 'labels_changed')).toBe(true)
+      expect(held.events.some((event) => event.type === 'permission_request')).toBe(false)
+
+      const unflag = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
+      const unflagBody = unflag.slice(unflag.indexOf('async unflagSession'), unflag.indexOf('async archiveSession'))
+      expect(unflagBody.includes('admitHostTurn')).toBe(false)
+      expect(unflagBody.includes('session.unflag')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not merge labels when session.set_labels is refused', async () => {
+    const held = await holdSession()
+    try {
+      const managed = (held.sm as unknown as { sessions: Map<string, { labels: string[] }> })
+        .sessions.get(held.created.id)
+      if (!managed) throw new Error('managed missing')
+      managed.labels = ['keep']
+      const stored = loadSession(held.root, held.created.id)
+      if (!stored) throw new Error('stored missing')
+      stored.labels = ['keep']
+      await saveSession(stored)
+
+      writeRules(held.root, '(Bearer\\s+\\S+)', 'secret')
+      await send(held, 'token is Bearer tokentoken')
+
+      expect(loadSession(held.root, held.created.id)?.labels).toEqual(['keep'])
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      expect(events.some((event) => event.actionId === 'session.set_labels' && event.payload?.reason === 'credential_material_rejected')).toBe(true)
+      expect(events.some((event) => event.kind === 'action_completed')).toBe(false)
+      expect(held.events.some((event) => event.type === 'labels_changed')).toBe(false)
+      expect(held.events.some((event) => event.type === 'permission_request')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not merge labels when the host system actor is denied', async () => {
+    const held = await holdSession()
+    try {
+      writeRules(held.root, '\\b(BUG-\\d+)\\b')
+      await (held.sm as unknown as {
+        applySendTimeAutoLabels(sessionId: string, message: string, actor: typeof SESSION_HOST_ACTOR): Promise<void>
+      }).applySendTimeAutoLabels(held.created.id, 'please look at BUG-7', SESSION_HOST_ACTOR)
+
+      expect(loadSession(held.root, held.created.id)?.labels).toEqual([])
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      expect(events.some((event) => event.actionId === 'session.set_labels' && event.actorRef.kind === 'system' && event.payload?.reason === 'actor_not_permitted')).toBe(true)
+      expect(events.some((event) => event.kind === 'action_completed')).toBe(false)
+      expect(held.events.some((event) => event.type === 'labels_changed')).toBe(false)
+    } finally {
+      rmSync(held.root, { recursive: true, force: true })
+    }
+  })
+
+  it('journals an agent send as the calling Craft session', async () => {
+    const held = await holdSession()
+    try {
+      writeRules(held.root, '\\b(BUG-\\d+)\\b')
+      const actor: ActorRef = agentActorForCallingSession(held.created.id, 'Old name')
+      await (held.sm as unknown as {
+        applySendTimeAutoLabels(sessionId: string, message: string, actor: ActorRef): Promise<void>
+      }).applySendTimeAutoLabels(held.created.id, 'filed BUG-9', actor)
+
+      const events = hostEvents(readFileSync(getSessionFilePath(held.root, held.created.id), 'utf8'))
+      const completed = events.filter((event) => event.kind === 'action_completed' && event.actionId === 'session.set_labels')
+      expect(completed).toHaveLength(1)
+      expect(completed[0]?.actorRef).toMatchObject({ kind: 'agent', id: held.created.id, displayName: 'Old name' })
+      expect(completed[0]?.actorRef.id).not.toBe('desktop-user')
+      expect(loadSession(held.root, held.created.id)?.labels).toEqual(['ticket::BUG-9'])
+      expect(held.events.some((event) => event.type === 'permission_request')).toBe(false)
     } finally {
       rmSync(held.root, { recursive: true, force: true })
     }

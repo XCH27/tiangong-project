@@ -40,13 +40,12 @@ import {
   HostTurnKernel,
   SessionFileTurnJournal,
   agentActorForCallingSession,
-  agentSessionLabelsRequest,
   agentSessionStatusRequest,
   planSessionChrome,
   SESSION_HOST_ACTOR,
   sessionChromeUndo,
   sessionFlagRequest,
-  sessionLabelsRequest,
+  sessionLabelsRequestForActor,
   sessionRenameRequestForActor,
   sessionStatusRequest,
   sessionStatusRequestForActor,
@@ -899,6 +898,9 @@ interface ManagedSession {
     options?: SendMessageOptions
     messageId?: string  // Pre-generated ID for matching with UI
     optimisticMessageId?: string  // Frontend's ID for reliable event matching
+    // Actor for the regex label merge when this item is replayed.
+    // Absent on crash recovery: the replay uses the desktop user.
+    labelActor?: ActorRef
   }>
   // Map of shellId -> command for killing background shells
   backgroundShellCommands: Map<string, string>
@@ -915,6 +917,10 @@ interface ManagedSession {
   lastSentAttachments?: FileAttachment[]
   lastSentStoredAttachments?: StoredAttachment[]
   lastSentOptions?: SendMessageOptions
+  // Actor that admitted labels for lastSentMessage. Auth retry replays it.
+  lastSentLabelActor?: ActorRef
+  // Actor for a steer that has not been confirmed delivered.
+  pendingSteerLabelActor?: ActorRef
   // Flag to prevent infinite retry loops (reset at start of each sendMessage)
   authRetryAttempted?: boolean
   // Flag indicating auth retry is in progress (to prevent complete handler from interfering)
@@ -4117,8 +4123,20 @@ export class SessionManager implements ISessionManager {
         // a synthetic empty session and shows "New Chat" in the sidebar.
         this.sendEvent({ type: 'session_created', sessionId: session.id }, managed.workspace.id)
 
-        // Fire and forget — send the message but don't await completion
-        this.sendMessage(session.id, request.prompt, fileAttachments).catch(err => {
+        // Fire and forget — send the message but don't await completion.
+        // The prompt is the calling Craft session's, so label admission uses
+        // that session. It is not the desktop user.
+        this.sendMessage(
+          session.id,
+          request.prompt,
+          fileAttachments,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { labelActor: agentActorForCallingSession(managed.id, managed.name) },
+        ).catch(err => {
           sessionLog.error(`Failed to send message to spawned session ${session.id}:`, err)
         })
 
@@ -4243,7 +4261,18 @@ export class SessionManager implements ISessionManager {
             if (builtAttachments.length > 0) fileAttachments = builtAttachments
           }
 
-          await this.sendMessage(sessionId, message, fileAttachments)
+          // The wrapped text is the calling Craft session's message.
+          await this.sendMessage(
+            sessionId,
+            message,
+            fileAttachments,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            { labelActor: agentActorForCallingSession(managed.id, managed.name) },
+          )
         },
         activateSourceInSessionFn: async (sourceSlug: string) => {
           const cb = managed.agent?.onSourceActivationRequest
@@ -5665,14 +5694,19 @@ export class SessionManager implements ISessionManager {
      * `{ callerClientId: ctx.clientId }` so the SM can pin the desktop client
      * that should host this session's browser tools. Pass undefined when calling
      * directly (tests, intra-server flows) to leave the existing pin in place.
+     * `labelActor` is the session.set_labels caller for regex matches on this
+     * text. Omitted means the desktop user. It is not a new seat.
      */
-    rpcContext?: { callerClientId?: string },
+    rpcContext?: { callerClientId?: string; labelActor?: ActorRef },
   ): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (!managed) {
       throw new Error(`Session ${sessionId} not found`)
     }
     this.setLastMessageClientId(sessionId, rpcContext?.callerClientId)
+    // Human send, CLI, and messaging share this path and have no separate
+    // seat. The desktop user is that human. Agent tools pass their session.
+    const labelActor = rpcContext?.labelActor ?? DESKTOP_APPROVER
 
     // Source-activation auto-retry dedup (craft-agents-oss#804). When the server
     // has just scheduled or committed a "[<slug> activated]" retry, drop a matching
@@ -5746,12 +5780,22 @@ export class SessionManager implements ISessionManager {
         optimisticMessageId: options?.optimisticMessageId
       }, managed.workspace.id)
 
-      if (!steered) {
+      if (steered) {
+        managed.pendingSteerLabelActor = labelActor
+      } else {
         // Push for FIFO replay on next onProcessingStopped tick. Same shape
         // for both queue-direct (current turn still running) and
         // queue-after-abort (backend already aborted) — the replay path in
         // processNextQueuedMessage is identical.
-        managed.messageQueue.push({ message, attachments, storedAttachments, options, messageId: userMessage.id, optimisticMessageId: options?.optimisticMessageId })
+        managed.messageQueue.push({
+          message,
+          attachments,
+          storedAttachments,
+          options,
+          messageId: userMessage.id,
+          optimisticMessageId: options?.optimisticMessageId,
+          labelActor,
+        })
         managed.wasInterrupted = true
       }
 
@@ -5837,28 +5881,10 @@ export class SessionManager implements ISessionManager {
     }
 
     // Evaluate auto-label rules against the user message (common path for both
-    // fresh and queued messages). Scans regex patterns configured on labels,
-    // then merges any new matches into the session's label array.
+    // fresh and queued messages). A match that would add labels admits
+    // session.set_labels. A refusal leaves the current labels in place.
     try {
-      const labelTree = listLabels(managed.workspace.rootPath)
-      const autoMatches = evaluateAutoLabels(message, labelTree)
-
-      if (autoMatches.length > 0) {
-        const existingLabels = managed.labels ?? []
-        const newEntries = autoMatches
-          .map(m => `${m.labelId}::${m.value}`)
-          .filter(entry => !existingLabels.includes(entry))
-
-        if (newEntries.length > 0) {
-          managed.labels = [...existingLabels, ...newEntries]
-          this.persistSession(managed)
-          this.sendEvent({
-            type: 'labels_changed',
-            sessionId,
-            labels: managed.labels,
-          }, managed.workspace.id)
-        }
-      }
+      await this.applySendTimeAutoLabels(sessionId, message, labelActor)
     } catch (e) {
       sessionLog.warn(`Auto-label evaluation failed for session ${sessionId}:`, e)
     }
@@ -5884,6 +5910,7 @@ export class SessionManager implements ISessionManager {
     managed.lastSentAttachments = attachments
     managed.lastSentStoredAttachments = storedAttachments
     managed.lastSentOptions = options
+    managed.lastSentLabelActor = labelActor
 
     // Capture the generation to detect if a new request supersedes this one.
     // This prevents the finally block from clobbering state when a follow-up message arrives.
@@ -6386,7 +6413,9 @@ export class SessionManager implements ISessionManager {
             retryStoredAttachments,
             retryOptions,
             undefined,  // existingMessageId
-            true        // _isAuthRetry - prevents infinite retry loop
+            true,       // _isAuthRetry - prevents infinite retry loop
+            undefined,
+            managed.lastSentLabelActor ? { labelActor: managed.lastSentLabelActor } : undefined,
           )
           sessionLog.info(`[auth-retry] Retry completed for session ${sessionId}`)
         } else {
@@ -6560,7 +6589,11 @@ export class SessionManager implements ISessionManager {
         next.attachments,
         next.storedAttachments,
         next.options,
-        next.messageId
+        next.messageId,
+        undefined,
+        undefined,
+        // Crash recovery has no stored actor. The desktop user is the human send.
+        next.labelActor ? { labelActor: next.labelActor } : undefined,
       ).catch(err => {
         sessionLog.error('replay failed', {
           sessionId,
@@ -7085,35 +7118,13 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Set labels for a session (additive tags, many-per-session).
-   * Labels are IDs referencing workspace labels/config.json.
-   */
-  /**
    * Human labels command. Admits session.set_labels on this session's
    * HostTurnKernel and journals the run in session.jsonl. The frozen row is
    * L1 with an undo contract, so this does not publish a permission card.
    * A refused admit does not change the labels.
    */
   async setSessionLabels(sessionId: string, labels: string[]): Promise<SessionChromeAdmission> {
-    const invocationId = randomUUID()
-    const managed = this.sessions.get(sessionId)
-    if (!managed) return { status: 'failed', invocationId, reason: 'session_missing' }
-    let previous = [...(managed.labels ?? [])]
-    const request = sessionLabelsRequest(sessionId, invocationId, labels)
-    return this.admitSessionChrome(
-      sessionId,
-      request,
-      async (noteNativeCommit) => {
-        previous = [...(this.sessions.get(sessionId)?.labels ?? [])]
-        await this.writeSessionLabelsHeader(sessionId, labels)
-        noteNativeCommit()
-        return {
-          output: { labels: [...labels], actionId: request.invocation.actionId },
-          undoHandle: sessionChromeUndo(invocationId, 'Restore session labels', { labels: previous }),
-        }
-      },
-      () => this.restoreSessionLabelsHeader(sessionId, previous),
-    )
+    return this.applySessionLabelsAs(sessionId, labels, DESKTOP_APPROVER)
   }
 
   /**
@@ -7131,22 +7142,67 @@ export class SessionManager implements ISessionManager {
     if (!caller) return { status: 'failed', invocationId, reason: 'caller_missing' }
     const target = this.sessions.get(targetSessionId)
     if (!target) return { status: 'failed', invocationId, reason: 'session_missing' }
-    let previous = [...(target.labels ?? [])]
     const actor = agentActorForCallingSession(caller.id, caller.name)
-    const request = agentSessionLabelsRequest(targetSessionId, invocationId, labels, actor)
+    return this.applySessionLabelsAs(targetSessionId, labels, actor)
+  }
+
+  /**
+   * Regex matches on a sendMessage. Admits session.set_labels only when the
+   * merged list would change. The actor is the desktop user for a human send,
+   * or the calling Craft session when an agent tool passed one. A system
+   * actor is denied. A refused admit does not merge labels.
+   */
+  private async applySendTimeAutoLabels(
+    sessionId: string,
+    message: string,
+    actor: ActorRef,
+  ): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    const labelTree = listLabels(managed.workspace.rootPath)
+    const autoMatches = evaluateAutoLabels(message, labelTree)
+    if (autoMatches.length === 0) return
+    const existingLabels = managed.labels ?? []
+    const newEntries = autoMatches
+      .map(match => `${match.labelId}::${match.value}`)
+      .filter(entry => !existingLabels.includes(entry))
+    if (newEntries.length === 0) return
+    const next = [...existingLabels, ...newEntries]
+    const admitted = await this.applySessionLabelsAs(sessionId, next, actor)
+    if (admitted.status !== 'completed' && admitted.status !== 'reconciling') {
+      sessionLog.info(
+        `Auto-label left labels unchanged for ${sessionId}: ${admitted.status} ${admitted.reason ?? ''}`,
+      )
+    }
+  }
+
+  /**
+   * One session.set_labels turn. Human commands, agent tools, and send-time
+   * regex matches share this admit+run path. The request carries its actor.
+   */
+  private applySessionLabelsAs(
+    sessionId: string,
+    labels: string[],
+    actor: ActorRef,
+  ): Promise<SessionChromeAdmission> {
+    const invocationId = randomUUID()
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return Promise.resolve({ status: 'failed', invocationId, reason: 'session_missing' })
+    let previous = [...(managed.labels ?? [])]
+    const request = sessionLabelsRequestForActor(sessionId, invocationId, labels, actor)
     return this.admitSessionChrome(
-      targetSessionId,
+      sessionId,
       request,
       async (noteNativeCommit) => {
-        previous = [...(this.sessions.get(targetSessionId)?.labels ?? [])]
-        await this.writeSessionLabelsHeader(targetSessionId, labels)
+        previous = [...(this.sessions.get(sessionId)?.labels ?? [])]
+        await this.writeSessionLabelsHeader(sessionId, labels)
         noteNativeCommit()
         return {
           output: { labels: [...labels], actionId: request.invocation.actionId },
           undoHandle: sessionChromeUndo(invocationId, 'Restore session labels', { labels: previous }),
         }
       },
-      () => this.restoreSessionLabelsHeader(targetSessionId, previous),
+      () => this.restoreSessionLabelsHeader(sessionId, previous),
     )
   }
 
@@ -8064,7 +8120,11 @@ export class SessionManager implements ISessionManager {
         // Steer message was not delivered (no PreToolUse fired before turn ended).
         // Re-queue it so it's sent as a normal message on the next turn.
         sessionLog.info(`Steer message undelivered, re-queuing for session ${sessionId}`)
-        managed.messageQueue.push({ message: event.message })
+        managed.messageQueue.push({
+          message: event.message,
+          labelActor: managed.pendingSteerLabelActor,
+        })
+        managed.pendingSteerLabelActor = undefined
         managed.wasInterrupted = true
         break
 
