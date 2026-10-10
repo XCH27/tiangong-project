@@ -12,6 +12,7 @@ import {
 } from '../document-suite'
 import { buildDocx, readDocxParagraphs } from '../docx-package'
 import { InternalActionId } from '../internal-action'
+import { readZip, writeZip } from '../zip-store'
 
 const human: ActorRef = { kind: 'human', id: 'user-1', displayName: 'Ada' }
 const agent: ActorRef = { kind: 'agent', id: 'seat-1', displayName: 'Worker' }
@@ -147,6 +148,18 @@ describe('docx document suite', () => {
       status: 'failed',
       reason: 'nothing_to_undo',
     })
+  })
+
+  test('an out-of-range character reference fails closed and does not throw', async () => {
+    const filePath = fixture(['Alpha'])
+    const parts = readZip(readFileSync(filePath))
+    const xml = new TextDecoder().decode(parts.get('word/document.xml'))
+    parts.set('word/document.xml', new TextEncoder().encode(xml.replace('Alpha', '&#x110000;')))
+    const before = writeZip(parts)
+    writeFileSync(filePath, before)
+    const opened = await applyDocumentFromHuman(createDocumentSuiteHost(), call('open', filePath, 'open-scalar'))
+    expect(opened).toMatchObject({ status: 'failed', reason: 'invalid_docx' })
+    expect(readFileSync(filePath)).toEqual(before)
   })
 })
 

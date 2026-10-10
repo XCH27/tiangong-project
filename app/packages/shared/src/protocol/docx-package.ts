@@ -29,7 +29,12 @@ export function buildDocx(paragraphs: readonly string[]): Uint8Array {
 }
 
 export function readDocxParagraphs(bytes: Uint8Array): string[] {
-  return documentXmlParagraphs(documentXml(bytes))
+  try {
+    return documentXmlParagraphs(documentXml(bytes))
+  } catch (error) {
+    if (error instanceof DocxXmlError) throw new DocxPackageError('invalid_docx')
+    throw error
+  }
 }
 
 export function replaceDocxParagraph(bytes: Uint8Array, index: number, textValue: string): Uint8Array {

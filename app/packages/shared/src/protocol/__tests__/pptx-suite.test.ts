@@ -274,6 +274,21 @@ describe('pptx document suite', () => {
       InternalActionId.FILE_CREATE,
     ])
   })
+
+  test('an out-of-range character reference fails closed and does not throw', async () => {
+    const filePath = join(tempDir(), 'scalar.pptx')
+    await applyDocumentFromHuman(createDocumentSuiteHost(), call('create', filePath, 'create-scalar', human, {
+      slides: [{ title: 'Hello', body: '' }],
+    }))
+    const parts = readZip(readFileSync(filePath))
+    const slide = decode(parts.get('ppt/slides/slide1.xml'))
+    parts.set('ppt/slides/slide1.xml', new TextEncoder().encode(slide.replace('Hello', '&#xD800;')))
+    const before = writeZip(parts)
+    writeFileSync(filePath, before)
+    const opened = await applyDocumentFromHuman(createDocumentSuiteHost(), call('open', filePath, 'open-scalar'))
+    expect(opened).toMatchObject({ status: 'failed', reason: 'invalid_pptx' })
+    expect(readFileSync(filePath)).toEqual(before)
+  })
 })
 
 function fixtureDeck(): Uint8Array {

@@ -22,6 +22,7 @@ export function writeZip(entries: ReadonlyMap<string, Uint8Array>): Uint8Array {
   const centrals: Uint8Array[] = []
   let offset = 0
   for (const [name, data] of entries) {
+    assertZipName(name)
     const nameBytes = new TextEncoder().encode(name)
     const compressed = deflateRawSync(data)
     const method = compressed.byteLength < data.byteLength ? 8 : 0
@@ -84,6 +85,7 @@ export function readZip(bytes: Uint8Array): Map<string, Uint8Array> {
     const dataEnd = dataStart + compressedSize
     if (dataEnd > bytes.byteLength) throw new ZipStoreError('invalid_zip')
     const name = new TextDecoder().decode(bytes.subarray(nameStart, nameStart + nameLength))
+    assertZipName(name)
     const compressed = bytes.subarray(dataStart, dataEnd)
     let data: Uint8Array
     if (method === 0) data = Uint8Array.from(compressed)
@@ -94,6 +96,16 @@ export function readZip(bytes: Uint8Array): Map<string, Uint8Array> {
   }
   if (parts.size === 0) throw new ZipStoreError('invalid_zip')
   return parts
+}
+
+function assertZipName(name: string): void {
+  const fileName = name.endsWith('/') ? name.slice(0, -1) : name
+  if (fileName.length === 0 || fileName.startsWith('/') || fileName.includes('\\') || fileName.includes('\0')) {
+    throw new ZipStoreError('invalid_zip')
+  }
+  if (fileName.split('/').some((segment) => segment.length === 0 || segment === '..')) {
+    throw new ZipStoreError('invalid_zip')
+  }
 }
 
 function concat(parts: Uint8Array[]): Uint8Array {

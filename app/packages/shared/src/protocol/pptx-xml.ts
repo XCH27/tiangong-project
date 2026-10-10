@@ -364,9 +364,17 @@ function decodeXml(value: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_match, digits: string) => String.fromCodePoint(Number(digits)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, digits: string) => xmlScalar(digits, 10))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_match, hex: string) => xmlScalar(hex, 16))
     .replace(/&amp;/g, '&')
+}
+
+function xmlScalar(raw: string, radix: 10 | 16): string {
+  const value = radix === 10 ? Number(raw) : Number.parseInt(raw, 16)
+  if (!Number.isSafeInteger(value) || value < 0 || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)) {
+    throw new PptxXmlError('invalid_pptx')
+  }
+  return String.fromCodePoint(value)
 }
 
 function xmlPart(files: ReadonlyMap<string, Uint8Array>, name: string): string {

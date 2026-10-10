@@ -163,3 +163,12 @@ app/packages/ui/src/components/overlay/index.ts	adapt	Export PptxPreviewOverlay 
 app/packages/ui/src/index.ts	adapt	Export PptxPreviewOverlay from the UI package.	bun test src/lib/__tests__/pptx-preview.test.ts
 app/apps/electron/src/renderer/App.tsx	adapt	File preview routes a pptx path to PptxPreviewOverlay.	bun test src/lib/__tests__/pptx-preview.test.ts
 app/apps/electron/src/renderer/hooks/useLinkInterceptor.ts	adapt	A pptx link opens the in-app preview instead of the external application.	bun test src/lib/__tests__/pptx-preview.test.ts
+app/packages/shared/src/protocol/zip-store.ts	adapt	Office package read and write refuse a part name that leaves the zip. Directory entries inside the package stay allowed.	bun test src/protocol/__tests__/zip-store.test.ts
+app/packages/shared/src/protocol/docx-xml.ts	adapt	An out-of-range or surrogate XML character reference fails closed as invalid_docx.	bun test src/protocol/__tests__/document-suite.test.ts
+app/packages/shared/src/protocol/docx-package.ts	adapt	Paragraph read maps that XML failure onto invalid_docx instead of throwing.	bun test src/protocol/__tests__/document-suite.test.ts
+app/packages/shared/src/protocol/xlsx-xml.ts	adapt	An out-of-range or surrogate XML character reference fails closed as invalid_xlsx.	bun test src/protocol/__tests__/xlsx-suite.test.ts
+app/packages/shared/src/protocol/pptx-xml.ts	adapt	An out-of-range or surrogate XML character reference fails closed as invalid_pptx.	bun test src/protocol/__tests__/pptx-suite.test.ts
+app/packages/shared/src/protocol/__tests__/zip-store.test.ts	adapt	Hostile zip part names are refused on write and on read.	bun test src/protocol/__tests__/zip-store.test.ts
+app/packages/shared/src/protocol/__tests__/document-suite.test.ts	adapt	DOCX open of a bad character reference returns invalid_docx and leaves the file unchanged.	bun test src/protocol/__tests__/document-suite.test.ts
+app/packages/shared/src/protocol/__tests__/xlsx-suite.test.ts	adapt	XLSX open of a bad character reference returns invalid_xlsx and leaves the file unchanged.	bun test src/protocol/__tests__/xlsx-suite.test.ts
+app/packages/shared/src/protocol/__tests__/pptx-suite.test.ts	adapt	PPTX open of a surrogate character reference returns invalid_pptx and leaves the file unchanged.	bun test src/protocol/__tests__/pptx-suite.test.ts

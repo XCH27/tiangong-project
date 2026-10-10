@@ -292,6 +292,20 @@ describe('xlsx document suite', () => {
       InternalActionId.FILE_CREATE,
     ])
   })
+
+  test('an out-of-range character reference fails closed and does not throw', async () => {
+    const filePath = join(tempDir(), 'scalar.xlsx')
+    const shared = createDocumentSuiteHost()
+    await applyDocumentFromHuman(shared, call('create', filePath, 'create-scalar', human, { rows: [['Alpha']] }))
+    const parts = readZip(readFileSync(filePath))
+    const sheet = new TextDecoder().decode(parts.get('xl/worksheets/sheet1.xml'))
+    parts.set('xl/worksheets/sheet1.xml', new TextEncoder().encode(sheet.replace('Alpha', '&#x110000;')))
+    const before = writeZip(parts)
+    writeFileSync(filePath, before)
+    const opened = await applyDocumentFromHuman(createDocumentSuiteHost(), call('open', filePath, 'open-scalar'))
+    expect(opened).toMatchObject({ status: 'failed', reason: 'invalid_xlsx' })
+    expect(readFileSync(filePath)).toEqual(before)
+  })
 })
 
 function fixtureBook(name: 'budget' | 'formula'): Uint8Array {
