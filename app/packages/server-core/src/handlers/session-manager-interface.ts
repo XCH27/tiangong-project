@@ -24,6 +24,7 @@ import type {
   ShareResult,
   SessionFlagAdmission,
   SessionChromeAdmission,
+  WorkspaceRenameAdmission,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -57,6 +58,7 @@ export interface ISessionManager {
   archiveSession(sessionId: string): Promise<void>
   unarchiveSession(sessionId: string): Promise<void>
   renameSession(sessionId: string, name: string): Promise<SessionChromeAdmission>
+  requestWorkspaceRename(workspaceId: string, name: string): Promise<WorkspaceRenameAdmission>
   setSessionStatus(sessionId: string, status: SessionStatus): Promise<SessionChromeAdmission>
   markSessionRead(sessionId: string): Promise<void>
   markSessionUnread(sessionId: string): Promise<void>

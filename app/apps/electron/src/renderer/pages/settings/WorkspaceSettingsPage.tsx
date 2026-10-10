@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 import { routes } from '@/lib/navigate'
 import { Spinner } from '@craft-agent/ui'
 import { RenameDialog } from '@/components/ui/rename-dialog'
-import type { PermissionMode, WorkspaceSettings, LoadedSource } from '../../../shared/types'
+import type { PermissionMode, WorkspaceSettings, LoadedSource, WorkspaceRenameAdmission } from '../../../shared/types'
 import { useDirectoryPicker } from '@/hooks/useDirectoryPicker'
 import { ServerDirectoryBrowser } from '@/components/ServerDirectoryBrowser'
 import { PERMISSION_MODE_CONFIG } from '@craft-agent/shared/agent/mode-types'
@@ -55,6 +55,7 @@ export default function WorkspaceSettingsPage() {
   const appShellContext = useAppShellContext()
   const activeWorkspaceId = appShellContext.activeWorkspaceId
   const onRefreshWorkspaces = appShellContext.onRefreshWorkspaces
+  const listedWorkspaceName = appShellContext.workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name
 
   // Workspace settings state
   const [wsName, setWsName] = useState('')
@@ -148,6 +149,13 @@ export default function WorkspaceSettingsPage() {
     loadWorkspaceSettings()
   }, [activeWorkspaceId])
 
+  // After Allow, the shell refreshes the workspace list. Keep this page on that name.
+  useEffect(() => {
+    if (!listedWorkspaceName || renameDialogOpen) return
+    setWsName(listedWorkspaceName)
+    setWsNameEditing(listedWorkspaceName)
+  }, [listedWorkspaceName, renameDialogOpen])
+
   // Subscribe to live source changes (additions/removals)
   useEffect(() => {
     if (!window.electronAPI) return
@@ -167,13 +175,19 @@ export default function WorkspaceSettingsPage() {
     return cleanup
   }, [activeWorkspaceId])
 
-  // Save workspace setting
+  // Save workspace setting. A name change returns the host admission.
   const updateWorkspaceSetting = useCallback(
-    async <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]) => {
+    async <K extends keyof WorkspaceSettings>(
+      key: K,
+      value: WorkspaceSettings[K],
+    ): Promise<boolean | WorkspaceRenameAdmission> => {
       if (!window.electronAPI || !activeWorkspaceId) return false
 
       try {
-        await window.electronAPI.updateWorkspaceSetting(activeWorkspaceId, key, value)
+        const result = await window.electronAPI.updateWorkspaceSetting(activeWorkspaceId, key, value)
+        if (key === 'name' && result && typeof result === 'object' && 'status' in result) {
+          return result
+        }
         return true
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -186,6 +200,30 @@ export default function WorkspaceSettingsPage() {
     },
     [activeWorkspaceId, t]
   )
+
+  const submitWorkspaceRename = useCallback(async (newName: string) => {
+    const result = await updateWorkspaceSetting('name', newName)
+    if (result === false) {
+      setRenameDialogOpen(false)
+      return
+    }
+    if (result === true) {
+      setRenameDialogOpen(false)
+      return
+    }
+    if (result.status === 'approval_required') {
+      toast.message(t('settings.workspace.renameNeedsApproval'))
+    } else if (result.status === 'completed') {
+      setWsName(newName)
+      setWsNameEditing(newName)
+      onRefreshWorkspaces?.()
+    } else if (result.reason === 'session_missing') {
+      toast.error(t('settings.workspace.renameNeedsSession'))
+    } else {
+      toast.error(t('settings.workspace.failedToSave', { setting: t('settings.workspace.renameWorkspace') }))
+    }
+    setRenameDialogOpen(false)
+  }, [onRefreshWorkspaces, t, updateWorkspaceSetting])
 
   // Workspace icon upload handler
   const handleIconUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -418,12 +456,11 @@ export default function WorkspaceSettingsPage() {
                 onValueChange={setWsNameEditing}
                 onSubmit={() => {
                   const newName = wsNameEditing.trim()
-                  if (newName && newName !== wsName) {
-                    setWsName(newName)
-                    updateWorkspaceSetting('name', newName)
-                    onRefreshWorkspaces?.()
+                  if (!newName || newName === wsName) {
+                    setRenameDialogOpen(false)
+                    return
                   }
-                  setRenameDialogOpen(false)
+                  void submitWorkspaceRename(newName)
                 }}
                 placeholder={t("settings.workspace.enterWorkspaceName")}
               />

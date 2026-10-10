@@ -191,6 +191,7 @@ import type {
   ShareResult,
   SessionFlagAdmission,
   SessionChromeAdmission,
+  WorkspaceRenameAdmission,
   RefreshTitleResult,
   FileSearchResult,
   SessionSearchResult,
@@ -428,7 +429,7 @@ export interface ElectronAPI {
 
   // Workspace Settings (per-workspace configuration)
   getWorkspaceSettings(workspaceId: string): Promise<WorkspaceSettings | null>
-  updateWorkspaceSetting<K extends keyof WorkspaceSettings>(workspaceId: string, key: K, value: WorkspaceSettings[K]): Promise<void>
+  updateWorkspaceSetting<K extends keyof WorkspaceSettings>(workspaceId: string, key: K, value: WorkspaceSettings[K]): Promise<void | WorkspaceRenameAdmission>
 
   // Folder dialog
   openFolderDialog(): Promise<string | null>

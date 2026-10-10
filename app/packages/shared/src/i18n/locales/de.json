@@ -1373,6 +1373,8 @@
   "settings.workspace.noSourcesConfigured": "Keine Quellen in diesem Workspace konfiguriert.",
   "settings.workspace.noWorkspaceSelected": "Kein Workspace ausgewählt",
   "settings.workspace.permissionsSection": "Berechtigungen",
+  "settings.workspace.renameNeedsApproval": "Erlaube die Berechtigungskarte in einer Sitzung, um diesen Workspace umzubenennen.",
+  "settings.workspace.renameNeedsSession": "Öffne eine Sitzung in diesem Workspace, bevor du ihn umbenennst.",
   "settings.workspace.renameWorkspace": "Workspace umbenennen",
   "settings.workspace.title": "Workspace",
   "settings.workspace.untitled": "Unbenannt",

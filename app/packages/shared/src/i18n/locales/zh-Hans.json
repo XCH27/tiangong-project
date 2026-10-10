@@ -1373,6 +1373,8 @@
   "settings.workspace.noSourcesConfigured": "此 工作区 未配置数据源。",
   "settings.workspace.noWorkspaceSelected": "未选择工作区",
   "settings.workspace.permissionsSection": "权限",
+  "settings.workspace.renameNeedsApproval": "在会话中允许权限卡后，才会重命名此工作区。",
+  "settings.workspace.renameNeedsSession": "重命名前，请先在此工作区打开一个会话。",
   "settings.workspace.renameWorkspace": "重命名工作区",
   "settings.workspace.title": "工作区",
   "settings.workspace.untitled": "无标题",

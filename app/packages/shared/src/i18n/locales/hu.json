@@ -1373,6 +1373,8 @@
   "settings.workspace.noSourcesConfigured": "Nincsenek beállított források ebben a munkaterületen.",
   "settings.workspace.noWorkspaceSelected": "Nincs kiválasztott munkaterület",
   "settings.workspace.permissionsSection": "Engedélyek",
+  "settings.workspace.renameNeedsApproval": "A munkaterület átnevezéséhez engedélyezd a jogosultsági kártyát egy munkamenetben.",
+  "settings.workspace.renameNeedsSession": "Átnevezés előtt nyiss egy munkamenetet ebben a munkaterületen.",
   "settings.workspace.renameWorkspace": "Munkaterület átnevezése",
   "settings.workspace.title": "Munkaterület",
   "settings.workspace.untitled": "Névtelen",

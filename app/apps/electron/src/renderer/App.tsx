@@ -308,6 +308,8 @@ export default function App() {
   const [menuNewChatTrigger, setMenuNewChatTrigger] = useState(0)
   // Permission requests per session (queue to handle multiple concurrent requests)
   const [pendingPermissions, setPendingPermissions] = useState<Map<string, PermissionRequest[]>>(new Map())
+  const pendingPermissionsRef = useRef(pendingPermissions)
+  pendingPermissionsRef.current = pendingPermissions
   // Credential requests per session (queue to handle multiple concurrent requests)
   const [pendingCredentials, setPendingCredentials] = useState<Map<string, CredentialRequest[]>>(new Map())
   // Draft composer state per session (text + attachment refs), preserved across mode
@@ -1546,7 +1548,12 @@ export default function App() {
     alwaysAllow: boolean,
     options?: import('../shared/types').PermissionResponseOptions,
   ) => {
+    const toolName = pendingPermissionsRef.current.get(sessionId)?.[0]?.toolName
     const success = await window.electronAPI.respondToPermission(sessionId, requestId, allowed, alwaysAllow, options)
+
+    if (success && allowed && toolName === 'workspace.rename') {
+      window.electronAPI.getWorkspaces().then(setWorkspaces)
+    }
 
     if (success) {
       // Remove only the first permission from the queue (the one we just responded to)
