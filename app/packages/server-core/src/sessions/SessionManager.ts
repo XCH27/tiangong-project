@@ -31,7 +31,8 @@ import {
   DESKTOP_APPROVER,
   invocationIdFromHostRequest,
   type HostPermissionCard,
-  type HostTurnKernel,
+  HostTurnKernel,
+  SessionFileTurnJournal,
   type TurnOutcome,
   type TurnRequest,
 } from '@craft-agent/shared/protocol'
@@ -2378,6 +2379,12 @@ export class SessionManager implements ISessionManager {
     const m = this.sessions.get(sessionId)
     if (!m) return null
 
+    try {
+      this.openSessionHostKernel(m.id, m.workspace.rootPath, m.workspace.id)
+    } catch (error) {
+      sessionLog.warn(`Host kernel was not opened for ${m.id}`, error)
+    }
+
     // Lazy-load messages from disk if not yet loaded
     await this.ensureMessagesLoaded(m)
 
@@ -2912,6 +2919,7 @@ export class SessionManager implements ISessionManager {
     }
 
     this.sessions.set(storedSession.id, managed)
+    this.openSessionHostKernel(storedSession.id, workspaceRootPath, workspace.id)
 
     // Initialize session metadata in AutomationSystem for diffing
     const automationSystem = this.automationSystems.get(workspaceRootPath)
@@ -6507,9 +6515,28 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * One HostTurnKernel for this Craft session.
+   * The journal is session.jsonl. A second call returns the same kernel.
+   * The session file must already exist.
+   */
+  openSessionHostKernel(sessionId: string, workspaceRootPath: string, workspaceId?: string): HostTurnKernel {
+    const existing = this.hostApprovals.get(sessionId)
+    if (existing) return existing.kernel
+    const sessionFile = getSessionFilePath(workspaceRootPath, sessionId)
+    if (!existsSync(sessionFile)) {
+      throw new Error('session_file_missing')
+    }
+    const kernel = new HostTurnKernel(new SessionFileTurnJournal(sessionFile))
+    this.attachHostTurnKernel(sessionId, kernel, workspaceId)
+    return kernel
+  }
+
+  /**
    * Attach the process-local host kernel whose awaiting turns the existing
    * permission card can approve. This is the same kernel, not a second store.
    * Later admits on this kernel publish the card when they await approval.
+   * Session create and open call openSessionHostKernel. This remains for a
+   * kernel that was already constructed on that session's journal.
    */
   attachHostTurnKernel(sessionId: string, kernel: HostTurnKernel, workspaceId?: string): void {
     const existing = this.hostApprovals.get(sessionId)
@@ -6537,8 +6564,16 @@ export class SessionManager implements ISessionManager {
    * Callers do not also call publishHostApproval.
    */
   admitHostTurn(sessionId: string, request: TurnRequest): TurnOutcome {
-    const attachment = this.hostApprovals.get(sessionId)
     const invocationId = request.invocation?.invocationId ?? ''
+    const managed = this.sessions.get(sessionId)
+    if (managed && !this.hostApprovals.has(sessionId)) {
+      try {
+        this.openSessionHostKernel(sessionId, managed.workspace.rootPath, managed.workspace.id)
+      } catch (error) {
+        sessionLog.warn(`Host kernel was not opened for ${sessionId}`, error)
+      }
+    }
+    const attachment = this.hostApprovals.get(sessionId)
     if (!attachment) {
       return { status: 'failed', invocationId, reason: 'host_kernel_missing' }
     }
@@ -8159,6 +8194,7 @@ export class SessionManager implements ISessionManager {
     }
 
     this.sessions.set(sessionId, managed)
+    this.openSessionHostKernel(sessionId, workspaceRootPath, workspaceId)
 
     // Initialize automation metadata
     const automationSystem = this.automationSystems.get(workspaceRootPath)

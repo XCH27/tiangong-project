@@ -4,8 +4,8 @@
  * Workspace-scoped session CRUD operations.
  * Sessions are stored at {workspaceRootPath}/sessions/{id}/session.jsonl
  * Each session folder contains:
- * - session.jsonl (main data in JSONL format: line 1 = header, lines 2+ = messages)
- * - host-kernel-snapshot.json (optional Fleet host KernelSnapshot v1 beside the journal; not a second database)
+ * - session.jsonl (line 1 = header, later lines = messages, plus fleet_host_session_event lines that chat reads skip)
+ * - host-kernel-snapshot.json (optional Fleet host KernelSnapshot v1 beside the journal; not the session journal and not a second database)
  * - attachments/ (file attachments)
  * - plans/ (plan files for Safe Mode)
  * - data/ (transform_data tool output: JSON files for datatable/spreadsheet blocks)

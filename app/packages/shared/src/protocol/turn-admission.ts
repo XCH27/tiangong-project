@@ -4,8 +4,9 @@
  * Pi Agent Core is not this host. After a turn is admitted, a caller may ask
  * Pi Agent Core to sequence one default model turn. This module does not
  * import Pi, does not execute native tools, and does not open a database.
- * The journal port is the M00 timeline seam; MemoryTurnJournal is process-local
- * only and must not become a second session store.
+ * The journal port is the M00 timeline seam. Production sessions use
+ * SessionFileTurnJournal on session.jsonl. MemoryTurnJournal is the
+ * process-local stand-in for unit tests and must not become a second store.
  */
 
 import type { ActorRef } from './actor'

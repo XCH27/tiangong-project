@@ -1,9 +1,9 @@
-import { writeFile, rename, unlink } from 'fs/promises'
+import { writeFileSync, renameSync, unlinkSync } from 'fs'
 import { dirname } from 'path'
 import type { StoredSession, SessionHeader } from './types.js'
 import { getSessionFilePath, ensureSessionsDir, ensureSessionDir } from './storage.js'
 import { toPortablePath } from '../utils/paths.js'
-import { createSessionHeader, makeSessionPathPortable, readSessionHeader } from './jsonl.js'
+import { createSessionHeader, makeSessionPathPortable, readHostSessionEventLines, readSessionHeader } from './jsonl.js'
 import { debug } from '../utils/debug.js'
 
 interface PendingWrite {
@@ -155,10 +155,14 @@ class SessionPersistenceQueue {
       this.lastWrittenHeaderSignature.set(sessionId, finalSignature)
 
       const tmpFile = filePath + '.tmp'
-      await writeFile(tmpFile, lines.join('\n') + '\n', 'utf-8')
+      // Read host-event lines in the same synchronous section as the replace
+      // so an append cannot land between the read and the rename.
+      const hostEventLines = readHostSessionEventLines(filePath)
+      const payload = [...lines, ...hostEventLines].join('\n') + '\n'
+      writeFileSync(tmpFile, payload)
       // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
-      try { await unlink(filePath) } catch { /* ignore if doesn't exist */ }
-      await rename(tmpFile, filePath)
+      try { unlinkSync(filePath) } catch { /* ignore if doesn't exist */ }
+      renameSync(tmpFile, filePath)
       debug(`[PersistenceQueue] Wrote session ${sessionId}`)
     } catch (error) {
       console.error(`[PersistenceQueue] Failed to write session ${sessionId}:`, error)

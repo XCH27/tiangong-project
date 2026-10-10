@@ -2,10 +2,12 @@
  * JSONL Session Storage
  *
  * Helpers for reading/writing sessions in JSONL format.
- * Format: Line 1 = SessionHeader, Lines 2+ = StoredMessage (one per line)
+ * Format: Line 1 = SessionHeader, later lines = StoredMessage.
+ * Host turn events are extra lines with record fleet_host_session_event.
+ * Chat reads skip them. Rewrites keep them.
  */
 
-import { openSync, readSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'fs';
+import { existsSync, openSync, readSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'fs';
 import { open, readFile } from 'fs/promises';
 import { dirname } from 'path';
 import type { SessionHeader, StoredSession, StoredMessage, SessionTokenUsage } from './types.ts';
@@ -21,6 +23,45 @@ import { pickSessionFields } from './utils.ts';
 // ============================================================
 
 const SESSION_PATH_TOKEN = '{{SESSION_PATH}}';
+
+/**
+ * Host turn events live in session.jsonl, the Craft session log.
+ * They are not chat messages. Readers skip this record. Rewrites keep the lines.
+ */
+export const HOST_SESSION_EVENT_RECORD = 'fleet_host_session_event';
+
+export function isHostSessionEventLine(line: string): boolean {
+  if (!line.includes(HOST_SESSION_EVENT_RECORD)) return false;
+  try {
+    const parsed = JSON.parse(line) as { record?: unknown };
+    return parsed.record === HOST_SESSION_EVENT_RECORD;
+  } catch {
+    return false;
+  }
+}
+
+export function readHostSessionEventLines(sessionFile: string): string[] {
+  if (!existsSync(sessionFile)) return [];
+  return readFileSync(sessionFile, 'utf-8')
+    .split('\n')
+    .filter((line) => isHostSessionEventLine(line));
+}
+
+/** Append one host-event line. The session file must already exist. */
+export function appendHostSessionEventLine(sessionFile: string, eventLine: string): void {
+  if (!existsSync(sessionFile)) {
+    throw new Error('session_file_missing');
+  }
+  if (!isHostSessionEventLine(eventLine)) {
+    throw new Error('invalid_host_session_event');
+  }
+  const content = readFileSync(sessionFile, 'utf-8');
+  const prefix = content.endsWith('\n') || content.length === 0 ? content : `${content}\n`;
+  const tmpFile = `${sessionFile}.tmp`;
+  writeFileSync(tmpFile, `${prefix}${eventLine}\n`);
+  try { unlinkSync(sessionFile); } catch { /* first writer races a missing file */ }
+  renameSync(tmpFile, sessionFile);
+}
 
 /**
  * Replace absolute session directory paths with a portable token.
@@ -154,6 +195,7 @@ export function writeSessionJsonl(sessionFile: string, session: StoredSession): 
   const lines = [
     makeSessionPathPortable(JSON.stringify(header), sessionDir),
     ...session.messages.map(m => makeSessionPathPortable(JSON.stringify(m), sessionDir)),
+    ...readHostSessionEventLines(sessionFile),
   ];
 
   const tmpFile = sessionFile + '.tmp';
@@ -287,6 +329,7 @@ export function readSessionMessages(sessionFile: string): StoredMessage[] {
 function parseMessagesResilient(lines: string[]): StoredMessage[] {
   const messages: StoredMessage[] = [];
   for (const line of lines) {
+    if (isHostSessionEventLine(line)) continue;
     try {
       messages.push(JSON.parse(line) as StoredMessage);
     } catch {
