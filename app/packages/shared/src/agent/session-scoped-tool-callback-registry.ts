@@ -61,6 +61,14 @@ export interface SessionScopedToolCallbacks {
     sessionId: string | undefined,
     status: string,
   ) => void | Promise<void | { status: string; reason?: string }>;
+  /**
+   * Rename a session (defaults to current).
+   * The return is the kernel result. A non-completed status did not write the name.
+   */
+  renameSessionFn?: (
+    sessionId: string | undefined,
+    name: string,
+  ) => void | Promise<void | { status: string; reason?: string }>;
   /** Get detailed info about a session (defaults to current). */
   getSessionInfoFn?: (sessionId?: string) => import('@craft-agent/session-tools-core').SessionInfo | null;
   /** List sessions in the workspace with pagination. */

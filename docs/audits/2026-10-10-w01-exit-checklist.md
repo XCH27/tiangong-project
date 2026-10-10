@@ -5,6 +5,7 @@
 > **What this file is:** a review note for the Lead. It inventories the session-chrome host-admit chain and the items that still block closing W0.1. It does not promote a decision, mark a wave Ready, add an action id, or change capability status.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not replace that list and does not check any item off.
 > **Earlier review:** `docs/audits/2026-10-10-spine-honesty-audit.md` still describes base `89b2e8a6`. That body is not rewritten.
+> **Follow-up:** agent `rename_session` is its own §13 `wired` row. That row is no longer `not implemented`. Title generation stays the desktop user. This note does not close W0.1.
 
 ## Gate status (unchanged)
 
@@ -31,7 +32,7 @@ PRs #28 and #30–#33 admit existing frozen ids on the one Craft session kernel 
 | Title generation (`generateTitle`, `refreshTitle`, first-message name slice) | `session.rename` as the desktop user. A refused admit leaves the name unchanged. | `wired` |
 | Send-time auto-labels (`applySendTimeAutoLabels`) | `session.set_labels`. A human send uses the desktop user. `send_agent_message` and `spawn_session` use the calling Craft session. A refused admit leaves the labels unchanged. | `wired` |
 | Mini-session auto-complete | Admits `session.set_status` as the host system actor. The L1 row denies `actor_not_permitted`. Status stays unchanged. | `fail-closed` |
-| Agent rename | No agent tool calls `session.rename`. | `not implemented` |
+| Agent rename (`rename_session`) | `session.rename`, actor = calling Craft session. A blank or missing caller does not write. | `wired` |
 | Unflag (`unflagSession`) | No frozen id. The command clears the flag and does not call `admitHostTurn`. | `not implemented` |
 
 `session.flag` does not publish a permission card. The three L1 chrome ids auto-admit because the frozen rows already carry an undo contract, so those turns also do not publish a card.
@@ -40,7 +41,7 @@ PRs #28 and #30–#33 admit existing frozen ids on the one Craft session kernel 
 
 The map's nine exit items stay open. BLK-001 (migration ledger and contract parity), BLK-002 (product/internal namespace), and BLK-003 (adapter spikes) are still the named blockers. `docs/UPSTREAM-BASELINE.md` still records `app/` short of the clean v0.11.0 baseline and still requires a retain/adapt/drop/defer ledger before W1 packets. Session chrome does not supply that evidence.
 
-These slices stay blocked inside that exit. A worker must not implement them from this note.
+These slices stay blocked inside that exit, except agent rename, which the follow-up above records as its own `wired` row. A worker must not implement the remaining items from this note.
 
 1. **Unflag.** Admission stays `not implemented` until the Lead freezes an id in `docs/contracts/action-ids.md` under the extension process, in the same commit as any `CONTRACT_VERSION` bump. This note does not invent `session.unflag`. That string is not in the frozen table and is not in the under-discussion list.
 
@@ -48,7 +49,7 @@ These slices stay blocked inside that exit. A worker must not implement them fro
 
 3. **Settings plugin writes.** Install, enable, and disable on Settings → Plugins stay Locked. The page does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only`: they build a `file.update` loadout request, admission refuses that verb, and no shell or IPC caller uses them. This note does not unlock Settings.
 
-4. **Agent `session.rename`.** The agent tools that admit are status and labels only. Rename from an agent stays `not implemented`. Title generation borrows the desktop user and is not an agent rename tool.
+4. **Agent `session.rename`.** Closed as its own §13 `wired` row by `rename_session`. A blank or missing caller does not write the name. Title generation still uses the desktop user and is not this row. This item no longer blocks W0.1. The other items in this list stay open.
 
 5. **Action-id owner mismatch.** `action-owner-policy.ts` refuses a plugin loadout, an MCP Apps sidebar focus, a DOM evidence snapshot, or a page-target write when the caller uses `file.update`, `file.create`, or `canvas.node_select`. That check is a payload heuristic on frozen v1.2.0. It is not the W0.1 re-freeze. The re-freeze still has to split risk, approval, undo, cancellation, retry, and evidence onto ids whose owners match the operation. Until that table exists, these refusals stay a guard, not a new contract.
 

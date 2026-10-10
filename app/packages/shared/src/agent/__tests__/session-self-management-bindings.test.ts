@@ -53,6 +53,7 @@ describe('Pi session self-management regression (#511)', () => {
     // This is the bug: PiAgent creates context without session management
     expect(ctx.setSessionLabels).toBeUndefined();
     expect(ctx.setSessionStatus).toBeUndefined();
+    expect(ctx.renameSession).toBeUndefined();
     expect(ctx.getSessionInfo).toBeUndefined();
     expect(ctx.listSessions).toBeUndefined();
     expect(ctx.resolveLabels).toBeUndefined();
@@ -66,19 +67,21 @@ describe('Pi session self-management regression (#511)', () => {
     // Register callbacks in the registry (simulates SessionManager)
     const setLabelsCalled: Array<[string | undefined, string[]]> = [];
     const setStatusCalled: Array<[string | undefined, string]> = [];
+    const renameCalled: Array<[string | undefined, string]> = [];
 
     registerSessionScopedToolCallbacks(sessionId, {
       setSessionLabelsFn: (sid, labels) => { setLabelsCalled.push([sid, labels]); },
       setSessionStatusFn: (sid, status) => { setStatusCalled.push([sid, status]); },
+      renameSessionFn: (sid, name) => { renameCalled.push([sid, name]); },
       getSessionInfoFn: (sid) => makeSessionInfo({ id: sid ?? sessionId }),
       listSessionsFn: () => ({ total: 1, returned: 1, sessions: [] }),
       resolveLabelsFn: (labels) => ({ resolved: labels, unknown: [], available: labels }),
       resolveStatusFn: (status) => ({ resolved: status, available: ['active', 'done'] }),
     });
 
-    // All 6 properties should now be defined
     expect(ctx.setSessionLabels).toBeDefined();
     expect(ctx.setSessionStatus).toBeDefined();
+    expect(ctx.renameSession).toBeDefined();
     expect(ctx.getSessionInfo).toBeDefined();
     expect(ctx.listSessions).toBeDefined();
     expect(ctx.resolveLabels).toBeDefined();
@@ -90,6 +93,9 @@ describe('Pi session self-management regression (#511)', () => {
 
     await ctx.setSessionStatus!(undefined, 'done');
     expect(setStatusCalled).toEqual([[undefined, 'done']]);
+
+    await ctx.renameSession!(undefined, 'Renamed');
+    expect(renameCalled).toEqual([[undefined, 'Renamed']]);
 
     const info = ctx.getSessionInfo!();
     expect(info).toBeTruthy();
@@ -117,13 +123,14 @@ describe('attachSessionSelfManagementBindings', () => {
     unregisterSessionScopedToolCallbacks(sessionId);
   });
 
-  it('absent callback → property is undefined for all 6 fields', () => {
+  it('absent callback → property is undefined for the self-management fields', () => {
     const ctx = createBaseContext(sessionId);
     attachSessionSelfManagementBindings(ctx, sessionId);
 
     // No callbacks registered — all should resolve to undefined
     expect(ctx.setSessionLabels).toBeUndefined();
     expect(ctx.setSessionStatus).toBeUndefined();
+    expect(ctx.renameSession).toBeUndefined();
     expect(ctx.getSessionInfo).toBeUndefined();
     expect(ctx.listSessions).toBeUndefined();
     expect(ctx.resolveLabels).toBeUndefined();
@@ -228,10 +235,11 @@ describe('Claude/Pi session self-management parity', () => {
     unregisterSessionScopedToolCallbacks(sessionId);
   });
 
-  it('both paths expose the same 6 bound properties when callbacks are registered', () => {
+  it('both paths expose the same bound properties when callbacks are registered', () => {
     const SELF_MGMT_PROPERTIES = [
       'setSessionLabels',
       'setSessionStatus',
+      'renameSession',
       'getSessionInfo',
       'listSessions',
       'resolveLabels',
@@ -241,6 +249,7 @@ describe('Claude/Pi session self-management parity', () => {
     registerSessionScopedToolCallbacks(sessionId, {
       setSessionLabelsFn: () => {},
       setSessionStatusFn: () => {},
+      renameSessionFn: () => {},
       getSessionInfoFn: () => makeSessionInfo({ id: sessionId }),
       listSessionsFn: () => ({ total: 0, returned: 0, sessions: [] }),
       resolveLabelsFn: (l) => ({ resolved: l, unknown: [], available: l }),
@@ -279,6 +288,11 @@ describe('Claude/Pi session self-management parity', () => {
     expect(statusResult.isError).toBe(true);
     expect(statusResult.content[0]!.text).toContain('not available in this context');
 
+    const renameHandler = SESSION_TOOL_REGISTRY.get('rename_session')!.handler!;
+    const renameResult = await renameHandler(ctx, { name: 'New name' });
+    expect(renameResult.isError).toBe(true);
+    expect(renameResult.content[0]!.text).toContain('not available in this context');
+
     const infoHandler = SESSION_TOOL_REGISTRY.get('get_session_info')!.handler!;
     const infoResult = await infoHandler(ctx, {});
     expect(infoResult.isError).toBe(true);
@@ -294,6 +308,7 @@ describe('Claude/Pi session self-management parity', () => {
     mergeSessionScopedToolCallbacks(sessionId, {
       setSessionStatusFn: async () => ({ status: 'denied', reason: 'malformed_actor' }),
       setSessionLabelsFn: async () => ({ status: 'completed' }),
+      renameSessionFn: async () => ({ status: 'denied', reason: 'credential_material_rejected' }),
     });
     const ctx = createBaseContext(sessionId);
     attachSessionSelfManagementBindings(ctx, sessionId);
@@ -307,5 +322,10 @@ describe('Claude/Pi session self-management parity', () => {
     const labelsResult = await labelsHandler(ctx, { labels: ['bug'] });
     expect(labelsResult.isError).toBe(false);
     expect(labelsResult.content[0]!.text).toContain('bug');
+
+    const renameHandler = SESSION_TOOL_REGISTRY.get('rename_session')!.handler!;
+    const renameResult = await renameHandler(ctx, { name: 'Bearer tokentoken' });
+    expect(renameResult.isError).toBe(true);
+    expect(renameResult.content[0]!.text).toContain('credential_material_rejected');
   });
 });

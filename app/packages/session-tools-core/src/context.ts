@@ -328,6 +328,16 @@ export interface SessionToolContext {
     status: string,
   ): void | Promise<void | SessionHeaderWriteResult>;
 
+  /**
+   * Rename a session. Defaults to the current session if no ID is given.
+   * Injected by the backend. The kernel result is the admit outcome.
+   * A refused result means the name was not written.
+   */
+  renameSession?(
+    sessionId: string | undefined,
+    name: string,
+  ): void | Promise<void | SessionHeaderWriteResult>;
+
   /** Get detailed info about a session. Defaults to current session if no ID given. Injected by backend. */
   getSessionInfo?(sessionId?: string): SessionInfo | null;
 

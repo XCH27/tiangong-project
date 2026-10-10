@@ -3,10 +3,11 @@
  *
  * session.rename, session.set_status, and session.set_labels are the frozen
  * M00 ids. The shell commands use the desktop human. The session tools use
- * the calling Craft session as the agent actor. Title generation uses the
- * desktop human as well: the row is L1, so the host system actor is denied,
- * and there is no agent rename tool to borrow. Each row is L1 with an undo
- * contract, so admission does not publish the permission card. If the gate
+ * the calling Craft session as the agent actor. That includes rename_session.
+ * Title generation uses the desktop human: the row is L1, so the host system
+ * actor is denied, and title generation does not call the agent rename tool.
+ * Each row is L1 with an undo contract, so admission does not publish the
+ * permission card. If the gate
  * returns approval_required, the caller waits for the existing card.
  * A system actor is not an agent seat. L1 denies it. Unflag has no frozen
  * id and is not in this file. This file does not add an action id.

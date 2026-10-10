@@ -4157,6 +4157,9 @@ export class SessionManager implements ISessionManager {
         setSessionStatusFn: (sessionId: string | undefined, status: string) => {
           return this.setSessionStatusFromAgent(managed.id, sessionId ?? managed.id, status)
         },
+        renameSessionFn: (sessionId: string | undefined, name: string) => {
+          return this.renameSessionFromAgent(managed.id, sessionId ?? managed.id, name)
+        },
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id
           const session = this.sessions.get(targetId)
@@ -5109,11 +5112,31 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * Agent rename_session tool. Admits session.rename on the target session
+   * kernel. The actor is the calling Craft session, not the desktop user
+   * and not the title-generation caller. A missing caller or a malformed
+   * actor does not write the name.
+   */
+  async renameSessionFromAgent(
+    callerSessionId: string,
+    targetSessionId: string,
+    name: string,
+  ): Promise<SessionChromeAdmission> {
+    const invocationId = randomUUID()
+    const caller = this.sessions.get(callerSessionId)
+    if (!caller) return { status: 'failed', invocationId, reason: 'caller_missing' }
+    const target = this.sessions.get(targetSessionId)
+    if (!target) return { status: 'failed', invocationId, reason: 'session_missing' }
+    const actor = agentActorForCallingSession(caller.id, caller.name)
+    return this.renameSessionAs(targetSessionId, name, actor)
+  }
+
+  /**
    * Automatic title and the human regenerate command. session.rename is L1,
-   * so the host system actor is denied. There is no agent rename tool, and
-   * this does not borrow the Craft session as an agent. The desktop user is
-   * the permitted caller that already renames the session. A refused admit
-   * does not change the name.
+   * so the host system actor is denied. This does not call
+   * renameSessionFromAgent and does not borrow the Craft session as an agent.
+   * The desktop user is the permitted caller that already renames the session
+   * from the shell. A refused admit does not change the name.
    */
   private applyGeneratedSessionName(sessionId: string, name: string): Promise<SessionChromeAdmission> {
     return this.renameSessionAs(sessionId, name, DESKTOP_APPROVER)
