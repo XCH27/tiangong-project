@@ -129,6 +129,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-10 | draft v1.1 | A local Agent Plugins 1.0.0 package projects skills and MCP servers into Market. Credential-shaped and unsafe fields add nothing. A remote store stays Locked. |
 | 2026-10-09 | draft v1.1 | Third-party notices fail closed when an admitted license is missing. The update-feed dry run stays local. A signed production feed stays Locked. |
 | 2026-10-10 | draft v1.1 | Unsigned packaging dry run checks version metadata and artifact layout. It does not publish. A signed production feed stays Locked. |
+| 2026-10-10 | draft v1.1 | One HostTurnKernel per Craft session in main journals into session.jsonl. Restart reads those events and does not restore turn phase. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -136,7 +137,7 @@ Pi Agent Core sequences a default model turn. It does not own admission, L0-L3 p
 
 The retained Craft subprocess in `app/packages/shared/src/agent/pi-agent.ts` still uses `@earendil-works/pi-coding-agent` as the provider turn client. That client is the upstream chat backend. A connection probe that is not Anthropic-compatible falls through to one host mini-completion; that probe is one sequenced turn.
 
-Fleet host admission for the frozen action table is the process-local loop in `app/packages/shared/src/protocol/turn-admission.ts`. It appends canonical `SessionEvent` kinds through a journal port. `MemoryTurnJournal` is a test and process-local stand-in. It is not a second session database.
+Fleet host admission for the frozen action table is the loop in `app/packages/shared/src/protocol/turn-admission.ts`. `SessionManager.openSessionHostKernel` constructs one `HostTurnKernel` when a Craft session is created, opened, imported, or admitted, and journals that session through `SessionFileTurnJournal` into the existing `session.jsonl`. Chat reads skip `fleet_host_session_event` lines. Session rewrites keep them. `MemoryTurnJournal` stays the unit-test stand-in and is not the product journal. A process restart reads those events. It does not rebuild in-memory turn phase, so an awaiting card is not republished until a new admit. `FileKernelSnapshotStore` and the per-feature `create*Host()` kernels are not this path. Codex and ACP executors are not attached here. Command execution, dynamic client tools, client filesystem writes, PTY, and any new action id stay `Locked`.
 
 `FileKernelSnapshotStore` writes `host-kernel-snapshot.json` in the existing session directory, beside `session.jsonl`, using the same write-to-temp-then-rename replace. It round-trips `KernelSnapshot` version 1 only. A different version throws `unsupported_snapshot_version` and leaves the previous file in place. `save`, `load`, and `HostTurnKernel.snapshot` pass through `sealHostRecord` before that JSON is written or returned. The gate removes credential-shaped keys and token strings, remaps raw Claude and ChatGPT/Pi usage, and omits cache or price numbers that were not observed. An explicit provider cache read of zero stays a confirmed miss. A price of zero stays confirmed only when a pricing reference is present. This file is the host execution projection of that session. It does not rewrite `session.jsonl` and it is not a new database. The broader M00 session adapter is still unresolved.
 
@@ -171,6 +172,7 @@ Release independence reads the admitted workspace packages and the bundled runti
 | In-process native effect after admission, including atomic file replace | `wired` |
 | Existing permission card approves or rejects an awaiting host turn | `wired` |
 | Awaiting host admit on the session kernel publishes that permission card | `wired` |
+| One HostTurnKernel per Craft session in main, journaled in `session.jsonl` | `wired` |
 | Page-local set-model plus shared update-target for human and agent callers | `wired` |
 | Codex app-server stdio JSON-RPC executor after host admission | `wired` |
 | ACP stdio JSON-RPC executor after host admission | `wired` |
