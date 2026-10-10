@@ -14,7 +14,7 @@
    event payloads, and orthogonal risk/approval/undo/cancel/retry/evidence policy.
 5. Promote or reject the proposed ArtifactRef, capability, ExternalJob, workflow, spatial, and view
    contracts needed by the first consumer waves.
-6. Decide the product/internal namespace before freezing plugin/storage API identifiers.
+6. Product/internal namespace strings are recorded in D50. This packet still does not authorize implementation.
 7. Align canonical implementation with the approved contract text; record version/evidence in the
    Wave Map.
 8. Generate replacement packets with one Worker per worktree and no Lead-owned protocol writes.

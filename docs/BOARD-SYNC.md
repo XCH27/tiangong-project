@@ -303,7 +303,7 @@ Board Cards section. Do not create a new file format for this; append the block 
   - Clean Craft Agents v0.11 migration ledger and baseline validation
   - Canonical implementation parity evidence and a newly frozen contract version
   - Caller/idempotency/revision/action-policy plus ArtifactRef/capability/job/workflow/spatial/view contract decisions
-  - Persistence authority and product/internal namespace decision
+  - Persistence authority. Product/internal namespace strings are recorded in D50.
   - Documentation Readiness promotion for the exact W1 slices
   - Replacement W1/W2+ packets
 - Blocker:

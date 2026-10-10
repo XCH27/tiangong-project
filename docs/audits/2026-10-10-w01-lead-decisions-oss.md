@@ -5,6 +5,8 @@
 > **Base:** `6887f1ec` (`work/fresh-base-spine` after #38), then this freeze.
 > **Contract:** `docs/contracts/action-ids.md` v1.3.0 and `CONTRACT_VERSION` `1.3.0` in `app/packages/shared/src/protocol/internal-action.ts`, same change.
 > **What this does not do:** It does not mark W0.1 or W1 Ready. It does not promote any capability to `usable`. It does not edit Ready cells in `docs/WAVE-MODULE-MAP.md`. Settings plugin writes stay Locked.
+>
+> **Amendment (2026-10-10, D50):** Criterion 2 below is met. The product and internal strings are `docs/audits/2026-10-10-blk002-namespace-oss.md`. Criteria 3, 4, and 5 are not met. Settings stays Locked. W0.1 stays Locked. The body of this note is otherwise unchanged.
 
 ## How the comparison was bounded
 
@@ -99,14 +101,14 @@ After #41–#43 (`92ee3ea5`), the guest host admits `browser.dom_snapshot`, the 
 
 **Choice.** Do not unlock Settings → Plugins. `plugin.loadout_mutate` is frozen so a later caller has an id. `SessionManager.applySessionPluginMutation` still sends `file.update` and is still refused. `PluginsSettingsPage` still does not call it and still does not construct `createPluginSettingsHost`. §13 stays `Locked` for install, enable, and disable.
 
-The shell path does not meet the #38 criteria. Wiring a button would invent the write, and the product/internal namespace (BLK-002) is still pending in `docs/DECISIONS-LEDGER.md`. A Settings caller must not decide that namespace.
+The shell path does not meet the #38 criteria. Wiring a button would invent the write. The product/internal namespace is D50, recorded after this note. A Settings caller still does not decide it, and this section still does not unlock the page.
 
 ### When a later change may write the loadout
 
 All of these are true on the spine:
 
 1. `plugin.loadout_mutate` is in the frozen table and `CONTRACT_VERSION` is `1.3.0` in that same commit. This change meets this item only.
-2. The product/internal namespace is a ledger decision (exit item 6 / BLK-002), including plugin API keys and storage prefixes. A Settings caller does not invent it.
+2. The product/internal namespace is a ledger decision (exit item 6 / BLK-002), including plugin API keys and storage prefixes. A Settings caller does not invent it. **Met by D50 (2026-10-10).** The strings are recorded. This criterion alone does not unlock the page.
 3. One production caller, a Settings → Plugins control or an IPC/RPC handler, calls `SessionManager.applySessionPluginMutation` for install, enable, or disable with `plugin.loadout_mutate`. `createPluginSettingsHost` is not that caller.
 4. The L2 row publishes the existing permission card. Allow and Deny go through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow is the only path that writes. Deny writes nothing. Always Allow resolves that invocation and does not store `decision: 'approved'`.
 5. The catalog is the Craft skills and sources the agent already loads. `.claude-plugin/loadout.json` is not a second authority. There is no renderer-local kernel.
@@ -138,14 +140,14 @@ ACP `allow_always`, OpenCode session `always`, Cline `auto_approve`, goose Alway
 
 ## Remaining Lead exit work
 
-W0.1 stays Locked. These exit items in `docs/WAVE-MODULE-MAP.md` §3 are still open:
+W0.1 stays Locked. These exit items in `docs/WAVE-MODULE-MAP.md` §3 remain, and item 6 is the only one decided:
 
 1. Clean Craft Agents OSS v0.11.0 baseline.
 2. Retain/adapt/drop/defer ledger (BLK-001).
 3. Canonical parity for AgentSeat, identity, caller provenance, idempotency, revisions, typed events, and the rest of action policy. This note covers the action-id slice only.
 4. ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts.
 5. Physical persistence authority.
-6. Product/internal namespace (BLK-002).
+6. Product/internal namespace (BLK-002). **Closed as a name decision by D50.** The other items in this list stay open.
 7. Ownership precedence.
 8. Active packets matching the map.
 9. W1 Ready, which is not declared.

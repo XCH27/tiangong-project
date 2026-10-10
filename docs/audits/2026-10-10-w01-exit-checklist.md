@@ -23,6 +23,8 @@
 > **Follow-up (sidebar focus):** The MCP Apps test host admits frozen `workbench.sidebar_focus` for open, focus, and close. The row is L0, so the turn does not wait for a card and does not publish the Craft session card. The Electron pane does not construct `createMcpAppsHost`, so §13 stays `test-only`. `canvas.node_select` still refuses the payload. This note does not close W0.1 and does not promote `usable`.
 >
 > **Follow-up after #41–#43 (`92ee3ea5`):** `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts. §13 labels each `test-only`. None of the three has a shell or IPC caller, and none publishes the Craft session card. `file.create`, `file.update`, and `canvas.node_select` still refuse those payloads. `plugin.loadout_mutate` still has no caller. Settings plugin writes stay Locked. W0.1 stays Locked. Nothing in those admits is `usable`.
+>
+> **Follow-up (BLK-002, D50):** The product/internal namespace strings are recorded. Exit item 6 is decided. BLK-001, BLK-003, and the other §3 items stay open. Settings stays Locked. This note does not close W0.1 and does not promote `usable`.
 
 ## Gate status (unchanged)
 
@@ -56,7 +58,7 @@ PRs #28 and #30–#33 admit existing frozen ids on the one Craft session kernel 
 
 ## What still blocks the Lead from closing W0.1
 
-The map's nine exit items stay open. BLK-001 (migration ledger and contract parity), BLK-002 (product/internal namespace), and BLK-003 (adapter spikes) are still the named blockers. `docs/UPSTREAM-BASELINE.md` still records `app/` short of the clean v0.11.0 baseline and still requires a retain/adapt/drop/defer ledger before W1 packets. Session chrome does not supply that evidence.
+BLK-001 (migration ledger and contract parity) and BLK-003 (adapter spikes) stay open. BLK-002 is closed as a name decision by D50. The other §3 items stay open. `docs/UPSTREAM-BASELINE.md` still records `app/` short of the clean v0.11.0 baseline and still requires a retain/adapt/drop/defer ledger before W1 packets. Session chrome does not supply that evidence.
 
 These slices stay blocked inside that exit, except agent rename and unflag, which are their own §13 `wired` rows. A worker must not implement the remaining items from this note.
 
@@ -79,5 +81,5 @@ These slices stay blocked inside that exit, except agent rename and unflag, whic
 - The v1.3.0 freeze is D47–D49 in `docs/DECISIONS-LEDGER.md` and the Lead-decisions follow-up. `browser.screenshot`, `workbench.view_open`, and the other under-discussion names stay unfrozen. Binding deletion has no id.
 - `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts and stay `test-only`. No shell, IPC, or Craft card caller exists for those three. The old verbs still refuse the payloads. `plugin.loadout_mutate` still has no caller.
 - Settings plugin writes stay Locked under D49. There is no plugin marketplace and no standing loadout grant.
-- No `usable` row. Only the Lead promotes `usable`. W0.1 stays Locked. The nine §3 exit items stay open.
+- No `usable` row. Only the Lead promotes `usable`. W0.1 stays Locked. Exit item 6 is D50. The other §3 exit items stay open.
 - This note does not edit `docs/WAVE-MODULE-MAP.md` or `docs/OWNERSHIP-MATRIX.md`. D47–D49 are the ledger rows #39 added for this freeze.

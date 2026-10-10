@@ -75,8 +75,8 @@ non-linear order, across multiple conversations. This file:
 **Engineering implication (Agent-selected route):**
 - M03 Internal Action Registry is the single extension point. New features register actions;
   they do not wire directly into UI or session state.
-- M12 defines one structured capability manifest; namespace syntax remains a W0.1 decision and is
-  not used alone as a security boundary.
+- M12 defines one structured capability manifest. D50 records the identifier strings. The
+  namespace string is not a security boundary by itself.
 - M16 registers panels/surfaces/inspectors; M17 composes typed capability operations; M07 renders
   module-contributed entity cards without becoming the owner of native state.
 

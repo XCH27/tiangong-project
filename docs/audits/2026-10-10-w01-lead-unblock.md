@@ -5,7 +5,7 @@
 > **Current base:** `92ee3ea5` (`work/fresh-base-spine` after merged PR #43)
 > **What this file is:** the Lead decision list written after #37 for unflag, the action-id split, and Settings plugin writes. #39 landed the first two. #41–#43 admit three of the split ids on test hosts and leave them `test-only`. Settings stays Locked.
 > **Inventory:** `docs/audits/2026-10-10-w01-exit-checklist.md` records the chrome chain. This packet does not replace that inventory and does not check any exit item off.
-> **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This packet does not edit that map. The nine exit items stay open.
+> **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This packet does not edit that map. Exit item 6 was later decided by D50. The other exit items stay open.
 > **Frozen table:** `docs/contracts/action-ids.md` is v1.3.0. `CONTRACT_VERSION` in `app/packages/shared/src/protocol/internal-action.ts` is `1.3.0`.
 >
 > **Status after #39 (`31b2e1b`):** D47 freezes `session.unflag`. §13 in `docs/modules/00-platform-spine.md` labels the human command `wired`. D48 freezes `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus`. At that commit those four ids have no production caller. D49 keeps Settings plugin writes Locked. The choice record is `docs/audits/2026-10-10-w01-lead-decisions-oss.md`. W0.1 stays Locked. This packet does not mark Ready or `usable`.
@@ -17,6 +17,8 @@
 > **Status after the sidebar host:** open, focus, and close admit `workbench.sidebar_focus` on the MCP Apps test host. The row is L0, so there is no card and the host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `canvas.node_select` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
 > **Status after #43 (`92ee3ea5`):** `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts. §13 stays `test-only` for each. None has a shell or IPC caller. None publishes the Craft session card. The old verbs still refuse those payloads. `plugin.loadout_mutate` still has no caller. Settings stays Locked. W0.1 stays Locked. Nothing in #41–#43 is `usable`.
+>
+> **Status after D50 (2026-10-10):** BLK-002 is closed as a name decision. The strings are `docs/audits/2026-10-10-blk002-namespace-oss.md`. D49 criterion 2 is met. Settings stays Locked. The other §3 exit items stay open. This packet does not mark Ready or `usable`.
 
 ## Gate status (unchanged)
 
@@ -87,14 +89,14 @@ Workers do not implement a production caller for these ids from this packet.
 
 ## 3. Settings plugin writes
 
-**Settings stays Locked (D49).** #39 froze `plugin.loadout_mutate` and did not add a Settings caller. Install, enable, and disable on Settings → Plugins stay Locked until the acceptance tests in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` pass, including the product/internal namespace (exit item 6 / BLK-002). This packet does not unlock Settings.
+**Settings stays Locked (D49).** #39 froze `plugin.loadout_mutate` and did not add a Settings caller. Install, enable, and disable on Settings → Plugins stay Locked until the acceptance tests in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` pass. D50 meets the namespace criterion. The caller criteria are still open. This packet does not unlock Settings.
 
 Today the page does not write `.claude-plugin/loadout.json`. It does not construct `createPluginSettingsHost` and does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` build a `file.update` loadout request. Admission refuses that verb. No shell or IPC caller uses those methods, so the API stays `test-only`. §13 keeps "Plugin loadout install, enable, and disable from Settings" at `Locked`.
 
 ### D49 criteria still open
 
 - The loadout id is `plugin.loadout_mutate`, owner M12, frozen in §2. A `file.update` request stays an owner mismatch.
-- Exit item 6 and BLK-002 stay open: the product/internal namespace is still undecided. A Settings caller does not decide that namespace.
+- Exit item 6 and BLK-002 are closed as a name decision by D50. A Settings caller does not decide that namespace, and D50 does not add one.
 - The production caller, when it exists, is a Settings → Plugins shell control or an IPC/RPC handler that calls `SessionManager` on the existing session kernel. `createPluginSettingsHost` stays off that path so the page does not grow a second host.
 - The frozen row publishes the existing permission card. There is no standing loadout grant.
 
@@ -102,7 +104,7 @@ Today the page does not write `.claude-plugin/loadout.json`. It does not constru
 
 All of these are true on the spine:
 
-1. `plugin.loadout_mutate` is in the frozen table and `CONTRACT_VERSION` is `1.3.0` (met in #39). The product/internal namespace for that identifier is still unrecorded (exit item 6).
+1. `plugin.loadout_mutate` is in the frozen table and `CONTRACT_VERSION` is `1.3.0` (met in #39). The product/internal namespace for that identifier is D50 (exit item 6). That record does not unlock the write.
 2. A production shell or IPC caller on Settings → Plugins invokes `SessionManager.applySessionPluginMutation` for install, enable, or disable with `plugin.loadout_mutate`.
 3. That caller settles the card through `SessionManager.resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow is the only path that writes `.claude-plugin/loadout.json`. Deny writes nothing.
 4. `createPluginSettingsHost` is still not the production caller.
@@ -114,14 +116,14 @@ This packet leaves the methods `test-only` and the Settings rows `Locked`. A lat
 
 **W0.1 stays Locked.** The Lead has not closed `docs/WAVE-MODULE-MAP.md` §3 and has not changed W1 to Ready. Absence of that declaration means Locked. Only the Lead promotes a gate to Ready or a capability to `usable`. A documentation change does not promote capability.
 
-The unflag freeze and the split-id freeze are on the spine. `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts and stay `test-only`. Settings stays Locked. The nine exit items stay open:
+The unflag freeze and the split-id freeze are on the spine. `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts and stay `test-only`. Settings stays Locked. Exit item 6 is D50. The other exit items stay open:
 
 1. A clean Craft Agents OSS v0.11.0 baseline is still unrecorded. `docs/UPSTREAM-BASELINE.md` still requires that baseline before W1 packets.
 2. The retain/adapt/drop/defer ledger for Fleet-only behaviour is still unrecorded (BLK-001).
 3. Canonical parity for AgentSeat, identity, caller provenance, idempotency, revisions, typed events, and action policy is still open. An action-id bump covers only the action-id slice of this item.
 4. ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts are still unfrozen and not version-gated for their first consumer wave.
 5. Physical persistence authority and recovery from `docs/PERSISTENCE-AUTHORITY-MAP.md` are still unrecorded as the W0.1 exit.
-6. The product/internal namespace is still unresolved (BLK-002). A Settings plugin caller does not close it.
+6. The product/internal namespace is D50 (BLK-002 closed as a name decision). A Settings plugin caller is still absent.
 7. Ownership precedence and non-overlapping domains are still an open exit item.
 8. Active packets still have to agree with the map and grant no Worker frozen-protocol writes.
 9. W1 Ready is still undeclared. W1–W5, including W3A/W3B, stay Locked.

@@ -92,3 +92,18 @@ The interactive user approval interface in the desktop shell UI where L3 destruc
 ### Spec Maturity
 Documentation quality independent of capability status: `concept`, `contract draft`, or
 `execution-ready`. See `docs/DOCUMENT-READINESS.md`.
+
+### Internal namespace
+The host owner string `fleet` (D50). Journal and execution strings that already exist
+are `fleet_host_session_event` and `fleet_host_turn_admission`. Dot count is not this boundary.
+Core contribution ids use `fleet:<token>`.
+
+### Product plugin name
+A kebab-case plugin `name` (D50). Reserved names are `fleet`, `craft-agent`, and `.agents`.
+Catalog ids are `skill:<slug>`, `mcp:<slug>`, `skill:<plugin>.<skill>`, and
+`mcp:<plugin>/<server>`.
+
+### Manifest API keys
+The product plugin fields `$schema` and `name` on root `plugin.json`, plus the optional
+metadata the Agent Plugins 1.0.0 reader already accepts (D50). Secret API keys are credentials,
+not these fields.

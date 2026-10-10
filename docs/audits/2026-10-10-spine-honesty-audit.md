@@ -16,6 +16,8 @@
 > **Follow-up after PR #39 (2026-10-10):** squash `31b2e1b` on `work/fresh-base-spine`. This audit body is not rewritten. The action-id freeze landed. `CONTRACT_VERSION` is 1.3.0. `session.unflag` is frozen and §13 labels the human command `wired` (D47). At that commit, `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus` are frozen (D48) and have no production caller. Settings plugin writes stay Locked (D49). W0.1 stays Locked. The nine items in `docs/WAVE-MODULE-MAP.md` §3 stay open. Nothing in that freeze is `usable`. The §3 item 3 re-freeze recommendation below is historical for the audited base.
 >
 > **Follow-up after PRs #41–#43 (2026-10-10):** squash `92ee3ea5` on `work/fresh-base-spine`. This audit body is not rewritten. `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts. §13 labels each `test-only`. None has a shell or IPC caller, and none publishes the Craft session card. `file.create`, `file.update`, and `canvas.node_select` still refuse those payloads. `plugin.loadout_mutate` still has no caller. Settings plugin writes stay Locked (D49). W0.1 stays Locked. Nothing in those admits is `usable`. The DOM-capture and owner-mismatch sections below are historical for the audited base.
+>
+> **Follow-up (D50, 2026-10-10):** BLK-002 is closed as a name decision. The §4 row that lists namespace (BLK-002) among the reasons W1 stays Locked is historical for that cell. W1 stays Locked because the other W0.1 exit items are open and no Ready declaration exists. Settings stays Locked. This audit body is not rewritten.
 
 ## Verdict
 
