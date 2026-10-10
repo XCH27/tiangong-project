@@ -2,10 +2,10 @@
 
 > **Capability status:** `not implemented` for the target baseline
 > **Execution gate:** W0.1 Lead-only; Worker implementation Locked
-> **Spec maturity:** contract draft; behaviour ledger started 2026-10-10 (D52); Mac source tree recorded 2026-10-10; `typecheck:all` failed (exit 2) after #51; Electron launch and relaunch recorded 2026-10-10 with the desktop loop still incomplete; fleet-old rows still open
+> **Spec maturity:** contract draft; behaviour ledger started 2026-10-10 (D52); Mac source tree recorded 2026-10-10; `typecheck:all` failed (exit 2) after #51; Electron launch and relaunch recorded 2026-10-10; RPC project create, session turn, and `browser-pane:create` recorded 2026-10-10; Kanban board UI and Settings panel UI still open; fleet-old rows still open
 > **Wave:** W0.1 migration gate
 > **Owner:** Lead
-> **Depends on:** verified upstream `v0.11.0` in `UPSTREAM-BASELINE.md` (pin D51; Mac source tree recorded; `typecheck:all` failed exit 2; Electron launch and relaunch recorded; desktop loop still incomplete)
+> **Depends on:** verified upstream `v0.11.0` in `UPSTREAM-BASELINE.md` (pin D51; Mac source tree recorded; `typecheck:all` failed exit 2; Electron launch and relaunch recorded; RPC project create, session turn, and `browser-pane:create` recorded; Kanban board UI and Settings panel UI still open)
 
 ## 1. Purpose
 

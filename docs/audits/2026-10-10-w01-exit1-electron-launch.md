@@ -11,6 +11,13 @@
 > **Exit item 1:** stays open. Launch and relaunch do not close it. `typecheck:all` remains the #52 failure. The migration branch is still absent.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not check item 1 off.
 > **Earlier source-tree note:** `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`.
+> **Later RPC note:** `docs/audits/2026-10-10-w01-exit1-rpc-loop.md`. That pass does not close Exit item 1.
+
+## Follow-up after #53 (`9824a1a3`)
+
+The later RPC pass is `docs/audits/2026-10-10-w01-exit1-rpc-loop.md`. It was taken against the live `bun run electron:dev` Craft Electron, pid `71904`. AX listed that window as `Craft Agents`. That pid is not pid `4855` (`Fleet 项目审查`).
+
+The checklist and the "still required" list below are the #53 launch record. They stay as that record. The RPC note supersedes three of those open rows, and only as WebSocket results: a new project slug on disk, one `sessions:sendMessage` on `260912-misty-tiger` with assistant content `pong`, and `browser-pane:create` returning `browser-1`. Kanban board UI, Settings panel UI, `typecheck:all`, and the migration branch stay open. Exit item 1 stays open.
 
 ## Authority path
 
@@ -127,6 +134,8 @@ Log-backed rows stay. The evidence file's own checklist marked "window title Fle
 | Screenshot of Craft | Not captured |
 
 ## What is still required before Exit item 1 can close
+
+The list below is what this launch record still required. The RPC follow-up records items 1, 3, and 5 as WebSocket results, not as AX clicks or screenshots. Item 2 (Kanban board UI) and item 4 (Settings panel UI) stay required. Items 6 and 7 stay required. Detail: `docs/audits/2026-10-10-w01-exit1-rpc-loop.md`.
 
 On the same Mac path:
 

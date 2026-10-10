@@ -7,8 +7,18 @@
 > **Authority:** the Mac path below. This cloud workspace does not contain that checkout. A public listing of the same SHA is corroboration of directory names only.
 > **Capability:** `not implemented` for the clean v0.11 baseline. Nothing in this note is `usable`.
 > **Gates:** W0.1 stays In Progress and Locked for workers. W1 stays Locked. No wave is Ready.
-> **Exit item 1:** stays open. The D51 pin does not close it. The source tree does not close it. A finished non-frozen install does not close it. A failed typecheck does not close it. Electron launch and relaunch are recorded in `docs/audits/2026-10-10-w01-exit1-electron-launch.md` and do not close it. Kanban, a new project, an ordinary session turn, the Settings panel, and BrowserPane are still not done.
+> **Exit item 1:** stays open. The D51 pin does not close it. The source tree does not close it. A finished non-frozen install does not close it. A failed typecheck does not close it. Electron launch and relaunch are recorded in `docs/audits/2026-10-10-w01-exit1-electron-launch.md` and do not close it. An authenticated RPC pass is recorded in `docs/audits/2026-10-10-w01-exit1-rpc-loop.md` and does not close it. Kanban board UI and the Settings panel UI are still not verified.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not check item 1 off.
+
+## Follow-up after #53 (`9824a1a3`)
+
+Authenticated WebSocket RPC against the live `bun run electron:dev` Craft Electron is `docs/audits/2026-10-10-w01-exit1-rpc-loop.md`. Pid `71904`. AX window title `Craft Agents`. That pid is not pid `4855` (`Fleet 项目审查`). The client used `ws://127.0.0.1:9100` with `protocolVersion` `1.0`. This was not an AX click for Kanban or Settings, and not a screencapture.
+
+`projects:create` wrote slug `exit1-loop-evidence-2026-10-10t14-07-27` under `~/.craft-agent/workspaces/my-workspace/projects/`. The existing `projects/project` directory is not that create. `sessions:sendMessage` on `260912-misty-tiger` accepted; user message `msg-1791641248077-usni4x` persisted; assistant reply `msg-1791641251704-leme9f` content `pong`. `browser-pane:create` returned `browser-1`. `tasks:list` returned `0` (empty board data, not a Kanban UI open). `settings:getServerStatus` reported `running: true`. `settings:getServerConfig` reported enabled and a port. Those settings responses included a token; the token is not written here. `menu:openSettings` returned no handler. Settings panel UI is not verified.
+
+`typecheck:all` stays the #52 failure. The migration branch is still absent. `app/` is not replaced. Exit item 1 stays open. W0.1 stays In Progress. W1 stays Locked. The clean v0.11 baseline stays `not implemented`.
+
+Rows below that say a new project, a session turn, and BrowserPane were not done describe #51 and #52, and the launch record before this RPC. They are superseded for those three RPC results only.
 
 ## Follow-up after #52 (`2ee3ec0e`)
 
@@ -22,7 +32,7 @@ Corrected 2026-10-10: the first draft of this follow-up said System Events saw w
 
 Quit of parent pid `67450` is recorded as `QUIT_OK`. Relaunch is recorded as `RELAUNCH_OK`. The relaunch log shows `Loaded 3 sessions from disk (metadata only)` and `App initialized successfully` again. SHA-256 of `session.jsonl` for `260909-fit-tide`, `260909-ruby-bear`, and `260912-misty-tiger` was unchanged. `projects/project/config.json` was still present. That project directory was not created in this pass.
 
-Still not done: create a new project, open Kanban, send an ordinary session turn, verify the Settings panel on the Craft window, open BrowserPane. The migration branch is still absent. `app/` is not replaced. Exit item 1 stays open. W0.1 stays In Progress. W1 stays Locked. The clean v0.11 baseline stays `not implemented`.
+At this #52 launch record, still not done were: create a new project, open Kanban, send an ordinary session turn, verify the Settings panel on the Craft window, open BrowserPane. The RPC follow-up after #53 records the project create, the session turn, and `browser-pane:create`. Kanban board UI and Settings panel UI stay unverified. The migration branch is still absent. `app/` is not replaced. Exit item 1 stays open. W0.1 stays In Progress. W1 stays Locked. The clean v0.11 baseline stays `not implemented`.
 
 ## Follow-up after #51 (`8cd1365d`)
 
@@ -43,7 +53,7 @@ The authority path is unchanged. HEAD, the tag, and the package version are unch
 | Later errors in the same log | `@types/cacheable-request` / `keyv` Store and ResponseLike issues, and `packages/core` source errors (regex flags, Set iteration, `validation.ts`). |
 | Fix | None recorded. This note does not invent one. |
 | Electron launch | Not run at this #52 record. The follow-up after #52 records launch and relaunch. |
-| Project, Kanban, session turn, settings, BrowserPane, restart | Not run at this #52 record. Restart of the existing workspace is recorded in the follow-up after #52. Create-new-project, Kanban, session turn, Settings panel, and BrowserPane stay not done. |
+| Project, Kanban, session turn, settings, BrowserPane, restart | Not run at this #52 record. Restart of the existing workspace is recorded in the follow-up after #52. The RPC follow-up after #53 records project create, the session turn, and `browser-pane:create`. Kanban board UI and Settings panel UI stay unverified. |
 | Migration branch | Still absent. `app/` is not replaced. |
 
 The ellipsis in the `TS5083` message is the report as given. This note does not reconstruct the absolute path and does not claim a repair for the missing `tsconfig.base.json`.
@@ -69,7 +79,7 @@ Populated worktree on Vella's Mac. The install-finish and typecheck rows in the 
 | `bun install` (not frozen) | started; finish was not confirmed at #51. The follow-up records that it finished. |
 | Typecheck | not yet run at #51. The follow-up records exit 2. |
 | Electron launch | not yet run at #51. The follow-up after #52 records launch and relaunch. |
-| Project, task, session turn, settings, BrowserPane, restart | not yet run at #51. Restart of the existing workspace is recorded after #52. Create-new-project, Kanban, session turn, Settings panel, and BrowserPane stay not done. |
+| Project, task, session turn, settings, BrowserPane, restart | not yet run at #51. Restart of the existing workspace is recorded after #52. The RPC follow-up after #53 records project create, the session turn, and `browser-pane:create`. Kanban board UI and Settings panel UI stay unverified. |
 
 Exit code and stderr for the frozen install were not supplied. This note does not invent them.
 
@@ -89,7 +99,7 @@ The README architecture diagram (about lines 350–360) draws `apps/cli`, `apps/
 
 This cloud workspace still has no copy of the path above. `源码参考/software/craft-agents-oss` on the Fleet tree remains the empty gitlink at the v0.10.5 parent. `app/package.json` remains `0.10.5`.
 
-A public directory listing of `craft-ai-agents/craft-agents-oss` at `f4e172bf372f4ccc7389a189be1e0b0541f96282` shows the same `apps/` and `packages/` names, the same `package.json` version `0.11.0`, and no top-level `projects/` or `tasks/`. That listing agrees with the Mac report. It is not a populated checkout on this machine. The Mac path is the authority for HEAD, the exact tag on that worktree, the finished non-frozen install, the typecheck failure, and the Electron launch and relaunch.
+A public directory listing of `craft-ai-agents/craft-agents-oss` at `f4e172bf372f4ccc7389a189be1e0b0541f96282` shows the same `apps/` and `packages/` names, the same `package.json` version `0.11.0`, and no top-level `projects/` or `tasks/`. That listing agrees with the Mac report. It is not a populated checkout on this machine. The Mac path is the authority for HEAD, the exact tag on that worktree, the finished non-frozen install, the typecheck failure, the Electron launch and relaunch, and the later RPC pass.
 
 ## Install and typecheck state
 
@@ -109,10 +119,10 @@ Install and `typecheck:all` are recorded. Typecheck failed, so it does not satis
 
 The acceptance already written in `docs/audits/2026-10-10-w01-v011-baseline-blk001.md` is only partly recorded:
 
-1. Open existing workspace `my-workspace`: done by restore in the Craft log. Create a new project: not done. `projects/project/` was already present. Open the Kanban board: not verified. Send one ordinary session turn: not run. Settings panel on Craft: not verified. The earlier `Cmd+,` targeted pid `4855` (`Fleet 项目审查`), not Craft, and is retracted. Open BrowserPane: not opened. Quit and relaunch: done (`QUIT_OK`, `RELAUNCH_OK`). `session.jsonl` hashes and `projects/project/config.json`: still present and unchanged.
+1. Open existing workspace `my-workspace`: done by restore in the Craft log. Create a new project: done later by RPC `projects:create` (slug `exit1-loop-evidence-2026-10-10t14-07-27`). `projects/project/` was already present and does not count as that create. Open the Kanban board UI: not verified. `tasks:list` later returned `0` and is not that UI. Send one ordinary session turn: done later by RPC `sessions:sendMessage` on `260912-misty-tiger` (assistant content `pong`). Settings panel on Craft: not verified. The earlier `Cmd+,` targeted pid `4855` (`Fleet 项目审查`), not Craft, and is retracted. `menu:openSettings` later returned no handler. Open BrowserPane: `browser-pane:create` later returned `browser-1` (RPC, not an AX click or a screenshot). Quit and relaunch: done (`QUIT_OK`, `RELAUNCH_OK`). `session.jsonl` hashes and `projects/project/config.json` at the #53 relaunch: still present and unchanged. This note does not supply a post-turn hash.
 2. A migration branch whose base is that checkout: still absent.
 
-Until the unfinished steps are written down, Exit item 1 stays open. A recorded install, a failed typecheck, and this launch without the rest of the loop still leave Exit item 1 open. `app/` is not replaced.
+Until Kanban board UI, Settings panel UI, a recorded `typecheck:all` result other than the #52 failure, and the migration branch are written down, Exit item 1 stays open. A recorded install, a failed typecheck, the launch, and this RPC pass still leave Exit item 1 open. `app/` is not replaced.
 
 ## What this note does not do
 
