@@ -33,6 +33,8 @@
 > **Follow-up (v0.11 pin and BLK-001 ledger):** `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`, D51, and D52. The pin is tag `v0.11.0` at `f4e172bf`. The behaviour ledger is recorded. Exit items 1 and 2 stay open: there is no populated checkout, no desktop loop, no fleet-old tree, and no file-by-file `app/` diff. Items 3–5 and 7–9 stay open. Item 6 stays D50. BLK-001 stays open. This note does not close W0.1 and does not promote `usable`.
 >
 > **Follow-up (Settings plugin caller, #49 `9fdb881e`):** Settings install, enable, and disable are `wired`. The page calls `plugins:mutateLoadout`. That handler admits `plugin.loadout_mutate` and publishes the Craft session permission card. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow writes the catalog the agent loads. Deny writes nothing. §13 labels that caller `wired`. `createPluginSettingsHost` stays `test-only`. `file.update` still refuses the payload. `op: grant` stays `standing_grant_rejected`. The caller is not `usable`. W0.1 stays Locked. This note does not mark Ready.
+>
+> **Follow-up (Exit 1 Mac source tree):** `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`. A populated source tree on Vella's Mac matches the D51 pin. `bun install --frozen-lockfile` failed. Non-frozen `bun install` is not confirmed finished. Typecheck and Electron launch are not yet run. The earlier sentence in this header that says there is no populated checkout is superseded for the source tree only. Exit item 1 stays open. The pin and the source tree do not close it. This note does not close W0.1 and does not promote `usable`.
 
 ## Gate status (unchanged)
 

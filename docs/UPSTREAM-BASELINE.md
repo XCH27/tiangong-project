@@ -2,7 +2,7 @@
 
 > **Status:** blocking implementation migration  
 > **Owner:** Lead  
-> **Verified:** 2026-07-09; pin re-checked 2026-10-10 (D51)
+> **Verified:** 2026-07-09; pin re-checked 2026-10-10 (D51); Mac source tree recorded 2026-10-10; desktop loop not yet run
 
 ## Canonical Upstream
 
@@ -16,7 +16,9 @@ The pin was read through the public GitHub API. This cloud workspace does not co
 
 The behaviour ledger, the gaps, and the Mac acceptance checks are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md` (D51, D52). That note does not close W0.1 and does not replace `app/`.
 
-Paths confirmed at `f4e172bf`:
+The Mac source tree at the same pin is `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`. That path is the authority for the populated checkout. This cloud workspace still does not have it. Exit item 1 stays open.
+
+Paths confirmed at `f4e172bf` from source comments and file presence. The project and task bullets are runtime layouts, not top-level directories of the source tree:
 
 - projects at `{workspaceRootPath}/projects/{slug}/` with `assets/` and `MEMORY.md`
 - tasks at `{workspaceRoot}/tasks/<slug>/task.yaml` plus `runs/<runId>/run-log.jsonl`
@@ -25,7 +27,7 @@ Paths confirmed at `f4e172bf`:
 - `apps/electron/src/main/browser-pane-manager.ts` and `apps/cli/package.json` exist
 - upstream `packages/shared/src/protocol/` contains `channels.ts`, `dto.ts`, `events.ts`, `index.ts`, `routing.ts`, `types.ts`, and `__tests__`
 
-Desktop launch, restart, and a file-by-file diff against `app/` are still required before this gate opens.
+Desktop launch, restart, and a file-by-file diff against `app/` are still required before this gate opens. The Mac source tree does not supply them. `bun install --frozen-lockfile` failed on that tree because the lockfile had changes. Non-frozen `bun install` was started and is not confirmed finished. Typecheck and Electron launch are not yet run.
 
 ## Required Migration Route
 
@@ -41,7 +43,8 @@ The v0.11.0 difference includes upstream Projects, Tasks, Kanban, background-tas
 
 D52 classifies the inspected upstream Projects, Tasks, Kanban, background-task, and shell
 panel surfaces as retain, and it refuses a second system under Fleet names. M16/M17 path freezes
-still wait on a populated checkout. Conductor-as-TeamRun stays deferred.
+still wait on the desktop loop and the migration branch. The Mac source tree is recorded and does
+not freeze those paths. Conductor-as-TeamRun stays deferred.
 
 ## Old Project Use
 
@@ -49,6 +52,7 @@ still wait on a populated checkout. Conductor-as-TeamRun stays deferred.
 
 ## W0.1 Exit Evidence
 
+- 2026-10-10: the Mac source tree at the D51 pin is recorded. Desktop launch, typecheck, restart, and the migration branch are not. Exit item 1 stays open. The pin alone does not close it. Detail: `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`.
 - The Lead records the v0.11.0 migration branch and clean baseline validation.
 - A Fleet migration ledger classifies every current `app/` difference as retain/adapt/drop/defer.
 - The same ledger records which upstream project/task/background/panel behaviours are reused by
