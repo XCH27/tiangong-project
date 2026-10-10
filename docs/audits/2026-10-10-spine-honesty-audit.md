@@ -10,6 +10,8 @@
 > 2. `cli-executors/capabilities.ts` marks Codex, ACP, and the Codex peer preset `display-only`. Locked effects stay `Locked`. No production path spawns those peers.
 >
 > **Follow-up after PR #28 (2026-10-10):** squash `12df4540` on `work/fresh-base-spine`. This note is not rewritten. The human Flag command admits `session.flag` on the session kernel. Admission refuses a plugin loadout, sidebar focus, DOM snapshot, or page-target write on a misowned frozen id. Settings writes stay Locked. W0.1 stays Locked. Nothing in that slice is `usable`. The §3 item 1 leftover is closed here: `AGENTS.md` uses the wave-map capability set, and `Locked` is the execution gate.
+>
+> **Follow-up after PR #33 (2026-10-10):** the W0.1 exit inventory for the session-chrome chain is `docs/audits/2026-10-10-w01-exit-checklist.md`. This audit body is not rewritten.
 
 ## Verdict
 

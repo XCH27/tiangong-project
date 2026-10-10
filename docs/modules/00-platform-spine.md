@@ -138,6 +138,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-10 | draft v1.1 | Agent `set_session_status` and `set_session_labels` admit on the target session kernel as the calling Craft session. Mini-session auto-complete admits as system and is denied. No new action id. |
 | 2026-10-10 | draft v1.1 | Title generation admits `session.rename` as the desktop user. A refused admit does not write the name. No agent rename tool. Unflag and send-time auto-labels still do not admit. |
 | 2026-10-10 | draft v1.1 | Send-time regex label matches admit `session.set_labels` on the session kernel. A human send uses the desktop user. Agent send tools use the calling Craft session. A refused admit does not merge labels. Unflag still does not admit. |
+| 2026-10-10 | draft v1.1 | W0.1 exit checklist for the #28–#33 session-chrome admits: `docs/audits/2026-10-10-w01-exit-checklist.md`. No new action id. Unflag still does not admit. The header stays `not implemented`. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -255,4 +256,4 @@ Release independence reads the admitted workspace packages and the bundled runti
 | W1–W5, including this module as an execution gate | `Locked` |
 | Local `.fleet/zcode` apply | not in this checkout; see `patches/zcode/README.md` |
 
-This note does not open W1 and does not change the module capability header above. The header stays `not implemented`. The wave stays Locked.
+This note does not open W1 and does not change the module capability header above. The header stays `not implemented`. The wave stays Locked. The W0.1 exit inventory is `docs/audits/2026-10-10-w01-exit-checklist.md`.
