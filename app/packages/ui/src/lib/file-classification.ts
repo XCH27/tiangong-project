@@ -7,7 +7,7 @@
  */
 
 /** Preview types that map to specific overlay components */
-export type FilePreviewType = 'image' | 'code' | 'markdown' | 'json' | 'text' | 'pdf' | 'docx' | 'xlsx' | 'pptx'
+export type FilePreviewType = 'image' | 'code' | 'markdown' | 'json' | 'text' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'document-locked'
 
 export interface FileClassification {
   /** The preview type, or null if no in-app preview is available */
@@ -74,14 +74,18 @@ const XLSX_EXTENSIONS = new Set(['xlsx'])
 const PPTX_EXTENSIONS = new Set(['pptx'])
 
 /**
+ * Legacy and macro Office packages. The host suite list marks them Locked.
+ * The overlay names that state and does not parse them as DOCX, XLSX, or PPTX.
+ */
+const LOCKED_DOCUMENT_EXTENSIONS = new Set(['xls', 'xlsm', 'ppt', 'pptm'])
+
+/**
  * External-only file extensions — recognized as file links but opened externally.
  * These are included in FILE_EXTENSIONS_PATTERN so linkify.ts detects them as file paths,
  * but classifyFile() returns canPreview: false so they route to the system opener.
  */
 const EXTERNAL_EXTENSIONS = new Set([
-  'xls', 'xlsm',             // Legacy and macro workbooks — suite Locked
-  'doc',                     // Legacy Word — not the DOCX suite
-  'ppt', 'pptm',             // Legacy and macro presentations — suite Locked
+  'doc',                     // Legacy Word — not a document suite
   'zip', 'tar', 'gz', 'rar', '7z',  // Archives
   'dmg', 'pkg', 'exe', 'msi',       // Installers
   'mp3', 'wav', 'flac', 'aac',      // Audio
@@ -104,7 +108,7 @@ function getExtension(filePath: string): string {
  * Classify a file path by extension to determine preview capability.
  *
  * Priority order when an extension matches multiple sets (e.g. svg):
- * image > code > markdown > json > text > pdf > docx > xlsx > pptx
+ * image > code > markdown > json > text > pdf > docx > xlsx > pptx > locked office
  */
 export function classifyFile(filePath: string): FileClassification {
   const ext = getExtension(filePath)
@@ -119,6 +123,7 @@ export function classifyFile(filePath: string): FileClassification {
   if (DOCX_EXTENSIONS.has(ext))     return { type: 'docx', canPreview: true }
   if (XLSX_EXTENSIONS.has(ext))     return { type: 'xlsx', canPreview: true }
   if (PPTX_EXTENSIONS.has(ext))     return { type: 'pptx', canPreview: true }
+  if (LOCKED_DOCUMENT_EXTENSIONS.has(ext)) return { type: 'document-locked', canPreview: true }
 
   return { type: null, canPreview: false }
 }
@@ -138,5 +143,6 @@ export const FILE_EXTENSIONS_PATTERN = [
   ...DOCX_EXTENSIONS,
   ...XLSX_EXTENSIONS,
   ...PPTX_EXTENSIONS,
+  ...LOCKED_DOCUMENT_EXTENSIONS,
   ...EXTERNAL_EXTENSIONS,
 ].join('|')

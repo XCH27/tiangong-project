@@ -5,7 +5,8 @@
  * filters, and catalog source filters use the same list as the host loadout.
  * Install, enable, and disable write through HostTurnKernel. A third-party
  * hook or MCP server waits for the existing permission card. The MCP Apps
- * side pane reads this loadout. Its sandboxed app view stays Locked. A local
+ * side pane opens on the existing right sidebar and reads this loadout. It
+ * does not construct a host kernel. Its sandboxed app view stays Locked. A local
  * Agent Plugins 1.0.0 package is listed when a skill or MCP server maps onto
  * the loadout. This page does not open a remote store.
  */
@@ -64,8 +65,6 @@ import {
   resolvePluginGrant,
   type HostPermissionCard,
 } from '@craft-agent/shared/protocol/plugin-settings-host'
-import { createMcpAppsHost, openMcpAppsFromHuman } from '@craft-agent/shared/protocol/mcp-apps-host'
-import { MCP_APPS_SESSION_ID, mcpAppsLayoutSlot } from '@craft-agent/shared/protocol/mcp-apps-pane'
 import {
   SettingsCard,
   SettingsRow,
@@ -89,7 +88,6 @@ export default function PluginsSettingsPage() {
   const workspace = shell?.workspaces.find((item) => item.id === shell.activeWorkspaceId) ?? null
   const filePath = workspace ? pluginLoadoutPath(workspace.rootPath) : null
   const host = useMemo(() => createPluginSettingsHost(), [])
-  const appsHost = useMemo(() => createMcpAppsHost(), [])
   const invocationCount = useRef(0)
   const [view, setView] = useState<PluginView>('installed')
   const [marketFilter, setMarketFilter] = useState<MarketContentFilter>('all')
@@ -186,21 +184,10 @@ export default function PluginsSettingsPage() {
     setReads((current) => [mcp, ...current.filter((item) => item.source.kind !== 'mcp_registry')])
   }, [])
 
-  const openSidePane = useCallback(async () => {
+  const openSidePane = useCallback(() => {
     if (navState.rightSidebar?.type === 'mcp-apps') return
-    invocationCount.current += 1
-    const result = await openMcpAppsFromHuman(appsHost, {
-      invocationId: `mcp-apps-open-${invocationCount.current}`,
-      sessionId: MCP_APPS_SESSION_ID,
-      actor: desktopActor,
-      catalog,
-      loadout,
-      layout: { open: false, focus: null },
-    })
-    if (result.status !== 'completed') return
-    const slot = mcpAppsLayoutSlot(result.view)
-    updateRightSidebar(slot.type === 'none' ? { type: 'none' } : slot)
-  }, [appsHost, catalog, loadout, navState.rightSidebar, updateRightSidebar])
+    updateRightSidebar({ type: 'mcp-apps' })
+  }, [navState.rightSidebar, updateRightSidebar])
 
   const mutate = useCallback(async (op: PluginMutationName, pluginId: string) => {
     if (!filePath) return

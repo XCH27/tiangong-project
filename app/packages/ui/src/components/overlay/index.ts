@@ -23,6 +23,16 @@ export { PDFPreviewOverlay, type PDFPreviewOverlayProps } from './PDFPreviewOver
 export { DocxPreviewOverlay, type DocxPreviewOverlayProps } from './DocxPreviewOverlay'
 export { XlsxPreviewOverlay, type XlsxPreviewOverlayProps } from './XlsxPreviewOverlay'
 export { PptxPreviewOverlay, type PptxPreviewOverlayProps } from './PptxPreviewOverlay'
+export { DocumentLockedOverlay, type DocumentLockedOverlayProps } from './DocumentLockedOverlay'
+export { AdmissionNotice } from './AdmissionNotice'
+export {
+  DOCUMENT_SAVE_LOCKED,
+  presentDocumentRow,
+  presentDocumentViewer,
+  presentMcpAppsPane,
+  type McpAppsPanePresentation,
+  type ViewerPresentation,
+} from './admission-presentation'
 export { MermaidPreviewOverlay, type MermaidPreviewOverlayProps } from './MermaidPreviewOverlay'
 export { HTMLPreviewOverlay, type HTMLPreviewOverlayProps } from './HTMLPreviewOverlay'
 export { ActivityCardsOverlay, type ActivityCardsOverlayProps } from './ActivityCardsOverlay'

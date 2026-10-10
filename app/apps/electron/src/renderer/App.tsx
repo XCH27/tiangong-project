@@ -64,6 +64,7 @@ import {
   DocxPreviewOverlay,
   XlsxPreviewOverlay,
   PptxPreviewOverlay,
+  DocumentLockedOverlay,
   CodePreviewOverlay,
   DocumentFormattedMarkdownOverlay,
   JSONPreviewOverlay,
@@ -2075,6 +2076,7 @@ function WindowCloseHandler() {
  * - docx → DocxPreviewOverlay (paragraphs from the document package)
  * - xlsx → XlsxPreviewOverlay (first-sheet cells from the workbook package)
  * - pptx → PptxPreviewOverlay (first-slide text from the presentation package)
+ * - xls, xlsm, ppt, pptm → DocumentLockedOverlay (suite Locked, no parse, no save)
  * - code/text → CodePreviewOverlay (syntax highlighted)
  * - markdown → DocumentFormattedMarkdownOverlay
  * - json → JSONPreviewOverlay
@@ -2149,6 +2151,16 @@ function FilePreviewRenderer({
           onClose={onClose}
           filePath={state.filePath}
           loadBytes={loadPdfData}
+          theme={theme}
+        />
+      )
+
+    case 'document-locked':
+      return (
+        <DocumentLockedOverlay
+          isOpen
+          onClose={onClose}
+          filePath={state.filePath}
           theme={theme}
         />
       )

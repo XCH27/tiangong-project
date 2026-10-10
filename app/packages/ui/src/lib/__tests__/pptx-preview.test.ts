@@ -5,10 +5,10 @@ import { classifyFile } from '../file-classification'
 import { replacePptxTextBytes, textsFromPptxBytes } from '../pptx-preview'
 
 describe('pptx preview', () => {
-  test('pptx opens in the overlay and legacy ppt stays external', () => {
+  test('pptx opens in the overlay and legacy ppt opens as Locked', () => {
     expect(classifyFile('/work/talk.pptx')).toEqual({ type: 'pptx', canPreview: true })
-    expect(classifyFile('/work/legacy.ppt').canPreview).toBe(false)
-    expect(classifyFile('/work/macros.pptm').canPreview).toBe(false)
+    expect(classifyFile('/work/legacy.ppt')).toEqual({ type: 'document-locked', canPreview: true })
+    expect(classifyFile('/work/macros.pptm')).toEqual({ type: 'document-locked', canPreview: true })
   })
 
   test('the overlay reader sees the same first-slide text the host package writes', () => {
