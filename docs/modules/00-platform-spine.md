@@ -133,6 +133,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-10 | draft v1.1 | Relabeled §13 from the shell and the tests. Office previews are viewers. The MCP Apps pane is a read projection. Test hosts are not `wired`. |
 | 2026-10-10 | draft v1.1 | Settings does not write the plugin loadout. Codex and ACP capability strings are `display-only`. |
 | 2026-10-10 | draft v1.1 | SessionManager plugin install and enable admit file.update on the session kernel. That API is `test-only`. Settings writes stay `Locked`. |
+| 2026-10-10 | draft v1.1 | Admission refuses a plugin loadout, sidebar focus, DOM snapshot, or page-target write on a frozen id. The human Flag command admits `session.flag` on the session kernel. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -142,7 +143,7 @@ The retained Craft subprocess in `app/packages/shared/src/agent/pi-agent.ts` sti
 
 Fleet host admission for the frozen action table is the loop in `app/packages/shared/src/protocol/turn-admission.ts`. `SessionManager.openSessionHostKernel` constructs one `HostTurnKernel` when a Craft session is created, opened, imported, or admitted, and journals that session through `SessionFileTurnJournal` into the existing `session.jsonl`. Chat reads skip `fleet_host_session_event` lines. Session rewrites keep them. `MemoryTurnJournal` stays the unit-test stand-in and is not the product journal. A process restart reads those events. It does not rebuild in-memory turn phase, so an awaiting card is not republished until a new admit. `FileKernelSnapshotStore` and the per-feature `create*Host()` kernels are not this path. Codex and ACP executors are not attached here. Command execution, dynamic client tools, client filesystem writes, PTY, and any new action id stay `Locked`.
 
-`FileKernelSnapshotStore` has no production caller. The snapshot file below is `test-only`. Credential-shaped fields are sealed when `SessionFileTurnJournal.append` runs; no shell path admits a turn, so that write is exercised by tests.
+`FileKernelSnapshotStore` has no production caller. The snapshot file below is `test-only`. Credential-shaped fields are sealed when `SessionFileTurnJournal.append` runs. The human session flag is the shell path that appends. The snapshot file itself is still written only by tests.
 
 `FileKernelSnapshotStore` writes `host-kernel-snapshot.json` in the existing session directory, beside `session.jsonl`, using the same write-to-temp-then-rename replace. It round-trips `KernelSnapshot` version 1 only. A different version throws `unsupported_snapshot_version` and leaves the previous file in place. `save`, `load`, and `HostTurnKernel.snapshot` pass through `sealHostRecord` before that JSON is written or returned. The gate removes credential-shaped keys and token strings, remaps raw Claude and ChatGPT/Pi usage, and omits cache or price numbers that were not observed. An explicit provider cache read of zero stays a confirmed miss. A price of zero stays confirmed only when a pricing reference is present. This file is the host execution projection of that session. It does not rewrite `session.jsonl` and it is not a new database. The broader M00 session adapter is still unresolved.
 
@@ -150,11 +151,11 @@ Per-feature `create*Host()` kernels construct their own `NativeEffectRegistry`. 
 
 `NativeEffectRegistry` is the executor behind `HostTurnKernel.run` when the caller does not pass an explicit executor. It runs only after admission. `applyAtomicJsonEffect` uses the same atomic replace as `session.jsonl`. A stop before `commit()` leaves the file unwritten. A throw after `commit()` restores as `reconciling` and does not run the effect again. Pi Agent Core is not the permission authority.
 
-No shell path calls `admitHostTurn`. Opening the session kernel does not publish a card. Card publish and approve/reject on that kernel are `test-only`.
+The human Flag command calls `SessionManager.flagSession`. That method calls `admitHostTurn` for `session.flag` and `HostTurnKernel.run` on the kernel from `openSessionHostKernel`. The journal lines are `fleet_host_session_event` in `session.jsonl`. The frozen row is L0, so this turn does not publish a permission card and does not call `approve`. Unflag has no frozen id and does not admit. Rename, status, and labels do not admit. Opening the kernel does not publish a card. Card publish and approve/reject on that kernel stay `test-only`. When a turn is `approval_required`, Allow and Deny still call `sessions:respondToPermission`.
 
 Host approval uses the existing Craft permission card. `SessionManager.admitHostTurn` admits on the kernel attached for that session. When the outcome is `approval_required`, that admit calls `publishHostApproval` and emits the same `permission_request` event the card already renders. Callers do not make a second publish call. Allow and Deny call `sessions:respondToPermission`. When the request id is `host:{invocationId}`, `SessionManager.respondToPermission` calls `HostTurnKernel.approve` or `reject` for the desktop human. Always Allow resolves that one invocation and does not store a standing grant. L3 and an L1 action with no undo contract share that card. A direct `approve()` call remains valid. This does not draw a new dialog and it does not make Pi the permission authority. Pi tool calls are not admitted through this path.
 
-`EditPopover` calls `selectPageModel`. It does not call `applyEditPageFromHuman`. `update-target` is `test-only`.
+`EditPopover` calls `selectPageModel`. It does not call `applyEditPageFromHuman`. `update-target` asks for `file.update`. Admission refuses that page-target payload. The helper stays `test-only` and does not write.
 
 `selectPageModel` is the popover model control. `update-target` is `test-only`. Credential-shaped documents are denied before a test write.
 
@@ -170,11 +171,11 @@ The shell Office readers are viewers. Edit and save on that overlay stay `Locked
 
 `ArtifactCanvasBoard` is not mounted by the Electron shell. `createCanvasCardHost` is `test-only`. The test host binds a file path on `CanvasDocument` and does not write sheet cells or slide text. `@xyflow/react` is not installed. A full spreadsheet editor, a full slide editor, and the renderer spike stay `Locked`.
 
-The human toolbar calls `runGuestActionFromHuman` for find, loading stop, back, forward, and reload. That path is `wired`. `captureGovernedDom`, `captureDomFromHuman`, and `captureDomFromAgent` are `test-only`. Screenshot evidence and Chrome Store advertising stay `Locked`. `browser.screenshot` is still not a frozen action id.
+The human toolbar calls `runGuestActionFromHuman` for find, loading stop, back, forward, and reload. That path is `wired`. `captureGovernedDom`, `captureDomFromHuman`, and `captureDomFromAgent` ask for `file.create` with a DOM snapshot payload. Admission refuses that verb. Those helpers stay `test-only` and do not read or write the page. Screenshot evidence and Chrome Store advertising stay `Locked`. `browser.screenshot` is still not a frozen action id.
 
-Settings → Plugins is one page on the existing settings navigator. The five views are Installed, Market, Skills, MCP, and Hooks. Market filters list workspace skills, MCP sources, catalog reads, and a local Agent Plugins 1.0.0 package. A failed catalog read adds no entries. Credential-shaped text and a marketplace document add nothing. The page does not construct `createPluginSettingsHost`, does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`, and does not write `.claude-plugin/loadout.json`. Install, enable, and disable on that page stay `Locked`. `createPluginSettingsHost` remains `test-only`. It is not `SessionManager.respondToPermission`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` admit those same loadout writes on the Craft session kernel from `openSessionHostKernel`. No shell or IPC caller uses them, so that API is `test-only`. The page does not render the Craft session permission card. Third-party enable still sets `requireHumanApproval` on `file.update`. A stored loadout grant is not host-turn Always Allow.
+Settings → Plugins is one page on the existing settings navigator. The five views are Installed, Market, Skills, MCP, and Hooks. Market filters list workspace skills, MCP sources, catalog reads, and a local Agent Plugins 1.0.0 package. A failed catalog read adds no entries. Credential-shaped text and a marketplace document add nothing. The page does not construct `createPluginSettingsHost`, does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`, and does not write `.claude-plugin/loadout.json`. Install, enable, and disable on that page stay `Locked`. `createPluginSettingsHost` remains `test-only`. It is not `SessionManager.respondToPermission`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` still build a `file.update` loadout request on the Craft session kernel. Admission refuses that verb, so the call does not write. No shell or IPC caller uses them, so that API is `test-only`. The page does not render the Craft session permission card. `requireHumanApproval` is not an admission gate. A stored loadout grant is not host-turn Always Allow.
 
-The MCP Apps side pane is a read projection. `projectEnabledMcpApps` lists enabled MCP tools and resources from the loadout and a local inventory. The pane does not construct `createMcpAppsHost`, does not admit focus, and does not call a tool. Closing it updates the existing right-sidebar slot. `openMcpAppsFromHuman` remains on the test host. The sandboxed `ui://` app view, live `tools/list`, and tool invocation stay `Locked`. This page is not a remote store and it is not a plugin marketplace.
+The MCP Apps side pane is a read projection. `projectEnabledMcpApps` lists enabled MCP tools and resources from the loadout and a local inventory. The pane does not construct `createMcpAppsHost`, does not admit focus, and does not call a tool. Closing it updates the existing right-sidebar slot. `openMcpAppsFromHuman` on the test host asks for `canvas.node_select`. Admission refuses that sidebar payload, so focus does not change. The sandboxed `ui://` app view, live `tools/list`, and tool invocation stay `Locked`. This page is not a remote store and it is not a plugin marketplace.
 
 Release independence reads the admitted workspace packages and the bundled runtimes named by the existing packaging scripts. `readReleaseDispositionForHuman` and `readReleaseDispositionForAgent` return the same report. The About section shows that report. `renderThirdPartyNotices` writes no partial file when a license is missing. The checked-in `app/THIRD-PARTY-NOTICES.txt` is the persistent record. This check does not append a session journal and does not admit a turn. `checkUpdateFeed` accepts only a local dry-run document with relative artifact names. A signed document, a production disposition, or an absolute update URL stays `Locked`. `checkPackagingDryRun` is the unsigned layout check: admitted package versions must match the feed, and the artifact names must be the ones `packageDarwin`, `packageLinux`, `packageWindows`, and `scripts/install-app.sh` already expect. `publish` stays `never`. Signing-identity discovery stays off. The command is `bun run verify:packaging-dry-run` from `app/`. It does not invoke electron-builder. The retained Craft updater in `app/apps/electron/src/main/auto-update.ts` is unchanged and is not a Fleet production feed. Packaging requirements are in `docs/release/PACKAGING-REQUIREMENTS.md`. `docs/engineering.md` is not in this checkout.
 
@@ -183,13 +184,14 @@ Release independence reads the admitted workspace packages and the bundled runti
 | Slice | Status |
 |---|---|
 | One HostTurnKernel per Craft session in main, journaled in `session.jsonl`. Restart reads events and does not restore turn phase. | `wired` |
-| Process-local admit / approve / run / stop / recover on that kernel | `test-only` |
+| Human session flag (`session.flag`) admitted and run on the session kernel, journaled in `session.jsonl` | `wired` |
+| Process-local admit / approve / run / stop / recover on that kernel, other than the human session flag | `test-only` |
 | Session-directory KernelSnapshot v1 file | `test-only` |
 | In-process native effect and atomic file replace on the session kernel | `test-only` |
 | Existing permission card approves or rejects an awaiting host turn | `test-only` |
 | Awaiting host admit publishes that permission card | `test-only` |
 | Page-local set-model in the session popover (`selectPageModel`) | `wired` |
-| Page-local `update-target` for human and agent callers | `test-only` |
+| Page-local `update-target` for human and agent callers. Admission refuses the `file.update` payload. | `test-only` |
 | Codex app-server executor attached after host admission | `display-only` |
 | ACP executor attached after host admission | `display-only` |
 | CLI command execution, dynamic client tools, client file writes, and PTY | `Locked` |
@@ -209,13 +211,13 @@ Release independence reads the admitted workspace packages and the bundled runti
 | Canvas cards for DOCX, XLSX, PPTX, and image or video artifacts, including hide, stop, and delete | `test-only` |
 | `@xyflow/react` spatial renderer | `Locked` |
 | Human Chromium page find, loading stop, back, forward, and reload | `wired` |
-| Governed DOM snapshot admitted as `file.create` | `test-only` |
+| Governed DOM snapshot. Admission refuses the `file.create` payload. | `test-only` |
 | Screenshot evidence bundle and Chrome Store advertising | `Locked` |
 | Settings Plugins page with five views and market filters | `wired` |
 | Plugin loadout install, enable, and disable from Settings | `Locked` |
 | `createPluginSettingsHost` loadout writes | `test-only` |
 | Settings approval as the Craft session permission card | `display-only` |
-| SessionManager plugin install and third-party enable on the session kernel | `test-only` |
+| SessionManager plugin install and third-party enable. Admission refuses the `file.update` payload. No shell caller. | `test-only` |
 | MCP Registry and skill-repository catalogs as a trusted marketplace | `display-only` |
 | MCP Apps side pane: read projection of the loadout. No kernel, no focus admit, no tool call. | `display-only` |
 | Sandboxed MCP App view, live tools/list, and tool invocation | `Locked` |

@@ -56,8 +56,8 @@ describe('page-local edit operations', () => {
       filePath,
       nextDocument: { notes: 'from the button' },
     })
-    expect(humanWrite.status).toBe('completed')
-    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ notes: 'from the button' })
+    expect(humanWrite).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:page_target' })
+    expect(() => readFileSync(filePath, 'utf8')).toThrow()
 
     const agentWrite = await applyEditPageFromAgent(shared, {
       op: 'update-target',
@@ -68,12 +68,12 @@ describe('page-local edit operations', () => {
       filePath,
       nextDocument: { notes: 'from the tool' },
     })
-    expect(agentWrite.status).toBe('completed')
-    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ notes: 'from the tool' })
+    expect(agentWrite).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:page_target' })
+    expect(() => readFileSync(filePath, 'utf8')).toThrow()
 
     const kinds = shared.kernel.events('session-1').map((event) => event.kind)
-    expect(kinds).toContain('action_invoked')
-    expect(kinds).toContain('action_completed')
+    expect(kinds).toContain('action_failed')
+    expect(kinds).not.toContain('action_completed')
   })
 
   test('a credential-shaped page update is denied before the file exists', async () => {

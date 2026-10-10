@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -294,7 +294,7 @@ describe('catalog source adapters', () => {
     expect(listCatalogMarket({ reads: [disabled, redirected, html, broken], contentFilter: 'all' })).toEqual([])
   })
 
-  test('install of a fixture catalog entry still admits file.update and does not enable', async () => {
+  test('a fixture catalog install is refused and does not write a loadout', async () => {
     const reads = await recordedReads()
     const catalog = listCatalogMarket({ reads, contentFilter: 'all' })
     const dir = mkdtempSync(join(tmpdir(), 'fleet-catalog-'))
@@ -309,22 +309,15 @@ describe('catalog source adapters', () => {
       filePath,
       catalog,
     })
-    expect(installed.status).toBe('completed')
-    if (installed.status !== 'completed') return
-    expect(installed.loadout.records).toEqual([
-      { id: 'mcp:io.github.example/filesystem', installed: true, enabled: false },
-    ])
-    expect(JSON.parse(readFileSync(filePath, 'utf8')).records[0].enabled).toBe(false)
-
-    const hookInstalled = await applyPluginMutationFromAgent(shared, {
-      op: 'install',
-      pluginId: 'hook:lint-hook',
-      invocationId: 'invoke-catalog-hook-install',
-      actor: agent,
-      filePath,
-      catalog,
+    expect(installed).toMatchObject({
+      status: 'denied',
+      reason: 'action_owner_mismatch:plugin_loadout',
     })
-    expect(hookInstalled.status).toBe('completed')
+    expect(existsSync(filePath)).toBe(false)
+    writeFileSync(filePath, JSON.stringify({
+      version: 1,
+      records: [{ id: 'hook:lint-hook', installed: true, enabled: false }],
+    }))
     const enabled = await applyPluginMutationFromAgent(shared, {
       op: 'enable',
       pluginId: 'hook:lint-hook',
@@ -334,16 +327,14 @@ describe('catalog source adapters', () => {
       catalog,
     })
     expect(enabled).toMatchObject({
-      status: 'approval_required',
-      reason: 'human_approval_required',
-      invocationId: 'invoke-catalog-hook-enable',
+      status: 'denied',
+      reason: 'action_owner_mismatch:plugin_loadout',
     })
-    const written = JSON.parse(readFileSync(filePath, 'utf8')) as { records: Array<{ id: string; enabled: boolean }> }
-    expect(written.records.find((record) => record.id === 'hook:lint-hook')?.enabled).toBe(false)
+    expect(JSON.parse(readFileSync(filePath, 'utf8')).records[0].enabled).toBe(false)
     expect(InternalActionId.FILE_UPDATE).toBe('file.update')
   })
 
-  test('an Agent Plugins MCP server installs through file.update and enable waits for the card', async () => {
+  test('an Agent Plugins package install is refused and does not wait on file.update', async () => {
     const packaged = await readCatalogSource({
       source: AGENT_PLUGINS_SOURCE,
       packageRoot: join(fixtureDir, 'agent-plugins-demo'),
@@ -361,24 +352,12 @@ describe('catalog source adapters', () => {
       filePath,
       catalog,
     })
-    expect(installed.status).toBe('completed')
-    if (installed.status !== 'completed') return
-    expect(installed.loadout.records).toEqual([
-      { id: 'mcp:demo-plugin/local-validator', installed: true, enabled: false },
-    ])
-
-    const skillInstalled = await applyPluginMutationFromAgent(shared, {
-      op: 'install',
-      pluginId: 'skill:demo-plugin.summarize',
-      invocationId: 'invoke-agent-plugin-skill',
-      actor: agent,
-      filePath,
-      catalog,
-    })
-    expect(skillInstalled.status).toBe('completed')
-    if (skillInstalled.status !== 'completed') return
-    expect(skillInstalled.loadout.records.find((record) => record.id === 'skill:demo-plugin.summarize')?.enabled).toBe(false)
-
+    expect(installed).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+    expect(existsSync(filePath)).toBe(false)
+    writeFileSync(filePath, JSON.stringify({
+      version: 1,
+      records: [{ id: 'mcp:demo-plugin/local-validator', installed: true, enabled: false }],
+    }))
     const enabled = await applyPluginMutationFromAgent(shared, {
       op: 'enable',
       pluginId: 'mcp:demo-plugin/local-validator',
@@ -387,30 +366,15 @@ describe('catalog source adapters', () => {
       filePath,
       catalog,
     })
-    expect(enabled).toMatchObject({
-      status: 'approval_required',
-      reason: 'human_approval_required',
-      invocationId: 'invoke-agent-plugin-enable',
-    })
-    const before = JSON.parse(readFileSync(filePath, 'utf8')) as { records: Array<{ id: string; enabled: boolean }> }
-    expect(before.records.find((record) => record.id === 'mcp:demo-plugin/local-validator')?.enabled).toBe(false)
-
+    expect(enabled).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
     const allowed = await resolvePluginGrant(shared, {
       invocationId: 'invoke-agent-plugin-enable',
       approver: DESKTOP_APPROVER,
       decision: { allowed: true },
       filePath,
     })
-    expect(allowed.status).toBe('completed')
-    if (allowed.status !== 'completed') return
-    expect(allowed.loadout.records.find((record) => record.id === 'mcp:demo-plugin/local-validator')).toEqual({
-      id: 'mcp:demo-plugin/local-validator',
-      installed: true,
-      enabled: true,
-    })
-    expect(allowed.loadout.grants).toEqual([
-      { id: 'mcp:demo-plugin/local-validator', decision: 'approved' },
-    ])
+    expect(allowed).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+    expect(JSON.parse(readFileSync(filePath, 'utf8')).records[0].enabled).toBe(false)
   })
 })
 

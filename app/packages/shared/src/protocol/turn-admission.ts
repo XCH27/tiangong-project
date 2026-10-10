@@ -12,6 +12,7 @@
 import type { ActorRef } from './actor'
 import type { ActionInvocation, UndoHandle } from './internal-action'
 import type { AuditSessionEvent } from './session-event'
+import { actionOwnerMismatchReason } from './action-owner-policy'
 import { isInternalActionId, policyForAction, type FrozenActionPolicy, type UndoContract } from './action-policy'
 import { containsCredentialMaterial } from './credential-boundary'
 import { sealHostRecord } from './provider-usage'
@@ -55,11 +56,6 @@ export interface TurnRequest {
   invocation: ActionInvocation
   actor: ActorRef
   preAuthorizedBy?: ActorRef
-  /**
-   * Wait for a human even when the frozen row would auto-admit.
-   * Third-party plugin enable sets this. It does not add an action id.
-   */
-  requireHumanApproval?: boolean
 }
 
 export type TurnPhase =
@@ -202,6 +198,11 @@ export class HostTurnKernel {
 
     if (!isInternalActionId(safeRequest.invocation.actionId)) {
       return this.deny(safeRequest, invocationId, 'unknown_action')
+    }
+
+    const ownerMismatch = actionOwnerMismatchReason(safeRequest.invocation.payload, safeRequest.invocation.targets)
+    if (ownerMismatch) {
+      return this.deny(safeRequest, invocationId, ownerMismatch)
     }
 
     const policy = policyForAction(safeRequest.invocation.actionId)
@@ -509,8 +510,13 @@ export class HostTurnKernel {
     }
   }
 
+  /**
+   * Approval follows the frozen row only. An L1 id with an undo contract
+   * auto-admits. L3, L2 without a human pre-authorization, and an L1 row
+   * whose undo contract is not_supported wait for the human. There is no
+   * request flag that upgrades a frozen id.
+   */
   private gateFor(policy: FrozenActionPolicy, request: TurnRequest): 'allow' | 'approval' {
-    if (request.requireHumanApproval === true) return 'approval'
     switch (policy.permissionLevel) {
       case 'L0_read_only':
         return 'allow'

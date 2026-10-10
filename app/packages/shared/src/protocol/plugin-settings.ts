@@ -3,10 +3,11 @@
  *
  * Five views share one catalog. Workspace skills and MCP sources are local.
  * Catalog reads can add Market entries. Market content filters narrow that
- * list. Install still admits file.update. Enabling a third-party hook or MCP
- * server waits for the existing permission card. The MCP Apps side pane reads
- * this loadout. Its sandboxed app view stays Locked. A local Agent Plugins
- * 1.0.0 package can list skills and MCP servers. A remote store stays Locked.
+ * list. Install, enable, and disable ask for file.update and admission refuses
+ * that verb. The Settings page does not write the loadout. The MCP Apps side
+ * pane reads this loadout. Its sandboxed app view stays Locked. A local Agent
+ * Plugins 1.0.0 package can list skills and MCP servers. A remote store stays
+ * Locked.
  * This is not a plugin marketplace.
  */
 
@@ -109,12 +110,12 @@ export function parseMarketFilter(value: string): MarketContentFilter | null {
   return isMarketContentFilter(value) ? value : null
 }
 
-export function pluginPhaseStatus(phase: PluginPhase): 'wired' | 'Locked' {
+export function pluginPhaseStatus(phase: PluginPhase): 'display-only' | 'Locked' {
   switch (phase) {
-    case 'third_party_hook_approval':
     case 'mcp_apps_side_pane':
     case 'agent_plugins_1_0_0':
-      return 'wired'
+      return 'display-only'
+    case 'third_party_hook_approval':
     case 'mcp_apps_sandbox':
       return 'Locked'
     default: {

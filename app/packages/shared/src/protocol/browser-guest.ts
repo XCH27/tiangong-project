@@ -3,10 +3,10 @@
  *
  * Page find, loading stop, and the native guest actions share one profile
  * and one owner check. A human control and an agent caller both use that
- * path. The DOM snapshot is the smallest governed capture: it admits
- * file.create on HostTurnKernel and writes only after admission. Screenshot
- * evidence and Chrome Store advertising stay Locked. This is not a plugin
- * marketplace and it does not open a second browser profile.
+ * path. A DOM snapshot asks for file.create. That id is M05 file bytes, so
+ * HostTurnKernel refuses the turn and does not read or write the page.
+ * Screenshot evidence and Chrome Store advertising stay Locked. This is not a
+ * plugin marketplace and it does not open a second browser profile.
  */
 
 import { readFileSync } from 'node:fs'
@@ -22,7 +22,7 @@ export const BROWSER_GUEST_SURFACES = [
   { id: 'page_find', status: 'wired' },
   { id: 'loading_stop', status: 'wired' },
   { id: 'native_guest', status: 'wired' },
-  { id: 'dom_snapshot', status: 'wired' },
+  { id: 'dom_snapshot', status: 'test-only' },
   { id: 'screenshot_evidence', status: 'Locked' },
   { id: 'chrome_store', status: 'Locked' },
 ] as const
