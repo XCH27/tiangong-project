@@ -22,6 +22,7 @@ import type {
   PermissionModeState,
   UnreadSummary,
   ShareResult,
+  SessionFlagAdmission,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -50,7 +51,7 @@ export interface ISessionManager {
   // Session state
   // ---------------------------------------------------------------------------
 
-  flagSession(sessionId: string): Promise<void>
+  flagSession(sessionId: string): Promise<SessionFlagAdmission>
   unflagSession(sessionId: string): Promise<void>
   archiveSession(sessionId: string): Promise<void>
   unarchiveSession(sessionId: string): Promise<void>

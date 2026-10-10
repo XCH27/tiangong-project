@@ -5,16 +5,17 @@
  * and does not write the loadout. That private kernel is not a Craft session.
  * resolvePluginGrant on the test host is not SessionManager.respondToPermission.
  *
- * SessionManager.applySessionPluginMutation admits install, enable, and
- * disable as file.update on the Craft session kernel from
- * openSessionHostKernel. The loadout executor is passed to run() only after
- * admission. No shell or IPC caller uses that API, so the path is test-only.
- * Installing does not enable. A third-party hook or MCP enable waits on the
- * session permission card. An agent cannot approve it.
+ * SessionManager.applySessionPluginMutation builds a file.update request on
+ * the Craft session kernel. HostTurnKernel refuses that verb
+ * (action_owner_mismatch:plugin_loadout) and does not write the loadout.
+ * No shell or IPC caller uses that API, so the path is test-only. Settings
+ * install, enable, and disable stay Locked. Approval is not a side flag on
+ * file.update.
  */
 
 import { readFileSync } from 'node:fs'
 import type { ActorRef } from './actor'
+import { isActionOwnerMismatch } from './action-owner-policy'
 import { containsCredentialMaterial } from './credential-boundary'
 import { InternalActionId, type ActionInvocation } from './internal-action'
 import {
@@ -176,9 +177,9 @@ export async function executePluginMutation(
     case 'unchanged':
       return { status: 'completed', invocationId: input.invocationId, loadout: plan.loadout, persisted: false }
     case 'approval':
-      return writeLoadout(shared, input, plan.loadout, true)
+      return writeLoadout(shared, input, plan.loadout)
     case 'write':
-      return writeLoadout(shared, input, plan.loadout, false)
+      return writeLoadout(shared, input, plan.loadout)
     default: {
       const unexpected: never = plan
       return failed(input.invocationId, `unknown_plugin_plan:${String(unexpected)}`)
@@ -209,6 +210,9 @@ export async function resolvePluginGrant(
     return { status: 'approval_required', invocationId: bare, reason: outcome.reason }
   }
   if (outcome.status === 'denied') {
+    if (isActionOwnerMismatch(outcome.reason)) {
+      return { status: 'denied', invocationId: bare, reason: outcome.reason }
+    }
     const pluginId = pluginIdFromTurn(shared.kernel, bare)
     if (!pluginId) return { status: 'denied', invocationId: bare, reason: outcome.reason }
     const saved = await persistDeniedGrant(shared, input.filePath, bare, pluginId, input.approver)
@@ -216,24 +220,13 @@ export async function resolvePluginGrant(
     return { status: 'denied', invocationId: bare, reason: outcome.reason ?? 'approval_rejected' }
   }
   if (outcome.status !== 'admitted') return turnResult(outcome)
-  const request = requestFromTurn(shared.kernel, bare)
-  if (!request) return failed(bare, 'unknown_invocation')
-  if (request.requireHumanApproval !== true) return failed(bare, 'plugin_grant_not_pending')
-  if (!isHumanApprover(input.approver)) {
-    return { status: 'approval_required', invocationId: bare, reason: 'human_approval_required' }
-  }
-  const ran = await shared.kernel.run(bare, loadoutExecutor(request))
-  if (ran.status !== 'completed') return turnResult(ran)
-  const read = readPluginLoadout(input.filePath)
-  if (read.status !== 'ok') return failed(bare, read.status === 'failed' ? read.reason : 'loadout_missing')
-  return { status: 'completed', invocationId: bare, loadout: read.loadout, persisted: true }
+  return failed(bare, 'plugin_grant_not_pending')
 }
 
 async function writeLoadout(
   shared: PluginSettingsShared,
   input: PluginMutationCall & { callerKind: 'human_ui' | 'agent' },
   next: PluginLoadoutFile,
-  requireHumanApproval: boolean,
   payloadOp: PluginMutationName | 'grant' = input.op,
 ): Promise<PluginMutationResult> {
   const sessionId = input.sessionId ?? PLUGIN_SETTINGS_SESSION_ID
@@ -254,7 +247,6 @@ async function writeLoadout(
   const request: TurnRequest = {
     invocation,
     actor: input.actor,
-    ...(requireHumanApproval ? { requireHumanApproval: true } : {}),
   }
   const admitted = shared.kernel.admit(request)
   if (admitted.status === 'completed') return failed(input.invocationId, 'duplicate_invocation')
@@ -287,11 +279,7 @@ async function persistDeniedGrant(
     filePath,
     catalog: [],
     callerKind: 'human_ui',
-  }, next, false, 'grant')
-}
-
-function isHumanApprover(actor: ActorRef): boolean {
-  return actor.kind === 'human' && actor.id.trim().length > 0 && actor.displayName.trim().length > 0
+  }, next, 'grant')
 }
 
 function requestFromTurn(kernel: HostTurnKernel, invocationId: string): TurnRequest | undefined {

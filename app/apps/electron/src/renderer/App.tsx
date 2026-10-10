@@ -34,6 +34,7 @@ import { getSessionsToRefreshAfterStaleReconnect } from './lib/reconnect-recover
 import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallback } from './lib/session-load'
 import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
 import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
+import { isRefusedSessionFlag } from '@craft-agent/shared/protocol'
 import { initRendererPerf } from './lib/perf'
 import {
   initializeSessionsAtom,
@@ -1137,7 +1138,11 @@ export default function App() {
 
   const handleFlagSession = useCallback((sessionId: string) => {
     updateSessionById(sessionId, { isFlagged: true })
-    window.electronAPI.sessionCommand(sessionId, { type: 'flag' })
+    void window.electronAPI.sessionCommand(sessionId, { type: 'flag' }).then((result) => {
+      if (isRefusedSessionFlag(result)) updateSessionById(sessionId, { isFlagged: false })
+    }).catch(() => {
+      updateSessionById(sessionId, { isFlagged: false })
+    })
   }, [updateSessionById])
 
   const handleUnflagSession = useCallback((sessionId: string) => {

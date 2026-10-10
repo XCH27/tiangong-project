@@ -590,7 +590,7 @@ describe('BrowserPaneManager', () => {
     expect(instance.pageView.webContents.stopFindInPage).toHaveBeenCalledWith('clearSelection')
   })
 
-  it('writes a governed DOM snapshot for the human and the owning agent', async () => {
+  it('refuses a governed DOM snapshot for the human and the owning agent', async () => {
     const root = mkdtempSync(join(tmpdir(), 'fleet-guest-pane-'))
     const id = manager.createForSession('sess-guest', { workspaceId: 'ws-guest' })
     const instance = (manager as any).instances.get(id)
@@ -607,10 +607,7 @@ describe('BrowserPaneManager', () => {
       invocationId: 'pane-human',
       actor: { kind: 'human', id: 'user-1', displayName: 'Ada' },
     })
-    expect(humanResult.status).toBe('completed')
-    if (humanResult.status === 'completed') {
-      expect(humanResult.snapshot).toEqual({ url: 'https://example.com/owned', title: 'Owned', text: 'Page body' })
-    }
+    expect(humanResult).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
 
     const agentFile = join(root, 'agent.json')
     const agentResult = await manager.captureGovernedDom(id, {
@@ -619,8 +616,8 @@ describe('BrowserPaneManager', () => {
       invocationId: 'pane-agent',
       actor: { kind: 'agent', id: 'seat-1', displayName: 'Worker' },
     })
-    expect(agentResult.status).toBe('completed')
-    expect(reads).toBe(2)
+    expect(agentResult).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
+    expect(reads).toBe(0)
 
     reads = 0
     const denied = await manager.captureGovernedDom(id, {

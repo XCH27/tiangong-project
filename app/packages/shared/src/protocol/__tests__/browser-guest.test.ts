@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ActorRef } from '../actor'
@@ -31,7 +31,7 @@ describe('built-in chromium guest', () => {
       { id: 'page_find', status: 'wired' },
       { id: 'loading_stop', status: 'wired' },
       { id: 'native_guest', status: 'wired' },
-      { id: 'dom_snapshot', status: 'wired' },
+      { id: 'dom_snapshot', status: 'test-only' },
       { id: 'screenshot_evidence', status: 'Locked' },
       { id: 'chrome_store', status: 'Locked' },
     ])
@@ -89,7 +89,7 @@ describe('built-in chromium guest', () => {
     expect(guest.reads).toBe(0)
   })
 
-  test('human and agent DOM captures share file.create', async () => {
+  test('human and agent DOM captures are refused and do not write', async () => {
     const root = workspace()
     const humanPath = join(root, 'human-snapshot.json')
     const agentPath = join(root, 'agent-snapshot.json')
@@ -104,8 +104,8 @@ describe('built-in chromium guest', () => {
       actor: human,
     })
     expect(humanCapture).toMatchObject({
-      status: 'completed',
-      snapshot: { url: 'https://example.com', title: 'Example', text: 'Hello' },
+      status: 'denied',
+      reason: 'action_owner_mismatch:dom_evidence',
     })
 
     const agentCapture = await captureDomFromAgent(shared, {
@@ -115,19 +115,18 @@ describe('built-in chromium guest', () => {
       invocationId: 'cap-agent',
       actor: agent,
     })
-    expect(agentCapture).toMatchObject({ status: 'completed', snapshot: { text: 'Hello' } })
-    expect(JSON.parse(readFileSync(humanPath, 'utf8')).kind).toBe('dom_snapshot')
-    expect(JSON.parse(readFileSync(agentPath, 'utf8')).text).toBe('Hello')
+    expect(agentCapture).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
+    expect(existsSync(humanPath)).toBe(false)
+    expect(existsSync(agentPath)).toBe(false)
+    expect(guest.reads).toBe(0)
 
     const turns = shared.kernel.snapshot().turns
     expect(turns.map((turn) => turn.request.invocation.actionId)).toEqual([
       InternalActionId.FILE_CREATE,
       InternalActionId.FILE_CREATE,
     ])
-    expect(turns.map((turn) => turn.request.invocation.callerKind)).toEqual(['human_ui', 'agent'])
-    expect(turns.every((turn) => turn.undoHandle?.label === 'Restore previous DOM snapshot file')).toBe(true)
+    expect(turns.every((turn) => turn.phase === 'denied')).toBe(true)
     expect(turns.every((turn) => turn.request.invocation.payload.captureKind === 'dom_snapshot')).toBe(true)
-    expect(JSON.stringify(turns)).not.toContain('Hello')
   })
 
   test('a mismatched agent capture does not read the page', async () => {
@@ -162,7 +161,7 @@ describe('built-in chromium guest', () => {
       invocationId: 'cap-stop',
       actor: human,
     })
-    expect(result).toMatchObject({ status: 'interrupted' })
+    expect(result).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
     expect(guest.reads).toBe(0)
     expect(existsSync(filePath)).toBe(false)
   })
@@ -178,8 +177,8 @@ describe('built-in chromium guest', () => {
       invocationId: 'cap-secret',
       actor: agent,
     })
-    expect(result).toMatchObject({ status: 'failed' })
-    expect(guest.reads).toBe(1)
+    expect(result).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
+    expect(guest.reads).toBe(0)
     expect(existsSync(filePath)).toBe(false)
     expect(JSON.stringify(shared.kernel.snapshot())).not.toContain('live-token')
   })

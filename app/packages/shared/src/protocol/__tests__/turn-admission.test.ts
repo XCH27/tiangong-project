@@ -258,6 +258,55 @@ describe('host turn admission', () => {
     expect(renamed.status).toBe('completed')
   })
 
+  test('misowned verbs are denied and a side flag does not upgrade an L1 row', () => {
+    const host = kernel()
+    expect(host.admit(request(InternalActionId.FILE_UPDATE, 'inv-plugin', agent, {
+      filePath: 'loadout.json',
+      pluginId: 'hook:lint',
+      op: 'enable',
+      nextDocument: { version: 1, records: [{ id: 'hook:lint', installed: true, enabled: true }] },
+    }))).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+
+    expect(host.admit(request(InternalActionId.CANVAS_NODE_SELECT, 'inv-side', agent, {
+      surface: 'mcp_apps',
+      op: 'focus',
+    }))).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:sidebar_focus' })
+
+    const sidebarTarget = request(InternalActionId.CANVAS_NODE_SELECT, 'inv-slot', agent, { op: 'open' })
+    sidebarTarget.invocation.targets = [{ kind: 'unknown', id: 'mcp-apps', label: 'mcp-apps' }]
+    expect(host.admit(sidebarTarget)).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:sidebar_focus' })
+
+    expect(host.admit(request(InternalActionId.FILE_CREATE, 'inv-dom', agent, {
+      captureKind: 'dom_snapshot',
+      filePath: 'snap.json',
+    }))).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
+
+    expect(host.admit(request(InternalActionId.FILE_UPDATE, 'inv-page', agent, {
+      editKey: 'preferences-notes',
+      filePath: 'preferences.json',
+      nextDocument: { notes: 'from the button' },
+    }))).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:page_target' })
+
+    expect(host.admit(request(InternalActionId.FILE_UPDATE, 'inv-office', agent, {
+      filePath: 'notes.docx',
+      suite: 'docx',
+      nextBytesBase64: 'aaa',
+    })).status).toBe('admitted')
+    expect(host.admit(request(InternalActionId.CANVAS_NODE_SELECT, 'inv-card', agent, {
+      surface: 'office_preview',
+      op: 'open',
+      nodeId: 'n1',
+    })).status).toBe('admitted')
+
+    const sneaky = request(InternalActionId.FILE_UPDATE, 'inv-sneak', agent, {
+      filePath: 'notes.txt',
+    }) as TurnRequest & { requireHumanApproval?: boolean }
+    sneaky.requireHumanApproval = true
+    expect(host.admit(sneaky)).toMatchObject({ status: 'admitted', invocationId: 'inv-sneak' })
+    const source = readFileSync(new URL('../turn-admission.ts', import.meta.url), 'utf8')
+    expect(source.includes('requireHumanApproval')).toBe(false)
+  })
+
   test('reversible L1 completion requires an undo handle and does not claim success without one', async () => {
     const host = kernel()
     host.admit(request(InternalActionId.FILE_UPDATE, 'inv-undo'))

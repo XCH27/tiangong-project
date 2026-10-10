@@ -5,6 +5,8 @@
  * L1 rows whose undo contract is `not_supported` are fail-closed at admission
  * time (approval required). That does not reclassify the frozen permission
  * label; W0.1 still owns the table re-freeze.
+ * Admission does not accept a side flag that upgrades a frozen L1 id.
+ * Misowned payloads are refused in action-owner-policy.ts.
  */
 
 import { InternalActionId, type ActionPermissionLevel } from './internal-action'

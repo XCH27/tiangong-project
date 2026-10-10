@@ -15,6 +15,13 @@
 > `CONTRACT_VERSION` in `shared/src/protocol/internal-action.ts` and updating
 > this table in the **same commit**.
 
+> **Admission note (2026-10-10):** this note does not add, rename, or remove rows
+> and does not bump `CONTRACT_VERSION`. Host admission refuses a payload whose
+> meaning is a plugin loadout, an MCP Apps sidebar focus, a DOM evidence snapshot,
+> or a page-target write, even when the caller uses `file.update`, `file.create`,
+> or `canvas.node_select`. Approval follows the frozen permission column.
+> `requireHumanApproval` is not a policy and does not upgrade an L1 id.
+
 ## Versioning Rules
 
 | Change type | Version bump | Example |

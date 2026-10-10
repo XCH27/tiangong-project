@@ -1,10 +1,10 @@
 /**
  * Page-local operations for the existing EDIT_CONFIGS seam.
  *
- * set-model is the control the edit popover already exposes.
- * update-target is the next closed loop: a human button and an agent tool
- * both call executePageLocalOp, which admits file.update through the host
- * kernel and writes with the native effect. Pi is not the permission authority.
+ * set-model is the control the edit popover already exposes. It does not admit.
+ * update-target asks for file.update. That payload is a page-target write, so
+ * HostTurnKernel refuses it and the file stays unwritten. Pi is not the
+ * permission authority.
  */
 
 import type { ActorRef } from './actor'

@@ -39,6 +39,8 @@ import {
   type PluginMutationResult,
   HostTurnKernel,
   SessionFileTurnJournal,
+  sessionFlagRequest,
+  type SessionFlagAdmission,
   type TurnOutcome,
   type TurnRequest,
 } from '@craft-agent/shared/protocol'
@@ -4362,21 +4364,49 @@ export class SessionManager implements ISessionManager {
     return managed.agent
   }
 
-  async flagSession(sessionId: string): Promise<void> {
+  /**
+   * Human Flag command. Admits session.flag on this session's HostTurnKernel
+   * and journals the run in session.jsonl. The frozen row is L0, so this does
+   * not publish a permission card and does not call approve. Unflag does not
+   * admit. A refused admit does not set the flag. A failed or interrupted run
+   * clears the flag and writes that clear. A reconciling run keeps the
+   * committed flag.
+   */
+  async flagSession(sessionId: string): Promise<SessionFlagAdmission> {
+    const invocationId = randomUUID()
     const managed = this.sessions.get(sessionId)
-    if (managed) {
+    if (!managed) {
+      return { status: 'failed', invocationId, reason: 'session_missing' }
+    }
+    const request = sessionFlagRequest(sessionId, invocationId)
+    const admitted = this.admitHostTurn(sessionId, request)
+    if (admitted.status !== 'admitted') {
+      sessionLog.warn(`session.flag refused for ${sessionId}: ${admitted.status} ${admitted.reason ?? ''}`)
+      return { status: admitted.status, invocationId, reason: admitted.reason }
+    }
+    const kernel = this.hostApprovals.get(sessionId)?.kernel
+    if (!kernel) {
+      return { status: 'failed', invocationId, reason: 'host_kernel_missing' }
+    }
+    const ran = await kernel.run(invocationId, async ({ noteNativeCommit }) => {
       managed.isFlagged = true
-      // Persist in-memory state directly to avoid race with pending queue writes
       this.persistSession(managed)
       await this.flushSession(managed.id)
-      // Notify all windows for this workspace
+      noteNativeCommit()
       this.sendEvent({ type: 'session_flagged', sessionId }, managed.workspace.id)
       // Workaround: Bun's fs.watch({ recursive: true }) on Linux doesn't track
       // directories created after the watcher started.
       // https://github.com/oven-sh/bun/issues/15939
       const watcher = this.configWatchers.get(managed.workspace.rootPath)
       watcher?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
+      return { output: { flagged: true, actionId: request.invocation.actionId } }
+    })
+    if (ran.status !== 'completed' && ran.status !== 'reconciling') {
+      managed.isFlagged = false
+      this.persistSession(managed)
+      await this.flushSession(managed.id)
     }
+    return { status: ran.status, invocationId: ran.invocationId, reason: ran.reason }
   }
 
   async unflagSession(sessionId: string): Promise<void> {
@@ -6588,9 +6618,9 @@ export class SessionManager implements ISessionManager {
 
   /**
    * Install, enable, or disable a plugin on this Craft session's kernel.
-   * The journal is session.jsonl. Third-party hook and MCP enable waits on
-   * the existing permission card. This does not construct a plugin host.
-   * No shell or IPC caller uses this method. The path is test-only.
+   * The request uses file.update. Admission refuses that verb, so this does
+   * not write the loadout. No shell or IPC caller uses this method. The path
+   * is test-only. Settings install and enable stay Locked.
    */
   async applySessionPluginMutation(
     sessionId: string,
