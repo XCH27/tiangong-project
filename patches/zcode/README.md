@@ -29,6 +29,7 @@ The executable loop lives on the retained Craft tree and is declared in `docs/UP
 - `app/packages/shared/src/protocol/canvas-card-view.ts`
 - `app/packages/shared/src/protocol/plugin-settings.ts`
 - `app/packages/shared/src/protocol/plugin-settings-host.ts`
+- `app/packages/shared/src/protocol/release-independence.ts`
 
 `app/` stays where it is. Do not delete or relocate it.
 
@@ -54,6 +55,7 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 8. Canvas cards use `createCanvasCardHost` with that document host and `createAigcHost`. Place admits `canvas.node_create`. Delete admits `canvas.node_delete` and waits for human approval. Hide and stop stay view state. Do not stop the job kernel when a card stops. `@xyflow/react` stays uninstalled until the renderer spike is promoted.
 9. Browser guest actions use `createBrowserGuestHost` on the retained `persist:browser-pane` profile. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create` for a DOM snapshot. Leave screenshot evidence and Chrome Store advertising Locked. Do not add a plugin marketplace.
 10. Plugin install, enable, and disable use `createPluginSettingsHost`. `applyPluginMutationFromHuman` and `applyPluginMutationFromAgent` both call `executePluginMutation` and admit `file.update` for `.claude-plugin/loadout.json`. Leave MCP Registry catalogs, third-party hook approval, the MCP Apps side pane, and Agent Plugins 1.0.0 Locked. Do not treat that loadout as a remote store.
+11. Release notices use `readReleaseDispositionForHuman` and `readReleaseDispositionForAgent`. Do not write a session journal for that read. Leave the signed production update feed Locked. Do not point a Fleet updater at a production URL.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
 
@@ -82,5 +84,8 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Settings Plugins page with five views and local market filters | `wired` |
 | Plugin loadout install, enable, and disable through file.update | `wired` |
 | MCP Registry catalogs, third-party hook approval, MCP Apps side pane, Agent Plugins 1.0.0 | `Locked` |
+| Third-party notices for admitted dependencies | `wired` |
+| Update-feed dry run | `wired` |
+| Signed production update feed and a signed Fleet release | `Locked` |
 | `.fleet/zcode` integration | not applied in this checkout |
 | Live paid providers, quota ledger, automatic Pi tool admission, plugin marketplace, full Pi SDK host | `Locked` |

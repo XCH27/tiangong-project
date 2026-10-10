@@ -328,7 +328,12 @@ try {
     Pop-Location
 }
 
-# 7. Package with electron-builder
+# 7. Notices and the local update-feed dry run. A signed Fleet feed stays Locked.
+Write-Host "Checking third-party notices..."
+bun run (Join-Path $RootDir "scripts\verify-release-independence.ts")
+if ($LASTEXITCODE -ne 0) { throw "Release independence check failed. Packaging stops." }
+
+# 8. Package with electron-builder
 Write-Host "Packaging app with electron-builder..."
 
 # Debug: Show bun.exe file info

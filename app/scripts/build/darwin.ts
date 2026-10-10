@@ -6,6 +6,7 @@ import { $ } from 'bun';
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import type { Arch, BuildConfig } from './common';
+import { assertRepoReleaseIndependence } from './release-preflight';
 
 /**
  * Verify SDK native binary is bundled in the packaged macOS app.
@@ -36,6 +37,7 @@ export function verifyPackagedSDK(appPath: string, _arch: Arch): void {
 export async function packageDarwin(config: BuildConfig): Promise<string> {
   const { arch, electronDir } = config;
 
+  assertRepoReleaseIndependence(config.rootDir)
   console.log('Packaging app with electron-builder...');
 
   // Set up environment for electron-builder

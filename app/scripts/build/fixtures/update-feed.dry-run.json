@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "disposition": "dry-run",
+  "platform": "darwin",
+  "arch": "arm64",
+  "version": "0.10.5",
+  "files": [
+    {
+      "url": "Craft-Agents-arm64.zip",
+      "sha512": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+      "size": 1024
+    }
+  ],
+  "path": "Craft-Agents-arm64.zip",
+  "sha512": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "releaseDate": "2026-10-09T00:00:00.000Z"
+}

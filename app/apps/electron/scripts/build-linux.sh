@@ -185,7 +185,11 @@ echo "Building Electron app..."
 cd "$ROOT_DIR"
 bun run electron:build
 
-# 7. Package with electron-builder
+# 7. Notices and the local update-feed dry run. A signed Fleet feed stays Locked.
+echo "Checking third-party notices..."
+bun run "$ROOT_DIR/scripts/verify-release-independence.ts"
+
+# 8. Package with electron-builder
 echo "Packaging app with electron-builder..."
 cd "$ELECTRON_DIR"
 

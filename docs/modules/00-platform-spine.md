@@ -120,6 +120,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Canvas cards bind an admitted DOCX and an admitted aigc artifact. Hide, stop, and delete keep the owner state. |
 | 2026-10-09 | draft v1.1 | Built-in Chromium guest find, loading stop, and a DOM snapshot admitted as file.create. Screenshot evidence and Chrome Store stay Locked. |
 | 2026-10-09 | draft v1.1 | Settings Plugins page has five views and local market filters. Loadout writes admit file.update. MCP Registry, third-party hook approval, MCP Apps, and Agent Plugins 1.0.0 stay Locked. |
+| 2026-10-09 | draft v1.1 | Third-party notices fail closed when an admitted license is missing. The update-feed dry run stays local. A signed production feed stays Locked. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -151,6 +152,8 @@ The built-in browser keeps the Craft `persist:browser-pane` profile and the sess
 
 Settings → Plugins is one page on the existing settings navigator. The five views are Installed, Market, Skills, MCP, and Hooks. Market content filters are All, Skills, MCP, Hooks, and Commands, and they read the local catalog projected from workspace skills and MCP sources. `applyPluginMutationFromHuman` and `applyPluginMutationFromAgent` both call `executePluginMutation`. Install, enable, and disable admit `file.update` and write `.claude-plugin/loadout.json` with the same atomic replace as `session.jsonl`. Install does not enable. MCP Registry catalogs, third-party hook approval, the MCP Apps side pane, and Agent Plugins 1.0.0 stay `Locked`. This page is not a remote store and it is not a plugin marketplace.
 
+Release independence reads the admitted workspace packages and the bundled runtimes named by the existing packaging scripts. `readReleaseDispositionForHuman` and `readReleaseDispositionForAgent` return the same report. The About section shows that report. `renderThirdPartyNotices` writes no partial file when a license is missing. The checked-in `app/THIRD-PARTY-NOTICES.txt` is the persistent record. This check does not append a session journal and does not admit a turn. `checkUpdateFeed` accepts only a local dry-run document with relative artifact names. A signed document, a production disposition, or an absolute update URL stays `Locked`. The retained Craft updater in `app/apps/electron/src/main/auto-update.ts` is unchanged and is not a Fleet production feed. Packaging requirements are in `docs/release/PACKAGING-REQUIREMENTS.md`. `docs/engineering.md` is not in this checkout.
+
 | Slice | Status |
 |---|---|
 | Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
@@ -178,6 +181,9 @@ Settings → Plugins is one page on the existing settings navigator. The five vi
 | Settings Plugins page with five views and local market content filters | `wired` |
 | Install, enable, and disable of the local plugin loadout through `file.update` | `wired` |
 | MCP Registry catalogs, third-party hook approval, MCP Apps side pane, and Agent Plugins 1.0.0 | `Locked` |
+| Third-party notices for admitted dependencies, failing closed when a license is missing | `wired` |
+| Update-feed dry run with relative artifact names and no network fetch | `wired` |
+| Signed production update feed and a signed Fleet release | `Locked` |
 | Live paid image/video providers and a quota ledger | `Locked` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |

@@ -6,6 +6,7 @@ import { $ } from 'bun';
 import { existsSync, renameSync, statSync } from 'fs';
 import { join } from 'path';
 import type { Arch, BuildConfig } from './common';
+import { assertRepoReleaseIndependence } from './release-preflight';
 
 /**
  * Verify SDK native binary is bundled in the packaged Linux app.
@@ -36,6 +37,7 @@ export function verifyPackagedSDK(unpackedPath: string, _arch: Arch): void {
 export async function packageLinux(config: BuildConfig): Promise<string> {
   const { arch, electronDir } = config;
 
+  assertRepoReleaseIndependence(config.rootDir)
   console.log('Packaging app with electron-builder...');
 
   // Run electron-builder

@@ -78,3 +78,19 @@ app/apps/electron/src/renderer/components/icons/SettingsIcons.tsx	adapt	Plugins 
 app/apps/electron/src/shared/menu-schema.ts	adapt	Plugins keeps a navigator icon name beside the other settings pages.	bun test src/shared/__tests__/route-parser-plugins.test.ts
 app/packages/shared/src/i18n/locales/	adapt	Plugins labels for the settings navigator, five views, and market filters.	bun test src/protocol/__tests__/plugin-settings.test.ts
 app/apps/electron/src/shared/__tests__/route-parser-plugins.test.ts	adapt	settings/plugins parses as a settings subpage. An unknown subpage stays rejected.	bun test src/shared/__tests__/route-parser-plugins.test.ts
+app/packages/shared/src/protocol/release-independence.ts	adapt	Third-party notices fail closed when an admitted license is missing. The update-feed dry run accepts a local relative artifact and leaves a signed or production feed Locked. No network fetch and no session journal write.	bun test src/protocol/__tests__/release-independence.test.ts
+app/packages/shared/src/protocol/__tests__/release-independence.test.ts	adapt	Covers missing licenses, unknown SPDX ids, unlisted workspace packages, the checked-in notices file, the dry-run fixture, and Locked production feeds.	bun test src/protocol/__tests__/release-independence.test.ts
+app/packages/shared/src/protocol/index.ts	adapt	Export the release independence check.	bun test src/protocol/__tests__/release-independence.test.ts
+app/packages/shared/package.json	adapt	Subpath export for the release independence check used by the About page.	bun test src/protocol/__tests__/release-independence.test.ts
+app/scripts/build/release-preflight.ts	adapt	Packaging gate. Reads admitted package.json files and compares THIRD-PARTY-NOTICES.txt. Does not upload or sign.	bun run scripts/verify-release-independence.ts
+app/scripts/verify-release-independence.ts	adapt	Local command for the notices check and the update-feed dry run.	bun run scripts/verify-release-independence.ts
+app/scripts/build/darwin.ts	adapt	packageDarwin runs the notices check before electron-builder.	bun test src/protocol/__tests__/release-independence.test.ts
+app/scripts/build/linux.ts	adapt	packageLinux runs the notices check before electron-builder.	bun test src/protocol/__tests__/release-independence.test.ts
+app/scripts/build/win32.ts	adapt	packageWindows runs the notices check before electron-builder.	bun test src/protocol/__tests__/release-independence.test.ts
+app/apps/electron/scripts/build-dmg.sh	adapt	macOS packaging entry runs the release check before electron-builder.	bun test src/protocol/__tests__/release-independence.test.ts
+app/apps/electron/scripts/build-linux.sh	adapt	Linux packaging entry runs the release check before electron-builder.	bun test src/protocol/__tests__/release-independence.test.ts
+app/apps/electron/scripts/build-win.ps1	adapt	Windows packaging entry runs the release check before electron-builder.	bun test src/protocol/__tests__/release-independence.test.ts
+app/THIRD-PARTY-NOTICES.txt	adapt	Checked-in notices for admitted workspace packages and bundled runtimes. Regenerated only when the check passes.	bun test src/protocol/__tests__/release-independence.test.ts
+app/apps/electron/src/renderer/pages/settings/AppSettingsPage.tsx	adapt	About shows the notices count and the Locked signed Fleet feed. The Craft update button is unchanged.	bun test src/protocol/__tests__/release-independence.test.ts
+app/packages/shared/src/i18n/locales/	adapt	About labels for notices and the Locked Fleet update feed.	bun test src/protocol/__tests__/release-independence.test.ts
+docs/release/PACKAGING-REQUIREMENTS.md	adapt	Packaging requirements taken from the existing scripts. Signed Fleet release stays Locked. docs/engineering.md is not in this checkout.	bun test src/protocol/__tests__/release-independence.test.ts

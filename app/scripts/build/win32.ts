@@ -9,6 +9,7 @@ import { execSync } from 'child_process';
 import { existsSync, mkdirSync, rmSync, readdirSync, statSync, cpSync } from 'fs';
 import { join } from 'path';
 import type { BuildConfig } from './common';
+import { assertRepoReleaseIndependence } from './release-preflight';
 
 /**
  * Verify SDK native binary is bundled in the packaged Windows app.
@@ -227,6 +228,7 @@ export async function buildElectronAppWindows(config: BuildConfig): Promise<void
 export async function packageWindows(config: BuildConfig): Promise<string> {
   const { electronDir } = config;
 
+  assertRepoReleaseIndependence(config.rootDir)
   console.log('Packaging app with electron-builder...');
 
   // Kill any lingering processes first

@@ -32,6 +32,7 @@ import {
   SettingsInput,
 } from '@/components/settings'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
+import { releaseAboutModel } from '@craft-agent/shared/protocol/release-independence'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
@@ -94,6 +95,7 @@ function validateProxyUrl(url: string): string | undefined {
 
 export default function AppSettingsPage() {
   const { t } = useTranslation()
+  const release = useMemo(() => releaseAboutModel(), [])
 
   // Notifications state
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
@@ -353,6 +355,21 @@ export default function AppSettingsPage() {
                       </Button>
                     </SettingsRow>
                   )}
+                  <SettingsRow label={t("settings.about.notices")}>
+                    <span className="text-muted-foreground">
+                      {release.notices.ok
+                        ? t("settings.about.noticesCount", { count: release.notices.count })
+                        : t("settings.about.noticesFailed")}
+                    </span>
+                  </SettingsRow>
+                  <SettingsRow label={t("settings.about.fleetUpdates")}>
+                    <span className="text-muted-foreground">{t("settings.about.fleetUpdatesLocked")}</span>
+                  </SettingsRow>
+                  <SettingsRow label={t("settings.about.feedDryRun")}>
+                    <span className="text-muted-foreground">
+                      {release.dryRunFeed.outcome === 'pass' ? release.dryRunFeed.status : t("settings.about.noticesFailed")}
+                    </span>
+                  </SettingsRow>
                 </SettingsCard>
               </SettingsSection>
             </div>
