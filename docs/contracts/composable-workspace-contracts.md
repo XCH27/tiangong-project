@@ -1,6 +1,7 @@
 # Composable Workspace Contract Change Proposal
 
 > **Status:** proposed v0.1; not frozen; Workers must not implement from this file  
+> **Version gate (D53, 2026-10-10):** these drafts are outside `CONTRACT_VERSION` 1.3.0. Exit item 4 stays open. The consumer rule is `docs/audits/2026-10-10-w01-exit4-contract-version-gate.md`. This line does not freeze a type and does not bump the contract version.  
 > **Owner:** Lead  
 > **Purpose:** one W0.1 change proposal to be merged into canonical protocol/action contracts,
 > then archived; it is not a second runtime contract.

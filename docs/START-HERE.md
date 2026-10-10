@@ -93,5 +93,5 @@ See `docs/WAVE-MODULE-MAP.md` for the live wave and module status table.
 | Module behavior specs | `docs/modules/README.md` |
 | Worker execution packets | `docs/agent-packets/*.md` |
 | Frozen shared contracts | `docs/contracts/*.md` |
-| W0.1 composable contract proposal (not frozen) | `docs/contracts/composable-workspace-contracts.md` |
+| W0.1 composable contract proposal (proposed v0.1, version-gated by D53, not frozen; Exit item 4 open) | `docs/contracts/composable-workspace-contracts.md` |
 | Historical decisions | `docs/legacy/` (read-only reference) |
