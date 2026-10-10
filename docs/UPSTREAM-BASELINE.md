@@ -1,12 +1,16 @@
 # Upstream Baseline and Migration Gate
 
-> **Status:** blocking implementation migration  
-> **Owner:** Lead  
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this note.
+>
+> Product baseline is `.fleet/zcode` (ZCode). The Craft v0.11 pin below is reference-only historical audit. It does not block the product path and does not authorize product migration. This banner does not mark `usable` or Ready and does not invent a typecheck pass. `typecheck:all` remains the recorded #52 failure.
+
+> **Status:** historical Craft pin record; not blocking the ZCode product path
+> **Owner:** Lead
 > **Verified:** 2026-07-09; pin re-checked 2026-10-10 (D51); Mac source tree recorded 2026-10-10; non-frozen install finished and `typecheck:all` failed (exit 2) after #51; Electron launch and relaunch recorded 2026-10-10; RPC project create, session turn, and `browser-pane:create` recorded 2026-10-10; `route=board` and `route=settings` restores recorded 2026-10-10; migration branch `fleet/migration-from-v0.11.0` open 2026-10-10; adapt ports not started; `typecheck:all` still the #52 failure; Exit 3 parity note recorded 2026-10-10 and item 3 still open; Exit 4 version-gate recorded 2026-10-10 (D53) and item 4 still open; Exit 5 logical persistence stance recorded 2026-10-10 (D54) and item 5 still open
 
 ## Canonical Upstream
 
-Fleet's upstream base is Craft Agents OSS [`v0.11.0`](https://github.com/craft-ai-agents/craft-agents-oss/releases/tag/v0.11.0), published 2026-07-07. The tag ref object type is `commit` (a lightweight tag). It resolves to `f4e172bf372f4ccc7389a189be1e0b0541f96282`. The parent commit `c9d9a26fbefa3a5165ee9aa50cb30c25466afd81` is the `v0.10.5` commit. Public `v0.14.1` (2026-10-06) is a later release and is not this pin.
+This file records the historical Craft Agents OSS pin [`v0.11.0`](https://github.com/craft-ai-agents/craft-agents-oss/releases/tag/v0.11.0), published 2026-07-07. It is not the product baseline. The product candidate is `.fleet/zcode` (D56). The tag ref object type is `commit` (a lightweight tag). It resolves to `f4e172bf372f4ccc7389a189be1e0b0541f96282`. The parent commit `c9d9a26fbefa3a5165ee9aa50cb30c25466afd81` is the `v0.10.5` commit. Public `v0.14.1` (2026-10-06) is a later release and is not this pin.
 
 The current `app/package.json` declares `0.10.5`. The v0.11 projects, tasks, and Kanban directories are absent from `app/`. The current repository and Craft Agents upstream have unrelated Git histories, so a normal merge is unsafe and was correctly refused in an isolated worktree.
 

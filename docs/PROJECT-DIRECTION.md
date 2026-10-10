@@ -2,7 +2,7 @@
 
 ## 1. Product Thesis
 
-Fleet is a local-first modular spatial work platform built on Craft Agents.
+Fleet is a local-first modular spatial work platform. The product candidate is ZCode at `.fleet/zcode` (D56). Craft Agents is interaction reference, not the runtime baseline.
 
 It is not a chat client, not a terminal skin, not an IDE clone, not a Figma clone, and not a collection of disconnected AI utilities. The product direction is a single workbench where a human and multiple AI agents work on the same project through the same sessions, files, permissions, runtime lanes, assets, and timeline.
 
@@ -22,7 +22,9 @@ editors and modules keep their own document models.
 
 ## 2. The Product We Are Actually Building
 
-Fleet should grow from Craft Agents into one composable system with five connected layers:
+> **SUPERSEDED 2026-10-10 (D56):** product baseline is `.fleet/zcode`. The Craft-shell layers below are interaction reference and historical shape, not authorization to migrate the product onto Craft. They do not block the ZCode path.
+
+The composable shape recorded on this spine has five connected layers:
 
 1. **Retained Craft Workbench and View Host**
    The home shell for sessions, projects, agents, settings, permissions, and runtime selection.
@@ -136,9 +138,11 @@ The first spine is not “build all surfaces.” It is the minimum product backb
 > **Phase → Wave cross-reference:** The phases below map to execution waves in
 > `docs/WAVE-MODULE-MAP.md`. See the table at the end of this section for the full mapping.
 
-### Phase 0: Clean Craft Agents v0.11 Baseline `[W0.1 migration gate]`
+### Phase 0: Clean Craft Agents v0.11 Baseline `[historical W0.1 audit — not a product gate]`
 
-Goal: Craft runs cleanly and remains recognizable.
+> **SUPERSEDED 2026-10-10 (D56):** historical only; not a product gate; ZCode-first supersedes. The steps below stay as the Craft-migration record. They do not authorize product migration, and they do not claim the workbench is `usable`.
+
+Goal: Craft runs cleanly and remains recognizable. This goal is historical.
 
 Do:
 
@@ -156,8 +160,9 @@ Do not:
 - replace the shell
 - add new top-level pages for every feature
 
-Exit criteria: the clean v0.11 workbench is usable, the migration ledger is complete, and the
-canonical contract implementation is re-frozen against that baseline.
+Exit criteria, unmet and historical: a clean v0.11 workbench, a complete migration ledger, and a
+canonical contract re-freeze against that baseline. D56: this phase is not the product path. The
+wording above is the old target. It is not a current `usable` claim.
 
 ### Phase 1: Terminal and CLI Runtime Loop `[Wave 2]`
 
@@ -258,7 +263,7 @@ returns versioned ArtifactRefs.
 
 | Phase | Name | Wave / Track |
 |---|---|---|
-| Phase 0 | Clean Craft Agents v0.11 Baseline | W0.1 migration gate |
+| Phase 0 | Clean Craft Agents v0.11 Baseline | Historical W0.1 audit; not a product gate (D56) |
 | Phase 1 | Terminal and CLI Runtime Loop | Wave 2 |
 | Phase 2 | Internal Action Spine | Wave 0 → Wave 1 |
 | Phase 3 | Runtime Lanes and TeamRun | Wave 0 → Wave 2 |
@@ -379,7 +384,9 @@ The key change from the old docs is that a module document is not just a plan. I
 
 ## 12. Immediate Next Move
 
-The next move is W0.1 migration/document/contract reconciliation, not feature implementation:
+The product path is the ZCode candidate (`.fleet/zcode`, D56). W0.1 Craft v0.11 migration on this spine is historical audit. It does not block that path and it does not authorize product migration onto Craft. Nothing below marks a wave Ready or a capability `usable`.
+
+Historical spine notes, retained and not the next product move:
 
 1. Align the Decision Ledger, architecture boundary, contracts, wave map, ownership, Board, module index, and packets.
 2. Resolve AgentSeat/tag authority, ActionInvocation caller/idempotency/revision, orthogonal action
@@ -477,4 +484,4 @@ Fleet keeps and simplifies the existing Electron desktop shell. The shared **log
 
 No independently installed or long-lived daemon is part of the W1/W2 delivery contract. A future offline/background need may justify one only through a new Lead-approved ADR covering lifecycle, local authentication, single-instance behaviour, recovery, upgrade, and state-ownership migration.
 
-External architecture comparisons are nonbinding research; the verified upstream baseline and migration gate live in `docs/UPSTREAM-BASELINE.md`.
+External architecture comparisons are nonbinding research. `docs/UPSTREAM-BASELINE.md` is the historical Craft v0.11 pin record. D56: it is not the product gate. The product path is `.fleet/zcode`.

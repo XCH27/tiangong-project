@@ -1,9 +1,11 @@
 # M01 — Clean Craft Agents v0.11 Baseline
 
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this module as a delivery path. Product baseline is `.fleet/zcode`. The record below stays. It does not mark `usable` or Ready and does not invent a typecheck pass.
+
 > **Capability status:** `not implemented` for the target baseline
-> **Execution gate:** W0.1 Lead-only; Worker implementation Locked
-> **Spec maturity:** contract draft; behaviour ledger started 2026-10-10 (D52); Mac source tree recorded 2026-10-10; `typecheck:all` failed (exit 2) after #51; Electron launch and relaunch recorded 2026-10-10; RPC project create, session turn, and `browser-pane:create` recorded 2026-10-10; `route=board` and `route=settings` restores recorded 2026-10-10 (not an AX click and not a menu click); branch `fleet/migration-from-v0.11.0` open, adapt ports not started, `app/` still 0.10.5; `typecheck:all` still the #52 failure; Exit item 1 stays open; fleet-old rows still open
-> **Wave:** W0.1 migration gate
+> **Execution gate:** historical W0.1 Craft audit; Worker implementation on this spine stays Locked. Not a product gate (D56).
+> **Spec maturity:** contract draft; behaviour ledger started 2026-10-10 (D52); Mac source tree recorded 2026-10-10; `typecheck:all` failed (exit 2) after #51; Electron launch and relaunch recorded 2026-10-10; RPC project create, session turn, and `browser-pane:create` recorded 2026-10-10; `route=board` and `route=settings` restores recorded 2026-10-10 (not an AX click and not a menu click); branch `fleet/migration-from-v0.11.0` open, adapt ports not started, `app/` still 0.10.5; `typecheck:all` still the #52 failure; Exit item 1 stays open as audit; fleet-old rows still open
+> **Wave:** historical W0.1 Craft record; not a product gate (D56)
 > **Owner:** Lead
 > **Depends on:** verified upstream `v0.11.0` in `UPSTREAM-BASELINE.md` (pin D51; Mac source tree recorded; `typecheck:all` failed exit 2; Electron launch and relaunch recorded; RPC project create, session turn, and `browser-pane:create` recorded; `route=board` and `route=settings` restores recorded; branch `fleet/migration-from-v0.11.0` open; adapt ports not started; Exit item 1 stays open)
 

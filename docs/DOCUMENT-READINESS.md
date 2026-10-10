@@ -1,7 +1,9 @@
 # Documentation Readiness
 
-> **Authority:** current documentation-maturity register  
-> **Updated:** 2026-07-09  
+> **SUPERSEDED 2026-10-10 (D56) for product gating:** an incomplete Craft v0.11 migration does not block the ZCode product path. This file stays a spec-maturity register. It does not mark Ready or `usable`.
+
+> **Authority:** documentation-maturity register for this spine
+> **Updated:** 2026-07-09; product-baseline note 2026-10-10 (D56)
 > **Scope:** documentation only; no capability status is promoted by this file
 
 ## 1. Three Independent Axes
@@ -44,8 +46,9 @@ All of the following are true:
 7. a finite packet names exact allowed files and one complete user-visible loop;
 8. acceptance can be performed on real behaviour without guessing.
 
-No active module is `execution-ready` on 2026-07-09 because the v0.11 migration ledger and W0.1
-canonical re-freeze are incomplete.
+No active module on this Craft spine is `execution-ready`. That is a spec-maturity note. It does
+not make W0.1 Craft migration the product gate. The product path is the ZCode candidate (D56).
+This register does not mark Ready or `usable`.
 
 ## 3. Current Module Register
 
@@ -74,7 +77,9 @@ canonical re-freeze are incomplete.
 
 ## 4. Immediate P0 Documentation Work
 
-1. Complete the clean Craft Agents v0.11 migration ledger and record retained extension points.
+These items are the historical Craft-spine documentation list. D56 supersedes them as product gates. They do not authorize Craft migration as the delivery path. They do not mark `usable` or Ready.
+
+1. The clean Craft Agents v0.11 migration ledger stays a historical audit. Retained extension points are not a product-host selection.
 2. Re-freeze one canonical W0.1 contract covering caller provenance, idempotency, document
    revisions, and typed event payloads. Those fields stay partial (Exit 3). ArtifactRef, the
    capability manifest, workflow, ExternalJob, spatial, and view contribution are version-gated
@@ -87,13 +92,14 @@ canonical re-freeze are incomplete.
    Mac-verified recovery. Exit item 5 stays open. Detail:
    `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`. Active docs must not assume a
    SQLite authority.
-4. Wave gates and the upstream gate stay open with W0.1. Ownership precedence for the paths D55 lists is recorded in `docs/audits/2026-10-10-w01-exit7-ownership-domains.md`. Exit item 7 stays open because no-path holds and unlisted host packages are not packets.
+4. Craft-spine wave notes and the historical upstream pin stay audit (D56). They do not block the ZCode product path. Ownership precedence for the paths D55 lists is recorded in `docs/audits/2026-10-10-w01-exit7-ownership-domains.md`. Exit item 7 stays open as audit because no-path holds and unlisted host packages are not packets. Spine W1 stays Locked.
 5. Rewrite M10, M13, M14, and M15 before their waves; do not treat file presence as readiness.
 6. Complete required engine/adapter spikes before promoting M06/M07/M09/M16/M18/M19.
 
 ## 5. First Documentation-to-Product Promotion Order
 
 ```text
+Historical Craft-spine order only (D56). Not the ZCode product path.
 W0.1 contracts and v0.11 migration
 -> M00 + M03 + M12 capability core
 -> M16 host + M02 + M05

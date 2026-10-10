@@ -1,5 +1,10 @@
 # W0.1 exit checklist — session chrome after PRs #28–#33
 
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this note.
+>
+> Product baseline is `.fleet/zcode` (ZCode). This Exit / Craft v0.11 pin / W0.1 Craft-migration material stays in git as reference-only historical audit. Do not treat these W0.1 Exit items as open product gates. Craft Agents remains interaction reference only. This banner does not delete the record below, does not mark `usable` or Ready, and does not invent a typecheck pass.
+
+
 > **Date:** 2026-10-10
 > **Base inspected:** `4f12779d` (`work/fresh-base-spine` after merged PR #33)
 > **Current base:** `9fdb881e` (`work/fresh-base-spine` after merged PR #49)
@@ -49,6 +54,8 @@
 ## Gate status (unchanged)
 
 W0.1 stays Locked for worker implementation. `docs/WAVE-MODULE-MAP.md` still records the Lead reconciliation row as In Progress and blocking all Workers. This note does not close that row and does not mark W0.1 or W1 Ready.
+
+Follow-up (D56, 2026-10-10): that wave-map cell is now a historical Craft audit and is not a product gate. The sentence above is the record before that correction. Spine worker waves stay Locked. This follow-up does not mark Ready or `usable`.
 
 `docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked. Nothing in this checklist is `usable`. The Settings plugin caller is `wired` (D49) and is not `usable`. The #39 freeze is CONTRACT 1.3.0, recorded as D47–D49. PRs #28–#33 themselves added no action id. PRs #41–#43 add no action id. DOM capture and page-target stay `test-only`. The MCP Apps pane is the human caller for `workbench.sidebar_focus`.
 

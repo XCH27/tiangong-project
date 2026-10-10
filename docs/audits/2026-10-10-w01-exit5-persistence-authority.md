@@ -1,5 +1,10 @@
 # W0.1 Exit item 5 — persistence authority
 
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this note.
+>
+> Product baseline is `.fleet/zcode` (ZCode). This Exit / Craft v0.11 pin / W0.1 Craft-migration material stays in git as reference-only historical audit. Do not treat these W0.1 Exit items as open product gates. Craft Agents remains interaction reference only. This banner does not delete the record below, does not mark `usable` or Ready, and does not invent a typecheck pass.
+
+
 > **Date:** 2026-10-10
 > **Role:** Fleet Lead. This note records the logical persistence stance. It does not close the physical-store gate.
 > **Base:** `402f3ddd8166d56f895b42fba405a62c8bd549ba` (`work/fresh-base-spine` after #57).
