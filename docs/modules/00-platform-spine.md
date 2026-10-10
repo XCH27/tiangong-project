@@ -141,6 +141,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-10 | draft v1.1 | W0.1 exit checklist for the #28–#33 session-chrome admits: `docs/audits/2026-10-10-w01-exit-checklist.md`. No new action id. Unflag still does not admit. The header stays `not implemented`. |
 | 2026-10-10 | draft v1.1 | Agent `rename_session` admits `session.rename` on the target session kernel as the calling Craft session. A blank or missing caller does not write the name. Title generation stays the desktop user. No new action id. |
 | 2026-10-10 | draft v1.1 | Settings workspace rename admits `workspace.rename` on an existing session kernel. L2 publishes the permission card. Allow writes the folder name. Deny and a missing session leave it. No new action id. |
+| 2026-10-10 | draft v1.1 | No production shell or IPC caller deletes through `file.delete` or `canvas.node_delete`. Those ids stay off the session permission card. D46 footnote: the PPTX shell is a first-slide viewer. Office edit and save stay Locked. MotionDeck stays Locked. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -185,6 +186,10 @@ Electron and `SessionManager` do not construct `CliExecutorHost` and do not spaw
 `observeSubscription` is the usage reading for quota, tier, and remaining. The AI settings section calls `readSubscriptionForHuman` with no provider payload, so the lines stay unknown. `readSubscriptionForAgent` has no production caller and is `test-only`. A missing field stays unknown. An explicit zero stays zero. Live billing fetch is not part of this slice.
 
 The shell Office readers are viewers. Edit and save on that overlay stay `Locked`. `createDocumentSuiteHost` is `test-only`. The test host reads a DOCX package, the first XLSX sheet, or first-slide PPTX text and admits `file.create` or `file.update` for those edits. The shell overlays do not call that host. Legacy `.xls`, `.xlsm`, `.ppt`, and `.pptm` stay `Locked`.
+
+D46 stays Final. The native document is a MotionDeck. The shell PPTX path is `PptxPreviewOverlay`: first-slide text, with the save-locked notice, and no package rewrite. That preview is `wired`. It leaves D46 unmet. Office edit and save stay `Locked`. MotionDeck stays `Locked`. The footnote is `docs/modules/19-presentation-motion-surface.md` §10. This paragraph does not edit the ledger.
+
+`file.delete` and `canvas.node_delete` have no production shell or IPC caller on the session kernel. Electron, `SessionManager`, and the RPC handlers do not admit either id. `createCanvasCardHost.deleteCard` admits `canvas.node_delete` on a private test kernel, and Electron does not construct that host. `CliExecutorHost` can admit `file.delete` in tests, and Electron and `SessionManager` do not construct that host. `sessions:delete`, `skills:delete`, and `sources:delete` remove their own records and are not `file.delete`. No permission card was added for either id. Settings `workspace.rename` remains the only production host-card caller. Other card publish stays `test-only`. Unflag still does not admit. Plugin install, enable, and disable stay Locked. `CONTRACT_VERSION` stays 1.2.0.
 
 `ArtifactCanvasBoard` is not mounted by the Electron shell. `createCanvasCardHost` is `test-only`. The test host binds a file path on `CanvasDocument` and does not write sheet cells or slide text. `@xyflow/react` is not installed. A full spreadsheet editor, a full slide editor, and the renderer spike stay `Locked`.
 
@@ -231,12 +236,14 @@ Release independence reads the admitted workspace packages and the bundled runti
 | DOCX, XLSX, and PPTX create, edit, undo, save, and reopen through `file.create` / `file.update` | `test-only` |
 | DOCX paragraph preview in the shell | `wired` |
 | XLSX first-sheet cell preview in the shell | `wired` |
-| PPTX first-slide text preview in the shell | `wired` |
+| PPTX first-slide text preview in the shell. D46 footnote: this viewer leaves MotionDeck unmet. | `wired` |
 | Office edit and save in the shell | `Locked` |
+| Shell or IPC `file.delete` on the session kernel | `not implemented` |
 | XLSX formulas, rich text, charts, extra sheets, and a full spreadsheet editor | `Locked` |
 | PPTX animations, a full slide editor, and MotionDeck | `Locked` |
 | Legacy `.xls`, `.xlsm`, `.ppt`, and `.pptm` | `Locked` |
 | Canvas cards for DOCX, XLSX, PPTX, and image or video artifacts, including hide, stop, and delete | `test-only` |
+| Shell or IPC `canvas.node_delete` on the session kernel. `createCanvasCardHost.deleteCard` stays on the test host. | `not implemented` |
 | `@xyflow/react` spatial renderer | `Locked` |
 | Human Chromium page find, loading stop, back, forward, and reload | `wired` |
 | Governed DOM snapshot. Admission refuses the `file.create` payload. | `test-only` |

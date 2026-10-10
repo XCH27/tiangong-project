@@ -95,10 +95,22 @@ successful artifact unchanged. Deck editing remains usable when a single media a
 
 This module stays Locked. It is not a MotionDeck. The shell PPTX overlay is a first-slide text viewer. `createDocumentSuiteHost` and `createCanvasCardHost` are `test-only`. A full slide editor stays Locked. See `docs/modules/00-platform-spine.md` §13.
 
+### D46 footnote
+
+D46 in `docs/DECISIONS-LEDGER.md` stays Final. The native document is a MotionDeck. PPTX, HTML, and video are explicit exports. This footnote does not edit the ledger, does not add an action id, and does not bump `CONTRACT_VERSION`.
+
+`PptxPreviewOverlay` is the shell reader. `FilePreviewRenderer` mounts it for `.pptx` and does not pass a save callback. The overlay reads first-slide text from the package and shows the existing save-locked notice. It does not call `createDocumentSuiteHost` and does not rewrite the package. That reader is the `wired` preview row below. A first-slide viewer leaves D46 unmet. MotionDeck stays Locked.
+
+Office edit and save on the shell overlays stay `Locked`. Create, edit, undo, save, and reopen through the document host stay `test-only`. Animations, HTML or video export, and a full slide editor stay `Locked`. The module header stays `not implemented`. The execution gate stays Locked. W3B stays Locked.
+
+After `25e53895` (merged PR #36), Electron, `SessionManager`, and the RPC handlers still have no production caller that deletes through frozen `file.delete` or `canvas.node_delete`. `createCanvasCardHost.deleteCard` admits `canvas.node_delete` on a private test kernel. Electron does not construct that host and does not mount `ArtifactCanvasBoard`. `CliExecutorHost` can admit `file.delete` in tests. Electron and `SessionManager` do not construct that host. `sessions:delete`, `skills:delete`, and `sources:delete` remove their own records. They are not `file.delete`. This footnote does not add a shell caller and does not publish a permission card for either id. Settings `workspace.rename` remains the only production host-card caller. Other card publish stays `test-only`.
+
 | Slice | Status |
 |---|---|
 | PPTX create and first-slide text update, undo, save, and reopen through the document host | `test-only` |
 | First-slide text preview in the shell overlay | `wired` |
 | First-slide summary card that opens the existing preview | `test-only` |
+| Office edit and save in the shell overlay | `Locked` |
+| MotionDeck native document | `Locked` |
 | Motion timeline, animation editing, HTML or video export, and a full slide editor | `Locked` |
 
