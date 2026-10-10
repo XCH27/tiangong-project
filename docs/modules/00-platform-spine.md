@@ -55,7 +55,7 @@ M00 consumes the frozen `SessionEvent`, `ActorRef`, `AgentSeat`, and permission 
 ## 5. State and Persistence
 
 - The retained/selected M00 store is authoritative for SessionEvent order, approvals, and execution
-  metadata. No module assumes SQLite or creates a parallel database before W0.1 decides the adapter.
+  metadata. D54 records the logical authority map and leaves the physical-store gate open. The retained candidate is the Craft file store (`session.jsonl` under `~/.craft-agent/`). No module assumes SQLite or creates a parallel database.
 - In-memory caches are derived only and may be rebuilt from the canonical store.
 - A state-changing transaction either commits its corresponding evidence or reports failure; no caller may claim success before both are durable.
 - Restart recovery reopens the same local store and marks interrupted work for its owning module to reconcile; it never creates a replacement session database.

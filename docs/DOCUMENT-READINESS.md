@@ -51,7 +51,7 @@ canonical re-freeze are incomplete.
 
 | Module | Spec maturity | Primary blocking evidence/decision |
 |---|---|---|
-| M00 Platform Spine | contract draft | v0.11 storage adapter; AgentSeat/event/caller recorded as partial in `docs/audits/2026-10-10-w01-exit3-canonical-parity.md` and not re-frozen; transaction/recovery parity |
+| M00 Platform Spine | contract draft | logical persistence stance recorded (D54); physical-store gate still open (`docs/audits/2026-10-10-w01-exit5-persistence-authority.md`); AgentSeat/event/caller recorded as partial in `docs/audits/2026-10-10-w01-exit3-canonical-parity.md` and not re-frozen; transaction/recovery parity |
 | M01 Clean Baseline | contract draft | behaviour ledger started (`docs/audits/2026-10-10-w01-v011-baseline-blk001.md`); Mac source tree recorded (`docs/audits/2026-10-10-w01-exit1-mac-checkout.md`); `typecheck:all` failed (exit 2); Electron launch and relaunch recorded (`docs/audits/2026-10-10-w01-exit1-electron-launch.md`); RPC project create, session turn, and `browser-pane:create` recorded (`docs/audits/2026-10-10-w01-exit1-rpc-loop.md`); `route=board` and `route=settings` restores recorded, not an AX or menu click (`docs/audits/2026-10-10-w01-exit1-routes-migration.md`); branch `fleet/migration-from-v0.11.0` open, adapt ports not started, `app/` still 0.10.5; `typecheck:all` still the #52 failure; Exit item 1 stays open; fleet-old rows still missing |
 | M02 Terminal/CLI | contract draft | runtime discovery, host/process/PTY paths and real commands unverified on v0.11 |
 | M03 Action Registry | contract draft | action-id policy columns frozen at 1.3.0 (D47–D49); caller, idempotency, revision, and typed-event envelopes not frozen (`docs/audits/2026-10-10-w01-exit3-canonical-parity.md`) |
@@ -82,8 +82,11 @@ canonical re-freeze are incomplete.
    `CONTRACT_VERSION` 1.3.0. Orthogonal action-id policy columns are already frozen at 1.3.0.
    The Exit 3 note records the open fields and does not bump `CONTRACT_VERSION`. Exit item 4
    stays open.
-3. Resolve physical persistence from `PERSISTENCE-AUTHORITY-MAP.md`; remove active claims that
-   assume unverified SQLite/JSON authorities.
+3. Physical persistence: D54 records the logical authority map as the Lead stance and retains
+   the Craft file layouts. SQLite is not decided. The physical-store gate stays open until
+   Mac-verified recovery. Exit item 5 stays open. Detail:
+   `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`. Active docs must not assume a
+   SQLite authority.
 4. Align wave gates, phase mapping, ownership precedence, and the hidden upstream gate.
 5. Rewrite M10, M13, M14, and M15 before their waves; do not treat file presence as readiness.
 6. Complete required engine/adapter spikes before promoting M06/M07/M09/M16/M18/M19.
