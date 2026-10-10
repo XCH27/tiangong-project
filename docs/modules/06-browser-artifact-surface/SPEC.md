@@ -191,14 +191,14 @@ M06 consumes these settings. It does not duplicate toggles inside multiple panel
 
 - The profile id stays `persist:browser-pane`. A different partition is rejected. There is no second profile store.
 - Page find, find clear, loading stop, back, forward, and reload are native guest actions. The human toolbar path and an agent caller share `applyNativeGuestAction`. An agent can use only the session guest it owns.
-- The governed capture is a DOM snapshot. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create`. The page is read inside the admitted effect. Stop before run does not read. Credential-shaped text is not written.
+- The governed capture is a DOM snapshot. `captureDomFromHuman` and `captureDomFromAgent` both admit `browser.dom_snapshot`. The row is L2, so the page is read only after a human allows the turn. Stop before run does not read. Credential-shaped text is not written. The same payload on `file.create` is refused. No shell caller.
 - Screenshot evidence stays `Locked`. The existing `capturePage` path is not this admission. `browser.screenshot` remains under discussion and is not used.
 - Chrome Store advertising stays `Locked` until a real extension lifecycle is proven. This slice is not a plugin marketplace.
 
 | Slice | Status |
 |---|---|
 | Human page find, loading stop, and native guest back, forward, and reload | `wired` |
-| DOM snapshot admitted through `file.create` for the human and the owning agent | `test-only` |
+| DOM snapshot admitted through `browser.dom_snapshot` for the human and the owning agent. No shell caller. | `test-only` |
 | Screenshot evidence, selection overlay, and M05 ArtifactRef registration | `Locked` |
 | Chrome Store advertising and extension lifecycle | `Locked` |
 
