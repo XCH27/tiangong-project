@@ -8,6 +8,8 @@
 > **Follow-up after PR #25 (2026-10-10):** this note still describes base `89b2e8a6`. It is not rewritten. Two gaps the later §13 relabel left open are closed in the checkout that carries this addendum:
 > 1. `PluginsSettingsPage` does not construct `createPluginSettingsHost` and does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`. Five views and market filters stay on the settings navigator. Install, enable, and disable are `Locked` until the `SessionManager` session kernel owns the loadout. The page does not render the Craft session permission card. `createPluginSettingsHost` is `test-only`. The production-caller row in §2.1 for that factory is historical for the audited base.
 > 2. `cli-executors/capabilities.ts` marks Codex, ACP, and the Codex peer preset `display-only`. Locked effects stay `Locked`. No production path spawns those peers.
+>
+> **Follow-up after PR #28 (2026-10-10):** squash `12df4540` on `work/fresh-base-spine`. This note is not rewritten. The human Flag command admits `session.flag` on the session kernel. Admission refuses a plugin loadout, sidebar focus, DOM snapshot, or page-target write on a misowned frozen id. Settings writes stay Locked. W0.1 stays Locked. Nothing in that slice is `usable`. The §3 item 1 leftover is closed here: `AGENTS.md` uses the wave-map capability set, and `Locked` is the execution gate.
 
 ## Verdict
 

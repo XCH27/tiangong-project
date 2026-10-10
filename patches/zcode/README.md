@@ -70,6 +70,8 @@ Snapshot version `1` is the only readable version. A different version throws `u
 
 ## Status
 
+`Locked` in this table is the execution gate in `docs/WAVE-MODULE-MAP.md`, not a capability result. Nothing in this note is `usable`.
+
 | Slice | Status |
 |---|---|
 | Process-local admission, permission gate, stop/recovery, usage confidence | `wired` |

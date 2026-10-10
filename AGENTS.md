@@ -18,7 +18,7 @@ Read these files first in this exact order to understand the entry orientation a
 -   **Build on Fleet Base**: Build on the clean Fleet desktop base in `app/`; keep the shell and simplify it.
 -   **Complete Loops**: Every deliverable must cover user interface, core backend, state persistence, timelines, and permissions.
 -   **No Second Systems**: Do not create a second session store, permission model, or memory database.
--   **Status Transparency**: Status must be reported strictly as `usable`, `wired`, `display-only`, or `Locked`.
+-   **Status Transparency**: Report capability status as `not implemented`, `display-only`, `wired but not visually checked`, or `usable`. `Locked` is an execution gate (`Locked`, `Ready`, `In Progress`, `Blocked` on `docs/WAVE-MODULE-MAP.md`), not a capability result. Do not start work while the assigned gate is Locked. Only the Lead promotes `usable`.
 -   **Grades & Audit**: CLI terminal, git operations, and local writes must route through the L0-L3 permission validator and log timeline evidence.
 -   **Pi boundary**: Pi Agent Core only sequences a default model turn after Fleet host admission. Do not describe or implement that path as a complete Pi execution host. The local candidate `.fleet/zcode` is gitignored; tracked host notes live in `patches/zcode/`, and `app/` changes are listed in `docs/UPSTREAM-DELTA.tsv`. Do not delete `app/`.
 

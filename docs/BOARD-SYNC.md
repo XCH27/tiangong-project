@@ -75,8 +75,10 @@ stops and returns to the Lead instead of inventing a value.
 
 ## Status Discipline
 
-Status values are exactly the four labels defined in `AGENTS.md`. No fifth informal status
-like "almost done" or "mostly working" is valid.
+Status values are exactly the four capability labels defined in `AGENTS.md`: `not implemented`,
+`display-only`, `wired but not visually checked`, and `usable`. `Locked` is the execution gate
+in `docs/WAVE-MODULE-MAP.md`, not one of these four. No informal status like "almost done" or
+"mostly working" is valid.
 
 Allowed forward transitions:
 
@@ -161,8 +163,8 @@ Board Cards section. Do not create a new file format for this; append the block 
 - `docs/PARALLEL-AGENT-OPERATING-MODEL.md` still defines the Pre-Flight Gate, the Frozen
   Contract Files list, and the Failure Rule. A card cannot be claimed if the Pre-Flight Gate
   questions in that document are unanswered.
-- `AGENTS.md` still defines the four status labels and the validation rhythm. This file adds no
-  new labels and no new validation steps.
+- `AGENTS.md` still defines the four capability labels and the validation rhythm. `Locked` stays
+  an execution gate. This file adds no new labels and no new validation steps.
 
 ---
 
