@@ -10,6 +10,7 @@
 > **Exit 3 footnote (2026-10-10):** `docs/audits/2026-10-10-w01-exit3-canonical-parity.md` names the Fleet implementation file and the Craft v0.11.0 (`f4e172bf`) surface for each field. Action ids and the v1.3.0 policy table are frozen (D47–D49). AgentSeat projection, caller provenance, envelope idempotency, document revisions, typed event payloads, and HostTurnKernel admission on the v0.11 tree are partial. `CONTRACT_VERSION` stays `1.3.0`. No action id is added. Item 3 stays open. Exit item 1 stays open. This footnote does not check item 3 off. Gate cells stay In Progress or Locked. No module is `usable`. W1 stays Locked.
 > **Exit 4 footnote (2026-10-10):** D53 version-gates ArtifactRef, the capability manifest, ExternalJob, workflow, spatial, and view contracts. They stay proposed. `docs/contracts/composable-workspace-contracts.md` stays proposed v0.1. `CONTRACT_VERSION` stays `1.3.0`. No action id is added. The note is `docs/audits/2026-10-10-w01-exit4-contract-version-gate.md`. First consumers may not implement the drafts until a later freeze: W2 M05, W1 M12, W2 M08, W3A M17, W3A M07, and W2 M16 host. Stop rules 4–6 are not met. Item 4 stays open. Exit items 1 and 3 stay open. This footnote does not check item 4 off. Gate cells stay In Progress or Locked. No module is `usable`. W1 stays Locked.
 > **Exit 5 footnote (2026-10-10):** D54 records the logical authority map as the Lead stance and retains the Craft file layouts (`session.jsonl`, project folders, task files, `~/.craft-agent/`). SQLite is not decided. The physical-store gate stays open until Mac-verified recovery. The #52 hash check and the #53 project create are cited and are not that recovery. `typecheck:all` remains the #52 failure. The note is `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`. Item 5 stays open. Exit items 1, 3, and 4 stay open. This footnote does not check item 5 off. Gate cells stay In Progress or Locked. No module is `usable`. W1 stays Locked.
+> **Exit 7 footnote (2026-10-10):** D55 records one owner for each listed v0.11 path. New rows are Lead. Directories the pin does not have stay explicit Lead holds and are Worker-forbidden. `skills/` and `messaging-gateway/` stay their existing single Worker rows. The note is `docs/audits/2026-10-10-w01-exit7-ownership-domains.md`. Item 7 stays open. Exit items 1, 3, 4, and 5 stay open. This footnote does not check item 7 off. Gate cells stay In Progress or Locked. No module is `usable`. W1 stays Locked. `CONTRACT_VERSION` stays `1.3.0`. No action id is added.
 
 ## 1. Status Axes
 
@@ -54,7 +55,8 @@ All items are required; there is no hidden secondary gate:
 5. physical persistence authority and recovery are recorded from `PERSISTENCE-AUTHORITY-MAP.md`.
    **2026-10-10:** D54 records the logical authority map as the Lead stance and retains the Craft file layouts (`session.jsonl`, project folders, task files, `~/.craft-agent/`). SQLite is not decided. The physical-store gate stays open until Mac-verified recovery. Item stays open. Detail: `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`;
 6. product/internal namespace is decided before plugin/storage API freeze. **Decided 2026-10-10 (D50).** The strings are in `docs/audits/2026-10-10-blk002-namespace-oss.md`. This item does not close W0.1;
-7. ownership precedence and exact narrow domains are non-overlapping;
+7. ownership precedence and exact narrow domains are non-overlapping.
+   **2026-10-10:** D55 records the listed paths. Assigned rows do not overlap. Surfaces with no directory stay explicit Lead holds and are Worker-forbidden. Item stays open. Detail: `docs/audits/2026-10-10-w01-exit7-ownership-domains.md`;
 8. all active packets agree with this map and grant no Worker frozen-protocol writes;
 9. the Lead explicitly changes W1 to Ready. Absence of that declaration means Locked.
    **2026-10-10:** W1 stays Locked. This footnote is not that declaration.
@@ -66,7 +68,7 @@ Status of the items this baseline note clarified, still open:
 | 3 canonical parity | Open. Partial. v1.3.0 covers D47–D49 and is frozen. The Exit 3 note names the other fields as partial. `CONTRACT_VERSION` stays `1.3.0`. |
 | 4 proposed contracts | Open. Version-gated (D53), not frozen. `composable-workspace-contracts.md` stays proposed v0.1. `CONTRACT_VERSION` stays `1.3.0`. Named consumers may not implement the drafts until a later freeze. |
 | 5 persistence | Open. Logical map is the Lead stance (D54). Craft file layouts stay the retained default. SQLite is not decided. The physical-store gate stays open until Mac-verified recovery. |
-| 7 ownership | Precedence rule stands. v0.11 project/task/kanban paths are Lead-held in the ownership matrix. Other v0.11 surfaces stay unassigned. |
+| 7 ownership | Open. Precedence stands (D55). Listed v0.11 paths have one Lead owner, except `skills/` (M12) and `messaging-gateway/` (M15). No-path surfaces are explicit Lead holds and are Worker-forbidden. Unlisted host packages stay unresolved until a later matrix row. |
 | 8 packets | The active packet is the Lead-only W0.1 packet. Superseded packets authorize nothing. Replacement packets are not issued. |
 | 9 W1 Ready | Locked. |
 

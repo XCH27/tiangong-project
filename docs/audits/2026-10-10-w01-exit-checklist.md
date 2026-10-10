@@ -43,6 +43,8 @@
 > **Follow-up (Exit 4 version-gate, D53):** ArtifactRef, the capability manifest, ExternalJob, workflow, spatial, and view drafts stay proposed. They are version-gated outside `CONTRACT_VERSION` 1.3.0. Named consumers may not implement them until a later freeze. Exit item 4 stays open. Exit items 1 and 3 stay open. W1 stays Locked. Nothing in this follow-up is `usable`. Detail: `docs/audits/2026-10-10-w01-exit4-contract-version-gate.md`.
 >
 > **Follow-up (Exit 5 persistence stance, D54):** The logical authority map is the Lead stance. The retained durable layout is the Craft file store (`session.jsonl`, project folders, task files, `~/.craft-agent/`). SQLite is not decided. The physical-store gate stays open until Mac-verified recovery. Exit item 5 stays open. Exit items 1, 3, and 4 stay open. W1 stays Locked. Nothing in this follow-up is `usable`. Detail: `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`.
+>
+> **Follow-up (Exit 7 ownership domains, D55):** Listed v0.11 paths have one owner. New rows are Lead. Directories the pin does not have stay explicit Lead holds and are Worker-forbidden. `skills/` and `messaging-gateway/` stay their existing single Worker rows. Exit item 7 stays open. Exit items 1, 3, 4, and 5 stay open. W1 stays Locked. Nothing in this follow-up is `usable`. `CONTRACT_VERSION` stays 1.3.0. No action id is added. Detail: `docs/audits/2026-10-10-w01-exit7-ownership-domains.md`.
 
 ## Gate status (unchanged)
 
