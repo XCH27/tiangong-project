@@ -2,16 +2,21 @@
 
 > **Date:** 2026-10-10
 > **Base inspected:** `7c36bb6dd761fb9c719850cb0b59e61c9c8db248` (`work/fresh-base-spine` after merged PR #37)
-> **What this file is:** the Lead decision list written after #37 for unflag, the action-id split, and Settings plugin writes. #39 landed the first two. Settings stays Locked.
+> **Current base:** `92ee3ea5` (`work/fresh-base-spine` after merged PR #43)
+> **What this file is:** the Lead decision list written after #37 for unflag, the action-id split, and Settings plugin writes. #39 landed the first two. #41–#43 admit three of the split ids on test hosts and leave them `test-only`. Settings stays Locked.
 > **Inventory:** `docs/audits/2026-10-10-w01-exit-checklist.md` records the chrome chain. This packet does not replace that inventory and does not check any exit item off.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This packet does not edit that map. The nine exit items stay open.
 > **Frozen table:** `docs/contracts/action-ids.md` is v1.3.0. `CONTRACT_VERSION` in `app/packages/shared/src/protocol/internal-action.ts` is `1.3.0`.
 >
-> **Status after #39 (`31b2e1b`):** D47 freezes `session.unflag`. §13 in `docs/modules/00-platform-spine.md` labels the human command `wired`. D48 freezes `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus`. Those four ids have no production caller. D49 keeps Settings plugin writes Locked. The choice record is `docs/audits/2026-10-10-w01-lead-decisions-oss.md`. W0.1 stays Locked. This packet does not mark Ready or `usable`.
+> **Status after #39 (`31b2e1b`):** D47 freezes `session.unflag`. §13 in `docs/modules/00-platform-spine.md` labels the human command `wired`. D48 freezes `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus`. At that commit those four ids have no production caller. D49 keeps Settings plugin writes Locked. The choice record is `docs/audits/2026-10-10-w01-lead-decisions-oss.md`. W0.1 stays Locked. This packet does not mark Ready or `usable`.
 >
-> **Status after the page-target host:** `update-target` admits `file.page_target` on the page-local host. No shell or IPC caller. §13 stays `test-only`. `file.update` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
+> **Status after the DOM host:** `captureDomFromHuman` and `captureDomFromAgent` admit `browser.dom_snapshot` on the guest host. The row is L2, so an unapproved turn does not read the page. The host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `file.create` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
-> **Status after the sidebar host:** open, focus, and close admit `workbench.sidebar_focus` on the MCP Apps test host. The row is L0, so there is no card. No shell or IPC caller. §13 stays `test-only`. `canvas.node_select` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
+> **Status after the page-target host:** `update-target` admits `file.page_target` on the page-local host. The row is L2. The host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `file.update` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
+>
+> **Status after the sidebar host:** open, focus, and close admit `workbench.sidebar_focus` on the MCP Apps test host. The row is L0, so there is no card and the host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `canvas.node_select` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
+>
+> **Status after #43 (`92ee3ea5`):** `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts. §13 stays `test-only` for each. None has a shell or IPC caller. None publishes the Craft session card. The old verbs still refuse those payloads. `plugin.loadout_mutate` still has no caller. Settings stays Locked. W0.1 stays Locked. Nothing in #41–#43 is `usable`.
 
 ## Gate status (unchanged)
 
@@ -49,16 +54,16 @@ These merges are on the spine. They admit existing frozen ids, or they are docs.
 
 ## 2. Action-id re-freeze
 
-**Landed in #39 (`31b2e1b`), D48.** v1.3.0 gives each operation below its own frozen id, with the policy columns from "W0.1 Re-freeze Requirements", and sets `CONTRACT_VERSION` to `1.3.0` in that same commit. No v1.2.0 id was renamed. The four ids are `plugin.loadout_mutate` (M12), `file.page_target` (M05), `browser.dom_snapshot` (M06), and `workbench.sidebar_focus` (M16). No production caller uses them. `browser.screenshot` and binding deletion stay unfrozen. The columns do not close the rest of exit item 3.
+**Landed in #39 (`31b2e1b`), D48.** v1.3.0 gives each operation below its own frozen id, with the policy columns from "W0.1 Re-freeze Requirements", and sets `CONTRACT_VERSION` to `1.3.0` in that same commit. No v1.2.0 id was renamed. The four ids are `plugin.loadout_mutate` (M12), `file.page_target` (M05), `browser.dom_snapshot` (M06), and `workbench.sidebar_focus` (M16). #41–#43 admit `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` on their test hosts. §13 stays `test-only`. None of those three has a shell or IPC caller, and none publishes the Craft session card. `plugin.loadout_mutate` still has no caller. `browser.screenshot` and binding deletion stay unfrozen. The columns do not close the rest of exit item 3.
 
 ### Payloads the old verbs still refuse
 
 `action-owner-policy.ts` remains the guard. `file.update`, `file.create`, and `canvas.node_select` still refuse these payloads.
 
-| Operation the payload means | Verb the caller still sends | Refusal reason |
+| Operation the payload means | Caller | Refusal reason |
 |---|---|---|
 | Plugin loadout install, enable, disable, or grant | `file.update` (owner M05, file bytes) | `action_owner_mismatch:plugin_loadout` |
-| DOM evidence snapshot | `file.create` (owner M05) | `action_owner_mismatch:dom_evidence` |
+| DOM evidence snapshot | guest host sends `browser.dom_snapshot` and stays `test-only`. `file.create` is still refused | `action_owner_mismatch:dom_evidence` on `file.create` |
 | MCP Apps sidebar focus | MCP Apps host sends `workbench.sidebar_focus` and stays `test-only`. `canvas.node_select` is still refused | `action_owner_mismatch:sidebar_focus` on `canvas.node_select` |
 | Page-target write | page-local host sends `file.page_target` and stays `test-only`. `file.update` is still refused | `action_owner_mismatch:page_target` on `file.update` |
 
@@ -75,7 +80,7 @@ The bump was minor: ids added, none renamed or removed, in the same commit as th
 1. Each operation's id is a row in the frozen Action Table, and the Owner Module matches the operation.
 2. The row has the separate policy columns from "W0.1 Re-freeze Requirements".
 3. `InternalActionId` and `CONTRACT_VERSION` changed in the same commit as that table.
-4. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still send the old verbs and still fail closed. That sentence is the #39 result. The page-local host now admits `file.page_target` and stays `test-only`. It does not send `file.update`. The MCP Apps host now admits `workbench.sidebar_focus` and stays `test-only`. It does not send `canvas.node_select`.
+4. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still send the old verbs and still fail closed. That sentence is the #39 result. The guest host now admits `browser.dom_snapshot` and stays `test-only`. It does not send `file.create` and it does not publish the Craft session card. The page-local host now admits `file.page_target` and stays `test-only`. It does not send `file.update` and it does not publish the Craft session card. The MCP Apps host now admits `workbench.sidebar_focus` and stays `test-only`. It does not send `canvas.node_select` and it does not publish the Craft session card. None of the three has a shell or IPC caller. `plugin.loadout_mutate` still has no caller.
 5. `action-owner-policy.ts` remains a guard beside the new rows.
 
 Workers do not implement a production caller for these ids from this packet.
@@ -109,7 +114,7 @@ This packet leaves the methods `test-only` and the Settings rows `Locked`. A lat
 
 **W0.1 stays Locked.** The Lead has not closed `docs/WAVE-MODULE-MAP.md` §3 and has not changed W1 to Ready. Absence of that declaration means Locked. Only the Lead promotes a gate to Ready or a capability to `usable`. A documentation change does not promote capability.
 
-The unflag freeze and the split-id freeze are on the spine. Settings stays Locked. The nine exit items stay open:
+The unflag freeze and the split-id freeze are on the spine. `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts and stay `test-only`. Settings stays Locked. The nine exit items stay open:
 
 1. A clean Craft Agents OSS v0.11.0 baseline is still unrecorded. `docs/UPSTREAM-BASELINE.md` still requires that baseline before W1 packets.
 2. The retain/adapt/drop/defer ledger for Fleet-only behaviour is still unrecorded (BLK-001).
@@ -121,12 +126,12 @@ The unflag freeze and the split-id freeze are on the spine. Settings stays Locke
 8. Active packets still have to agree with the map and grant no Worker frozen-protocol writes.
 9. W1 Ready is still undeclared. W1–W5, including W3A/W3B, stay Locked.
 
-Also still closed to workers after #39:
+Also still closed to workers after #43:
 
 - BLK-003 adapter spikes for Browser, Spatial, Media, Panel, Web, and Deck stay unrecorded.
 - D46 stays unmet. The first-slide viewer is not a MotionDeck. Office edit and save stay Locked. M19 stays Locked.
-- `file.delete` and `canvas.node_delete` still have no production shell or IPC caller. Generic permission-card rows stay `test-only` except Settings `workspace.rename`.
-- M00's header stays `not implemented` and Locked. Nothing in PRs #28–#39 is `usable`.
+- `file.delete` and `canvas.node_delete` still have no production shell or IPC caller. Generic permission-card rows stay `test-only` except Settings `workspace.rename`. The three split-id hosts do not publish that card.
+- M00's header stays `not implemented` and Locked. Nothing in PRs #28–#43 is `usable`. The three test-host admits stay `test-only`. `plugin.loadout_mutate` still has no caller.
 
 ## Worker rule
 
