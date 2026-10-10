@@ -290,9 +290,9 @@ design module.
 
 ## 19. Host Card Slice
 
-`createCanvasCardHost` in `app/packages/shared/src/protocol/canvas-cards.ts` is the smallest card loop on the existing `CanvasDocument`.
+`createCanvasCardHost` in `app/packages/shared/src/protocol/canvas-cards.ts` is a test host. `ArtifactCanvasBoard` is not mounted by the Electron shell.
 
-- A DOCX card binds `filePath` on a `text_frame` node. Edit and undo call `applyDocumentFromHuman` or `applyDocumentFromAgent`, the same suite the preview uses.
+- A DOCX card binds `filePath` on a `text_frame` node. Edit and undo on this test host call `applyDocumentFromHuman` or `applyDocumentFromAgent`. The shell preview does not.
 - An image card is an `image_asset`. A video card is a `video_frame`. The node stores the job invocation id and media kind. Preview bytes stay on the `aigc_artifact`.
 - An XLSX card and a PPTX card bind `filePath` on a `text_frame` node. The card projects the first sheet or the first slide. Open and focus admit `canvas.node_select` and name the file the existing preview overlay already opens. The card does not edit cells or slides.
 - Place admits `canvas.node_create`. Delete admits `canvas.node_delete` and waits for human approval. The effect removes the node from the canvas document.
@@ -303,10 +303,10 @@ design module.
 
 | Slice | Status |
 |---|---|
-| DOCX card and image/video artifact card on the existing canvas document | `wired` |
-| XLSX and PPTX summary cards that open the existing preview | `wired` |
-| Hide, stop, and approved delete leaving the admitted file and job | `wired` |
+| DOCX card and image/video artifact card on the existing canvas document | `test-only` |
+| XLSX and PPTX summary cards that open the existing preview | `test-only` |
+| Hide, stop, and approved delete leaving the admitted file and job | `test-only` |
 | Full spreadsheet editor and full slide editor | `Locked` |
 | `@xyflow/react` renderer, workflow edges, and M05 ArtifactRef registration | `Locked` |
 
-This note does not open W3. The module header above stays Locked for the full spatial workspace.
+This note does not open W3. The module header above stays Locked for the full spatial workspace. Card hosts are not `wired`.

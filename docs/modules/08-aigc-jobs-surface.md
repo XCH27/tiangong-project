@@ -243,7 +243,7 @@ real-time workflow gates are never batch work.
 
 ## 17. Host Submit Slice
 
-`createAigcHost` in `app/packages/shared/src/protocol/aigc-job.ts` is the smallest submit loop on the existing host.
+`createAigcHost` in `app/packages/shared/src/protocol/aigc-job.ts` is a test host. No production caller submits a job.
 
 - An agent or human calls `aigc.job_submit`. Host admission stays approval-gated. `run` before approval does not call the provider.
 - The native effect submits only after approval. Tests use an injected provider. They do not call a paid API.
@@ -255,6 +255,7 @@ real-time workflow gates are never batch work.
 
 | Slice | Status |
 |---|---|
-| Approval-gated submit, artifact, stop, and recover with a fake provider | `wired` |
-| Canvas card reading the admitted `aigc_artifact` | `wired` |
+| Approval-gated submit, artifact, stop, and recover with a fake provider | `test-only` |
+| Canvas card reading the admitted `aigc_artifact` | `test-only` |
+| Activity overlay rendering an `aigc_artifact` with no production submitter | `display-only` |
 | Real provider, M05 provenance, and durable ExternalJob contract | `Locked` |
