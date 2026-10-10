@@ -64,7 +64,7 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 9. Browser guest actions use `createBrowserGuestHost` on the retained `persist:browser-pane` profile. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `browser.dom_snapshot`. The row is L2, so the page is not read until a human allows the turn. Leave screenshot evidence and Chrome Store advertising Locked. Do not add a plugin marketplace.
 10. `createPluginSettingsHost` is test-only. The Settings page does not call it, does not write `.claude-plugin/loadout.json`, and does not render the Craft session permission card. Install, enable, and disable stay Locked until `SessionManager` owns that loadout. `applyPluginMutationFromHuman` and `resolvePluginGrant` are not `SessionManager.respondToPermission`. Market catalog reads use `readCatalogSource`. A local Agent Plugins 1.0.0 package is read by `readAgentPluginPackage` and lists only safe skills and MCP servers. Leave the sandboxed MCP App view and any remote plugin store Locked. Do not treat that loadout as a remote store.
 11. Release notices use `readReleaseDispositionForHuman` and `readReleaseDispositionForAgent`. Do not write a session journal for that read. Leave the signed production update feed Locked. Do not point a Fleet updater at a production URL.
-12. The MCP Apps test host uses `createMcpAppsHost`. Open, focus, and close admit `workbench.sidebar_focus`. The row is L0, so the turn does not wait for a card. The Electron pane does not construct this host and does not admit. `canvas.node_select` still refuses a sidebar payload. The list is the enabled MCP rows in the plugin loadout plus a local inventory. Leave the sandboxed `ui://` view, live `tools/list`, and tool invocation Locked. Do not add a marketplace.
+12. The MCP Apps pane constructs one `createMcpAppsHost`. Human open, focus, and close admit `workbench.sidebar_focus`. The row is L0, so the turn does not wait for a card. The right-sidebar slot changes after the kernel completes. Agent helpers have no shell caller. The old sidebar verb still refuses a sidebar payload. The list is the enabled MCP rows in the plugin loadout plus a local inventory. Leave the sandboxed `ui://` view, live `tools/list`, and tool invocation Locked. Do not add a marketplace. Settings does not construct this host.
 13. Page-local `update-target` uses `applyEditPageFromHuman` and `applyEditPageFromAgent`. Both admit `file.page_target`. Send `baseRevision` or the host does not admit. The row is L2, so the file is not written until a human allows the turn. `EditPopover` calls `selectPageModel` only. Do not add a Settings write. `file.update` still refuses a page-target payload.
 
 Snapshot version `1` is the only readable version. A different version throws `unsupported_snapshot_version` and does not migrate data.
@@ -103,8 +103,9 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Plugin loadout install, enable, and disable through file.update | `test-only` |
 | MCP Registry and skill-repository catalog sources | `wired` |
 | Per-plugin approval for a third-party hook or MCP server | `test-only` |
-| MCP Apps side pane list. The shell does not admit. | `display-only` |
-| MCP Apps open, focus, and close through `workbench.sidebar_focus`. No shell caller. | `test-only` |
+| MCP Apps side pane list. No tool call. | `display-only` |
+| MCP Apps human open, focus, and close through `workbench.sidebar_focus`. The pane constructs the host. | `wired` |
+| MCP Apps agent open, focus, and close. No shell caller. | `test-only` |
 | Sandboxed MCP App view, live tools/list, and tool invocation | `Locked` |
 | Local Agent Plugins 1.0.0 skills and MCP servers projected into Market | `wired` |
 | Remote plugin store and a plugin marketplace | `Locked` |

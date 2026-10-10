@@ -248,9 +248,10 @@ The Settings → Plugins subpage reuses the Craft settings navigator. It does no
 | Settings approval as the Craft session permission card | `display-only` |
 | MCP Registry and skill-repository catalogs as a trusted marketplace | `display-only` |
 | Per-plugin approval through `SessionManager.respondToPermission` | `display-only` |
-| MCP Apps side pane: read projection of the loadout. No kernel, no focus admit, no tool call. | `display-only` |
+| MCP Apps side pane list: read projection of the loadout. No tool call. | `display-only` |
+| MCP Apps human open, focus, and close through `workbench.sidebar_focus`. The pane constructs the host. L0 does not wait for a card. | `wired` |
 | Sandboxed MCP App view, live tools/list, and tool invocation from the pane | `Locked` |
 | Local Agent Plugins 1.0.0 package as a plugin runtime | `display-only` |
 | Remote store or plugin marketplace | `Locked` |
 
-The settings page does not construct `createPluginSettingsHost` and does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. The page does not call it. That host is not the Craft session permission card. A failed catalog read adds no entries. The MCP Apps pane reads the loadout and does not admit a tool call. See `docs/modules/00-platform-spine.md` §13.
+The settings page does not construct `createPluginSettingsHost` and does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. The page does not call it. That host is not the Craft session permission card. A failed catalog read adds no entries. The MCP Apps pane reads the loadout and does not admit a tool call. Human open, focus, and close on that pane admit `workbench.sidebar_focus`. See `docs/modules/00-platform-spine.md` §13.

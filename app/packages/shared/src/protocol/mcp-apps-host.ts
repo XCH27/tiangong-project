@@ -3,10 +3,11 @@
  *
  * Open, focus, and close admit workbench.sidebar_focus. That row is L0, so
  * the turn does not wait for a card and does not call approve. The same
- * payload on canvas.node_select is still refused. The Electron pane does not
- * construct this host, and no shell or IPC caller invokes it. workbench.view_open
- * is not frozen. This host does not add an action id. It does not write a
- * canvas document, a session file, or the plugin loadout.
+ * payload on canvas.node_select is still refused. The Electron side pane
+ * constructs one of these hosts and calls the human helpers. Agent helpers
+ * have no shell caller. workbench.view_open is not frozen. This host does
+ * not add an action id. It does not write a canvas document, a session file,
+ * or the plugin loadout. The journal is this kernel's memory journal.
  *
  * A human control and an agent caller share one function. Sandboxed ui://
  * rendering and tool invocation stay Locked and do not admit a turn.

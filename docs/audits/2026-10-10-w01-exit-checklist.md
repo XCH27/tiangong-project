@@ -27,12 +27,14 @@
 > **Follow-up (BLK-002, D50):** The product/internal namespace strings are recorded. Exit item 6 is decided. BLK-001, BLK-003, and the other §3 items stay open. Settings stays Locked. This note does not close W0.1 and does not promote `usable`.
 >
 > **Follow-up (plugin loadout):** `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` admit frozen `plugin.loadout_mutate`. The row is L2. The request does not set `preAuthorizedBy`. An unapproved call does not write. A later call after a human allow writes the loadout. `op: grant` is `standing_grant_rejected` and writes nothing. `file.update` still refuses the payload. No shell or IPC caller, so §13 stays `test-only`. Settings install, enable, and disable stay Locked. D50 is unchanged. This note does not close W0.1 and does not promote `usable`.
+>
+> **Follow-up (sidebar shell):** The MCP Apps pane constructs one `createMcpAppsHost`. Human open, focus, and close admit `workbench.sidebar_focus`. L0 does not wait for a card. The right-sidebar slot changes after the kernel completes. §13 labels that human path `wired`. Agent helpers stay `test-only`. `canvas.node_select` still refuses the payload. Settings plugin writes, DOM capture, and page-target are not this caller. This note does not close W0.1 and does not promote `usable`.
 
 ## Gate status (unchanged)
 
 W0.1 stays Locked for worker implementation. `docs/WAVE-MODULE-MAP.md` still records the Lead reconciliation row as In Progress and blocking all Workers. This note does not close that row and does not mark W0.1 or W1 Ready.
 
-`docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked. Nothing in this checklist is `usable`. Settings plugin writes stay Locked (D49). The #39 freeze is CONTRACT 1.3.0, recorded as D47–D49. PRs #28–#33 themselves added no action id. PRs #41–#43 add no action id. Those three hosts stay `test-only`.
+`docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked. Nothing in this checklist is `usable`. Settings plugin writes stay Locked (D49). The #39 freeze is CONTRACT 1.3.0, recorded as D47–D49. PRs #28–#33 themselves added no action id. PRs #41–#43 add no action id. DOM capture and page-target stay `test-only`. The MCP Apps pane is the human caller for `workbench.sidebar_focus`.
 
 W1–W5, including W3A/W3B, stay Locked. M00 as a module stays Locked.
 
@@ -72,7 +74,7 @@ These slices stay blocked inside that exit, except agent rename and unflag, whic
 
 4. **Agent `session.rename`.** Closed as its own §13 `wired` row by `rename_session`. A blank or missing caller does not write the name. Title generation still uses the desktop user and is not this row. This item no longer blocks W0.1. Unflag is the other closed slice in this list. The remaining items stay open.
 
-5. **Action-id owner mismatch.** v1.3.0 gives `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus` their own rows and policy columns. The old verbs still refuse those payloads. The guest host admits `browser.dom_snapshot`, the page-local host admits `file.page_target`, and the MCP Apps host admits `workbench.sidebar_focus`. Each of those three stays `test-only` in §13: no shell or IPC caller, and no Craft session card. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. No shell or IPC caller uses it. `browser.screenshot` and binding deletion stay unfrozen. The columns do not close the rest of exit item 3.
+5. **Action-id owner mismatch.** v1.3.0 gives `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus` their own rows and policy columns. The old verbs still refuse those payloads. The guest host admits `browser.dom_snapshot` and the page-local host admits `file.page_target`. Those two stay `test-only` in §13: no shell or IPC caller, and no Craft session card. The MCP Apps pane is the human caller for `workbench.sidebar_focus`. Agent helpers stay `test-only`. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. No shell or IPC caller uses it. `browser.screenshot` and binding deletion stay unfrozen. The columns do not close the rest of exit item 3.
 
 6. **D46 PPTX.** D46 in `docs/DECISIONS-LEDGER.md` is still Final: the native document is a MotionDeck, and PPTX, HTML, and video are explicit exports. The shell PPTX overlay is a first-slide text viewer (`wired` preview). Create, edit, undo, save, and reopen through the document host stay `test-only`. Office edit and save in the shell stay Locked. MotionDeck, animation, and a full slide editor stay Locked. M19's header stays Locked. The first-slide viewer leaves D46 unmet. The footnote is `docs/modules/19-presentation-motion-surface.md` §10. This note does not edit the ledger.
 
@@ -81,7 +83,7 @@ These slices stay blocked inside that exit, except agent rename and unflag, whic
 ## What this chain does not close
 
 - The v1.3.0 freeze is D47–D49 in `docs/DECISIONS-LEDGER.md` and the Lead-decisions follow-up. `browser.screenshot`, `workbench.view_open`, and the other under-discussion names stay unfrozen. Binding deletion has no id.
-- `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts and stay `test-only`. No shell, IPC, or Craft card caller exists for those three. The old verbs still refuse the payloads. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. No shell or IPC caller uses it.
+- `browser.dom_snapshot` and `file.page_target` admit on their test hosts and stay `test-only`. No shell, IPC, or Craft card caller exists for those two. The MCP Apps pane admits `workbench.sidebar_focus` and §13 labels that human path `wired`. Agent helpers stay `test-only`. The old verbs still refuse the payloads. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. No shell or IPC caller uses it.
 - Settings plugin writes stay Locked under D49. There is no plugin marketplace and no standing loadout grant.
 - No `usable` row. Only the Lead promotes `usable`. W0.1 stays Locked. Exit item 6 is D50. The other §3 exit items stay open.
 - This note does not edit `docs/WAVE-MODULE-MAP.md` or `docs/OWNERSHIP-MATRIX.md`. D47–D49 are the ledger rows #39 added for this freeze.
