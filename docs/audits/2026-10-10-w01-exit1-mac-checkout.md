@@ -2,13 +2,27 @@
 
 > **Date:** 2026-10-10
 > **Role:** Fleet Lead evidence note.
-> **Spine:** `8cd1365d` (`work/fresh-base-spine` after merged PR #51). The #51 body was written against `b9b60dfa`.
+> **Spine:** `8cd1365d` (`work/fresh-base-spine` after merged PR #51). The #51 body was written against `b9b60dfa`. The Electron follow-up below is written against `2ee3ec0e4beff2d42b1eed9d71278b208b7c6bf6` (after merged PR #52).
 > **Ledger:** D51 follow-up in `docs/DECISIONS-LEDGER.md`. D52 is unchanged.
 > **Authority:** the Mac path below. This cloud workspace does not contain that checkout. A public listing of the same SHA is corroboration of directory names only.
 > **Capability:** `not implemented` for the clean v0.11 baseline. Nothing in this note is `usable`.
 > **Gates:** W0.1 stays In Progress and Locked for workers. W1 stays Locked. No wave is Ready.
-> **Exit item 1:** stays open. The D51 pin does not close it. The source tree does not close it. A finished non-frozen install does not close it. A failed typecheck does not close it. The desktop loop is not yet run.
+> **Exit item 1:** stays open. The D51 pin does not close it. The source tree does not close it. A finished non-frozen install does not close it. A failed typecheck does not close it. Electron launch and relaunch are recorded in `docs/audits/2026-10-10-w01-exit1-electron-launch.md` and do not close it. Kanban, a new project, an ordinary session turn, the Settings panel, and BrowserPane are still not done.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not check item 1 off.
+
+## Follow-up after #52 (`2ee3ec0e`)
+
+Electron `electron:dev` was run on the same Mac path. The detail is `docs/audits/2026-10-10-w01-exit1-electron-launch.md`. Rows below that say Electron launch is not yet run describe #51 and #52. They are superseded for the launch and the relaunch only.
+
+The first `electron:dev` failed. `extract-zip` left an incomplete Electron dist (`version` and `LICENSES.chromium.html` only, no `Electron.app`). The recorded fix unzipped cached `electron-v39.2.7-darwin-arm64.zip` into `node_modules/electron/dist` and wrote `path.txt` with no trailing newline. `electron --version` then printed `v39.2.7`. The attached first log is the launch after that repair, not a transcript of the failed spawn.
+
+That launch initialized the app, bound `ws://0.0.0.0:9100`, restored workspace `my-workspace`, and the renderer `ws-rpc-server` client connected. Those are Craft log lines. Build warnings named the missing `../../tsconfig.base.json`. That is the same pin gap as the #52 `TS5083` failure. No typecheck fix is recorded. `typecheck:all` stays failed.
+
+Corrected 2026-10-10: the first draft of this follow-up said System Events saw window title `Fleet` and that `Cmd+,` left that title. That window was pid `4855`. Mac `ps` shows its command is `Fleet 项目审查`, a separate local app, not Craft. Those two claims are retracted. Craft evidence for this launch is the Electron logs only.
+
+Quit of parent pid `67450` is recorded as `QUIT_OK`. Relaunch is recorded as `RELAUNCH_OK`. The relaunch log shows `Loaded 3 sessions from disk (metadata only)` and `App initialized successfully` again. SHA-256 of `session.jsonl` for `260909-fit-tide`, `260909-ruby-bear`, and `260912-misty-tiger` was unchanged. `projects/project/config.json` was still present. That project directory was not created in this pass.
+
+Still not done: create a new project, open Kanban, send an ordinary session turn, verify the Settings panel on the Craft window, open BrowserPane. The migration branch is still absent. `app/` is not replaced. Exit item 1 stays open. W0.1 stays In Progress. W1 stays Locked. The clean v0.11 baseline stays `not implemented`.
 
 ## Follow-up after #51 (`8cd1365d`)
 
@@ -28,8 +42,8 @@ The authority path is unchanged. HEAD, the tag, and the package version are unch
 | `tsconfig.base.json` at this pin | Absent from HEAD. `git ls-tree` and `git show` are fatal for that path. |
 | Later errors in the same log | `@types/cacheable-request` / `keyv` Store and ResponseLike issues, and `packages/core` source errors (regex flags, Set iteration, `validation.ts`). |
 | Fix | None recorded. This note does not invent one. |
-| Electron launch | Not run. |
-| Project, Kanban, session turn, settings, BrowserPane, restart | Not run. |
+| Electron launch | Not run at this #52 record. The follow-up after #52 records launch and relaunch. |
+| Project, Kanban, session turn, settings, BrowserPane, restart | Not run at this #52 record. Restart of the existing workspace is recorded in the follow-up after #52. Create-new-project, Kanban, session turn, Settings panel, and BrowserPane stay not done. |
 | Migration branch | Still absent. `app/` is not replaced. |
 
 The ellipsis in the `TS5083` message is the report as given. This note does not reconstruct the absolute path and does not claim a repair for the missing `tsconfig.base.json`.
@@ -54,8 +68,8 @@ Populated worktree on Vella's Mac. The install-finish and typecheck rows in the 
 | `bun install --frozen-lockfile` | failed: the lockfile had changes under frozen mode |
 | `bun install` (not frozen) | started; finish was not confirmed at #51. The follow-up records that it finished. |
 | Typecheck | not yet run at #51. The follow-up records exit 2. |
-| Electron launch | not yet run |
-| Project, task, session turn, settings, BrowserPane, restart | not yet run |
+| Electron launch | not yet run at #51. The follow-up after #52 records launch and relaunch. |
+| Project, task, session turn, settings, BrowserPane, restart | not yet run at #51. Restart of the existing workspace is recorded after #52. Create-new-project, Kanban, session turn, Settings panel, and BrowserPane stay not done. |
 
 Exit code and stderr for the frozen install were not supplied. This note does not invent them.
 
@@ -65,7 +79,7 @@ HEAD matches D51. The package version matches the pin. The source tree is popula
 
 At tag `v0.11.0` (`f4e172bf`), README line 492 is the configuration heading. The block through line 509 stores configuration at `~/.craft-agent/` and names `config.json`, `credentials.enc`, `preferences.json`, `theme.json`, and `workspaces/{id}/` with `config.json`, `theme.json`, `automations.json`, `sessions/`, `sources/`, `skills/`, and `statuses/`.
 
-That block does not print `projects/` or `tasks/`. The Mac report identifies project and task directories as runtime data under `~/.craft-agent/`, and identifies them as absent from the source tree. This note records that report. It does not claim those runtime folders were listed on disk, because the desktop app has not been launched.
+That block does not print `projects/` or `tasks/`. The Mac report identifies project and task directories as runtime data under `~/.craft-agent/`, and identifies them as absent from the source tree. This note records that report. At #51 and #52 this note did not claim those runtime folders were listed, because the desktop app had not been launched. The Electron follow-up after #52 lists them: under `~/.craft-agent/workspaces/my-workspace/`, `projects/project/config.json` and three `session.jsonl` files were present, and `tasks/` was absent.
 
 The storage paths already recorded in `docs/UPSTREAM-BASELINE.md` (`{workspaceRootPath}/projects/{slug}/`, `{workspaceRoot}/tasks/<slug>/`) come from source comments in `storage.ts`. They are not top-level directories of this checkout.
 
@@ -75,7 +89,7 @@ The README architecture diagram (about lines 350–360) draws `apps/cli`, `apps/
 
 This cloud workspace still has no copy of the path above. `源码参考/software/craft-agents-oss` on the Fleet tree remains the empty gitlink at the v0.10.5 parent. `app/package.json` remains `0.10.5`.
 
-A public directory listing of `craft-ai-agents/craft-agents-oss` at `f4e172bf372f4ccc7389a189be1e0b0541f96282` shows the same `apps/` and `packages/` names, the same `package.json` version `0.11.0`, and no top-level `projects/` or `tasks/`. That listing agrees with the Mac report. It is not a populated checkout on this machine. The Mac path is the authority for HEAD, the exact tag on that worktree, the finished non-frozen install, and the typecheck failure.
+A public directory listing of `craft-ai-agents/craft-agents-oss` at `f4e172bf372f4ccc7389a189be1e0b0541f96282` shows the same `apps/` and `packages/` names, the same `package.json` version `0.11.0`, and no top-level `projects/` or `tasks/`. That listing agrees with the Mac report. It is not a populated checkout on this machine. The Mac path is the authority for HEAD, the exact tag on that worktree, the finished non-frozen install, the typecheck failure, and the Electron launch and relaunch.
 
 ## Install and typecheck state
 
@@ -91,21 +105,14 @@ Frozen mode is not the command that closes the install step. The documented inst
 
 Install and `typecheck:all` are recorded. Typecheck failed, so it does not satisfy the baseline typecheck gate, and this note does not prescribe a repair.
 
-Run the remaining close commands in the Mac worktree. Record the exit code and the visible result. Until those results are written down, Exit item 1 stays open.
+`bun run electron:dev` is recorded in `docs/audits/2026-10-10-w01-exit1-electron-launch.md`. The first attempt failed on an incomplete Electron dist. After the recorded unzip repair, launch and relaunch both reached `App initialized successfully`. `bun run electron:start` was not the command in those logs.
 
-```bash
-cd "/Volumes/AIGC/天工参考/源码参考/software/intake/upstream/craft-ai-agents--craft-agents-oss--f4e172bf372f"
-bun run electron:dev
-```
+The acceptance already written in `docs/audits/2026-10-10-w01-v011-baseline-blk001.md` is only partly recorded:
 
-`bun run electron:dev` is the README hot-reload launch. `bun run electron:start` is the README build-and-run launch (`electron:build`, then `electron apps/electron`). Either launch counts only after its result is recorded. Neither has been run.
+1. Open existing workspace `my-workspace`: done by restore in the Craft log. Create a new project: not done. `projects/project/` was already present. Open the Kanban board: not verified. Send one ordinary session turn: not run. Settings panel on Craft: not verified. The earlier `Cmd+,` targeted pid `4855` (`Fleet 项目审查`), not Craft, and is retracted. Open BrowserPane: not opened. Quit and relaunch: done (`QUIT_OK`, `RELAUNCH_OK`). `session.jsonl` hashes and `projects/project/config.json`: still present and unchanged.
+2. A migration branch whose base is that checkout: still absent.
 
-After a recorded launch, the acceptance already written in `docs/audits/2026-10-10-w01-v011-baseline-blk001.md` is still required, and it is not yet run:
-
-1. Create or open a workspace, create a project, open the Kanban board, send one ordinary session turn, open settings and BrowserPane, quit, relaunch, and confirm `sessions/{id}/session.jsonl` and `projects/{slug}/` are still there.
-2. Only then open a migration branch whose base is that checkout. Port accepted adapt rows one at a time.
-
-A recorded install, a failed typecheck, and a later launch without that loop still leave Exit item 1 open. The migration branch is still absent. `app/` is not replaced.
+Until the unfinished steps are written down, Exit item 1 stays open. A recorded install, a failed typecheck, and this launch without the rest of the loop still leave Exit item 1 open. `app/` is not replaced.
 
 ## What this note does not do
 
@@ -115,4 +122,4 @@ A recorded install, a failed typecheck, and a later launch without that loop sti
 - It does not promote M01, or any other module, to `usable`.
 - It does not add an action id or bump `CONTRACT_VERSION`.
 - It does not copy the Mac tree into this repository.
-- It does not invent a typecheck fix, a restored `tsconfig.base.json`, or a successful Electron launch.
+- It does not invent a typecheck fix or a restored `tsconfig.base.json`. At #52 this list also refused to invent an Electron launch. The later launch note records the logs that were captured. It does not invent a `typecheck:all` pass.

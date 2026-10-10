@@ -2,7 +2,7 @@
 
 > **Status:** blocking implementation migration  
 > **Owner:** Lead  
-> **Verified:** 2026-07-09; pin re-checked 2026-10-10 (D51); Mac source tree recorded 2026-10-10; non-frozen install finished and `typecheck:all` failed (exit 2) after #51; desktop loop not yet run
+> **Verified:** 2026-07-09; pin re-checked 2026-10-10 (D51); Mac source tree recorded 2026-10-10; non-frozen install finished and `typecheck:all` failed (exit 2) after #51; Electron launch and relaunch recorded 2026-10-10; desktop loop still incomplete
 
 ## Canonical Upstream
 
@@ -27,7 +27,7 @@ Paths confirmed at `f4e172bf` from source comments and file presence. The projec
 - `apps/electron/src/main/browser-pane-manager.ts` and `apps/cli/package.json` exist
 - upstream `packages/shared/src/protocol/` contains `channels.ts`, `dto.ts`, `events.ts`, `index.ts`, `routing.ts`, `types.ts`, and `__tests__`
 
-Desktop launch, restart, and a file-by-file diff against `app/` are still required before this gate opens. The Mac source tree does not supply them. `bun install --frozen-lockfile` failed on that tree because the lockfile had changes. After #51, non-frozen `bun install` finished and `node_modules` is present. That install mutated `bun.lock`; `git checkout -- bun.lock` restored the pin. Frozen install still fails. `bun run typecheck:all` failed with exit 2. The first hard error is `TS5083` for a missing `tsconfig.base.json`, and that file is absent from HEAD at this pin. No fix is recorded. Electron launch is not yet run.
+A file-by-file diff against `app/` is still required before this gate opens. The Mac source tree does not supply that diff. `bun install --frozen-lockfile` failed on that tree because the lockfile had changes. After #51, non-frozen `bun install` finished and `node_modules` is present. That install mutated `bun.lock`; `git checkout -- bun.lock` restored the pin. Frozen install still fails. `bun run typecheck:all` failed with exit 2. The first hard error is `TS5083` for a missing `tsconfig.base.json`, and that file is absent from HEAD at this pin. No fix is recorded. After #52, `electron:dev` launch and relaunch are recorded in `docs/audits/2026-10-10-w01-exit1-electron-launch.md` from the Craft Electron logs only: the repaired launch initialized, created a window, the renderer client connected, quit (`QUIT_OK`), and relaunch initialized again. Corrected 2026-10-10: a System Events window titled `Fleet` was misattributed to Craft. Mac `ps` shows pid `4855` command is `Fleet 项目审查`, a separate local app. That AX title and the `Cmd+,` sent at that process are retracted. Kanban, a new project, an ordinary session turn, the Settings panel, and BrowserPane were not verified. That partial loop does not open this gate.
 
 ## Required Migration Route
 
@@ -43,7 +43,7 @@ The v0.11.0 difference includes upstream Projects, Tasks, Kanban, background-tas
 
 D52 classifies the inspected upstream Projects, Tasks, Kanban, background-task, and shell
 panel surfaces as retain, and it refuses a second system under Fleet names. M16/M17 path freezes
-still wait on the desktop loop and the migration branch. The Mac source tree is recorded and does
+still wait on the unfinished desktop loop (new project, Kanban, session turn, Settings panel, BrowserPane) and the migration branch. The Mac source tree and the recorded Electron launch do
 not freeze those paths. Conductor-as-TeamRun stays deferred.
 
 ## Old Project Use
@@ -52,7 +52,8 @@ not freeze those paths. Conductor-as-TeamRun stays deferred.
 
 ## W0.1 Exit Evidence
 
-- 2026-10-10: the Mac source tree at the D51 pin is recorded. After #51, non-frozen `bun install` finished and `bun run typecheck:all` failed (exit 2). Desktop launch, restart, and the migration branch are not run. Exit item 1 stays open. The pin, the install, and the failed typecheck do not close it. Detail: `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`.
+- 2026-10-10: the Mac source tree at the D51 pin is recorded. After #51, non-frozen `bun install` finished and `bun run typecheck:all` failed (exit 2). Detail: `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`.
+- 2026-10-10: Electron `electron:dev` launch and relaunch are recorded on that Mac path from the Craft logs only. The first attempt failed on an incomplete Electron dist. After the recorded unzip repair, the app initialized, quit, and relaunched. Existing `session.jsonl` hashes and `projects/project/config.json` were unchanged. Corrected the same day: the System Events title `Fleet` was pid `4855`, command `Fleet 项目审查`, not Craft. That title and the `Cmd+,` aimed at it are retracted. Kanban, a new project, an ordinary session turn, the Settings panel, and BrowserPane were not verified. `typecheck:all` remains the failed run (exit 2). The migration branch is still absent. Exit item 1 stays open. The pin, the install, the failed typecheck, and this launch do not close it. Detail: `docs/audits/2026-10-10-w01-exit1-electron-launch.md`.
 - The Lead records the v0.11.0 migration branch and clean baseline validation.
 - A Fleet migration ledger classifies every current `app/` difference as retain/adapt/drop/defer.
 - The same ledger records which upstream project/task/background/panel behaviours are reused by

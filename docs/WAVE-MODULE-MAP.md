@@ -6,7 +6,7 @@
 > **Honesty footnote (2026-10-10):** W0.1 exit is still incomplete. The gates and capability cells below are unchanged. No wave is Ready. No module is `usable`.
 > **Namespace footnote (2026-10-10):** Exit item 6 and BLK-002 are closed as a name decision by D50. The other exit items stay open. W0.1 stays Locked.
 > **Baseline footnote (2026-10-10):** D51 records the v0.11.0 pin. D52 records the behaviour ledger. Exit items 1 and 2 stay open. The detail is `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`.
-> **Exit 1 footnote (2026-10-10):** the Mac source tree matches D51. Frozen `bun install` failed. After #51, non-frozen `bun install` finished and `bun run typecheck:all` failed (exit 2). The desktop loop is not yet run. The pin, the source tree, the install, and the failed typecheck do not close item 1. The note is `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`.
+> **Exit 1 footnote (2026-10-10):** the Mac source tree matches D51. Frozen `bun install` failed. After #51, non-frozen `bun install` finished and `bun run typecheck:all` failed (exit 2). After #52, Electron `electron:dev` launch and relaunch are recorded from the Craft logs only, and the desktop loop is still incomplete (new project, Kanban, session turn, Settings panel, BrowserPane). Corrected the same day: a System Events window titled `Fleet` was misattributed to Craft. Mac `ps` shows pid `4855` command is `Fleet 项目审查`, a separate local app. That title and the `Cmd+,` sent at that process are retracted. The pin, the source tree, the install, the failed typecheck, and this log-backed launch do not close item 1. Gate cells below stay In Progress or Locked. The notes are `docs/audits/2026-10-10-w01-exit1-mac-checkout.md` and `docs/audits/2026-10-10-w01-exit1-electron-launch.md`.
 
 ## 1. Status Axes
 
@@ -38,7 +38,7 @@ usable. A wave label never overrides the dependency DAG.
 All items are required; there is no hidden secondary gate:
 
 1. clean Craft Agents OSS v0.11.0 baseline and migration branch are recorded.
-   **2026-10-10:** pin recorded (D51). A populated source tree is recorded on the Mac path in `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`. After #51, non-frozen `bun install` finished and `typecheck:all` failed (exit 2). Desktop loop is not yet run. Migration branch is still absent. Item stays open;
+   **2026-10-10:** pin recorded (D51). A populated source tree is recorded on the Mac path in `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`. After #51, non-frozen `bun install` finished and `typecheck:all` failed (exit 2). After #52, Electron launch and relaunch are recorded from the Craft logs only in `docs/audits/2026-10-10-w01-exit1-electron-launch.md`. The System Events title `Fleet` (pid `4855`, `Fleet 项目审查`) was misattributed to Craft and is retracted. New project, Kanban, session turn, Settings panel, and BrowserPane are not done. Migration branch is still absent. Item stays open;
 2. a retain/adapt/drop/defer ledger covers current Fleet-only behaviour and useful `fleet-old`
    behaviour.
    **2026-10-10:** behaviour ledger recorded (D52). `fleet-old` rows and the file-by-file `app/` diff stay deferred. Item stays open;
@@ -69,7 +69,7 @@ Status of the items this baseline note clarified, still open:
 | Module/slice | Wave | Depends on | Canonical spec | Spec maturity | Capability | Gate |
 |---|---|---|---|---|---|---|
 | M00 Platform Spine | W1 | W0.1 | `modules/00-platform-spine.md` | contract draft | not implemented | Locked |
-| M01 Clean v0.11 Baseline | W0.1 Lead-only | upstream gate | `modules/01-clean-craft-baseline.md` | contract draft | not implemented | Blocked — pin, behaviour ledger, and Mac source tree recorded; `typecheck:all` failed (exit 2); desktop loop and fleet-old rows open |
+| M01 Clean v0.11 Baseline | W0.1 Lead-only | upstream gate | `modules/01-clean-craft-baseline.md` | contract draft | not implemented | Blocked — pin, behaviour ledger, and Mac source tree recorded; `typecheck:all` failed (exit 2); Electron launch and relaunch recorded with the desktop loop still incomplete; fleet-old rows open |
 | M02 Terminal/CLI Runtime | W2 | M00/M03 usable; M16 host | `modules/02-terminal-cli-runtime/SPEC.md` | contract draft | not implemented | Locked |
 | M03 Action Registry | W1 | W0.1; M00 backbone for executor | `modules/03-internal-action-registry.md` | contract draft | not implemented | Locked |
 | M04 Runtime Lanes/TeamRun core | W2 | M00/M03 usable | `modules/04-runtime-lanes-teamrun.md` | contract draft | not implemented | Locked |
@@ -110,7 +110,7 @@ Status of the items this baseline note clarified, still open:
 
 | ID | Blocker | Owner | Affects |
 |---|---|---|---|
-| BLK-001 | Behaviour ledger is recorded (D52) and stays incomplete: the Mac source tree is recorded, `typecheck:all` failed (exit 2), the desktop loop is not yet run, fleet-old rows and the file-by-file `app/` diff are still absent, and canonical contract parity/re-freeze is still open. | Lead | W1 and every downstream wave |
+| BLK-001 | Behaviour ledger is recorded (D52) and stays incomplete: the Mac source tree is recorded, `typecheck:all` failed (exit 2), Electron launch and relaunch are recorded and the desktop loop is still incomplete, fleet-old rows and the file-by-file `app/` diff are still absent, and canonical contract parity/re-freeze is still open. | Lead | W1 and every downstream wave |
 | BLK-003 | Required Browser/Spatial/Media/Panel/Web/Deck adapter spikes have no recorded result. | Lead by consumer wave | M06/M07/M09/M16/M18/M19 readiness |
 
 BLK-002 is closed as a name decision by D50 (2026-10-10). Plugin API keys, storage prefixes, and the action-owner namespace strings are recorded in `docs/audits/2026-10-10-blk002-namespace-oss.md`. Closing BLK-002 does not open W0.1 or a storage adapter. The later Settings install, enable, and disable caller is `wired` in D49 (`plugins:mutateLoadout` → `plugin.loadout_mutate` and the Craft card) and is not `usable`. That caller does not open W0.1. Marketplace ids, extra skill roots, and the M16 contribution table stay under discussion in that note.
