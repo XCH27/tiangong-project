@@ -6855,10 +6855,10 @@ export class SessionManager implements ISessionManager {
 
   /**
    * Install, enable, or disable a plugin on this Craft session's kernel.
-   * The request uses file.update. plugin.loadout_mutate is the frozen id.
-   * This method does not use it. Admission refuses the file.update verb, so
-   * this does not write the loadout. No shell or IPC caller uses this method.
-   * The path is test-only. Settings install and enable stay Locked.
+   * The request uses plugin.loadout_mutate. The row is L2 and this method
+   * does not set preAuthorizedBy, so an unapproved call does not write.
+   * The same payload on file.update is still refused. No shell or IPC caller
+   * uses this method. The path is test-only. Settings install and enable stay Locked.
    */
   async applySessionPluginMutation(
     sessionId: string,
@@ -6881,6 +6881,7 @@ export class SessionManager implements ISessionManager {
   /**
    * Settle a plugin permission card on the session kernel.
    * Allow and Deny are the desktop human. An agent approver does not write.
+   * op grant is standing_grant_rejected and does not write the loadout.
    * No shell or IPC caller uses this method. The path is test-only.
    */
   resolveSessionPluginGrant(

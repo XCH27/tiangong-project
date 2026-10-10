@@ -99,7 +99,9 @@ After #41–#43 (`92ee3ea5`), the guest host admits `browser.dom_snapshot`, the 
 
 ## 3. Settings plugin unlock — criteria only (M12 / M13)
 
-**Choice.** Do not unlock Settings → Plugins. `plugin.loadout_mutate` is frozen so a later caller has an id. `SessionManager.applySessionPluginMutation` still sends `file.update` and is still refused. `PluginsSettingsPage` still does not call it and still does not construct `createPluginSettingsHost`. §13 stays `Locked` for install, enable, and disable.
+**Choice.** Do not unlock Settings → Plugins. `plugin.loadout_mutate` is frozen so a later caller has an id. At this choice, `SessionManager.applySessionPluginMutation` still sent `file.update` and was still refused. `PluginsSettingsPage` still does not call it and still does not construct `createPluginSettingsHost`. §13 stays `Locked` for install, enable, and disable.
+
+Follow-up: `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` now build `plugin.loadout_mutate` and stay `test-only`. `file.update` still refuses that payload. `op: grant` is `standing_grant_rejected`. This note still does not unlock Settings.
 
 The shell path does not meet the #38 criteria. Wiring a button would invent the write. The product/internal namespace is D50, recorded after this note. A Settings caller still does not decide it, and this section still does not unlock the page.
 

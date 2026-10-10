@@ -294,7 +294,7 @@ describe('catalog source adapters', () => {
     expect(listCatalogMarket({ reads: [disabled, redirected, html, broken], contentFilter: 'all' })).toEqual([])
   })
 
-  test('a fixture catalog install is refused and does not write a loadout', async () => {
+  test('a fixture catalog install waits on plugin.loadout_mutate and does not write a loadout', async () => {
     const reads = await recordedReads()
     const catalog = listCatalogMarket({ reads, contentFilter: 'all' })
     const dir = mkdtempSync(join(tmpdir(), 'fleet-catalog-'))
@@ -310,10 +310,11 @@ describe('catalog source adapters', () => {
       catalog,
     })
     expect(installed).toMatchObject({
-      status: 'denied',
-      reason: 'action_owner_mismatch:plugin_loadout',
+      status: 'approval_required',
+      reason: 'human_approval_required',
     })
     expect(existsSync(filePath)).toBe(false)
+    expect(shared.kernel.snapshot().turns[0]?.request.invocation.actionId).toBe(InternalActionId.PLUGIN_LOADOUT_MUTATE)
     writeFileSync(filePath, JSON.stringify({
       version: 1,
       records: [{ id: 'hook:lint-hook', installed: true, enabled: false }],
@@ -327,14 +328,30 @@ describe('catalog source adapters', () => {
       catalog,
     })
     expect(enabled).toMatchObject({
-      status: 'denied',
-      reason: 'action_owner_mismatch:plugin_loadout',
+      status: 'approval_required',
+      reason: 'human_approval_required',
     })
     expect(JSON.parse(readFileSync(filePath, 'utf8')).records[0].enabled).toBe(false)
-    expect(InternalActionId.FILE_UPDATE).toBe('file.update')
+    expect(shared.kernel.admit({
+      invocation: {
+        invocationId: 'catalog-old-verb',
+        actionId: InternalActionId.FILE_UPDATE,
+        payload: {
+          filePath,
+          pluginId: 'hook:lint-hook',
+          op: 'enable',
+          nextDocument: { version: 1, records: [{ id: 'hook:lint-hook', installed: true, enabled: true }] },
+        },
+        targets: [{ kind: 'file', id: filePath, label: 'hook:lint-hook' }],
+        callerKind: 'agent',
+        sessionId: 'plugin-settings',
+        createdAt: '2026-10-09T00:00:00.000Z',
+      },
+      actor: agent,
+    })).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
   })
 
-  test('an Agent Plugins package install is refused and does not wait on file.update', async () => {
+  test('an Agent Plugins package install waits on plugin.loadout_mutate and does not write', async () => {
     const packaged = await readCatalogSource({
       source: AGENT_PLUGINS_SOURCE,
       packageRoot: join(fixtureDir, 'agent-plugins-demo'),
@@ -352,7 +369,7 @@ describe('catalog source adapters', () => {
       filePath,
       catalog,
     })
-    expect(installed).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+    expect(installed).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
     expect(existsSync(filePath)).toBe(false)
     writeFileSync(filePath, JSON.stringify({
       version: 1,
@@ -366,15 +383,16 @@ describe('catalog source adapters', () => {
       filePath,
       catalog,
     })
-    expect(enabled).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+    expect(enabled).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
     const allowed = await resolvePluginGrant(shared, {
       invocationId: 'invoke-agent-plugin-enable',
       approver: DESKTOP_APPROVER,
       decision: { allowed: true },
       filePath,
     })
-    expect(allowed).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+    expect(allowed).toMatchObject({ status: 'failed', reason: 'plugin_grant_not_pending' })
     expect(JSON.parse(readFileSync(filePath, 'utf8')).records[0].enabled).toBe(false)
+    expect(shared.kernel.snapshot().turns.every((turn) => turn.request.invocation.actionId === InternalActionId.PLUGIN_LOADOUT_MUTATE)).toBe(true)
   })
 })
 
