@@ -1,17 +1,29 @@
 /**
  * View projection for one canvas card.
  *
- * The node stores a binding. Paragraphs and media bytes stay with their
- * owners. This module does not admit turns and does not touch the filesystem.
+ * The node stores a binding. Paragraphs, sheet cells, slide text, and media
+ * bytes stay with their owners. This module does not admit turns and does
+ * not touch the filesystem.
  */
 
 import type { CanvasNode, NodeType } from './canvas'
+import type { SheetCell } from './xlsx-xml'
 
-export const CANVAS_CARD_KINDS = ['docx', 'aigc_artifact'] as const
+export const CANVAS_CARD_KINDS = ['docx', 'xlsx', 'pptx', 'aigc_artifact'] as const
 export type CanvasCardKind = (typeof CANVAS_CARD_KINDS)[number]
 
 export interface DocxCardBinding {
   kind: 'docx'
+  filePath: string
+}
+
+export interface XlsxCardBinding {
+  kind: 'xlsx'
+  filePath: string
+}
+
+export interface PptxCardBinding {
+  kind: 'pptx'
   filePath: string
 }
 
@@ -21,7 +33,12 @@ export interface AigcCardBinding {
   mediaKind: 'image' | 'video'
 }
 
-export type CanvasCardBinding = DocxCardBinding | AigcCardBinding
+export type CanvasCardBinding = DocxCardBinding | XlsxCardBinding | PptxCardBinding | AigcCardBinding
+
+export interface OfficePreviewTarget {
+  type: 'xlsx' | 'pptx'
+  filePath: string
+}
 
 export interface CanvasCardFrame {
   cx: number
@@ -51,6 +68,15 @@ export interface CanvasCardView {
     filePath: string
     paragraphs: string[]
   }
+  xlsx?: {
+    filePath: string
+    sheetName: string
+    cells: SheetCell[]
+  }
+  pptx?: {
+    filePath: string
+    texts: string[]
+  }
   media?: CanvasCardMediaFrame
 }
 
@@ -59,6 +85,9 @@ export interface CanvasCardProjection {
   hidden: boolean
   suspended: boolean
   paragraphs?: string[]
+  sheetName?: string
+  cells?: SheetCell[]
+  texts?: string[]
   phase?: string
   artifact?: {
     mediaKind: 'image' | 'video'
@@ -74,6 +103,12 @@ export function parseCanvasCardBinding(value: unknown): CanvasCardBinding | null
   const record = value as Record<string, unknown>
   if (record.kind === 'docx' && typeof record.filePath === 'string' && record.filePath.trim().length > 0) {
     return { kind: 'docx', filePath: record.filePath }
+  }
+  if (record.kind === 'xlsx' && typeof record.filePath === 'string' && record.filePath.trim().length > 0) {
+    return { kind: 'xlsx', filePath: record.filePath }
+  }
+  if (record.kind === 'pptx' && typeof record.filePath === 'string' && record.filePath.trim().length > 0) {
+    return { kind: 'pptx', filePath: record.filePath }
   }
   if (
     record.kind === 'aigc_artifact'
@@ -93,6 +128,8 @@ export function bindingFromNode(node: CanvasNode): CanvasCardBinding | null {
 export function nodeTypeForBinding(binding: CanvasCardBinding): NodeType {
   switch (binding.kind) {
     case 'docx':
+    case 'xlsx':
+    case 'pptx':
       return 'text_frame'
     case 'aigc_artifact':
       return binding.mediaKind === 'video' ? 'video_frame' : 'image_asset'
@@ -126,6 +163,35 @@ export function projectCanvasCard(input: CanvasCardProjection): CanvasCardView |
         docx: {
           filePath: binding.filePath,
           paragraphs: input.paragraphs ?? [],
+        },
+      }
+    case 'xlsx':
+      return {
+        nodeId: input.node.id,
+        kind: 'xlsx',
+        title: fileName(binding.filePath),
+        hidden: input.hidden,
+        suspended: input.suspended,
+        live,
+        frame,
+        xlsx: {
+          filePath: binding.filePath,
+          sheetName: input.sheetName ?? '',
+          cells: input.cells ?? [],
+        },
+      }
+    case 'pptx':
+      return {
+        nodeId: input.node.id,
+        kind: 'pptx',
+        title: fileName(binding.filePath),
+        hidden: input.hidden,
+        suspended: input.suspended,
+        live,
+        frame,
+        pptx: {
+          filePath: binding.filePath,
+          texts: input.texts ?? [],
         },
       }
     case 'aigc_artifact': {
@@ -163,6 +229,22 @@ export function visibleCanvasCards(cards: readonly CanvasCardView[]): CanvasCard
 
 export function mediaFrameFromCard(card: CanvasCardView): CanvasCardMediaFrame | null {
   return card.media ?? null
+}
+
+export function officePreviewTarget(card: CanvasCardView): OfficePreviewTarget | null {
+  switch (card.kind) {
+    case 'xlsx':
+      return card.xlsx ? { type: 'xlsx', filePath: card.xlsx.filePath } : null
+    case 'pptx':
+      return card.pptx ? { type: 'pptx', filePath: card.pptx.filePath } : null
+    case 'docx':
+    case 'aigc_artifact':
+      return null
+    default: {
+      const unexpected: never = card.kind
+      return unexpected
+    }
+  }
 }
 
 function fileName(filePath: string): string {

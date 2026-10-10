@@ -294,16 +294,19 @@ design module.
 
 - A DOCX card binds `filePath` on a `text_frame` node. Edit and undo call `applyDocumentFromHuman` or `applyDocumentFromAgent`, the same suite the preview uses.
 - An image card is an `image_asset`. A video card is a `video_frame`. The node stores the job invocation id and media kind. Preview bytes stay on the `aigc_artifact`.
+- An XLSX card and a PPTX card bind `filePath` on a `text_frame` node. The card projects the first sheet or the first slide. Open and focus admit `canvas.node_select` and name the file the existing preview overlay already opens. The card does not edit cells or slides.
 - Place admits `canvas.node_create`. Delete admits `canvas.node_delete` and waits for human approval. The effect removes the node from the canvas document.
 - Hide and stop change view state. They do not admit a turn, and they do not call `stop` on the document kernel or the job kernel.
-- XLSX and PPTX cards stay `Locked`. Workbook and deck bytes stay on the document suite. The canvas file does not receive them.
+- Workbook and deck bytes stay on the document suite. The canvas file does not receive them. Legacy `.xls`, `.xlsm`, `.ppt`, `.pptm`, a macro part, and an unsafe path fail closed.
+- A full spreadsheet editor and a full slide editor stay `Locked`.
 - `@xyflow/react` is not a dependency in this checkout. Positions are `CanvasNode` `cx` / `cy` / width / height. The renderer spike in §13 stays `Locked`.
 
 | Slice | Status |
 |---|---|
 | DOCX card and image/video artifact card on the existing canvas document | `wired` |
+| XLSX and PPTX summary cards that open the existing preview | `wired` |
 | Hide, stop, and approved delete leaving the admitted file and job | `wired` |
-| XLSX and PPTX cards | `Locked` |
+| Full spreadsheet editor and full slide editor | `Locked` |
 | `@xyflow/react` renderer, workflow edges, and M05 ArtifactRef registration | `Locked` |
 
 This note does not open W3. The module header above stays Locked for the full spatial workspace.
