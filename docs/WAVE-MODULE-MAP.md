@@ -31,7 +31,7 @@ See `DOCUMENT-READINESS.md`. A spec file does not make a module Ready.
 |---|---|---|---|
 | W0 — recorded baseline | initial contract documents recorded | historical v1.2 record only | Done (historical) |
 | W0.1 — v0.11 migration and contract reconciliation | Historical Craft-spine audit (D56). Not the product path. | clean v0.11 migration ledger; one canonical contract implementation/text version; ownership/wave/packet parity | Historical audit; not a product gate. Spine worker waves stay Locked. Not Ready |
-| W1 — control spine | W0.1 explicitly closed | M00 backbone and M03 executor `usable`; M12 capability-core contract frozen and registry projection seam defined | Locked |
+| W1 — control spine | Historical Craft entry was "W0.1 explicitly closed". That phrase is not a live Craft gate. Product path is ZCode. This spine worker wave stays Locked. | M00 backbone and M03 executor `usable`; M12 capability-core contract frozen and registry projection seam defined | Locked |
 | W2 — local workbench runtime | W1 exit | M02 terminal loop, M05 file/ArtifactRef loop, M16 host slice, and M08 durable job core `usable`; M04 bounded run core verified | Locked |
 | W3A — composable spatial loop | W2 exit | D45 real text-to-image workflow loop `usable`, including M07/M08/M12/M16/M17 and restart reconciliation | Locked |
 | W3B — native creative outputs | W3A contract/core available | one real M18 web, M19 deck, and M09 multi-asset media fan-out path; each may promote independently | Locked |
@@ -42,6 +42,7 @@ W3B and W4 may overlap only when their packets have disjoint files and each depe
 usable. A wave label never overrides the dependency DAG.
 
 D56: the W0.1 row does not block the ZCode product path. Locked cells on this map stay Locked.
+The W1 entry-gate cell keeps "W0.1 explicitly closed" as historical Craft wording. Product path is ZCode. Spine worker waves stay Locked.
 Nothing in this section is Ready or `usable`.
 
 ## 3. W0.1 Exit Checklist

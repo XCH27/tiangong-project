@@ -1,6 +1,10 @@
 # Persistence Authority Map
 
-> **Status:** binding ownership rules. D54 records this table as the Lead stance. The physical-store gate below stays open until Mac-verified recovery.
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes the Craft layouts in this map.
+>
+> Craft `~/.craft-agent` layouts below are reference. ZCode persistence is product authority when present. This banner does not add a store, decide SQLite, bump `CONTRACT_VERSION`, mark Ready or `usable`, or edit `app/`. Detail: `docs/audits/2026-10-10-zcode-residual-supersede.md`.
+
+> **Status:** binding ownership rules for the historical Craft map. D54 records this table as the Lead stance on that map. The physical-store gate below stays open until Mac-verified recovery. It is not the ZCode product authority.
 > **Updated:** 2026-07-09. Decision footnote 2026-10-10 (D54).
 > **Inspection footnote (2026-10-10):** At pin `f4e172bf`, sessions are `{workspace}/sessions/{id}/session.jsonl`, projects are `{workspace}/projects/{slug}/`, and tasks are `{workspace}/tasks/<slug>/task.yaml` plus a run log. `CONFIG_DIR` is `~/.craft-agent/`. Those three stores are files. A repo-wide SQLite search on a checkout was not run. The decision gate below stays open (D51, D52, D54).
 > **Decision footnote (2026-10-10, D54):** The authority table is the Lead stance. The retained physical candidate is the Craft file layout named above. SQLite is not decided. Exit item 5 stays open. Detail: `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`.

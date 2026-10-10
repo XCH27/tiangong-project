@@ -49,3 +49,7 @@ Supersede banner: Exit 1 notes (`exit1-mac-checkout`, `exit1-electron-launch`, `
 Live-gate softening, without promoting a wave: `docs/START-HERE.md`, `docs/PROJECT-DIRECTION.md`, `docs/UPSTREAM-BASELINE.md`, `docs/DOCUMENT-READINESS.md`, `docs/README.md`, `docs/BOARD-SYNC.md`, `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md`, `docs/PARALLEL-AGENT-OPERATING-MODEL.md`, `docs/modules/README.md`, `docs/modules/01-clean-craft-baseline.md`, and `docs/agent-packets/wave-0.1-control-plane-reconciliation.md`.
 
 `app/` is not modified.
+
+## Residual follow-up (same day, after #60)
+
+#60 (`4af410fb`) left three docs still readable as live Craft product gates. The follow-up is `docs/audits/2026-10-10-zcode-residual-supersede.md`. It banners `docs/OWNERSHIP-MATRIX.md` and `docs/PERSISTENCE-AUTHORITY-MAP.md`, and it rewords the W1 entry-gate cell on `docs/WAVE-MODULE-MAP.md`. It does not add Worker grants, bump `CONTRACT_VERSION`, mark Ready or `usable`, or edit `app/`.

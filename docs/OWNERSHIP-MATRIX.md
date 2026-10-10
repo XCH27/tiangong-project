@@ -1,5 +1,9 @@
 # Ownership Matrix
 
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes the Craft path rows in this matrix.
+>
+> Craft path ownership rows below are historical. Product ownership lives in `.fleet/zcode` (Lead). This banner does not invent new Worker grants, reassign a row, open a wave, mark Ready or `usable`, or edit `app/`. Detail: `docs/audits/2026-10-10-zcode-residual-supersede.md`.
+
 > **Lead-owned.** Workers read this file. They do not modify it.
 >
 > Every file domain in the repo is assigned to exactly one owner. "Lead" means no Worker
