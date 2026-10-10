@@ -10,6 +10,8 @@
 > **Follow-up (workspace rename):** Settings → Workspace name admits frozen `workspace.rename` (L2) on an existing session kernel. That path publishes the existing permission card and writes the folder name only after Allow. The generic card rows stay `test-only` for every other awaiting turn. `file.delete` and `canvas.node_delete` are still not shell callers. D46 stays unmet: the PPTX shell is a first-slide viewer, and Office edit and save stay Locked. This note does not close W0.1 and does not promote `usable`.
 >
 > **Follow-up (L3 card search, docs only):** After `25e53895`, Electron, `SessionManager`, and the RPC handlers still have no production caller for frozen `file.delete` or `canvas.node_delete`. `createCanvasCardHost.deleteCard` and `CliExecutorHost` admit those ids only in tests. `sessions:delete`, `skills:delete`, and `sources:delete` are not `file.delete`. No permission card was wired for either id. The D46 footnote in `docs/modules/19-presentation-motion-surface.md` §10 records the same search: the first-slide viewer leaves MotionDeck unmet, and Office edit and save stay Locked. `CONTRACT_VERSION` stays 1.2.0. This note does not close W0.1 and does not promote `usable`.
+>
+> **Lead-unblock packet:** `docs/audits/2026-10-10-w01-lead-unblock.md` (base `7c36bb6d`, after merged PR #37).
 
 ## Gate status (unchanged)
 
