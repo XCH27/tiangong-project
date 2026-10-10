@@ -29,8 +29,14 @@ import {
   applyCraftPermissionDecision,
   craftCardForAwaitingTurn,
   DESKTOP_APPROVER,
+  executePluginMutationOnKernel,
   invocationIdFromHostRequest,
+  resolvePluginGrantOnKernel,
+  type ActorRef,
+  type CraftPermissionDecision,
   type HostPermissionCard,
+  type PluginMutationCall,
+  type PluginMutationResult,
   HostTurnKernel,
   SessionFileTurnJournal,
   type TurnOutcome,
@@ -6578,6 +6584,50 @@ export class SessionManager implements ISessionManager {
       return { status: 'failed', invocationId, reason: 'host_kernel_missing' }
     }
     return attachment.kernel.admit(request)
+  }
+
+  /**
+   * Install, enable, or disable a plugin on this Craft session's kernel.
+   * The journal is session.jsonl. Third-party hook and MCP enable waits on
+   * the existing permission card. This does not construct a plugin host.
+   * No shell or IPC caller uses this method. The path is test-only.
+   */
+  async applySessionPluginMutation(
+    sessionId: string,
+    workspaceRootPath: string,
+    input: PluginMutationCall & { callerKind: 'human_ui' | 'agent' },
+    workspaceId?: string,
+  ): Promise<PluginMutationResult> {
+    let kernel: HostTurnKernel
+    try {
+      kernel = this.openSessionHostKernel(sessionId, workspaceRootPath, workspaceId)
+    } catch (error) {
+      const reason = error instanceof Error && error.message === 'session_file_missing'
+        ? 'session_file_missing'
+        : 'host_kernel_missing'
+      return { status: 'failed', invocationId: input.invocationId, reason }
+    }
+    return executePluginMutationOnKernel(kernel, { ...input, sessionId })
+  }
+
+  /**
+   * Settle a plugin permission card on the session kernel.
+   * Allow and Deny are the desktop human. An agent approver does not write.
+   * No shell or IPC caller uses this method. The path is test-only.
+   */
+  resolveSessionPluginGrant(
+    sessionId: string,
+    input: {
+      invocationId: string
+      approver: ActorRef
+      decision: CraftPermissionDecision
+      filePath: string
+    },
+  ): Promise<PluginMutationResult> {
+    const kernel = this.hostApprovals.get(sessionId)?.kernel
+    const bare = invocationIdFromHostRequest(input.invocationId) ?? input.invocationId
+    if (!kernel) return Promise.resolve({ status: 'failed', invocationId: bare, reason: 'host_kernel_missing' })
+    return resolvePluginGrantOnKernel(kernel, input)
   }
 
   private detachHostTurnKernel(sessionId: string): void {

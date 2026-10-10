@@ -132,6 +132,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-10 | draft v1.1 | One HostTurnKernel per Craft session in main journals into session.jsonl. Restart reads those events and does not restore turn phase. |
 | 2026-10-10 | draft v1.1 | Relabeled §13 from the shell and the tests. Office previews are viewers. The MCP Apps pane is a read projection. Test hosts are not `wired`. |
 | 2026-10-10 | draft v1.1 | Settings does not write the plugin loadout. Codex and ACP capability strings are `display-only`. |
+| 2026-10-10 | draft v1.1 | SessionManager plugin install and enable admit file.update on the session kernel. That API is `test-only`. Settings writes stay `Locked`. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -171,7 +172,7 @@ The shell Office readers are viewers. Edit and save on that overlay stay `Locked
 
 The human toolbar calls `runGuestActionFromHuman` for find, loading stop, back, forward, and reload. That path is `wired`. `captureGovernedDom`, `captureDomFromHuman`, and `captureDomFromAgent` are `test-only`. Screenshot evidence and Chrome Store advertising stay `Locked`. `browser.screenshot` is still not a frozen action id.
 
-Settings → Plugins is one page on the existing settings navigator. The five views are Installed, Market, Skills, MCP, and Hooks. Market filters list workspace skills, MCP sources, catalog reads, and a local Agent Plugins 1.0.0 package. A failed catalog read adds no entries. Credential-shaped text and a marketplace document add nothing. The page does not construct `createPluginSettingsHost`, does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`, and does not write `.claude-plugin/loadout.json`. Install, enable, and disable stay `Locked` until the `SessionManager` session kernel owns that loadout. The page does not render the Craft session permission card. `createPluginSettingsHost` remains `test-only`. It is not `SessionManager.respondToPermission`.
+Settings → Plugins is one page on the existing settings navigator. The five views are Installed, Market, Skills, MCP, and Hooks. Market filters list workspace skills, MCP sources, catalog reads, and a local Agent Plugins 1.0.0 package. A failed catalog read adds no entries. Credential-shaped text and a marketplace document add nothing. The page does not construct `createPluginSettingsHost`, does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`, and does not write `.claude-plugin/loadout.json`. Install, enable, and disable on that page stay `Locked`. `createPluginSettingsHost` remains `test-only`. It is not `SessionManager.respondToPermission`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` admit those same loadout writes on the Craft session kernel from `openSessionHostKernel`. No shell or IPC caller uses them, so that API is `test-only`. The page does not render the Craft session permission card. Third-party enable still sets `requireHumanApproval` on `file.update`. A stored loadout grant is not host-turn Always Allow.
 
 The MCP Apps side pane is a read projection. `projectEnabledMcpApps` lists enabled MCP tools and resources from the loadout and a local inventory. The pane does not construct `createMcpAppsHost`, does not admit focus, and does not call a tool. Closing it updates the existing right-sidebar slot. `openMcpAppsFromHuman` remains on the test host. The sandboxed `ui://` app view, live `tools/list`, and tool invocation stay `Locked`. This page is not a remote store and it is not a plugin marketplace.
 
@@ -214,6 +215,7 @@ Release independence reads the admitted workspace packages and the bundled runti
 | Plugin loadout install, enable, and disable from Settings | `Locked` |
 | `createPluginSettingsHost` loadout writes | `test-only` |
 | Settings approval as the Craft session permission card | `display-only` |
+| SessionManager plugin install and third-party enable on the session kernel | `test-only` |
 | MCP Registry and skill-repository catalogs as a trusted marketplace | `display-only` |
 | MCP Apps side pane: read projection of the loadout. No kernel, no focus admit, no tool call. | `display-only` |
 | Sandboxed MCP App view, live tools/list, and tool invocation | `Locked` |
