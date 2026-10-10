@@ -247,3 +247,19 @@ app/packages/shared/src/agent/session-self-management-bindings.ts	adapt	Bind ren
 app/packages/shared/src/agent/__tests__/session-self-management-bindings.test.ts	adapt	A refused rename is an error from the session tool. A missing callback does not write.	bun test src/agent/__tests__/session-self-management-bindings.test.ts
 app/packages/shared/src/prompts/system.ts	adapt	Tell the agent that rename_session sets the name it provides.	bun test src/agent/__tests__/session-self-management-bindings.test.ts
 app/packages/ui/src/components/chat/TurnCard.tsx	adapt	Show Rename Session for the rename_session tool card.	bun test src/sessions/session-chrome-admission.test.ts
+app/packages/shared/src/protocol/workspace-rename.ts	adapt	Settings workspace.rename request for the desktop user. L2 row. No pre-authorization and no new action id.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/shared/src/protocol/index.ts	adapt	Export the workspace rename request.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/server-core/src/sessions/SessionManager.ts	adapt	requestWorkspaceRename admits workspace.rename on an existing session kernel. Allow writes the folder name. Deny does not.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/server-core/src/sessions/workspace-rename-admission.test.ts	adapt	L2 approval publishes the existing permission card. Allow writes. Deny, a missing session, and a credential-shaped name do not.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/server-core/src/handlers/session-manager-interface.ts	adapt	requestWorkspaceRename returns the session-kernel admission result.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/server-core/src/handlers/rpc/settings.ts	adapt	workspaceSettings:update for name admits workspace.rename and does not write config.json first.	bun test src/sessions/workspace-rename-admission.test.ts
+app/apps/electron/src/renderer/pages/settings/WorkspaceSettingsPage.tsx	adapt	Workspace rename waits for the session permission card. The displayed name changes after Allow.	bun test src/sessions/workspace-rename-admission.test.ts
+app/apps/electron/src/renderer/App.tsx	adapt	Allow on a workspace.rename card refreshes the workspace list.	bun test src/sessions/workspace-rename-admission.test.ts
+app/apps/electron/src/shared/types.ts	adapt	updateWorkspaceSetting may return the workspace rename admission.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/shared/src/i18n/locales/en.json	adapt	Workspace rename tells the user to allow the session permission card, or to open a session first.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/shared/src/i18n/locales/de.json	adapt	German copy for the workspace rename permission card prompts.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/shared/src/i18n/locales/es.json	adapt	Spanish copy for the workspace rename permission card prompts.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/shared/src/i18n/locales/hu.json	adapt	Hungarian copy for the workspace rename permission card prompts.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/shared/src/i18n/locales/ja.json	adapt	Japanese copy for the workspace rename permission card prompts.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/shared/src/i18n/locales/pl.json	adapt	Polish copy for the workspace rename permission card prompts.	bun test src/sessions/workspace-rename-admission.test.ts
+app/packages/shared/src/i18n/locales/zh-Hans.json	adapt	Chinese copy for the workspace rename permission card prompts.	bun test src/sessions/workspace-rename-admission.test.ts

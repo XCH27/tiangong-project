@@ -1373,6 +1373,8 @@
   "settings.workspace.noSourcesConfigured": "No hay fuentes configuradas en este Workspace.",
   "settings.workspace.noWorkspaceSelected": "Ningún Workspace seleccionado",
   "settings.workspace.permissionsSection": "Permisos",
+  "settings.workspace.renameNeedsApproval": "Permite la tarjeta de permiso en una sesión para renombrar este Workspace.",
+  "settings.workspace.renameNeedsSession": "Abre una sesión en este Workspace antes de renombrarlo.",
   "settings.workspace.renameWorkspace": "Renombrar Workspace",
   "settings.workspace.title": "Workspace",
   "settings.workspace.untitled": "Sin título",

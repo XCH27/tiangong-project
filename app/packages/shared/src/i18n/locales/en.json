@@ -1373,6 +1373,8 @@
   "settings.workspace.noSourcesConfigured": "No sources configured in this workspace.",
   "settings.workspace.noWorkspaceSelected": "No workspace selected",
   "settings.workspace.permissionsSection": "Permissions",
+  "settings.workspace.renameNeedsApproval": "Allow the permission card in a session to rename this workspace.",
+  "settings.workspace.renameNeedsSession": "Open a session in this workspace before renaming it.",
   "settings.workspace.renameWorkspace": "Rename workspace",
   "settings.workspace.title": "Workspace",
   "settings.workspace.untitled": "Untitled",

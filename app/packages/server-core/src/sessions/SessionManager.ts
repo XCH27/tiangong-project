@@ -49,8 +49,10 @@ import {
   sessionRenameRequestForActor,
   sessionStatusRequest,
   sessionStatusRequestForActor,
+  workspaceRenameRequest,
   type SessionChromeAdmission,
   type SessionFlagAdmission,
+  type WorkspaceRenameAdmission,
   type TurnExecutorResult,
   type TurnOutcome,
   type TurnRequest,
@@ -68,7 +70,7 @@ import {
   type WorkspaceInfo,
 } from '@craft-agent/shared/config'
 import type { ActiveSessionInfo, SessionProcessingStatus } from '@craft-agent/core/types'
-import { loadWorkspaceConfig } from '@craft-agent/shared/workspaces'
+import { loadWorkspaceConfig, renameWorkspaceFolder } from '@craft-agent/shared/workspaces'
 import {
   // Session persistence functions
   listSessions as listStoredSessions,
@@ -1152,8 +1154,9 @@ export class SessionManager implements ISessionManager {
   /** sessionId + invocationId pairs whose permission card was already delivered. */
   private deliveredHostCards = new Set<string>()
   /**
-   * Human chrome turns that are waiting on the existing permission card.
-   * The header write runs after Allow. Deny drops the job.
+   * Host turns that are waiting on the existing permission card.
+   * Session chrome and Settings workspace rename store their effect here.
+   * The write runs after Allow. Deny drops the job.
    */
   private pendingSessionChrome = new Map<string, {
     sessionId: string
@@ -7300,10 +7303,72 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Admit one session-chrome turn. L1 rows with an undo contract run
-   * immediately. approval_required stores the effect for respondToPermission.
-   * admitHostTurn publishes the existing card in that case. Callers do not
-   * publish a second card. The request carries its own actor.
+   * Settings workspace rename. workspace.rename is L2, and this request does
+   * not set preAuthorizedBy, so admission is approval_required. admitHostTurn
+   * publishes the existing permission card. The folder name stays unchanged
+   * until Allow. Deny does not write. A workspace with no Craft session does
+   * not rename. Other workspace settings do not use this method.
+   */
+  requestWorkspaceRename(workspaceId: string, name: string): Promise<WorkspaceRenameAdmission> {
+    const invocationId = randomUUID()
+    const trimmed = name.trim()
+    if (!trimmed) return Promise.resolve({ status: 'failed', invocationId, reason: 'name_required' })
+    const hosted = this.sessionForWorkspaceRename(workspaceId)
+    if (!hosted) return Promise.resolve({ status: 'failed', invocationId, reason: 'session_missing' })
+    const config = loadWorkspaceConfig(hosted.workspace.rootPath)
+    if (!config) return Promise.resolve({ status: 'failed', invocationId, reason: 'workspace_missing', sessionId: hosted.id })
+    if (config.name === trimmed) {
+      return Promise.resolve({ status: 'completed', invocationId, reason: 'unchanged', sessionId: hosted.id })
+    }
+    const previousName = config.name
+    const rootPath = hosted.workspace.rootPath
+    const request = workspaceRenameRequest(hosted.id, invocationId, {
+      workspaceId: hosted.workspace.id,
+      name: trimmed,
+      previousName,
+    })
+    return this.admitSessionChrome(
+      hosted.id,
+      request,
+      async (noteNativeCommit) => {
+        const wrote = renameWorkspaceFolder(rootPath, trimmed)
+        if (!wrote) throw new Error('workspace_rename_failed')
+        noteNativeCommit()
+        this.applyWorkspaceDisplayName(rootPath, trimmed)
+        return {
+          output: { name: trimmed, actionId: request.invocation.actionId },
+          undoHandle: sessionChromeUndo(invocationId, 'Restore workspace name', { name: previousName }),
+        }
+      },
+      async () => {
+        renameWorkspaceFolder(rootPath, previousName)
+        this.applyWorkspaceDisplayName(rootPath, previousName)
+      },
+    ).then((admitted) => ({ ...admitted, sessionId: hosted.id }))
+  }
+
+  private sessionForWorkspaceRename(workspaceId: string): ManagedSession | undefined {
+    const matches = [...this.sessions.values()].filter((managed) => managed.workspace.id === workspaceId)
+    if (matches.length === 0) return undefined
+    const viewingId = this.activeViewingSession.get(workspaceId)
+    const viewing = viewingId ? matches.find((managed) => managed.id === viewingId) : undefined
+    if (viewing) return viewing
+    return matches.reduce((latest, managed) => (
+      (managed.lastMessageAt ?? 0) > (latest.lastMessageAt ?? 0) ? managed : latest
+    ))
+  }
+
+  private applyWorkspaceDisplayName(rootPath: string, name: string): void {
+    for (const managed of this.sessions.values()) {
+      if (managed.workspace.rootPath === rootPath) managed.workspace.name = name
+    }
+  }
+
+  /**
+   * Admit one session-chrome or workspace-rename turn. L1 rows with an undo
+   * contract run immediately. approval_required stores the effect for
+   * respondToPermission. admitHostTurn publishes the existing card in that
+   * case. Callers do not publish a second card. The request carries its own actor.
    */
   private admitSessionChrome(
     sessionId: string,

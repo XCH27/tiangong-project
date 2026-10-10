@@ -6,6 +6,8 @@
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not replace that list and does not check any item off.
 > **Earlier review:** `docs/audits/2026-10-10-spine-honesty-audit.md` still describes base `89b2e8a6`. That body is not rewritten.
 > **Follow-up:** agent `rename_session` is its own §13 `wired` row. That row is no longer `not implemented`. Title generation stays the desktop user. This note does not close W0.1.
+>
+> **Follow-up (workspace rename):** Settings → Workspace name admits frozen `workspace.rename` (L2) on an existing session kernel. That path publishes the existing permission card and writes the folder name only after Allow. The generic card rows stay `test-only` for every other awaiting turn. `file.delete` and `canvas.node_delete` are still not shell callers. D46 stays unmet: the PPTX shell is a first-slide viewer, and Office edit and save stay Locked. This note does not close W0.1 and does not promote `usable`.
 
 ## Gate status (unchanged)
 
@@ -45,7 +47,7 @@ These slices stay blocked inside that exit, except agent rename, which the follo
 
 1. **Unflag.** Admission stays `not implemented` until the Lead freezes an id in `docs/contracts/action-ids.md` under the extension process, in the same commit as any `CONTRACT_VERSION` bump. This note does not invent `session.unflag`. That string is not in the frozen table and is not in the under-discussion list.
 
-2. **Permission-card publish and approve.** §13 keeps both rows `test-only`. The shell chrome that landed is L0 or L1-with-undo, so it never takes the `approval_required` branch. No L2 or L3 shell caller publishes or approves a host card. `workspace.rename` (L2) and `file.delete` / `canvas.node_delete` (L3) are not that caller.
+2. **Permission-card publish and approve, other than Settings workspace rename.** The generic §13 rows stay `test-only`. Settings workspace rename is the L2 shell caller and has its own `wired` row: Allow writes the folder name, and Deny or a missing session leaves it. `file.delete` and `canvas.node_delete` are still not shell callers. Session chrome that is L0 or L1-with-undo still does not publish a card.
 
 3. **Settings plugin writes.** Install, enable, and disable on Settings → Plugins stay Locked. The page does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only`: they build a `file.update` loadout request, admission refuses that verb, and no shell or IPC caller uses them. This note does not unlock Settings.
 

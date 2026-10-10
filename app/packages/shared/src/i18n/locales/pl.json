@@ -1373,6 +1373,8 @@
   "settings.workspace.noSourcesConfigured": "Brak źródeł skonfigurowanych w tym Workspace.",
   "settings.workspace.noWorkspaceSelected": "Nie wybrano Workspace",
   "settings.workspace.permissionsSection": "Uprawnienia",
+  "settings.workspace.renameNeedsApproval": "Zezwól na kartę uprawnień w sesji, aby zmienić nazwę tego Workspace.",
+  "settings.workspace.renameNeedsSession": "Otwórz sesję w tym Workspace, zanim zmienisz jego nazwę.",
   "settings.workspace.renameWorkspace": "Zmień nazwę Workspace",
   "settings.workspace.title": "Workspace",
   "settings.workspace.untitled": "Bez nazwy",
