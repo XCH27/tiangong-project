@@ -788,6 +788,7 @@
   "settings.about.notices": "Hinweise Dritter",
   "settings.about.noticesCount": "{{count}} zugelassene Abhängigkeiten",
   "settings.about.noticesFailed": "Hinweisprüfung fehlgeschlagen",
+  "settings.about.packagingDryRun": "Paket-Trockenlauf",
   "settings.about.restartToUpdate": "Neu starten, um auf v{{version}} zu aktualisieren",
   "settings.about.title": "Über",
   "settings.about.updateReady": "Update bereit",

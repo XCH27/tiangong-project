@@ -788,6 +788,7 @@
   "settings.about.notices": "Avisos de terceros",
   "settings.about.noticesCount": "{{count}} dependencias admitidas",
   "settings.about.noticesFailed": "Falló la comprobación de avisos",
+  "settings.about.packagingDryRun": "Simulación de empaquetado",
   "settings.about.restartToUpdate": "Reiniciar para actualizar a v{{version}}",
   "settings.about.title": "Acerca de",
   "settings.about.updateReady": "Actualización lista",

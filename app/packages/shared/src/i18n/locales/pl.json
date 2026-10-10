@@ -788,6 +788,7 @@
   "settings.about.notices": "Informacje o podmiotach trzecich",
   "settings.about.noticesCount": "Dopuszczone zależności: {{count}}",
   "settings.about.noticesFailed": "Sprawdzenie informacji nie powiodło się",
+  "settings.about.packagingDryRun": "Próbne pakowanie",
   "settings.about.restartToUpdate": "Uruchom ponownie, aby zaktualizować do v{{version}}",
   "settings.about.title": "O aplikacji",
   "settings.about.updateReady": "Aktualizacja gotowa",

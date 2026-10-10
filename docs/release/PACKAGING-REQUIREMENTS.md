@@ -17,12 +17,21 @@ The check reads every workspace `package.json` under `app/package.json`, `app/pa
 
 The update-feed dry run reads `app/scripts/build/fixtures/update-feed.dry-run.json`. Artifact URLs are relative file names. The checker does not fetch. `bun run verify:release` from `app/` is the local command.
 
+The packaging dry run is `bun run verify:packaging-dry-run` from `app/`. It is the same gate plus version metadata and artifact layout. It reads `app/scripts/build/fixtures/packaging-dry-run.json` and the tiny files under `app/scripts/build/fixtures/packaging-dry-run/`. Those files are not installers. Each channel uses the artifact names the packaging scripts already write:
+
+- macOS keeps the DMG from `getArtifactName` and the ZIP `packageDarwin` expects for electron-updater. The manifest name is `latest-mac.yml`, the file `scripts/install-app.sh` already requests.
+- Windows keeps `Craft-Agents-x64.exe` and the generic-provider manifest `latest.yml`.
+- Linux keeps the renamed `Craft-Agents-${arch}.AppImage` from `packageLinux`, not the intermediate `x86_64` name electron-builder emits before that rename. The manifest name is `latest-linux.yml`.
+
+Every admitted workspace `package.json` version must equal the feed version. The manifest text is the local electron-updater YAML shape: relative `url`, `sha512`, and `size`. `publish` must be `never`. `identityDiscovery` must be false, which is the unsigned `CSC_IDENTITY_AUTO_DISCOVERY=false` path already used by `electron:dist:dev:mac`. The dry run does not invoke electron-builder and does not download Electron.
+
 ## What stays Locked
 
-A signed Fleet release is not produced here. A feed with `disposition` `production` or `signed`, `signed: true`, or an `http` or `https` artifact URL is `Locked` (`signed_production_feed`). `uploadToS3` and `--latest` remain the Craft upload path. This check does not call them and does not set a Fleet feed URL. The Craft auto-updater in `app/apps/electron/src/main/auto-update.ts` is unchanged.
+A signed Fleet release is not produced here. A feed with `disposition` `production` or `signed`, `signed: true`, or an `http` or `https` artifact URL is `Locked` (`signed_production_feed`). The same lock applies when the packaging document uses an electron-builder publish policy of `always`, `onTag`, or `onTagOrDraft`, when signing-identity discovery is on, or when a manifest contains an absolute update URL. `uploadToS3` and `--latest` remain the Craft upload path. This check does not call them and does not set a Fleet feed URL. The Craft auto-updater in `app/apps/electron/src/main/auto-update.ts` is unchanged.
 
 | Slice | Status |
 |---|---|
 | Third-party notices for admitted dependencies | `wired` |
 | Update-feed dry run | `wired` |
-| Signed production feed and a signed Fleet release | `Locked` |
+| Unsigned packaging dry run: version metadata and artifact layout | `wired` |
+| Signed production feed, a signed Fleet release, and live auto-update | `Locked` |

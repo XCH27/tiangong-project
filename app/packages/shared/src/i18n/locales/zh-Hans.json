@@ -788,6 +788,7 @@
   "settings.about.notices": "第三方声明",
   "settings.about.noticesCount": "已准入依赖 {{count}} 项",
   "settings.about.noticesFailed": "声明检查未通过",
+  "settings.about.packagingDryRun": "打包演练",
   "settings.about.restartToUpdate": "重启以更新到 v{{version}}",
   "settings.about.title": "关于",
   "settings.about.updateReady": "更新就绪",

@@ -125,6 +125,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-10 | draft v1.1 | MCP Apps side pane lists enabled tools and resources and admits open and focus. The sandboxed app view, live tool list, and Agent Plugins 1.0.0 stay Locked. |
 | 2026-10-10 | draft v1.1 | A local Agent Plugins 1.0.0 package projects skills and MCP servers into Market. Credential-shaped and unsafe fields add nothing. A remote store stays Locked. |
 | 2026-10-09 | draft v1.1 | Third-party notices fail closed when an admitted license is missing. The update-feed dry run stays local. A signed production feed stays Locked. |
+| 2026-10-10 | draft v1.1 | Unsigned packaging dry run checks version metadata and artifact layout. It does not publish. A signed production feed stays Locked. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -158,7 +159,7 @@ Settings → Plugins is one page on the existing settings navigator. The five vi
 
 The MCP Apps side pane reads that same loadout. `projectEnabledMcpApps` lists enabled MCP tools and resources from a local inventory. `openMcpAppsFromHuman` and `openMcpAppsFromAgent` share `executeMcpAppsOp`, as do focus and close. Those calls admit `canvas.node_select`, the frozen L0 select, and change the existing right-sidebar slot. They do not write a file and they do not add an action id. `workbench.view_open` stays unfrozen. The sandboxed `ui://` app view, live `tools/list`, and tool invocation stay `Locked`. This page is not a remote store and it is not a plugin marketplace.
 
-Release independence reads the admitted workspace packages and the bundled runtimes named by the existing packaging scripts. `readReleaseDispositionForHuman` and `readReleaseDispositionForAgent` return the same report. The About section shows that report. `renderThirdPartyNotices` writes no partial file when a license is missing. The checked-in `app/THIRD-PARTY-NOTICES.txt` is the persistent record. This check does not append a session journal and does not admit a turn. `checkUpdateFeed` accepts only a local dry-run document with relative artifact names. A signed document, a production disposition, or an absolute update URL stays `Locked`. The retained Craft updater in `app/apps/electron/src/main/auto-update.ts` is unchanged and is not a Fleet production feed. Packaging requirements are in `docs/release/PACKAGING-REQUIREMENTS.md`. `docs/engineering.md` is not in this checkout.
+Release independence reads the admitted workspace packages and the bundled runtimes named by the existing packaging scripts. `readReleaseDispositionForHuman` and `readReleaseDispositionForAgent` return the same report. The About section shows that report. `renderThirdPartyNotices` writes no partial file when a license is missing. The checked-in `app/THIRD-PARTY-NOTICES.txt` is the persistent record. This check does not append a session journal and does not admit a turn. `checkUpdateFeed` accepts only a local dry-run document with relative artifact names. A signed document, a production disposition, or an absolute update URL stays `Locked`. `checkPackagingDryRun` is the unsigned layout check: admitted package versions must match the feed, and the artifact names must be the ones `packageDarwin`, `packageLinux`, `packageWindows`, and `scripts/install-app.sh` already expect. `publish` stays `never`. Signing-identity discovery stays off. The command is `bun run verify:packaging-dry-run` from `app/`. It does not invoke electron-builder. The retained Craft updater in `app/apps/electron/src/main/auto-update.ts` is unchanged and is not a Fleet production feed. Packaging requirements are in `docs/release/PACKAGING-REQUIREMENTS.md`. `docs/engineering.md` is not in this checkout.
 
 | Slice | Status |
 |---|---|
@@ -194,7 +195,8 @@ Release independence reads the admitted workspace packages and the bundled runti
 | Remote plugin store, Chrome Store, and a plugin marketplace | `Locked` |
 | Third-party notices for admitted dependencies, failing closed when a license is missing | `wired` |
 | Update-feed dry run with relative artifact names and no network fetch | `wired` |
-| Signed production update feed and a signed Fleet release | `Locked` |
+| Unsigned packaging dry run for version metadata and artifact layout | `wired` |
+| Signed production update feed, a signed Fleet release, and live auto-update | `Locked` |
 | Live paid image/video providers and a quota ledger | `Locked` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |

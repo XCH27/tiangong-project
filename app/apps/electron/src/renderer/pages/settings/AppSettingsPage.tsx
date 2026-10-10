@@ -370,6 +370,15 @@ export default function AppSettingsPage() {
                       {release.dryRunFeed.outcome === 'pass' ? release.dryRunFeed.status : t("settings.about.noticesFailed")}
                     </span>
                   </SettingsRow>
+                  <SettingsRow label={t("settings.about.packagingDryRun")}>
+                    <span className="text-muted-foreground">
+                      {release.packagingDryRun.outcome === 'pass'
+                        ? release.packagingDryRun.status
+                        : release.packagingDryRun.outcome === 'locked'
+                          ? t("settings.about.fleetUpdatesLocked")
+                          : t("settings.about.noticesFailed")}
+                    </span>
+                  </SettingsRow>
                 </SettingsCard>
               </SettingsSection>
             </div>
