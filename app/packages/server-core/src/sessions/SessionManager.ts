@@ -35,7 +35,11 @@ import {
   type ActorRef,
   type CraftPermissionDecision,
   type HostPermissionCard,
+  pluginLoadoutPath,
+  projectWorkspacePlugins,
+  type PluginCatalogEntry,
   type PluginMutationCall,
+  type PluginMutationName,
   type PluginMutationResult,
   HostTurnKernel,
   SessionFileTurnJournal,
@@ -1140,6 +1144,12 @@ interface PendingDelta {
   turnId?: string
 }
 
+function reservedCatalogId(id: string): boolean {
+  const separator = id.indexOf(':')
+  const slug = separator >= 0 ? id.slice(separator + 1) : id
+  return slug === 'fleet' || slug === 'craft-agent' || slug === '.agents'
+}
+
 export class SessionManager implements ISessionManager {
   private sessions: Map<string, ManagedSession> = new Map()
   // Delta batching for performance - reduces IPC events from 50+/sec to ~20/sec
@@ -1165,6 +1175,16 @@ export class SessionManager implements ISessionManager {
     rollback: () => Promise<void>
   }>()
   private sessionChromeTail = new Map<string, Promise<unknown>>()
+  /**
+   * Settings install, enable, and disable waiting on the Craft permission card.
+   * Allow continues applySessionPluginMutation. Deny does not write.
+   */
+  private pendingPluginMutations = new Map<string, {
+    sessionId: string
+    workspaceRootPath: string
+    workspaceId: string
+    call: PluginMutationCall & { callerKind: 'human_ui' }
+  }>()
   // Permission request metadata tracking (keyed by requestId)
   private pendingPermissionRequests: Map<string, {
     sessionId: string
@@ -6854,11 +6874,60 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * Settings → Plugins install, enable, or disable.
+   * The catalog is the workspace skills and MCP sources the agent already loads.
+   * The request uses plugin.loadout_mutate. The row is L2 and this method
+   * does not set preAuthorizedBy, so an unapproved call does not write.
+   * Allow and Deny settle through resolveSessionPluginGrant and
+   * sessions:respondToPermission. op grant is standing_grant_rejected.
+   */
+  async requestSettingsPluginMutation(
+    workspaceId: string,
+    op: PluginMutationName,
+    pluginId: string,
+  ): Promise<PluginMutationResult> {
+    const invocationId = randomUUID()
+    const hosted = this.sessionForWorkspaceRename(workspaceId)
+    if (!hosted) return { status: 'failed', invocationId, reason: 'session_missing' }
+    const filePath = pluginLoadoutPath(hosted.workspace.rootPath)
+    const call = {
+      op,
+      pluginId,
+      invocationId,
+      sessionId: hosted.id,
+      actor: DESKTOP_APPROVER,
+      filePath,
+      catalog: this.catalogTheAgentLoads(hosted.workspace.rootPath),
+      callerKind: 'human_ui' as const,
+    }
+    const result = await this.applySessionPluginMutation(
+      hosted.id,
+      hosted.workspace.rootPath,
+      call,
+      hosted.workspace.id,
+    )
+    if (result.status === 'approval_required') {
+      this.pendingPluginMutations.set(invocationId, {
+        sessionId: hosted.id,
+        workspaceRootPath: hosted.workspace.rootPath,
+        workspaceId: hosted.workspace.id,
+        call,
+      })
+    }
+    return result
+  }
+
+  whenHostTurnSettled(sessionId: string): Promise<void> {
+    const tail = this.sessionChromeTail.get(sessionId)
+    return tail ? tail.then(() => undefined, () => undefined) : Promise.resolve()
+  }
+
+  /**
    * Install, enable, or disable a plugin on this Craft session's kernel.
    * The request uses plugin.loadout_mutate. The row is L2 and this method
    * does not set preAuthorizedBy, so an unapproved call does not write.
-   * The same payload on file.update is still refused. No shell or IPC caller
-   * uses this method. The path is test-only. Settings install and enable stay Locked.
+   * The same payload on file.update is still refused. Settings calls this
+   * through requestSettingsPluginMutation. op grant is standing_grant_rejected.
    */
   async applySessionPluginMutation(
     sessionId: string,
@@ -6882,7 +6951,7 @@ export class SessionManager implements ISessionManager {
    * Settle a plugin permission card on the session kernel.
    * Allow and Deny are the desktop human. An agent approver does not write.
    * op grant is standing_grant_rejected and does not write the loadout.
-   * No shell or IPC caller uses this method. The path is test-only.
+   * Settings Allow and Deny reach this through respondToPermission.
    */
   resolveSessionPluginGrant(
     sessionId: string,
@@ -6905,6 +6974,7 @@ export class SessionManager implements ISessionManager {
     this.hostApprovals.delete(sessionId)
     this.clearDeliveredHostCards(sessionId)
     this.dropPendingSessionChrome(sessionId)
+    this.dropPendingPluginMutations(sessionId)
   }
 
   private hostCardKey(sessionId: string, invocationId: string): string {
@@ -6966,6 +7036,16 @@ export class SessionManager implements ISessionManager {
     alwaysAllow: boolean,
     options?: import('@craft-agent/shared/protocol').PermissionResponseOptions,
   ): boolean {
+    const pluginInvocationId = invocationIdFromHostRequest(requestId)
+    const pendingPlugin = pluginInvocationId ? this.pendingPluginMutations.get(pluginInvocationId) : undefined
+    if (pendingPlugin && pendingPlugin.sessionId === sessionId) {
+      this.pendingPluginMutations.delete(pendingPlugin.call.invocationId)
+      void this.enqueueSessionChrome(sessionId, () => (
+        this.finishPluginLoadoutPermission(pendingPlugin, allowed, alwaysAllow)
+      ))
+      return true
+    }
+
     const hostDecision = this.resolveHostApproval(sessionId, requestId, allowed, alwaysAllow)
     if (hostDecision !== undefined) return hostDecision
 
@@ -7377,6 +7457,54 @@ export class SessionManager implements ISessionManager {
         this.applyWorkspaceDisplayName(rootPath, previousName)
       },
     ).then((admitted) => ({ ...admitted, sessionId: hosted.id }))
+  }
+
+  private catalogTheAgentLoads(workspaceRootPath: string): PluginCatalogEntry[] {
+    const skills = loadAllSkills(workspaceRootPath).map((skill) => ({
+      slug: skill.slug,
+      name: skill.metadata.name,
+      description: skill.metadata.description,
+    }))
+    const sources = loadAllSources(workspaceRootPath).map((source) => ({
+      slug: source.config.slug,
+      name: source.config.name,
+      type: source.config.type,
+      description: source.config.tagline,
+    }))
+    return projectWorkspacePlugins({ skills, sources }).filter((entry) => !reservedCatalogId(entry.id))
+  }
+
+  private async finishPluginLoadoutPermission(
+    pending: {
+      sessionId: string
+      workspaceRootPath: string
+      workspaceId: string
+      call: PluginMutationCall & { callerKind: 'human_ui' }
+    },
+    allowed: boolean,
+    alwaysAllow: boolean,
+  ): Promise<void> {
+    const settled = await this.resolveSessionPluginGrant(pending.sessionId, {
+      invocationId: pending.call.invocationId,
+      approver: DESKTOP_APPROVER,
+      decision: { allowed, alwaysAllow },
+      filePath: pending.call.filePath,
+    })
+    if (!allowed) return
+    if (settled.status === 'failed' && settled.reason === 'plugin_grant_not_pending') {
+      await this.applySessionPluginMutation(
+        pending.sessionId,
+        pending.workspaceRootPath,
+        pending.call,
+        pending.workspaceId,
+      )
+    }
+  }
+
+  private dropPendingPluginMutations(sessionId: string): void {
+    for (const [invocationId, pending] of this.pendingPluginMutations) {
+      if (pending.sessionId === sessionId) this.pendingPluginMutations.delete(invocationId)
+    }
   }
 
   private sessionForWorkspaceRename(workspaceId: string): ManagedSession | undefined {

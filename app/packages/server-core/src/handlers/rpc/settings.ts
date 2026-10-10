@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'path'
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS, type PluginMutationName } from '@craft-agent/shared/protocol'
 import { getPreferencesPath, getSessionDraft, setSessionDraft, deleteSessionDraft, getAllSessionDrafts, getWorkspaceByNameOrId, getDefaultThinkingLevel, setDefaultThinkingLevel } from '@craft-agent/shared/config'
 import { isValidThinkingLevel, normalizeThinkingLevel, THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
 
@@ -14,6 +14,7 @@ import { isValidWorkingDirectory } from '../../utils/path-validation'
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.workspace.SETTINGS_GET,
   RPC_CHANNELS.workspace.SETTINGS_UPDATE,
+  RPC_CHANNELS.plugins.MUTATE_LOADOUT,
   RPC_CHANNELS.preferences.READ,
   RPC_CHANNELS.preferences.WRITE,
   RPC_CHANNELS.drafts.GET,
@@ -42,6 +43,17 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.settings.GET_NETWORK_PROXY,
   RPC_CHANNELS.dialog.OPEN_FOLDER,
 ] as const
+
+function isPluginMutationName(value: string): value is PluginMutationName {
+  switch (value) {
+    case 'install':
+    case 'enable':
+    case 'disable':
+      return true
+    default:
+      return false
+  }
+}
 
 export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): void {
   // ============================================================
@@ -170,6 +182,16 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
     // Save the config
     saveWorkspaceConfig(workspace.rootPath, config)
     deps.platform.logger.info(`Workspace setting updated: ${key} = ${JSON.stringify(normalizedValue)}`)
+  })
+
+  // Settings → Plugins. install, enable, and disable call
+  // SessionManager.applySessionPluginMutation with plugin.loadout_mutate.
+  // Allow and Deny settle through resolveSessionPluginGrant and sessions:respondToPermission.
+  server.handle(RPC_CHANNELS.plugins.MUTATE_LOADOUT, async (_ctx, workspaceId: string, op: string, pluginId: string) => {
+    if (!isPluginMutationName(op) || typeof workspaceId !== 'string' || typeof pluginId !== 'string') {
+      return { status: 'failed' as const, invocationId: '', reason: 'unknown_plugin_op' }
+    }
+    return deps.sessionManager.requestSettingsPluginMutation(workspaceId, op, pluginId)
   })
 
   // ============================================================

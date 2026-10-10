@@ -6,9 +6,11 @@
 > **Contract:** `docs/contracts/action-ids.md` v1.3.0 and `CONTRACT_VERSION` `1.3.0` in `app/packages/shared/src/protocol/internal-action.ts`, same change.
 > **What this does not do:** It does not mark W0.1 or W1 Ready. It does not promote any capability to `usable`. It does not edit Ready cells in `docs/WAVE-MODULE-MAP.md`. Settings plugin writes stay Locked.
 >
-> **Amendment (2026-10-10, D50):** Criterion 2 below is met. The product and internal strings are `docs/audits/2026-10-10-blk002-namespace-oss.md`. Criteria 3, 4, and 5 are not met. Settings stays Locked. W0.1 stays Locked. The body of this note is otherwise unchanged.
+> **Amendment (2026-10-10, D50):** Criterion 2 below is met. The product and internal strings are `docs/audits/2026-10-10-blk002-namespace-oss.md`. At that amendment, criteria 3, 4, and 5 were not met.
 >
-> **Amendment (2026-10-10, D51/D52):** The v0.11.0 pin and the behaviour ledger are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`. Exit items 1 and 2 stay open. This freeze still does not replace `app/`. Settings stays Locked. W0.1 stays Locked.
+> **Amendment (2026-10-10, D51/D52):** The v0.11.0 pin and the behaviour ledger are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`. Exit items 1 and 2 stay open. This freeze still does not replace `app/`. W0.1 stays Locked.
+>
+> **Amendment (2026-10-10, Settings caller):** Criteria 3, 4, and 5 are met. Settings → Plugins calls `SessionManager.applySessionPluginMutation` through `plugins:mutateLoadout`. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. §13 labels that caller `wired`. It is not `usable`. W0.1 stays Locked. The choice text below stays the record of the earlier decision.
 
 ## How the comparison was bounded
 
@@ -103,9 +105,9 @@ After #41–#43 (`92ee3ea5`), the guest host admits `browser.dom_snapshot`, the 
 
 **Choice.** Do not unlock Settings → Plugins. `plugin.loadout_mutate` is frozen so a later caller has an id. At this choice, `SessionManager.applySessionPluginMutation` still sent `file.update` and was still refused. `PluginsSettingsPage` still does not call it and still does not construct `createPluginSettingsHost`. §13 stays `Locked` for install, enable, and disable.
 
-Follow-up: `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` now build `plugin.loadout_mutate` and stay `test-only`. `file.update` still refuses that payload. `op: grant` is `standing_grant_rejected`. This note still does not unlock Settings.
+Follow-up: `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` now build `plugin.loadout_mutate`. `file.update` still refuses that payload. `op: grant` is `standing_grant_rejected`. Settings → Plugins is the production caller through `plugins:mutateLoadout`. §13 labels that caller `wired`, not `usable`. W0.1 stays Locked.
 
-The shell path does not meet the #38 criteria. Wiring a button would invent the write. The product/internal namespace is D50, recorded after this note. A Settings caller still does not decide it, and this section still does not unlock the page.
+The Settings caller meets criteria 3, 4, and 5. It does not invent the product/internal namespace. That namespace is D50. The caller is `wired`, not `usable`, and it does not open W0.1.
 
 ### When a later change may write the loadout
 
@@ -119,13 +121,13 @@ All of these are true on the spine:
 
 ### Acceptance tests that must pass before §13 leaves Locked
 
-- The Settings page or the RPC handler source contains the production call. `session-plugin-admission` today asserts the page and `sessions.ts` do not. That assertion stays until the caller is real.
+- The Settings page and the RPC handler source contain the production call. `session-plugin-admission` asserts `plugins:mutateLoadout`, `applySessionPluginMutation`, `resolveSessionPluginGrant`, and `sessions:respondToPermission`.
 - A human install, enable, and disable each admit `plugin.loadout_mutate`. The same payload on `file.update` is still `action_owner_mismatch:plugin_loadout`.
 - Allow writes the catalog the agent loads. Deny leaves it unchanged. A missing session writes nothing. A credential-shaped id writes nothing.
 - A second enable of the same plugin publishes another card. `op: grant` is `standing_grant_rejected` and writes nothing.
 - `PluginsSettingsPage` does not contain `createPluginSettingsHost`.
 
-Those tests are the gate. They are not implemented here, because the caller is not real. Implementing them against a fake button would be a false unlock.
+Those tests are the gate. They pass for the Settings caller. §13 labels that caller `wired`. It is not `usable`. W0.1 stays Locked.
 
 ### Peers (plugin packaging and enablement)
 

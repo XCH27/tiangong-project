@@ -70,18 +70,19 @@ afterEach(() => {
 })
 
 describe('plugin settings navigation and market filters', () => {
-  test('the settings page does not write a loadout or render the session card', () => {
+  test('the settings page calls the session loadout RPC and does not render the session card', () => {
     const source = readFileSync(new URL(
       '../../../../../apps/electron/src/renderer/pages/settings/PluginsSettingsPage.tsx',
       import.meta.url,
     ), 'utf8')
-    expect(source.includes('createPluginSettingsHost()')).toBe(false)
+    expect(source.includes('createPluginSettingsHost')).toBe(false)
     expect(source.includes('applyPluginMutationFromHuman')).toBe(false)
     expect(source.includes('applyPluginMutationFromAgent')).toBe(false)
     expect(source.includes('resolvePluginGrant')).toBe(false)
     expect(source.includes('PLUGIN_SETTINGS_SESSION_ID')).toBe(false)
     expect(source.includes('PermissionRequest')).toBe(false)
-    expect(source.includes('data-plugin-writes="locked"')).toBe(true)
+    expect(source.includes('mutatePluginLoadout')).toBe(true)
+    expect(source.includes('data-plugin-writes="wired"')).toBe(true)
   })
 
   test('five views stay distinct and an unknown view is rejected', () => {

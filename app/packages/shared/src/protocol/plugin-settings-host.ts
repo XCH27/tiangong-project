@@ -1,17 +1,18 @@
 /**
  * Plugin loadout writes.
  *
- * createPluginSettingsHost is a test host. The Settings page does not call it
- * and does not write the loadout. That private kernel is not a Craft session.
- * resolvePluginGrant on the test host is not SessionManager.respondToPermission.
+ * createPluginSettingsHost is a test host. The Settings page does not call it.
+ * That private kernel is not a Craft session. resolvePluginGrant on the test
+ * host is not SessionManager.respondToPermission.
  *
  * SessionManager.applySessionPluginMutation and resolveSessionPluginGrant
  * build plugin.loadout_mutate on the Craft session kernel. The row is L2.
  * The request does not set preAuthorizedBy, so an unapproved call does not
  * write. op grant is standing_grant_rejected and does not write. The same
  * payload on file.update stays action_owner_mismatch:plugin_loadout.
- * No shell or IPC caller uses that API, so the path is test-only. Settings
- * install, enable, and disable stay Locked.
+ * Settings → Plugins calls applySessionPluginMutation through
+ * plugins:mutateLoadout. Allow and Deny settle through resolveSessionPluginGrant
+ * and sessions:respondToPermission. Allow writes the loadout. Deny writes nothing.
  */
 
 import { readFileSync } from 'node:fs'

@@ -121,7 +121,8 @@ Catalog ids stay `skill:<slug>`, `mcp:<slug>`, `skill:<plugin>.<skill>`, and
 `mcp:<plugin>/<server>`. Product manifest API keys are `$schema` and `name` on root
 `plugin.json` (`https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`), plus the
 optional metadata the Agent Plugins reader already accepts. Skill bytes stay in the Craft
-skill directories. This section does not add a Settings caller and does not open W4.
+skill directories. The Settings caller is `plugins:mutateLoadout` and is `wired` in §16.
+It is not `usable`. This section does not open W4.
 
 Every registry entry carries structured ownership:
 
@@ -137,7 +138,8 @@ type ActionOwner = {
 
 The registry rejects duplicate IDs and unauthorized public exposure. D50 is the recorded
 product namespace, manifest API field list, and storage prefix. External plugin distribution
-stays W4. Settings install, enable, and disable stay Locked (D49).
+stays W4. Settings install, enable, and disable are `wired` in §16. They are not `usable`.
+W0.1 stays Locked.
 
 ## 8. UI Contributions
 
@@ -237,21 +239,21 @@ No Worker may implement these until the candidate ids are frozen. Namespace stri
 
 ## 16. Settings Page Slice
 
-The Settings → Plugins subpage reuses the Craft settings navigator. It does not open W4. `plugin.loadout_mutate` is frozen in v1.3.0. This page does not call it.
+The Settings → Plugins subpage reuses the Craft settings navigator. It does not open W4. `plugin.loadout_mutate` is frozen in v1.3.0. Install, enable, and disable call it through the Craft session kernel.
 
 | Slice | Status |
 |---|---|
 | Five views: Installed, Market, Skills, MCP, Hooks | `wired` |
 | Market content filters over workspace skills and MCP sources | `wired` |
-| Install, enable, and disable from Settings. The frozen id is `plugin.loadout_mutate`. D49 keeps this row Locked until the session kernel is the caller. | `Locked` |
+| Install, enable, and disable from Settings. The page calls `plugins:mutateLoadout`. That handler calls `applySessionPluginMutation` with `plugin.loadout_mutate`. | `wired` |
 | `createPluginSettingsHost` loadout writes. The host admits `plugin.loadout_mutate` and stays off the Settings page. | `test-only` |
-| Settings approval as the Craft session permission card | `display-only` |
+| Settings approval as the existing Craft session permission card. The page does not draw a second card. | `wired` |
 | MCP Registry and skill-repository catalogs as a trusted marketplace | `display-only` |
-| Per-plugin approval through `SessionManager.respondToPermission` | `display-only` |
+| Per-plugin approval through `SessionManager.respondToPermission` | `wired` |
 | MCP Apps side pane list: read projection of the loadout. No tool call. | `display-only` |
 | MCP Apps human open, focus, and close through `workbench.sidebar_focus`. The pane constructs the host. L0 does not wait for a card. | `wired` |
 | Sandboxed MCP App view, live tools/list, and tool invocation from the pane | `Locked` |
 | Local Agent Plugins 1.0.0 package as a plugin runtime | `display-only` |
 | Remote store or plugin marketplace | `Locked` |
 
-The settings page does not construct `createPluginSettingsHost` and does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. The page does not call it. That host is not the Craft session permission card. A failed catalog read adds no entries. The MCP Apps pane reads the loadout and does not admit a tool call. Human open, focus, and close on that pane admit `workbench.sidebar_focus`. See `docs/modules/00-platform-spine.md` §13.
+The settings page does not construct `createPluginSettingsHost`. Install, enable, and disable call `plugins:mutateLoadout`, which calls `SessionManager.applySessionPluginMutation` with the skills and MCP sources the agent already loads. Allow writes that loadout. Deny writes nothing. The page does not render the Craft session permission card. A failed catalog read adds no entries. The MCP Apps pane reads the loadout and does not admit a tool call. Human open, focus, and close on that pane admit `workbench.sidebar_focus`. See `docs/modules/00-platform-spine.md` §13. This slice is `wired`, not `usable`. W0.1 stays Locked.

@@ -192,6 +192,8 @@ import type {
   SessionFlagAdmission,
   SessionChromeAdmission,
   WorkspaceRenameAdmission,
+  PluginMutationName,
+  PluginMutationResult,
   RefreshTitleResult,
   FileSearchResult,
   SessionSearchResult,
@@ -430,6 +432,7 @@ export interface ElectronAPI {
   // Workspace Settings (per-workspace configuration)
   getWorkspaceSettings(workspaceId: string): Promise<WorkspaceSettings | null>
   updateWorkspaceSetting<K extends keyof WorkspaceSettings>(workspaceId: string, key: K, value: WorkspaceSettings[K]): Promise<void | WorkspaceRenameAdmission>
+  mutatePluginLoadout(workspaceId: string, op: PluginMutationName, pluginId: string): Promise<PluginMutationResult>
 
   // Folder dialog
   openFolderDialog(): Promise<string | null>

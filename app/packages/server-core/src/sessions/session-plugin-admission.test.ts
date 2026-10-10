@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { ActorRef, TurnRequest } from '@craft-agent/shared/protocol'
@@ -9,6 +9,8 @@ import {
   pluginLoadoutPath,
   type PluginCatalogEntry,
 } from '../../../shared/src/protocol/plugin-settings.ts'
+import { saveWorkspaceConfig } from '@craft-agent/shared/workspaces'
+import type { WorkspaceConfig } from '@craft-agent/shared/workspaces'
 import {
   createSession,
   getSessionFilePath,
@@ -16,7 +18,7 @@ import {
   saveSession,
 } from '@craft-agent/shared/sessions'
 import type { StoredMessage } from '@craft-agent/shared/sessions'
-import { SessionManager } from './SessionManager.ts'
+import { SessionManager, createManagedSession } from './SessionManager.ts'
 
 const human: ActorRef = { kind: 'human', id: 'user-1', displayName: 'Ada' }
 const agent: ActorRef = { kind: 'agent', id: 'seat-1', displayName: 'Worker' }
@@ -122,17 +124,39 @@ describe('plugin enable and install on the session kernel', () => {
       expect(existsSync(filePath)).toBe(false)
       expect(loadSession(root, created.id)!.messages.map((entry) => entry.content)).toEqual(['keep me'])
 
-      const rpc = readFileSync(new URL('../handlers/rpc/sessions.ts', import.meta.url), 'utf8')
-      expect(rpc.includes('applySessionPluginMutation')).toBe(false)
-      expect(rpc.includes('resolveSessionPluginGrant')).toBe(false)
+      const rpc = readFileSync(new URL('../handlers/rpc/settings.ts', import.meta.url), 'utf8')
+      expect(rpc.includes('requestSettingsPluginMutation')).toBe(true)
+      expect(rpc.includes('applySessionPluginMutation')).toBe(true)
+      expect(rpc.includes('resolveSessionPluginGrant')).toBe(true)
+      expect(rpc.includes('sessions:respondToPermission') || rpc.includes('RESPOND_TO_PERMISSION')).toBe(true)
+      const sessions = readFileSync(new URL('../handlers/rpc/sessions.ts', import.meta.url), 'utf8')
+      expect(sessions.includes('respondToPermission')).toBe(true)
+      expect(sessions.includes('RESPOND_TO_PERMISSION')).toBe(true)
+      expect(sessions.includes('whenHostTurnSettled')).toBe(true)
       const settings = readFileSync(new URL(
         '../../../../apps/electron/src/renderer/pages/settings/PluginsSettingsPage.tsx',
         import.meta.url,
       ), 'utf8')
-      expect(settings.includes('applySessionPluginMutation')).toBe(false)
-      expect(settings.includes('resolveSessionPluginGrant')).toBe(false)
-      expect(settings.includes('createPluginSettingsHost()')).toBe(false)
-      expect(settings.includes('data-plugin-writes="locked"')).toBe(true)
+      expect(settings.includes('mutatePluginLoadout')).toBe(true)
+      expect(settings.includes('createPluginSettingsHost')).toBe(false)
+      expect(settings.includes('data-plugin-writes="wired"')).toBe(true)
+      const manager = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
+      const production = manager.slice(
+        manager.indexOf('requestSettingsPluginMutation('),
+        manager.indexOf('whenHostTurnSettled('),
+      )
+      expect(production.includes('this.applySessionPluginMutation(')).toBe(true)
+      const respond = manager.slice(
+        manager.indexOf('respondToPermission('),
+        manager.indexOf('async respondToCredential('),
+      )
+      expect(respond.includes('finishPluginLoadoutPermission')).toBe(true)
+      const settle = manager.slice(
+        manager.indexOf('private async finishPluginLoadoutPermission('),
+        manager.indexOf('private dropPendingPluginMutations('),
+      )
+      expect(settle.includes('resolveSessionPluginGrant')).toBe(true)
+      expect(settle.includes('this.applySessionPluginMutation(')).toBe(true)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -266,7 +290,139 @@ describe('plugin enable and install on the session kernel', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  it('settings install, enable, and disable admit plugin.loadout_mutate and write only after Allow', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'session-plugin-settings-'))
+    try {
+      saveWorkspaceConfig(root, pluginWorkspace())
+      mkdirSync(join(root, 'skills', 'review'), { recursive: true })
+      writeFileSync(join(root, 'skills', 'review', 'SKILL.md'), [
+        '---',
+        'name: Review',
+        'description: Workspace skill',
+        '---',
+        'Check a diff.',
+        '',
+      ].join('\n'))
+      const held = await holdPluginSession(root)
+      const filePath = pluginLoadoutPath(root)
+      const secret = 'sk-testsecretvalue'
+
+      const missing = await new SessionManager().requestSettingsPluginMutation('ws-plugin', 'install', 'skill:review')
+      expect(missing).toMatchObject({ status: 'failed', reason: 'session_missing' })
+      expect(existsSync(filePath)).toBe(false)
+
+      const secretResult = await held.sm.requestSettingsPluginMutation('ws-plugin', 'install', `skill:${secret}`)
+      expect(secretResult).toMatchObject({ status: 'failed', reason: 'unknown_plugin' })
+      expect(existsSync(filePath)).toBe(false)
+      expect(readFileSync(getSessionFilePath(root, held.created.id), 'utf8')).not.toContain(secret)
+
+      const stranger = await held.sm.requestSettingsPluginMutation('ws-plugin', 'enable', 'mcp:not-loaded')
+      expect(stranger).toMatchObject({ status: 'failed', reason: 'unknown_plugin' })
+      expect(existsSync(filePath)).toBe(false)
+
+      const deniedInstall = await held.sm.requestSettingsPluginMutation('ws-plugin', 'install', 'skill:review')
+      expect(deniedInstall).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
+      expect(existsSync(filePath)).toBe(false)
+      expect(held.events.at(-1)).toMatchObject({
+        type: 'permission_request',
+        request: { requestId: `host:${deniedInstall.invocationId}`, toolName: 'plugin.loadout_mutate' },
+      })
+      expect(held.sm.respondToPermission(held.created.id, `host:${deniedInstall.invocationId}`, false, false)).toBe(true)
+      await settlePlugin(held.sm, held.created.id)
+      expect(existsSync(filePath)).toBe(false)
+
+      const installed = await held.sm.requestSettingsPluginMutation('ws-plugin', 'install', 'skill:review')
+      expect(installed.status).toBe('approval_required')
+      expect(held.sm.respondToPermission(held.created.id, `host:${installed.invocationId}`, true, false)).toBe(true)
+      await settlePlugin(held.sm, held.created.id)
+      expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+        version: 1,
+        records: [{ id: 'skill:review', installed: true, enabled: false }],
+      })
+
+      const enabled = await held.sm.requestSettingsPluginMutation('ws-plugin', 'enable', 'skill:review')
+      expect(enabled.status).toBe('approval_required')
+      const enabledAgain = await held.sm.requestSettingsPluginMutation('ws-plugin', 'enable', 'skill:review')
+      expect(enabledAgain.status).toBe('approval_required')
+      expect(enabledAgain.invocationId).not.toBe(enabled.invocationId)
+      const cards = held.events.filter((event) => event.request?.toolName === 'plugin.loadout_mutate')
+      expect(cards.length).toBeGreaterThanOrEqual(4)
+
+      expect(held.sm.respondToPermission(held.created.id, `host:${enabled.invocationId}`, true, true)).toBe(true)
+      await settlePlugin(held.sm, held.created.id)
+      const afterAllow = JSON.parse(readFileSync(filePath, 'utf8')) as {
+        records: Array<{ id: string; installed: boolean; enabled: boolean }>
+        grants?: Array<{ id: string; decision: string }>
+      }
+      expect(afterAllow.records).toEqual([{ id: 'skill:review', installed: true, enabled: true }])
+      expect(afterAllow.grants?.some((grant) => grant.decision === 'approved')).toBeFalsy()
+
+      expect(held.sm.respondToPermission(held.created.id, `host:${enabledAgain.invocationId}`, false, false)).toBe(true)
+      await settlePlugin(held.sm, held.created.id)
+      expect(JSON.parse(readFileSync(filePath, 'utf8')).records).toEqual([
+        { id: 'skill:review', installed: true, enabled: true },
+      ])
+
+      const disabled = await held.sm.requestSettingsPluginMutation('ws-plugin', 'disable', 'skill:review')
+      expect(disabled.status).toBe('approval_required')
+      expect(held.sm.respondToPermission(held.created.id, `host:${disabled.invocationId}`, true, false)).toBe(true)
+      await settlePlugin(held.sm, held.created.id)
+      expect(JSON.parse(readFileSync(filePath, 'utf8')).records).toEqual([
+        { id: 'skill:review', installed: true, enabled: false },
+      ])
+
+      const secondEnable = await held.sm.requestSettingsPluginMutation('ws-plugin', 'enable', 'skill:review')
+      expect(secondEnable.status).toBe('approval_required')
+      expect(held.events.at(-1)).toMatchObject({
+        type: 'permission_request',
+        request: { requestId: `host:${secondEnable.invocationId}`, toolName: 'plugin.loadout_mutate' },
+      })
+      expect(held.sm.admitHostTurn(held.created.id, bypassEnable(held.created.id, 'inv-file-update'))).toMatchObject({
+        status: 'denied',
+        reason: 'action_owner_mismatch:plugin_loadout',
+      })
+      expect(JSON.parse(readFileSync(filePath, 'utf8')).records[0].enabled).toBe(false)
+
+      const journal = readFileSync(getSessionFilePath(root, held.created.id), 'utf8')
+      expect(journal).toContain('"actionId":"plugin.loadout_mutate"')
+      expect(journal).toContain('standing_grant_rejected')
+      expect(journal).not.toContain('"decision":"approved"')
+      expect(journal).not.toContain(secret)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })
+
+function pluginWorkspace(): WorkspaceConfig {
+  return {
+    id: 'ws-plugin',
+    name: 'Plugins',
+    slug: 'ws-plugin',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+}
+
+async function holdPluginSession(root: string) {
+  const created = await createSession(root, { name: 'Plugins' })
+  const events: Array<{ type: string; request?: { requestId: string; toolName: string } }> = []
+  const sm = new SessionManager()
+  sm.setEventSink((_channel, _target, event) => {
+    events.push(event as { type: string; request?: { requestId: string; toolName: string } })
+  })
+  const managed = createManagedSession(
+    { id: created.id, name: 'Plugins', isFlagged: false, lastMessageAt: 1 },
+    { id: 'ws-plugin', name: 'Plugins', rootPath: root, createdAt: 1 } as never,
+  )
+  ;(sm as unknown as { sessions: Map<string, unknown> }).sessions.set(created.id, managed)
+  return { created, sm, events }
+}
+
+async function settlePlugin(sm: SessionManager, sessionId: string): Promise<void> {
+  await sm.whenHostTurnSettled(sessionId)
+}
 
 function bypassEnable(sessionId: string, invocationId: string): TurnRequest {
   const invocation: ActionInvocation = {
