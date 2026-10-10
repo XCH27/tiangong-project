@@ -1,18 +1,18 @@
 /**
- * PptxPreviewOverlay — open a PPTX and edit text on its first slide.
+ * PptxPreviewOverlay — read text from the first slide of a PPTX.
  *
- * PreviewOverlay and ContentFrame are the existing chrome. Slide text uses
- * the same first-slide replace as the host. The Edit and Undo buttons call
- * onApply with the shared command when a parent admits the write. Without
- * that callback, Edit and Undo change only the bytes this overlay loaded.
- * This is not a slide editor.
+ * The shell mounts this reader. Animation timing and the other slides stay
+ * in the package. Edit and save stay Locked until a main-process admit
+ * exists. This component does not call the document host and does not
+ * rewrite the package. It is not a MotionDeck.
  */
 
 import { useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import { Presentation } from 'lucide-react'
-import type { DocumentPreviewCommand } from '@craft-agent/shared/protocol/document-command'
-import { replacePptxTextBytes, textsFromPptxBytes } from '../../lib/pptx-preview'
+import { suiteForPath } from '@craft-agent/shared/protocol/document-command'
+import { textsFromPptxBytes } from '../../lib/pptx-preview'
+import { AdmissionNotice } from './AdmissionNotice'
+import { DOCUMENT_SAVE_LOCKED, presentDocumentViewer } from './admission-presentation'
 import { ContentFrame } from './ContentFrame'
 import { PreviewOverlay } from './PreviewOverlay'
 
@@ -22,7 +22,6 @@ export interface PptxPreviewOverlayProps {
   filePath: string
   loadBytes: (path: string) => Promise<Uint8Array>
   theme?: 'light' | 'dark'
-  onApply?: (command: DocumentPreviewCommand) => void
 }
 
 export function PptxPreviewOverlay({
@@ -31,29 +30,24 @@ export function PptxPreviewOverlay({
   filePath,
   loadBytes,
   theme = 'light',
-  onApply,
 }: PptxPreviewOverlayProps) {
-  const { t } = useTranslation()
-  const [bytes, setBytes] = useState<Uint8Array | null>(null)
-  const [drafts, setDrafts] = useState<string[]>([])
-  const [undoStack, setUndoStack] = useState<Uint8Array[]>([])
+  const suite = suiteForPath(filePath)
+  const readable = suite?.id === 'pptx' && suite.status === 'wired'
+  const [texts, setTexts] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(readable)
   const title = filePath.split(/[\\/]/).pop() ?? 'Presentation'
 
   useEffect(() => {
-    if (!isOpen || !filePath) return
+    if (!isOpen || !filePath || !readable) return
     let cancelled = false
     setIsLoading(true)
     setError(null)
-    setBytes(null)
-    setDrafts([])
-    setUndoStack([])
+    setTexts([])
     loadBytes(filePath)
       .then((loaded) => {
         if (cancelled) return
-        setBytes(loaded)
-        setDrafts(textsFromPptxBytes(loaded))
+        setTexts(textsFromPptxBytes(loaded))
         setIsLoading(false)
       })
       .catch((err: unknown) => {
@@ -62,30 +56,16 @@ export function PptxPreviewOverlay({
         setIsLoading(false)
       })
     return () => { cancelled = true }
-  }, [isOpen, filePath, loadBytes])
+  }, [isOpen, filePath, loadBytes, readable])
 
-  function applyEdit(index: number) {
-    if (!bytes) return
-    const text = drafts[index] ?? ''
-    try {
-      const next = replacePptxTextBytes(bytes, index, text)
-      setUndoStack((stack) => [...stack, bytes])
-      setBytes(next)
-      setDrafts(textsFromPptxBytes(next))
-      onApply?.({ op: 'update', paragraphIndex: index, text })
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'invalid_pptx')
-    }
-  }
-
-  function applyUndo() {
-    const previous = undoStack[undoStack.length - 1]
-    if (!previous) return
-    setUndoStack((stack) => stack.slice(0, -1))
-    setBytes(previous)
-    setDrafts(textsFromPptxBytes(previous))
-    onApply?.({ op: 'undo' })
-  }
+  const presentation = presentDocumentViewer({
+    filePath,
+    expectedSuite: 'pptx',
+    load: !readable ? 'ready' : isLoading ? 'loading' : error ? 'error' : 'ready',
+    error,
+    empty: !isLoading && !error && texts.length === 0,
+  })
+  const showSaveLock = readable
 
   return (
     <PreviewOverlay
@@ -96,43 +76,20 @@ export function PptxPreviewOverlay({
       title={title}
       typeBadge={{ icon: Presentation, label: 'PPTX', variant: 'orange' }}
       error={error ? { label: 'Load Failed', message: error } : undefined}
-      headerActions={(
-        <button
-          type="button"
-          className="text-sm text-foreground/70 disabled:opacity-40"
-          onClick={applyUndo}
-          disabled={undoStack.length === 0}
-        >
-          {t('menu.undo')}
-        </button>
-      )}
     >
       <ContentFrame title={title}>
-        <div className="px-8 py-6">
-          {isLoading && <p className="text-sm text-muted-foreground">PPTX</p>}
-          {drafts.length > 0 && <p className="mb-4 text-sm text-muted-foreground">Slide 1</p>}
-          {drafts.length === 0 && !isLoading && !error && (
-            <p className="text-sm text-muted-foreground">Slide 1</p>
-          )}
-          {drafts.map((paragraph, index) => (
-            <div key={index} className="mb-4 last:mb-0">
-              <textarea
-                className="w-full resize-y bg-transparent text-sm leading-6 text-foreground outline-none"
-                value={paragraph}
-                rows={Math.max(1, paragraph.split('\n').length)}
-                onChange={(event) => {
-                  const next = event.target.value
-                  setDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))
-                }}
-              />
-              <button
-                type="button"
-                className="text-xs text-foreground/70"
-                onClick={() => applyEdit(index)}
-              >
-                {t('common.edit')}
-              </button>
+        <div className="px-8 py-6" data-document-overlay="pptx">
+          <AdmissionNotice presentation={presentation} />
+          {showSaveLock ? (
+            <div className="mt-2">
+              <AdmissionNotice presentation={DOCUMENT_SAVE_LOCKED} detailKey="admission.document.saveLocked" />
             </div>
+          ) : null}
+          {texts.length > 0 ? <p className="mb-4 mt-4 text-sm text-muted-foreground">Slide 1</p> : null}
+          {texts.map((paragraph, index) => (
+            <p key={index} className="mb-4 whitespace-pre-wrap text-sm leading-6 text-foreground last:mb-0">
+              {paragraph}
+            </p>
           ))}
         </div>
       </ContentFrame>
