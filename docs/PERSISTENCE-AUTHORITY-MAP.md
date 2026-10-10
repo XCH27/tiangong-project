@@ -1,16 +1,17 @@
 # Persistence Authority Map
 
-> **Status:** binding ownership rules; physical storage adapters remain pending v0.11 migration
-> evidence and W0.1 re-freeze.  
-> **Updated:** 2026-07-09
-> **Inspection footnote (2026-10-10):** At pin `f4e172bf`, sessions are `{workspace}/sessions/{id}/session.jsonl`, projects are `{workspace}/projects/{slug}/`, and tasks are `{workspace}/tasks/<slug>/task.yaml` plus a run log. `CONFIG_DIR` is `~/.craft-agent/`. Those three stores are files. A repo-wide SQLite search on a checkout was not run. The decision gate below stays open (D51, D52).
+> **Status:** binding ownership rules. D54 records this table as the Lead stance. The physical-store gate below stays open until Mac-verified recovery.
+> **Updated:** 2026-07-09. Decision footnote 2026-10-10 (D54).
+> **Inspection footnote (2026-10-10):** At pin `f4e172bf`, sessions are `{workspace}/sessions/{id}/session.jsonl`, projects are `{workspace}/projects/{slug}/`, and tasks are `{workspace}/tasks/<slug>/task.yaml` plus a run log. `CONFIG_DIR` is `~/.craft-agent/`. Those three stores are files. A repo-wide SQLite search on a checkout was not run. The decision gate below stays open (D51, D52, D54).
+> **Decision footnote (2026-10-10, D54):** The authority table is the Lead stance. The retained physical candidate is the Craft file layout named above. SQLite is not decided. Exit item 5 stays open. Detail: `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`.
 
 ## Rule
 
 Every state class has one logical authority. A JSON/SQLite/native file format is an implementation
 choice of that authority, not permission to create a second product store. Current documents must
-not assume SQLite, a daemon, or a workspace-local control directory is present until the clean
-Craft Agents v0.11 baseline is inspected and a persistence ADR records the decision.
+not assume SQLite, a daemon, or a workspace-local control directory. D54 records the
+authority table as the Lead stance and leaves the physical-store gate open. The retained
+physical candidate is the Craft file layout under `~/.craft-agent/`.
 
 ## Authority Table
 

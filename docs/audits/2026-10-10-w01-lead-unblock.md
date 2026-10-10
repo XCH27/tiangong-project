@@ -128,7 +128,7 @@ The unflag freeze and the split-id freeze are on the spine. `browser.dom_snapsho
 2. The behaviour ledger is D52. `fleet-old` rows, the file-by-file `app/` diff, and contract parity are still open, so BLK-001 stays open.
 3. Canonical parity for AgentSeat, identity, caller provenance, idempotency, revisions, typed events, and action policy is still open. `docs/audits/2026-10-10-w01-exit3-canonical-parity.md` records the action-id slice as frozen at 1.3.0 and the other fields as partial. `CONTRACT_VERSION` stays 1.3.0. An action-id bump covers only the action-id slice of this item.
 4. ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts are version-gated by D53 and stay unfrozen. Exit item 4 stays open. `CONTRACT_VERSION` stays 1.3.0. The consumer rule is `docs/audits/2026-10-10-w01-exit4-contract-version-gate.md`.
-5. Physical persistence authority and recovery from `docs/PERSISTENCE-AUTHORITY-MAP.md` are still unrecorded as the W0.1 exit.
+5. Physical persistence authority is recorded as a logical map by D54. The Craft file store is the retained layout. SQLite is not decided. Recovery is not Mac-verified, so Exit item 5 stays open. The note is `docs/audits/2026-10-10-w01-exit5-persistence-authority.md`.
 6. The product/internal namespace is D50 (BLK-002 closed as a name decision). The Settings plugin caller is `wired` and is not a W0.1 close.
 7. Ownership precedence and non-overlapping domains are still an open exit item.
 8. Active packets still have to agree with the map and grant no Worker frozen-protocol writes.
