@@ -39,12 +39,17 @@ import {
   type PluginMutationResult,
   HostTurnKernel,
   SessionFileTurnJournal,
+  agentActorForCallingSession,
+  agentSessionLabelsRequest,
+  agentSessionStatusRequest,
   planSessionChrome,
+  SESSION_HOST_ACTOR,
   sessionChromeUndo,
   sessionFlagRequest,
   sessionLabelsRequest,
   sessionRenameRequest,
   sessionStatusRequest,
+  sessionStatusRequestForActor,
   type SessionChromeAdmission,
   type SessionFlagAdmission,
   type TurnExecutorResult,
@@ -4128,11 +4133,11 @@ export class SessionManager implements ISessionManager {
 
       // Wire up session self-management tools (set_session_labels, set_session_status, etc.)
       mergeSessionScopedToolCallbacks(managed.id, {
-        setSessionLabelsFn: async (sessionId: string | undefined, labels: string[]) => {
-          await this.writeSessionLabelsHeader(sessionId ?? managed.id, labels)
+        setSessionLabelsFn: (sessionId: string | undefined, labels: string[]) => {
+          return this.setSessionLabelsFromAgent(managed.id, sessionId ?? managed.id, labels)
         },
-        setSessionStatusFn: async (sessionId: string | undefined, status: string) => {
-          await this.writeSessionStatusHeader(sessionId ?? managed.id, status as SessionStatus)
+        setSessionStatusFn: (sessionId: string | undefined, status: string) => {
+          return this.setSessionStatusFromAgent(managed.id, sessionId ?? managed.id, status)
         },
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id
@@ -4483,7 +4488,7 @@ export class SessionManager implements ISessionManager {
     if (!managed) return { status: 'failed', invocationId, reason: 'session_missing' }
     let previous = managed.sessionStatus
     const request = sessionStatusRequest(sessionId, invocationId, sessionStatus)
-    return this.admitHumanSessionChrome(
+    return this.admitSessionChrome(
       sessionId,
       request,
       async (noteNativeCommit) => {
@@ -4500,9 +4505,43 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Header write for status. The human command runs this inside the admitted
-   * turn. Agent tools and mini-session auto-complete call it directly and do
-   * not admit.
+   * Agent set_session_status tool. Admits session.set_status on the target
+   * session kernel. The actor is the calling Craft session, not the desktop
+   * user. A missing caller or a malformed actor does not write the header.
+   */
+  async setSessionStatusFromAgent(
+    callerSessionId: string,
+    targetSessionId: string,
+    sessionStatus: SessionStatus,
+  ): Promise<SessionChromeAdmission> {
+    const invocationId = randomUUID()
+    const caller = this.sessions.get(callerSessionId)
+    if (!caller) return { status: 'failed', invocationId, reason: 'caller_missing' }
+    const target = this.sessions.get(targetSessionId)
+    if (!target) return { status: 'failed', invocationId, reason: 'session_missing' }
+    let previous = target.sessionStatus
+    const actor = agentActorForCallingSession(caller.id, caller.name)
+    const request = agentSessionStatusRequest(targetSessionId, invocationId, sessionStatus, actor)
+    return this.admitSessionChrome(
+      targetSessionId,
+      request,
+      async (noteNativeCommit) => {
+        previous = this.sessions.get(targetSessionId)?.sessionStatus
+        await this.writeSessionStatusHeader(targetSessionId, sessionStatus)
+        noteNativeCommit()
+        return {
+          output: { sessionStatus, actionId: request.invocation.actionId },
+          undoHandle: sessionChromeUndo(invocationId, 'Restore session status', { sessionStatus: previous ?? null }),
+        }
+      },
+      () => this.restoreSessionStatusHeader(targetSessionId, previous),
+    )
+  }
+
+  /**
+   * Header write for status. Human commands, agent tools, and an admitted
+   * mini-session turn run this inside the kernel. Callers do not use it
+   * as a bypass.
    */
   private async writeSessionStatusHeader(sessionId: string, sessionStatus: SessionStatus): Promise<void> {
     const managed = this.sessions.get(sessionId)
@@ -5042,7 +5081,7 @@ export class SessionManager implements ISessionManager {
     if (!managed) return { status: 'failed', invocationId, reason: 'session_missing' }
     let previous = managed.name
     const request = sessionRenameRequest(sessionId, invocationId, name)
-    return this.admitHumanSessionChrome(
+    return this.admitSessionChrome(
       sessionId,
       request,
       async (noteNativeCommit) => {
@@ -6411,12 +6450,17 @@ export class SessionManager implements ISessionManager {
       }
     }
 
-    // 3. Auto-complete mini agent sessions to avoid session list clutter
-    //    Mini agents are spawned from EditPopovers for quick config edits
-    //    and should automatically move to 'done' when finished
+    // 3. Mini sessions used to stamp status done here. That write had no
+    //    host turn. The host is a system actor, and session.set_status is
+    //    L1, so admission denies it. Inventing an agent seat for this
+    //    side effect would invent authority. The header stays unchanged.
     if (reason === 'complete' && managed.systemPromptPreset === 'mini' && managed.sessionStatus !== 'done') {
-      sessionLog.info(`Auto-completing mini agent session ${sessionId}`)
-      await this.writeSessionStatusHeader(sessionId, 'done')
+      const admitted = await this.admitMiniSessionAutoComplete(sessionId)
+      if (admitted.status !== 'completed' && admitted.status !== 'reconciling') {
+        sessionLog.info(
+          `Mini session ${sessionId} auto-complete left status unchanged: ${admitted.status} ${admitted.reason ?? ''}`,
+        )
+      }
     }
 
     // 4. Apply deferred external metadata updates captured while processing.
@@ -7035,7 +7079,7 @@ export class SessionManager implements ISessionManager {
     if (!managed) return { status: 'failed', invocationId, reason: 'session_missing' }
     let previous = [...(managed.labels ?? [])]
     const request = sessionLabelsRequest(sessionId, invocationId, labels)
-    return this.admitHumanSessionChrome(
+    return this.admitSessionChrome(
       sessionId,
       request,
       async (noteNativeCommit) => {
@@ -7052,8 +7096,42 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Header write for labels. The human command runs this inside the admitted
-   * turn. The agent tool calls it directly and does not admit.
+   * Agent set_session_labels tool. Admits session.set_labels on the target
+   * session kernel. The actor is the calling Craft session, not the desktop
+   * user. A missing caller or a malformed actor does not write the header.
+   */
+  async setSessionLabelsFromAgent(
+    callerSessionId: string,
+    targetSessionId: string,
+    labels: string[],
+  ): Promise<SessionChromeAdmission> {
+    const invocationId = randomUUID()
+    const caller = this.sessions.get(callerSessionId)
+    if (!caller) return { status: 'failed', invocationId, reason: 'caller_missing' }
+    const target = this.sessions.get(targetSessionId)
+    if (!target) return { status: 'failed', invocationId, reason: 'session_missing' }
+    let previous = [...(target.labels ?? [])]
+    const actor = agentActorForCallingSession(caller.id, caller.name)
+    const request = agentSessionLabelsRequest(targetSessionId, invocationId, labels, actor)
+    return this.admitSessionChrome(
+      targetSessionId,
+      request,
+      async (noteNativeCommit) => {
+        previous = [...(this.sessions.get(targetSessionId)?.labels ?? [])]
+        await this.writeSessionLabelsHeader(targetSessionId, labels)
+        noteNativeCommit()
+        return {
+          output: { labels: [...labels], actionId: request.invocation.actionId },
+          undoHandle: sessionChromeUndo(invocationId, 'Restore session labels', { labels: previous }),
+        }
+      },
+      () => this.restoreSessionLabelsHeader(targetSessionId, previous),
+    )
+  }
+
+  /**
+   * Header write for labels. The human command and the agent tool run this
+   * inside the admitted turn.
    */
   private async writeSessionLabelsHeader(sessionId: string, labels: string[]): Promise<void> {
     const managed = this.sessions.get(sessionId)
@@ -7095,12 +7173,39 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Admit one human session-chrome turn. L1 rows with an undo contract run
+   * Mini-session auto-complete. The actor is the host process. session.set_status
+   * is L1, so the kernel denies a system actor and this method does not write.
+   * There is no AgentSeat on the mini session to borrow.
+   */
+  private admitMiniSessionAutoComplete(sessionId: string): Promise<SessionChromeAdmission> {
+    const invocationId = randomUUID()
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return Promise.resolve({ status: 'failed', invocationId, reason: 'session_missing' })
+    let previous = managed.sessionStatus
+    const request = sessionStatusRequestForActor(sessionId, invocationId, 'done', SESSION_HOST_ACTOR)
+    return this.admitSessionChrome(
+      sessionId,
+      request,
+      async (noteNativeCommit) => {
+        previous = this.sessions.get(sessionId)?.sessionStatus
+        await this.writeSessionStatusHeader(sessionId, 'done')
+        noteNativeCommit()
+        return {
+          output: { sessionStatus: 'done', actionId: request.invocation.actionId },
+          undoHandle: sessionChromeUndo(invocationId, 'Restore session status', { sessionStatus: previous ?? null }),
+        }
+      },
+      () => this.restoreSessionStatusHeader(sessionId, previous),
+    )
+  }
+
+  /**
+   * Admit one session-chrome turn. L1 rows with an undo contract run
    * immediately. approval_required stores the effect for respondToPermission.
    * admitHostTurn publishes the existing card in that case. Callers do not
-   * publish a second card.
+   * publish a second card. The request carries its own actor.
    */
-  private admitHumanSessionChrome(
+  private admitSessionChrome(
     sessionId: string,
     request: TurnRequest,
     effect: (noteNativeCommit: () => void) => Promise<TurnExecutorResult>,

@@ -52,9 +52,15 @@ export interface SessionScopedToolCallbacks {
   browserPaneFns?: BrowserPaneFns;
 
   /** Set labels on a session (defaults to current). */
-  setSessionLabelsFn?: (sessionId: string | undefined, labels: string[]) => void | Promise<void>;
+  setSessionLabelsFn?: (
+    sessionId: string | undefined,
+    labels: string[],
+  ) => void | Promise<void | { status: string; reason?: string }>;
   /** Set status on a session (defaults to current). */
-  setSessionStatusFn?: (sessionId: string | undefined, status: string) => void | Promise<void>;
+  setSessionStatusFn?: (
+    sessionId: string | undefined,
+    status: string,
+  ) => void | Promise<void | { status: string; reason?: string }>;
   /** Get detailed info about a session (defaults to current). */
   getSessionInfoFn?: (sessionId?: string) => import('@craft-agent/session-tools-core').SessionInfo | null;
   /** List sessions in the workspace with pagination. */

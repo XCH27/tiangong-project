@@ -1,17 +1,44 @@
 /**
- * Human session chrome on the Craft session kernel.
+ * Session chrome on the Craft session kernel.
  *
  * session.rename, session.set_status, and session.set_labels are the frozen
- * M00 ids. The shell commands are the callers. Each row is L1 with an undo
+ * M00 ids. The shell commands use the desktop human. The session tools use
+ * the calling Craft session as the agent actor. Each row is L1 with an undo
  * contract, so admission does not publish the permission card. If the gate
  * returns approval_required, the caller waits for the existing card.
- * Unflag has no frozen id and is not in this file. This file does not add an
- * action id.
+ * A system actor is not an agent seat. L1 denies it. Unflag has no frozen
+ * id and is not in this file. This file does not add an action id.
  */
 
+import type { ActorRef } from './actor'
 import { DESKTOP_APPROVER } from './host-approval-bridge'
 import { InternalActionId, type UndoHandle } from './internal-action'
 import type { TurnRequest, TurnStatus } from './turn-admission'
+
+/**
+ * The host process. Not the desktop user and not an agent seat.
+ * session.set_status is L1, so this actor is denied.
+ */
+export const SESSION_HOST_ACTOR: ActorRef = {
+  kind: 'system',
+  id: 'system',
+  displayName: 'system',
+}
+
+/**
+ * The Craft session that invoked the tool. This is the agent caller.
+ * It is not an AgentSeat record and it is not the desktop user.
+ * A blank id stays blank so admission can deny malformed_actor.
+ */
+export function agentActorForCallingSession(sessionId: string, displayName: string | undefined): ActorRef {
+  const name = displayName?.trim() ?? ''
+  const id = sessionId.trim()
+  return {
+    kind: 'agent',
+    id: sessionId,
+    displayName: name.length > 0 ? name : id,
+  }
+}
 
 export interface SessionChromeAdmission {
   status: TurnStatus
@@ -50,21 +77,36 @@ export function sessionChromeUndo(invocationId: string, label: string, snapshot:
   return { undoId: `undo-${invocationId}`, label, snapshot }
 }
 
+function callerKindFor(actor: ActorRef): 'human_ui' | 'agent' {
+  switch (actor.kind) {
+    case 'human':
+      return 'human_ui'
+    case 'agent':
+    case 'system':
+      return 'agent'
+    default: {
+      const unexpected: never = actor.kind
+      return unexpected
+    }
+  }
+}
+
 function sessionChromeRequest(
   sessionId: string,
   invocationId: string,
   actionId: InternalActionId,
   payload: Record<string, unknown>,
+  actor: ActorRef,
   now: string,
 ): TurnRequest {
   return {
-    actor: DESKTOP_APPROVER,
+    actor,
     invocation: {
       invocationId,
       actionId,
       payload,
       targets: [{ kind: 'session', id: sessionId, label: 'session' }],
-      callerKind: 'human_ui',
+      callerKind: callerKindFor(actor),
       sessionId,
       createdAt: now,
     },
@@ -77,7 +119,14 @@ export function sessionRenameRequest(
   name: string,
   now = new Date().toISOString(),
 ): TurnRequest {
-  return sessionChromeRequest(sessionId, invocationId, InternalActionId.SESSION_RENAME, { name }, now)
+  return sessionChromeRequest(
+    sessionId,
+    invocationId,
+    InternalActionId.SESSION_RENAME,
+    { name },
+    DESKTOP_APPROVER,
+    now,
+  )
 }
 
 export function sessionStatusRequest(
@@ -86,13 +135,7 @@ export function sessionStatusRequest(
   sessionStatus: string,
   now = new Date().toISOString(),
 ): TurnRequest {
-  return sessionChromeRequest(
-    sessionId,
-    invocationId,
-    InternalActionId.SESSION_SET_STATUS,
-    { sessionStatus },
-    now,
-  )
+  return sessionStatusRequestForActor(sessionId, invocationId, sessionStatus, DESKTOP_APPROVER, now)
 }
 
 export function sessionLabelsRequest(
@@ -101,11 +144,59 @@ export function sessionLabelsRequest(
   labels: readonly string[],
   now = new Date().toISOString(),
 ): TurnRequest {
+  return sessionLabelsRequestForActor(sessionId, invocationId, labels, DESKTOP_APPROVER, now)
+}
+
+export function sessionStatusRequestForActor(
+  sessionId: string,
+  invocationId: string,
+  sessionStatus: string,
+  actor: ActorRef,
+  now = new Date().toISOString(),
+): TurnRequest {
+  return sessionChromeRequest(
+    sessionId,
+    invocationId,
+    InternalActionId.SESSION_SET_STATUS,
+    { sessionStatus },
+    actor,
+    now,
+  )
+}
+
+export function sessionLabelsRequestForActor(
+  sessionId: string,
+  invocationId: string,
+  labels: readonly string[],
+  actor: ActorRef,
+  now = new Date().toISOString(),
+): TurnRequest {
   return sessionChromeRequest(
     sessionId,
     invocationId,
     InternalActionId.SESSION_SET_LABELS,
     { labels: [...labels] },
+    actor,
     now,
   )
+}
+
+export function agentSessionStatusRequest(
+  sessionId: string,
+  invocationId: string,
+  sessionStatus: string,
+  actor: ActorRef,
+  now = new Date().toISOString(),
+): TurnRequest {
+  return sessionStatusRequestForActor(sessionId, invocationId, sessionStatus, actor, now)
+}
+
+export function agentSessionLabelsRequest(
+  sessionId: string,
+  invocationId: string,
+  labels: readonly string[],
+  actor: ActorRef,
+  now = new Date().toISOString(),
+): TurnRequest {
+  return sessionLabelsRequestForActor(sessionId, invocationId, labels, actor, now)
 }

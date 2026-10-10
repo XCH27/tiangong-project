@@ -1,6 +1,7 @@
 import type { SessionToolContext } from '../context.ts';
 import type { ToolResult } from '../types.ts';
 import { successResponse, errorResponse } from '../response.ts';
+import { refusedSessionWrite } from './refused-session-write.ts';
 
 export interface SetSessionStatusArgs {
   sessionId?: string;
@@ -29,7 +30,11 @@ export async function handleSetSessionStatus(
       status = resolved;
     }
 
-    await ctx.setSessionStatus(args.sessionId, status);
+    const written = await ctx.setSessionStatus(args.sessionId, status);
+    const refused = refusedSessionWrite(written);
+    if (refused) {
+      return errorResponse(`Status was not set: ${refused}.`);
+    }
     const target = args.sessionId ? `session ${args.sessionId}` : 'current session';
     return successResponse(`Status set to "${status}" on ${target}.`);
   } catch (error) {
