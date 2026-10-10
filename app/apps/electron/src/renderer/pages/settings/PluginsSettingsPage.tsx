@@ -7,8 +7,8 @@
  * page does not construct createPluginSettingsHost and does not write
  * .claude-plugin/loadout.json. It does not render the Craft session
  * permission card. The MCP Apps side pane opens on the existing right
- * sidebar and reads the loadout. It does not construct a host kernel. Its
- * sandboxed app view stays Locked. A local Agent Plugins 1.0.0 package is
+ * sidebar. This page does not construct the MCP Apps host. The pane does.
+ * Its sandboxed app view stays Locked. A local Agent Plugins 1.0.0 package is
  * listed when a skill or MCP server maps onto the loadout shape. This page
  * does not open a remote store.
  */

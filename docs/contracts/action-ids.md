@@ -84,7 +84,7 @@ artifact bundle.
 - **`file.page_target`** input is one EditPopover key plus the next document. A later caller must send `baseRevision` before the write is admitted. No caller is admitted in this version.
 - **`plugin.loadout_mutate`** ops are `install`, `enable`, and `disable`. `grant` is rejected. No caller is admitted in this version.
 - **`browser.dom_snapshot`** is page-text evidence, not a screenshot bundle. No caller is admitted in this version.
-- **`workbench.sidebar_focus`** is one sidebar slot. It does not open a sandboxed `ui://` view. No caller is admitted in this version.
+- **`workbench.sidebar_focus`** is one sidebar slot. It does not open a sandboxed `ui://` view. The MCP Apps pane is the human caller. Agent helpers have no caller. `plugin.loadout_mutate`, `browser.dom_snapshot`, and `file.page_target` still have no shell caller.
 
 Input and output shapes for v1.2.0 ids are unchanged. New ids use `sinceVersion` 1.3.0. There is no separate schema version constant.
 
@@ -128,7 +128,7 @@ Binding deletion has no id. `file.delete` and `canvas.node_delete` are not that 
 v1.3.0 fills the columns for the frozen rows. It does not close W0.1. Still open:
 
 - product/internal namespace strings are recorded by D50 (`docs/audits/2026-10-10-blk002-namespace-oss.md`). This line does not bump `CONTRACT_VERSION` and does not add a caller;
-- a caller for `plugin.loadout_mutate`, `browser.dom_snapshot`, `workbench.sidebar_focus`, and `file.page_target`;
+- a caller for `plugin.loadout_mutate`, `browser.dom_snapshot`, and `file.page_target`. The MCP Apps pane calls `workbench.sidebar_focus`;
 - `browser.screenshot` and binding deletion;
 - ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts;
 - the retain/adapt/drop/defer ledger and the clean v0.11.0 baseline.

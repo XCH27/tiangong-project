@@ -12,6 +12,12 @@ import {
   openMcpAppsFromHuman,
 } from '../mcp-apps-host'
 import {
+  runMcpAppsPaneClose,
+  runMcpAppsPaneFocus,
+  runMcpAppsPaneOpen,
+  sidebarSlotForGesture,
+} from '../mcp-apps-shell'
+import {
   MCP_APPS_LOCKED_PHASES,
   buildMcpAppsSidebarParam,
   listMcpAppsSurfaces,
@@ -137,18 +143,119 @@ describe('mcp apps side pane projection', () => {
 })
 
 describe('mcp apps side pane admission', () => {
-  test('the shell pane does not construct the host', () => {
+  test('the shell pane constructs one host and admits open, focus, and close', () => {
     const pane = readFileSync(new URL('../../../../../apps/electron/src/renderer/components/right-sidebar/McpAppsSidePane.tsx', import.meta.url), 'utf8')
     const settings = readFileSync(new URL('../../../../../apps/electron/src/renderer/pages/settings/PluginsSettingsPage.tsx', import.meta.url), 'utf8')
-    expect(pane.includes('createMcpAppsHost')).toBe(false)
-    expect(pane.includes('openMcpAppsFromHuman')).toBe(false)
-    expect(pane.includes('focusMcpAppFromHuman')).toBe(false)
-    expect(pane.includes('closeMcpAppsFromHuman')).toBe(false)
-    expect(pane.includes('workbench.sidebar_focus')).toBe(false)
+    const shell = readFileSync(new URL('../mcp-apps-shell.ts', import.meta.url), 'utf8')
+    const popover = readFileSync(new URL('../../../../../apps/electron/src/renderer/components/ui/EditPopover.tsx', import.meta.url), 'utf8')
+    const browser = readFileSync(new URL('../../../../../apps/electron/src/main/browser-pane-manager.ts', import.meta.url), 'utf8')
+    expect(pane.includes('createMcpAppsHost()')).toBe(true)
+    expect(pane.includes('runMcpAppsPaneOpen')).toBe(true)
+    expect(pane.includes('runMcpAppsPaneFocus')).toBe(true)
+    expect(pane.includes('runMcpAppsPaneClose')).toBe(true)
+    expect(pane.includes('sidebarSlotForGesture')).toBe(true)
     expect(pane.includes('HostTurnKernel')).toBe(false)
+    expect(pane.includes('canvas.node_select')).toBe(false)
+    expect(pane.includes('openMcpAppsFromAgent')).toBe(false)
+    expect(shell.includes('createMcpAppsHost(')).toBe(false)
+    expect(shell.includes('openMcpAppsFromHuman')).toBe(true)
+    expect(shell.includes('focusMcpAppFromHuman')).toBe(true)
+    expect(shell.includes('closeMcpAppsFromHuman')).toBe(true)
+    expect(shell.includes('openMcpAppsFromAgent')).toBe(false)
+    expect(shell.includes('canvas.node_select')).toBe(false)
+    expect(shell.includes('DESKTOP_APPROVER')).toBe(true)
     expect(settings.includes('createMcpAppsHost')).toBe(false)
+    expect(settings.includes('createMcpAppsShell')).toBe(false)
+    expect(settings.includes('runMcpAppsPaneOpen')).toBe(false)
     expect(settings.includes('openMcpAppsFromHuman')).toBe(false)
     expect(settings.includes('workbench.sidebar_focus')).toBe(false)
+    expect(settings.includes('createPluginSettingsHost()')).toBe(false)
+    expect(popover.includes('runMcpAppsPaneOpen')).toBe(false)
+    expect(popover.includes('applyEditPageFromHuman')).toBe(false)
+    expect(browser.includes('runMcpAppsPaneOpen')).toBe(false)
+    expect(browser.includes('createMcpAppsHost')).toBe(false)
+  })
+
+  test('the pane host admits workbench.sidebar_focus for open, focus, and close with no card', async () => {
+    const shared = createMcpAppsHost()
+    const opened = await runMcpAppsPaneOpen(shared, read)
+    expect(opened).toMatchObject({ status: 'completed', admitted: true, view: { open: true, focus: null } })
+    expect(sidebarSlotForGesture('open', opened, shared.view())).toEqual({ type: 'mcp-apps' })
+
+    const focused = await runMcpAppsPaneFocus(shared, read, {
+      pluginId: 'mcp:docs',
+      kind: 'tool',
+      itemId: 'search',
+    })
+    expect(focused).toMatchObject({
+      status: 'completed',
+      admitted: true,
+      view: { open: true, focus: { pluginId: 'mcp:docs', kind: 'tool', itemId: 'search' } },
+    })
+    expect(sidebarSlotForGesture('focus', focused, shared.view())).toEqual({
+      type: 'mcp-apps',
+      focus: { pluginId: 'mcp:docs', kind: 'tool', itemId: 'search' },
+    })
+
+    const closed = await runMcpAppsPaneClose(shared, read)
+    expect(closed).toMatchObject({ status: 'completed', admitted: true, view: { open: false, focus: null } })
+    expect(sidebarSlotForGesture('close', closed, shared.view())).toEqual({ type: 'none' })
+
+    const turns = shared.kernel.snapshot().turns
+    expect(turns.map((turn) => turn.request.invocation.actionId)).toEqual([
+      InternalActionId.WORKBENCH_SIDEBAR_FOCUS,
+      InternalActionId.WORKBENCH_SIDEBAR_FOCUS,
+      InternalActionId.WORKBENCH_SIDEBAR_FOCUS,
+    ])
+    expect(turns.every((turn) => turn.phase === 'completed')).toBe(true)
+    expect(turns.every((turn) => turn.request.actor.kind === 'human' && turn.request.actor.id === 'desktop-user')).toBe(true)
+    const events = shared.kernel.events('mcp-apps')
+    expect(events.every((event) => event.actionId === InternalActionId.WORKBENCH_SIDEBAR_FOCUS)).toBe(true)
+    expect(events.some((event) => event.actionId === InternalActionId.CANVAS_NODE_SELECT)).toBe(false)
+    expect(events.some((event) => event.kind === 'supervision_requested')).toBe(false)
+    expect(events.some((event) => event.kind === 'action_completed')).toBe(true)
+  })
+
+  test('a refused focus keeps the admitted slot and canvas.node_select stays refused', async () => {
+    const shared = createMcpAppsHost()
+    await runMcpAppsPaneOpen(shared, read)
+    const missing = await runMcpAppsPaneFocus(shared, read, {
+      pluginId: 'mcp:docs',
+      kind: 'tool',
+      itemId: 'absent',
+    })
+    expect(missing.status).toBe('failed')
+    expect(shared.view()).toEqual({ open: true, focus: null })
+    expect(sidebarSlotForGesture('focus', missing, shared.view())).toEqual({ type: 'mcp-apps' })
+    expect(sidebarSlotForGesture('open', { status: 'denied', invocationId: 'x', reason: 'denied' }, shared.view())).toEqual({ type: 'none' })
+    expect(sidebarSlotForGesture('close', { status: 'failed', invocationId: 'y', reason: 'failed' }, shared.view())).toBeNull()
+
+    expect(shared.kernel.admit({
+      invocation: {
+        invocationId: 'pane-old-verb',
+        actionId: InternalActionId.CANVAS_NODE_SELECT,
+        payload: { surface: 'mcp_apps', op: 'open' },
+        targets: [{ kind: 'unknown', id: 'mcp-apps', label: 'mcp-apps' }],
+        callerKind: 'human_ui',
+        sessionId: 'mcp-apps',
+        createdAt: '2026-10-10T00:00:00.000Z',
+      },
+      actor: human,
+    })).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:sidebar_focus' })
+    expect(shared.view()).toEqual({ open: true, focus: null })
+    expect(shared.kernel.events('mcp-apps').some((event) => event.kind === 'supervision_requested')).toBe(false)
+  })
+
+  test('close waits for an in-flight open and then admits the close', async () => {
+    const shared = createMcpAppsHost()
+    const opened = runMcpAppsPaneOpen(shared, read)
+    const closed = runMcpAppsPaneClose(shared, read)
+    const [openResult, closeResult] = await Promise.all([opened, closed])
+    expect(openResult).toMatchObject({ status: 'completed', admitted: true })
+    expect(closeResult).toMatchObject({ status: 'completed', admitted: true, view: { open: false, focus: null } })
+    expect(shared.view()).toEqual({ open: false, focus: null })
+    expect(shared.kernel.snapshot().turns.filter((turn) => turn.phase === 'completed')).toHaveLength(2)
+    expect(shared.kernel.snapshot().turns.every((turn) => turn.request.invocation.actionId === InternalActionId.WORKBENCH_SIDEBAR_FOCUS)).toBe(true)
   })
 
   test('human and agent open and focus admit workbench.sidebar_focus with no card', async () => {

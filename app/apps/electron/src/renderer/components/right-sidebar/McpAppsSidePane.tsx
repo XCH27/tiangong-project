@@ -2,23 +2,33 @@
  * MCP Apps side pane.
  *
  * A read of the enabled MCP rows in the plugin loadout, plus a local
- * inventory the caller already has. Closing the pane updates the existing
- * right-sidebar slot. This component does not construct a host kernel and
- * does not admit a focus or a tool call. The sandboxed app view, live
- * tools/list, and tool invocation stay Locked.
+ * inventory the caller already has. This pane constructs one MCP Apps host.
+ * Open, focus, and close admit workbench.sidebar_focus. That row is L0, so
+ * the turn does not wait for a card. A refused open closes the slot. Focus
+ * and close write the slot after the kernel completes. The sandboxed app
+ * view, live tools/list, and tool invocation stay Locked.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
 import { useNavigation } from '@/contexts/NavigationContext'
 import { AdmissionNotice, presentMcpAppsPane } from '@craft-agent/ui'
-import type { McpAppsSurface } from '@craft-agent/shared/protocol/mcp-apps-pane'
+import { createMcpAppsHost, type McpAppsShared } from '@craft-agent/shared/protocol/mcp-apps-host'
+import {
+  runMcpAppsPaneClose,
+  runMcpAppsPaneFocus,
+  runMcpAppsPaneOpen,
+  sidebarSlotForGesture,
+  type McpAppsShellRead,
+} from '@craft-agent/shared/protocol/mcp-apps-shell'
 import {
   projectEnabledMcpApps,
   type McpAppFocus,
   type McpAppInventoryEntry,
+  type McpAppsLayoutSlot,
+  type McpAppsSurface,
 } from '@craft-agent/shared/protocol/mcp-apps-pane'
 import {
   emptyPluginLoadout,
@@ -30,9 +40,11 @@ import { readPluginLoadout, type PluginLoadoutRead } from '@craft-agent/shared/p
 import { Panel } from '../app-shell/Panel'
 import { PanelHeader } from '../app-shell/PanelHeader'
 
+const EMPTY_INVENTORY: readonly McpAppInventoryEntry[] = []
+
 export function McpAppsSidePane({
   focus,
-  inventory = [],
+  inventory = EMPTY_INVENTORY,
 }: {
   focus?: McpAppFocus
   inventory?: readonly McpAppInventoryEntry[]
@@ -40,6 +52,13 @@ export function McpAppsSidePane({
   const { t } = useTranslation()
   const { updateRightSidebar } = useNavigation()
   const shell = useOptionalAppShellContext()
+  const hostRef = useRef<McpAppsShared | null>(null)
+  const epochRef = useRef(0)
+  const closedRef = useRef(false)
+  function paneHost(): McpAppsShared {
+    if (!hostRef.current) hostRef.current = createMcpAppsHost()
+    return hostRef.current
+  }
   const workspace = shell?.workspaces.find((item) => item.id === shell.activeWorkspaceId) ?? null
   const filePath = workspace ? pluginLoadoutPath(workspace.rootPath) : null
   const [readState, setReadState] = useState<PluginLoadoutRead | 'loading'>('loading')
@@ -78,6 +97,57 @@ export function McpAppsSidePane({
     workspace: workspace !== null,
   })
   const showList = presentation.phase === 'viewer'
+  const read = useMemo<McpAppsShellRead>(() => ({ catalog, loadout, inventory }), [catalog, loadout, inventory])
+
+  function writeSlot(slot: McpAppsLayoutSlot | null, seen: number) {
+    if (slot === null || epochRef.current !== seen) return
+    if (slot.type === 'none') {
+      updateRightSidebar({ type: 'none' })
+      return
+    }
+    if (routeMatchesSlot(slot, focus)) return
+    updateRightSidebar(slot)
+  }
+
+  useEffect(() => {
+    if (closedRef.current) return
+    if (focus && readState === 'loading') return
+    const seen = epochRef.current
+    const host = paneHost()
+    let cancelled = false
+    void (async () => {
+      const result = focus
+        ? await runMcpAppsPaneFocus(host, read, focus)
+        : await runMcpAppsPaneOpen(host, read)
+      if (cancelled || closedRef.current) return
+      writeSlot(sidebarSlotForGesture(focus ? 'focus' : 'open', result, host.view()), seen)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [catalog, focus, inventory, loadout, read, readState, updateRightSidebar])
+
+  async function onClose() {
+    closedRef.current = true
+    const seen = epochRef.current + 1
+    epochRef.current = seen
+    const host = paneHost()
+    const result = await runMcpAppsPaneClose(host, read, { open: true, focus: focus ?? null })
+    const slot = sidebarSlotForGesture('close', result, host.view())
+    if (slot === null) {
+      closedRef.current = false
+      return
+    }
+    writeSlot(slot, seen)
+  }
+
+  async function onFocusItem(next: McpAppFocus) {
+    if (closedRef.current) return
+    const seen = epochRef.current
+    const host = paneHost()
+    const result = await runMcpAppsPaneFocus(host, read, next)
+    writeSlot(sidebarSlotForGesture('focus', result, host.view()), seen)
+  }
 
   return (
     <Panel variant="shrink" width={320} className="h-full">
@@ -85,7 +155,7 @@ export function McpAppsSidePane({
         <PanelHeader
           title={t('mcpApps.title')}
           actions={(
-            <Button variant="ghost" size="sm" onClick={() => updateRightSidebar({ type: 'none' })}>
+            <Button variant="ghost" size="sm" onClick={() => { void onClose() }}>
               {t('mcpApps.close')}
             </Button>
           )}
@@ -105,11 +175,13 @@ export function McpAppsSidePane({
                 label={t('mcpApps.tools')}
                 items={app.tools.map((tool) => ({ id: tool.name, label: tool.name }))}
                 activeId={focus?.pluginId === app.pluginId && focus.kind === 'tool' ? focus.itemId : undefined}
+                onSelect={(itemId) => { void onFocusItem({ pluginId: app.pluginId, kind: 'tool', itemId }) }}
               />
               <ItemList
                 label={t('mcpApps.resources')}
                 items={app.resources.map((resource) => ({ id: resource.uri, label: resource.name }))}
                 activeId={focus?.pluginId === app.pluginId && focus.kind === 'resource' ? focus.itemId : undefined}
+                onSelect={(itemId) => { void onFocusItem({ pluginId: app.pluginId, kind: 'resource', itemId }) }}
               />
               {app.tools.length === 0 && app.resources.length === 0 ? (
                 <p className="text-xs text-muted-foreground mt-2">{t('mcpApps.noInventory')}</p>
@@ -135,10 +207,12 @@ function ItemList({
   label,
   items,
   activeId,
+  onSelect,
 }: {
   label: string
   items: Array<{ id: string; label: string }>
   activeId?: string
+  onSelect: (id: string) => void
 }) {
   if (items.length === 0) return null
   return (
@@ -146,18 +220,31 @@ function ItemList({
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <ul className="mt-1 space-y-1">
         {items.map((item) => (
-          <li
-            key={item.id}
-            className="text-sm rounded-md px-2 py-1 text-foreground/80 aria-[current=true]:bg-foreground/10"
-            aria-current={activeId === item.id ? 'true' : undefined}
-            data-mcp-route-focus={activeId === item.id ? 'true' : undefined}
-          >
-            {item.label}
+          <li key={item.id}>
+            <button
+              type="button"
+              className="w-full text-left text-sm rounded-md px-2 py-1 text-foreground/80 aria-[current=true]:bg-foreground/10"
+              aria-current={activeId === item.id ? 'true' : undefined}
+              data-mcp-route-focus={activeId === item.id ? 'true' : undefined}
+              onClick={() => onSelect(item.id)}
+            >
+              {item.label}
+            </button>
           </li>
         ))}
       </ul>
     </div>
   )
+}
+
+function routeMatchesSlot(slot: McpAppsLayoutSlot, routeFocus: McpAppFocus | undefined): boolean {
+  if (slot.type !== 'mcp-apps') return false
+  const admitted = slot.focus
+  if (!routeFocus && !admitted) return true
+  if (!routeFocus || !admitted) return false
+  return routeFocus.pluginId === admitted.pluginId
+    && routeFocus.kind === admitted.kind
+    && routeFocus.itemId === admitted.itemId
 }
 
 function paneDetailKey(phase: string, reason?: string): string | undefined {

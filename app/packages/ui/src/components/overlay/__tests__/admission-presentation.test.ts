@@ -70,15 +70,19 @@ describe('mcp apps pane admission', () => {
     })
   }
 
-  test('the pane and the settings opener do not construct a renderer kernel', () => {
+  test('the pane constructs the host and settings does not', () => {
     const pane = readFileSync(new URL('../../../../../../apps/electron/src/renderer/components/right-sidebar/McpAppsSidePane.tsx', import.meta.url), 'utf8')
     const settings = readFileSync(new URL('../../../../../../apps/electron/src/renderer/pages/settings/PluginsSettingsPage.tsx', import.meta.url), 'utf8')
-    expect(pane.includes('createMcpAppsHost')).toBe(false)
-    expect(pane.includes('focusMcpAppFromHuman')).toBe(false)
-    expect(pane.includes('closeMcpAppsFromHuman')).toBe(false)
+    const presentation = readFileSync(new URL('../admission-presentation.ts', import.meta.url), 'utf8')
+    expect(pane.includes('createMcpAppsHost()')).toBe(true)
+    expect(pane.includes('runMcpAppsPaneFocus')).toBe(true)
+    expect(pane.includes('runMcpAppsPaneClose')).toBe(true)
     expect(pane.includes('HostTurnKernel')).toBe(false)
     expect(pane.includes('presentMcpAppsPane')).toBe(true)
     expect(settings.includes('createMcpAppsHost')).toBe(false)
     expect(settings.includes('openMcpAppsFromHuman')).toBe(false)
+    expect(settings.includes('runMcpAppsPaneOpen')).toBe(false)
+    expect(presentation.includes('createMcpAppsHost')).toBe(false)
+    expect(presentation.includes('HostTurnKernel')).toBe(false)
   })
 })

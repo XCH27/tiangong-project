@@ -2,10 +2,10 @@
  * Viewer states for the Office preview and the MCP Apps list.
  *
  * The Office readers mounted in the shell are wired. Edit and save stay
- * Locked until a main-process admit exists. The MCP Apps pane is a read of
- * the loadout. It does not construct a host kernel and it does not admit a
- * focus. Sandboxed app view, live tool listing, and tool invocation stay
- * Locked. This module does not call HostTurnKernel.
+ * Locked until a main-process admit exists. The MCP Apps list is a read of
+ * the loadout. Open, focus, and close are admitted by the pane host, not by
+ * this presentation. Sandboxed app view, live tool listing, and tool
+ * invocation stay Locked. This module does not admit a turn.
  */
 
 import { suiteForPath, type DocumentSuiteId } from '@craft-agent/shared/protocol/document-command'

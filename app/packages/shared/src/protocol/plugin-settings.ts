@@ -5,8 +5,9 @@
  * Catalog reads can add Market entries. Market content filters narrow that
  * list. Install, enable, and disable admit plugin.loadout_mutate. The row is
  * L2, so an unapproved call does not write. The Settings page does not call
- * that API and does not write the loadout. The MCP Apps side
- * pane reads this loadout. Its sandboxed app view stays Locked. A local Agent
+ * that API and does not write the loadout. The MCP Apps side pane reads this
+ * loadout and admits sidebar focus on its own host. This file does not. Its
+ * sandboxed app view stays Locked. A local Agent
  * Plugins 1.0.0 package can list skills and MCP servers. A remote store stays
  * Locked.
  * This is not a plugin marketplace.

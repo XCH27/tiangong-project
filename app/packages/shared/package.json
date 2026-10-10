@@ -71,6 +71,7 @@
     "./protocol/plugin-catalog-sources": "./src/protocol/plugin-catalog-sources.ts",
     "./protocol/mcp-apps-pane": "./src/protocol/mcp-apps-pane.ts",
     "./protocol/mcp-apps-host": "./src/protocol/mcp-apps-host.ts",
+    "./protocol/mcp-apps-shell": "./src/protocol/mcp-apps-shell.ts",
     "./protocol/release-independence": "./src/protocol/release-independence.ts",
     "./i18n": "./src/i18n/index.ts",
     "./resources": "./src/resources/index.ts"
