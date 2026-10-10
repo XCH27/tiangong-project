@@ -8,6 +8,8 @@
 > **Follow-up:** agent `rename_session` is its own §13 `wired` row. That row is no longer `not implemented`. Title generation stays the desktop user. This note does not close W0.1.
 >
 > **Follow-up (workspace rename):** Settings → Workspace name admits frozen `workspace.rename` (L2) on an existing session kernel. That path publishes the existing permission card and writes the folder name only after Allow. The generic card rows stay `test-only` for every other awaiting turn. `file.delete` and `canvas.node_delete` are still not shell callers. D46 stays unmet: the PPTX shell is a first-slide viewer, and Office edit and save stay Locked. This note does not close W0.1 and does not promote `usable`.
+>
+> **Follow-up (L3 card search, docs only):** After `25e53895`, Electron, `SessionManager`, and the RPC handlers still have no production caller for frozen `file.delete` or `canvas.node_delete`. `createCanvasCardHost.deleteCard` and `CliExecutorHost` admit those ids only in tests. `sessions:delete`, `skills:delete`, and `sources:delete` are not `file.delete`. No permission card was wired for either id. The D46 footnote in `docs/modules/19-presentation-motion-surface.md` §10 records the same search: the first-slide viewer leaves MotionDeck unmet, and Office edit and save stay Locked. `CONTRACT_VERSION` stays 1.2.0. This note does not close W0.1 and does not promote `usable`.
 
 ## Gate status (unchanged)
 
@@ -47,7 +49,7 @@ These slices stay blocked inside that exit, except agent rename, which the follo
 
 1. **Unflag.** Admission stays `not implemented` until the Lead freezes an id in `docs/contracts/action-ids.md` under the extension process, in the same commit as any `CONTRACT_VERSION` bump. This note does not invent `session.unflag`. That string is not in the frozen table and is not in the under-discussion list.
 
-2. **Permission-card publish and approve, other than Settings workspace rename.** The generic §13 rows stay `test-only`. Settings workspace rename is the L2 shell caller and has its own `wired` row: Allow writes the folder name, and Deny or a missing session leaves it. `file.delete` and `canvas.node_delete` are still not shell callers. Session chrome that is L0 or L1-with-undo still does not publish a card.
+2. **Permission-card publish and approve, other than Settings workspace rename.** The generic §13 rows stay `test-only`. Settings workspace rename is the L2 shell caller and has its own `wired` row: Allow writes the folder name, and Deny or a missing session leaves it. A search after `25e53895` found no production shell or IPC caller for `file.delete` or `canvas.node_delete`, so neither id publishes a card. Shell `file.delete` is `not implemented` in §13. Canvas delete stays on the `test-only` card host. Session chrome that is L0 or L1-with-undo still does not publish a card.
 
 3. **Settings plugin writes.** Install, enable, and disable on Settings → Plugins stay Locked. The page does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only`: they build a `file.update` loadout request, admission refuses that verb, and no shell or IPC caller uses them. This note does not unlock Settings.
 
@@ -55,7 +57,7 @@ These slices stay blocked inside that exit, except agent rename, which the follo
 
 5. **Action-id owner mismatch.** `action-owner-policy.ts` refuses a plugin loadout, an MCP Apps sidebar focus, a DOM evidence snapshot, or a page-target write when the caller uses `file.update`, `file.create`, or `canvas.node_select`. That check is a payload heuristic on frozen v1.2.0. It is not the W0.1 re-freeze. The re-freeze still has to split risk, approval, undo, cancellation, retry, and evidence onto ids whose owners match the operation. Until that table exists, these refusals stay a guard, not a new contract.
 
-6. **D46 PPTX.** D46 in `docs/DECISIONS-LEDGER.md` is still Final: the native document is a MotionDeck, and PPTX, HTML, and video are explicit exports. The shell PPTX overlay is a first-slide text viewer (`wired` preview). Create, edit, undo, save, and reopen through the document host stay `test-only`. Office edit and save in the shell stay Locked. MotionDeck, animation, and a full slide editor stay Locked. M19's header stays Locked. Treating the first-slide viewer as M19 would leave D46 unmet. This note does not edit the ledger.
+6. **D46 PPTX.** D46 in `docs/DECISIONS-LEDGER.md` is still Final: the native document is a MotionDeck, and PPTX, HTML, and video are explicit exports. The shell PPTX overlay is a first-slide text viewer (`wired` preview). Create, edit, undo, save, and reopen through the document host stay `test-only`. Office edit and save in the shell stay Locked. MotionDeck, animation, and a full slide editor stay Locked. M19's header stays Locked. The first-slide viewer leaves D46 unmet. The footnote is `docs/modules/19-presentation-motion-surface.md` §10. This note does not edit the ledger.
 
 7. **Office edit and save, and W1–W5.** DOCX, XLSX, and PPTX edit and save in the shell stay Locked. `createDocumentSuiteHost` stays `test-only`. W1–W5 stay Locked. Absence of a Lead Ready declaration on W1 means Locked.
 
