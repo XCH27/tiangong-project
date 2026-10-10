@@ -187,7 +187,7 @@ M06 consumes these settings. It does not duplicate toggles inside multiple panel
 
 ## 15. Host Guest Slice
 
-`createBrowserGuestHost` in `app/packages/shared/src/protocol/browser-guest.ts` is the smallest guest loop on the retained BrowserPane profile.
+`createBrowserGuestHost` in `app/packages/shared/src/protocol/browser-guest.ts` is the guest adapter. The human toolbar is the production path. DOM capture is `test-only`.
 
 - The profile id stays `persist:browser-pane`. A different partition is rejected. There is no second profile store.
 - Page find, find clear, loading stop, back, forward, and reload are native guest actions. The human toolbar path and an agent caller share `applyNativeGuestAction`. An agent can use only the session guest it owns.
@@ -197,9 +197,9 @@ M06 consumes these settings. It does not duplicate toggles inside multiple panel
 
 | Slice | Status |
 |---|---|
-| Page find, loading stop, and native guest back, forward, and reload | `wired` |
-| DOM snapshot admitted through `file.create` for the human and the owning agent | `wired` |
+| Human page find, loading stop, and native guest back, forward, and reload | `wired` |
+| DOM snapshot admitted through `file.create` for the human and the owning agent | `test-only` |
 | Screenshot evidence, selection overlay, and M05 ArtifactRef registration | `Locked` |
 | Chrome Store advertising and extension lifecycle | `Locked` |
 
-This note does not open W3. The module header above stays Locked for the full evidence surface.
+This note does not open W3. The module header above stays Locked for the full evidence surface. `captureGovernedDom` has no shell caller.

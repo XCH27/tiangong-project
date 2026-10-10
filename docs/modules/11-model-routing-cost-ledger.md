@@ -243,7 +243,7 @@ Interactive chat, approval interception, PTY, and real-time workflow gates are n
 - An estimate stays `estimated`. Every other cost stays `unknown` and omits the amount.
 - Credential material is rejected before a turn is admitted and is not copied into the timeline.
 
-Status of this function: `wired` by unit tests. Provider routing, native batch, and the ledger UI remain `Locked`. The subscription observation in §19 is a separate reading and is not this cost store. There is no second cost store.
+Status of this function: `test-only`. Provider routing, native batch, and the ledger UI remain `Locked`. The subscription observation in §19 is a separate reading and is not this cost store. There is no second cost store.
 
 `turnUsageFromClaude` and `turnUsageFromChatGpt` copy only numeric usage fields from those provider payloads. A missing cache field stays absent, so attribution remains `unknown` rather than a zero-token miss. A cost number without a pricing reference stays `unknown`. Access tokens, refresh tokens, and API keys on the raw payload are not copied into the usage record or the snapshot file.
 
@@ -260,14 +260,14 @@ Status of this function: `wired` by unit tests. Provider routing, native batch, 
 - When that is also absent, the function returns undefined and the existing connection default in `resolveModelForProvider` remains the fallback.
 - The resolved id is written on the new session header, so the next conversation in that workspace can read it. There is no second model store.
 
-Status of this function: `wired` by unit tests. Provider routing, native batch, and the ledger UI remain `Locked`.
+Status of this function: `wired` because `SessionManager.createSession` calls it. Provider routing, native batch, and the ledger UI remain `Locked`.
 
 ## 19. Subscription Observation
 
 `observeSubscription` in `app/packages/shared/src/protocol/subscription-observation.ts` is the shared reading for provider quota, tier, and remaining.
 
-- `readSubscriptionForAgent` returns that DTO.
-- `readSubscriptionForHuman` formats the same DTO for the AI settings usage section.
+- `readSubscriptionForAgent` returns that DTO. It has no production caller.
+- `readSubscriptionForHuman` formats the same DTO for the AI settings usage section. The section is mounted with no provider payload.
 - A missing field stays `unknown`. An explicit provider zero stays known and displays as `0`.
 - Blank strings, numeric strings, and non-finite numbers stay unknown.
 - API keys and access tokens on the raw payload are not copied.
@@ -275,5 +275,6 @@ Status of this function: `wired` by unit tests. Provider routing, native batch, 
 
 | Slice | Status |
 |---|---|
-| Shared observation for the settings reader and the agent DTO | `wired` |
+| AI settings subscription lines (`readSubscriptionForHuman`; unknown with no payload) | `wired` |
+| Agent subscription DTO (`readSubscriptionForAgent`) | `test-only` |
 | Live billing fetch, routing, native batch, and the ledger UI | `Locked` |

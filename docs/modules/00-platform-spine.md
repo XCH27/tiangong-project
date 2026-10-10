@@ -130,6 +130,7 @@ M00 adds no independent shell surface. Its visible outputs are reused by existin
 | 2026-10-09 | draft v1.1 | Third-party notices fail closed when an admitted license is missing. The update-feed dry run stays local. A signed production feed stays Locked. |
 | 2026-10-10 | draft v1.1 | Unsigned packaging dry run checks version metadata and artifact layout. It does not publish. A signed production feed stays Locked. |
 | 2026-10-10 | draft v1.1 | One HostTurnKernel per Craft session in main journals into session.jsonl. Restart reads those events and does not restore turn phase. |
+| 2026-10-10 | draft v1.1 | Relabeled §13 from the shell and the tests. Office previews are viewers. The MCP Apps pane is a read projection. Test hosts are not `wired`. |
 
 ## 13. Host And Pi Execution Boundary
 
@@ -139,72 +140,89 @@ The retained Craft subprocess in `app/packages/shared/src/agent/pi-agent.ts` sti
 
 Fleet host admission for the frozen action table is the loop in `app/packages/shared/src/protocol/turn-admission.ts`. `SessionManager.openSessionHostKernel` constructs one `HostTurnKernel` when a Craft session is created, opened, imported, or admitted, and journals that session through `SessionFileTurnJournal` into the existing `session.jsonl`. Chat reads skip `fleet_host_session_event` lines. Session rewrites keep them. `MemoryTurnJournal` stays the unit-test stand-in and is not the product journal. A process restart reads those events. It does not rebuild in-memory turn phase, so an awaiting card is not republished until a new admit. `FileKernelSnapshotStore` and the per-feature `create*Host()` kernels are not this path. Codex and ACP executors are not attached here. Command execution, dynamic client tools, client filesystem writes, PTY, and any new action id stay `Locked`.
 
+`FileKernelSnapshotStore` has no production caller. The snapshot file below is `test-only`. Credential-shaped fields are sealed when `SessionFileTurnJournal.append` runs; no shell path admits a turn, so that write is exercised by tests.
+
 `FileKernelSnapshotStore` writes `host-kernel-snapshot.json` in the existing session directory, beside `session.jsonl`, using the same write-to-temp-then-rename replace. It round-trips `KernelSnapshot` version 1 only. A different version throws `unsupported_snapshot_version` and leaves the previous file in place. `save`, `load`, and `HostTurnKernel.snapshot` pass through `sealHostRecord` before that JSON is written or returned. The gate removes credential-shaped keys and token strings, remaps raw Claude and ChatGPT/Pi usage, and omits cache or price numbers that were not observed. An explicit provider cache read of zero stays a confirmed miss. A price of zero stays confirmed only when a pricing reference is present. This file is the host execution projection of that session. It does not rewrite `session.jsonl` and it is not a new database. The broader M00 session adapter is still unresolved.
+
+Per-feature `create*Host()` kernels construct their own `NativeEffectRegistry`. That effect loop is `test-only` on the session kernel.
 
 `NativeEffectRegistry` is the executor behind `HostTurnKernel.run` when the caller does not pass an explicit executor. It runs only after admission. `applyAtomicJsonEffect` uses the same atomic replace as `session.jsonl`. A stop before `commit()` leaves the file unwritten. A throw after `commit()` restores as `reconciling` and does not run the effect again. Pi Agent Core is not the permission authority.
 
+No shell path calls `admitHostTurn`. Opening the session kernel does not publish a card. Card publish and approve/reject on that kernel are `test-only`.
+
 Host approval uses the existing Craft permission card. `SessionManager.admitHostTurn` admits on the kernel attached for that session. When the outcome is `approval_required`, that admit calls `publishHostApproval` and emits the same `permission_request` event the card already renders. Callers do not make a second publish call. Allow and Deny call `sessions:respondToPermission`. When the request id is `host:{invocationId}`, `SessionManager.respondToPermission` calls `HostTurnKernel.approve` or `reject` for the desktop human. Always Allow resolves that one invocation and does not store a standing grant. L3 and an L1 action with no undo contract share that card. A direct `approve()` call remains valid. This does not draw a new dialog and it does not make Pi the permission authority. Pi tool calls are not admitted through this path.
+
+`EditPopover` calls `selectPageModel`. It does not call `applyEditPageFromHuman`. `update-target` is `test-only`.
 
 Page-local edits keep the `EDIT_CONFIGS` list. `set-model` is the existing popover model control, now through `selectPageModel`. `update-target` is the added closed loop: `applyEditPageFromHuman` and `applyEditPageFromAgent` both call `executePageLocalOp`, which admits `file.update` and writes with the native effect. Credential-shaped documents are denied before the write.
 
+Electron and `SessionManager` do not construct `CliExecutorHost`. The objects in `cli-executors/capabilities.ts` still say `wired`. That word is not a running peer. Codex and ACP stay `display-only` until a real peer is attached to the session kernel.
+
 `CliExecutorHost` in `app/packages/shared/src/protocol/cli-executors/` is the Codex app-server and ACP executor boundary. `HostTurnKernel.run` opens a plugin transport only after admit or approve. Codex speaks `codex app-server --stdio` JSON-RPC, including `thread/start`, `thread/resume`, `turn/start`, `turn/interrupt`, and reverse `item/*/requestApproval` results. ACP speaks newline-delimited JSON-RPC, including `initialize`, `session/new`, `session/prompt`, `session/cancel`, and `session/request_permission`. Resume uses `session/load` or `session/resume` when the peer advertises it, and fails closed with `peer_resume_unsupported` otherwise. Reverse tool requests are admitted on the same kernel. The adapters never call `approve` or `reject`. File edits, deletes, and moves map onto the frozen file actions. Command execution, dynamic client tools, client filesystem writes, and any PTY stay `Locked`. A permissions grant is turn-scoped and includes only the admitted file write. Gemini, Qwen, and Kimi launch strings are `display-only` presets. Claude remains the native SDK channel in `claude-agent.ts`. Pi Agent Core is not the permission authority.
+
+`createAigcHost` is `test-only`. No production caller submits a job. The activity overlay can render an `aigc_artifact`; with no submitter that preview is `display-only`.
 
 `aigc.job_submit` still requires human approval before `run`. The native effect then calls the injected provider. A fake provider covers tests. The prompt is not written into the snapshot. Stop before submit does not call the provider. After the provider id is stored, recovery inspects that id and does not submit again. The artifact is previewed by the existing activity overlay when its kind is `aigc_artifact`.
 
-`observeSubscription` is the usage reading for quota, tier, and remaining. The AI settings section and `readSubscriptionForAgent` both use it. A missing field stays unknown. An explicit zero stays zero. Live billing fetch is not part of this slice.
+`observeSubscription` is the usage reading for quota, tier, and remaining. The AI settings section calls `readSubscriptionForHuman` with no provider payload, so the lines stay unknown. `readSubscriptionForAgent` has no production caller and is `test-only`. A missing field stays unknown. An explicit zero stays zero. Live billing fetch is not part of this slice.
 
-The document suite host is one built-in package, not a marketplace. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. Open and reopen read a DOCX package, the first sheet of an XLSX workbook, or the text blocks on the first slide of a PPTX deck. A DOCX edit, undo, and dirty save admit `file.update`. An XLSX create admits `file.create` and writes a new workbook. An XLSX cell update, undo, and dirty save admit `file.update`. A PPTX create admits `file.create` and writes a new deck. A first-slide text update, undo, and dirty save admit `file.update`. Writes use the same atomic replace as `session.jsonl`. The undo handle stores the previous bytes. Craft's xlsx tool writes one cell as a string, number, or bool. This slice keeps that surface for the first sheet. A formula cell, a rich-text cell, a macro part, a second sheet name, and a sheet larger than 200 rows or 26 columns fail closed and do not write. Craft's pptx tool creates a deck from title and body text and extracts that text. This slice keeps that surface for the first slide. A macro part, a field code, a path that leaves the package, and a deck larger than 20 slides, 40 first-slide text blocks, or 4000 characters in one block fail closed and do not write. Other slides, notes, and animation timing stay in the package and are not edited. The preview overlay shows DOCX paragraphs, those XLSX cells, and those first-slide text blocks in the existing preview chrome. Its Edit and Undo buttons apply the same replace to the bytes that overlay loaded and emit `DocumentPreviewCommand`. They do not admit a disk write. A parent that admits calls `applyDocumentFromHuman`. Legacy `.xls`, macro-enabled `.xlsm`, legacy `.ppt`, and macro-enabled `.pptm` return `Locked` and do not write. Library registration, file leases, and a plugin catalog stay out of this slice.
+The shell Office readers are viewers. Edit and save on that overlay stay `Locked`. `createDocumentSuiteHost` is `test-only`.
+
+The document suite host is one built-in package, not a marketplace. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. Open and reopen read a DOCX package, the first sheet of an XLSX workbook, or the text blocks on the first slide of a PPTX deck. A DOCX edit, undo, and dirty save admit `file.update`. An XLSX create admits `file.create` and writes a new workbook. An XLSX cell update, undo, and dirty save admit `file.update`. A PPTX create admits `file.create` and writes a new deck. A first-slide text update, undo, and dirty save admit `file.update`. Writes use the same atomic replace as `session.jsonl`. The undo handle stores the previous bytes. Craft's xlsx tool writes one cell as a string, number, or bool. This slice keeps that surface for the first sheet. A formula cell, a rich-text cell, a macro part, a second sheet name, and a sheet larger than 200 rows or 26 columns fail closed and do not write. Craft's pptx tool creates a deck from title and body text and extracts that text. This slice keeps that surface for the first slide. A macro part, a field code, a path that leaves the package, and a deck larger than 20 slides, 40 first-slide text blocks, or 4000 characters in one block fail closed and do not write. Other slides, notes, and animation timing stay in the package and are not edited. `DocxPreviewOverlay`, `XlsxPreviewOverlay`, and `PptxPreviewOverlay` read paragraph text, the first sheet, or the first slide. They do not call the document host and they do not write the package. Legacy `.xls`, macro-enabled `.xlsm`, legacy `.ppt`, and macro-enabled `.pptm` return `Locked` and do not write. Library registration, file leases, and a plugin catalog stay out of this slice.
+
+`ArtifactCanvasBoard` is not mounted by the Electron shell. `createCanvasCardHost` is `test-only`.
 
 `createCanvasCardHost` places an admitted DOCX, an XLSX workbook, a PPTX deck, and an admitted image or video artifact on the existing `CanvasDocument`. The node stores the file path. It does not store sheet cells or slide text. An XLSX card projects the first sheet. A PPTX card projects the first slide. `openOfficeCardFromHuman` and `openOfficeCardFromAgent` share one `canvas.node_select` admission, as do focus and close. That select records the file `XlsxPreviewOverlay` or `PptxPreviewOverlay` already opens. It does not write the workbook or the deck. Cell and slide writes stay on `file.create` and `file.update` in the document suite. A DOCX card edit calls `applyDocumentFromHuman` or `applyDocumentFromAgent`. An image or video card reads the `aigc_artifact` on the job turn. Hide and stop are view state. `canvas.node_delete` removes the binding after human approval. The DOCX bytes, the workbook, the deck, the job file, and the owner kernel turns stay. A macro part, an unsafe path, and legacy `.xls`, `.xlsm`, `.ppt`, and `.pptm` fail closed and do not create a card. A full spreadsheet editor and a full slide editor stay `Locked`. `@xyflow/react` is not installed. Card positions are the `CanvasNode` frame. The renderer spike stays `Locked`.
 
+The human toolbar calls `runGuestActionFromHuman` for find, loading stop, back, forward, and reload. `captureGovernedDom` is called from tests only.
+
 The built-in browser keeps the Craft `persist:browser-pane` profile and the session or manual owner on `BrowserPaneManager`. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create` and write a DOM snapshot only after that admission. An agent that does not own the guest does not read the page. Screenshot evidence and Chrome Store advertising stay `Locked`. `browser.screenshot` is still not a frozen action id.
 
-Settings → Plugins is one page on the existing settings navigator. The five views are Installed, Market, Skills, MCP, and Hooks. Market content filters are All, Skills, MCP, Hooks, and Commands. They read workspace skills, MCP sources, catalog entries from the MCP Registry and skill repositories, and a local Agent Plugins 1.0.0 package. `readAgentPluginPackage` accepts `plugin.json` at the package root. It lists a skill from `skills/*/SKILL.md` and an MCP server from `mcp.json` only when that component maps onto the existing loadout. A manifest with no such component adds no entries. Credential-shaped text, an unsafe name, a path that leaves the package, and a plugin marketplace document add nothing. Hooks, commands, inline Claude fields, and client extension files are not entries. The reader does not fetch a schema or a remote package. Catalog source filters follow the Sources navigator type filter. `readCatalogSource` accepts a recorded document in tests. Live fetch is optional, limited to the public registry list or an https skill index, and a failure returns no entries. `applyPluginMutationFromHuman` and `applyPluginMutationFromAgent` both call `executePluginMutation`. Install, enable, and disable admit `file.update` and write `.claude-plugin/loadout.json` with the same atomic replace as `session.jsonl`. Install does not enable. Enabling a third-party hook or MCP server sets `requireHumanApproval` on that `file.update` turn, so the existing permission card must Allow it before the loadout changes. An agent cannot approve the card. Deny leaves the plugin disabled and stores `decision: denied` on the loadout. Allow stores `decision: approved` and enables that plugin once. A later enable of the same plugin uses the stored grant. A different plugin still waits. The Hooks view renders that same card.
+Settings → Plugins is one page on the existing settings navigator. The five views are Installed, Market, Skills, MCP, and Hooks. Market content filters are All, Skills, MCP, Hooks, and Commands. They read workspace skills, MCP sources, catalog entries from the MCP Registry and skill repositories, and a local Agent Plugins 1.0.0 package. `readAgentPluginPackage` accepts `plugin.json` at the package root. It lists a skill from `skills/*/SKILL.md` and an MCP server from `mcp.json` only when that component maps onto the existing loadout. A manifest with no such component adds no entries. Credential-shaped text, an unsafe name, a path that leaves the package, and a plugin marketplace document add nothing. Hooks, commands, inline Claude fields, and client extension files are not entries. The reader does not fetch a schema or a remote package. Catalog source filters follow the Sources navigator type filter. `readCatalogSource` accepts a recorded document in tests. Live fetch is optional, limited to the public registry list or an https skill index, and a failure returns no entries. `applyPluginMutationFromHuman` and `applyPluginMutationFromAgent` both call `executePluginMutation`. Install, enable, and disable admit `file.update` and write `.claude-plugin/loadout.json` with the same atomic replace as `session.jsonl`. Install does not enable. Enabling a third-party hook or MCP server sets `requireHumanApproval` on that `file.update` turn, so the existing permission card must Allow it before the loadout changes. An agent cannot approve the card. Deny leaves the plugin disabled and stores `decision: denied` on the loadout. Allow stores `decision: approved` and enables that plugin once. A later enable of the same plugin uses the stored grant. A different plugin still waits. The Hooks view renders that same card. The settings page constructs `createPluginSettingsHost` in the renderer and can write `.claude-plugin/loadout.json` on `PLUGIN_SETTINGS_SESSION_ID`. That kernel is not the Craft session kernel and not `SessionManager.respondToPermission`. The standing grant is not host-turn Always Allow. Against the session card, that approval is `display-only`.
 
-The MCP Apps side pane reads that same loadout. `projectEnabledMcpApps` lists enabled MCP tools and resources from a local inventory. `openMcpAppsFromHuman` and `openMcpAppsFromAgent` share `executeMcpAppsOp`, as do focus and close. Those calls admit `canvas.node_select`, the frozen L0 select, and change the existing right-sidebar slot. They do not write a file and they do not add an action id. `workbench.view_open` stays unfrozen. The sandboxed `ui://` app view, live `tools/list`, and tool invocation stay `Locked`. This page is not a remote store and it is not a plugin marketplace.
+The MCP Apps side pane is a read projection. `projectEnabledMcpApps` lists enabled MCP tools and resources from the loadout and a local inventory. The pane does not construct `createMcpAppsHost`, does not admit focus, and does not call a tool. Closing it updates the existing right-sidebar slot. `openMcpAppsFromHuman` remains on the test host. The sandboxed `ui://` app view, live `tools/list`, and tool invocation stay `Locked`. This page is not a remote store and it is not a plugin marketplace.
 
 Release independence reads the admitted workspace packages and the bundled runtimes named by the existing packaging scripts. `readReleaseDispositionForHuman` and `readReleaseDispositionForAgent` return the same report. The About section shows that report. `renderThirdPartyNotices` writes no partial file when a license is missing. The checked-in `app/THIRD-PARTY-NOTICES.txt` is the persistent record. This check does not append a session journal and does not admit a turn. `checkUpdateFeed` accepts only a local dry-run document with relative artifact names. A signed document, a production disposition, or an absolute update URL stays `Locked`. `checkPackagingDryRun` is the unsigned layout check: admitted package versions must match the feed, and the artifact names must be the ones `packageDarwin`, `packageLinux`, `packageWindows`, and `scripts/install-app.sh` already expect. `publish` stays `never`. Signing-identity discovery stays off. The command is `bun run verify:packaging-dry-run` from `app/`. It does not invoke electron-builder. The retained Craft updater in `app/apps/electron/src/main/auto-update.ts` is unchanged and is not a Fleet production feed. Packaging requirements are in `docs/release/PACKAGING-REQUIREMENTS.md`. `docs/engineering.md` is not in this checkout.
 
+`wired` means a shell path or a packaging script runs the behavior, and the row matches that path. `display-only` means a label or a list renders and the claimed admission does not run. `test-only` means the function and its tests exist and no production caller uses them. `Locked` is the execution gate in `docs/DEVELOPMENT-PROCESS.md`, not a capability result. Nothing in this table is `usable`.
+
 | Slice | Status |
 |---|---|
-| Process-local admit / approve / run / stop / recover / usage confidence | `wired` |
-| Session-directory KernelSnapshot v1 file, including usage and credential sealing | `wired` |
-| In-process native effect after admission, including atomic file replace | `wired` |
-| Existing permission card approves or rejects an awaiting host turn | `wired` |
-| Awaiting host admit on the session kernel publishes that permission card | `wired` |
-| One HostTurnKernel per Craft session in main, journaled in `session.jsonl` | `wired` |
-| Page-local set-model plus shared update-target for human and agent callers | `wired` |
-| Codex app-server stdio JSON-RPC executor after host admission | `wired` |
-| ACP stdio JSON-RPC executor after host admission | `wired` |
-| CLI command execution, dynamic client tools, client file writes, and PTY fallback | `Locked` |
+| One HostTurnKernel per Craft session in main, journaled in `session.jsonl`. Restart reads events and does not restore turn phase. | `wired` |
+| Process-local admit / approve / run / stop / recover on that kernel | `test-only` |
+| Session-directory KernelSnapshot v1 file | `test-only` |
+| In-process native effect and atomic file replace on the session kernel | `test-only` |
+| Existing permission card approves or rejects an awaiting host turn | `test-only` |
+| Awaiting host admit publishes that permission card | `test-only` |
+| Page-local set-model in the session popover (`selectPageModel`) | `wired` |
+| Page-local `update-target` for human and agent callers | `test-only` |
+| Codex app-server executor attached after host admission | `display-only` |
+| ACP executor attached after host admission | `display-only` |
+| CLI command execution, dynamic client tools, client file writes, and PTY | `Locked` |
 | Gemini, Qwen, and Kimi process launch presets | `display-only` |
-| `aigc.job_submit` after host approval: fake provider, artifact file, stop, and recover by provider id | `wired` |
-| Subscription observation shared by the settings reader and the agent DTO | `wired` |
-| DOCX open, human edit, agent edit, undo, save, and reopen through `file.update` | `wired` |
-| DOCX paragraph preview in the existing overlay | `wired` |
-| XLSX create through `file.create`, and first-sheet cell update, undo, save, and reopen through `file.update` | `wired` |
-| XLSX first-sheet cell preview in the existing overlay | `wired` |
+| `aigc.job_submit` with a fake provider, artifact file, stop, and recover | `test-only` |
+| Activity overlay rendering an `aigc_artifact` | `display-only` |
+| AI settings subscription lines (`readSubscriptionForHuman`; unknown with no payload) | `wired` |
+| Agent subscription DTO (`readSubscriptionForAgent`) | `test-only` |
+| DOCX, XLSX, and PPTX create, edit, undo, save, and reopen through `file.create` / `file.update` | `test-only` |
+| DOCX paragraph preview in the shell | `wired` |
+| XLSX first-sheet cell preview in the shell | `wired` |
+| PPTX first-slide text preview in the shell | `wired` |
+| Office edit and save in the shell | `Locked` |
 | XLSX formulas, rich text, charts, extra sheets, and a full spreadsheet editor | `Locked` |
-| PPTX create through `file.create`, and first-slide text update, undo, save, and reopen through `file.update` | `wired` |
-| PPTX first-slide text preview in the existing overlay | `wired` |
-| PPTX animations and a full slide editor | `Locked` |
-| Legacy `.xls` and macro-enabled `.xlsm` | `Locked` |
-| Legacy `.ppt` and macro-enabled `.pptm` | `Locked` |
-| Canvas card for an admitted DOCX, sharing the document suite edit | `wired` |
-| Canvas card for an admitted image or video `aigc_artifact` | `wired` |
-| Hide, stop, and delete of a canvas card, leaving the admitted file and job | `wired` |
-| XLSX and PPTX canvas cards that project the first sheet or first slide and open the existing preview | `wired` |
+| PPTX animations, a full slide editor, and MotionDeck | `Locked` |
+| Legacy `.xls`, `.xlsm`, `.ppt`, and `.pptm` | `Locked` |
+| Canvas cards for DOCX, XLSX, PPTX, and image or video artifacts, including hide, stop, and delete | `test-only` |
 | `@xyflow/react` spatial renderer | `Locked` |
-| Built-in Chromium page find, loading stop, and native guest back, forward, and reload | `wired` |
-| Governed DOM snapshot admitted as `file.create` for the human and the owning agent | `wired` |
+| Human Chromium page find, loading stop, back, forward, and reload | `wired` |
+| Governed DOM snapshot admitted as `file.create` | `test-only` |
 | Screenshot evidence bundle and Chrome Store advertising | `Locked` |
-| Settings Plugins page with five views and local market content filters | `wired` |
-| Install, enable, and disable of the local plugin loadout through `file.update` | `wired` |
-| MCP Registry and skill-repository catalog sources, with Market content filters | `wired` |
-| Per-plugin approval for a third-party hook or MCP server, with the grant stored on the loadout | `wired` |
-| MCP Apps side pane listing enabled tools and resources, with open and focus on the existing right sidebar | `wired` |
-| Sandboxed MCP App view, live tools/list, and tool invocation from the pane | `Locked` |
-| Local Agent Plugins 1.0.0 skills and MCP servers projected into Market | `wired` |
+| Settings Plugins page with five views and market filters | `wired` |
+| Plugin loadout install, enable, and disable as the Craft session permission card | `display-only` |
+| MCP Registry and skill-repository catalogs as a trusted marketplace | `display-only` |
+| MCP Apps side pane: read projection of the loadout. No kernel, no focus admit, no tool call. | `display-only` |
+| Sandboxed MCP App view, live tools/list, and tool invocation | `Locked` |
+| Local Agent Plugins 1.0.0 package as a plugin runtime | `display-only` |
 | Remote plugin store, Chrome Store, and a plugin marketplace | `Locked` |
 | Third-party notices for admitted dependencies, failing closed when a license is missing | `wired` |
 | Update-feed dry run with relative artifact names and no network fetch | `wired` |
@@ -213,6 +231,7 @@ Release independence reads the admitted workspace packages and the bundled runti
 | Live paid image/video providers and a quota ledger | `Locked` |
 | Automatic Pi tool admission into the permission card, and the rest of the M00 session adapter | `Locked` |
 | Plugin marketplace and a full Pi SDK host | `Locked` |
+| W1–W5, including this module as an execution gate | `Locked` |
 | Local `.fleet/zcode` apply | not in this checkout; see `patches/zcode/README.md` |
 
-This note does not open W1 and does not change the module capability header above. Product surfaces stay `Locked` until the W0.1 re-freeze.
+This note does not open W1 and does not change the module capability header above. The header stays `not implemented`. The wave stays Locked.

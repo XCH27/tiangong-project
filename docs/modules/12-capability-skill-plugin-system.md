@@ -234,13 +234,13 @@ The Settings → Plugins subpage reuses the Craft settings navigator. It does no
 | Slice | Status |
 |---|---|
 | Five views: Installed, Market, Skills, MCP, Hooks | `wired` |
-| Market content filters over workspace skills, MCP sources, and catalog reads | `wired` |
-| Install, enable, and disable writing `.claude-plugin/loadout.json` through `file.update` | `wired` |
-| MCP Registry and skill-repository catalog sources | `wired` |
-| Per-plugin approval for a third-party hook or MCP server | `wired` |
-| MCP Apps side pane listing enabled tools and resources, with open and focus | `wired` |
+| Market content filters over workspace skills and MCP sources | `wired` |
+| Install, enable, and disable as the Craft session permission card | `display-only` |
+| MCP Registry and skill-repository catalogs as a trusted marketplace | `display-only` |
+| Per-plugin approval through `SessionManager.respondToPermission` | `display-only` |
+| MCP Apps side pane: read projection of the loadout. No kernel, no focus admit, no tool call. | `display-only` |
 | Sandboxed MCP App view, live tools/list, and tool invocation from the pane | `Locked` |
-| Local Agent Plugins 1.0.0 skills and MCP servers projected into Market | `wired` |
+| Local Agent Plugins 1.0.0 package as a plugin runtime | `display-only` |
 | Remote store or plugin marketplace | `Locked` |
 
-Installing a listed entry does not enable it. A third-party hook or MCP server can be recorded as installed. Enabling it waits for the existing permission card. Deny does not enable it and stores that decision on the loadout. Allow enables that plugin once and stores the approved grant. An agent cannot approve the card. The Market list is the workspace skill list, the MCP sources already loaded by Craft, and catalog reads. API and local sources stay on the Sources navigator. Catalog source filters use that same type-filter shape. A failed or rejected read adds no entries. Live fetch is optional and does not retrieve an Agent Plugins package. A local 1.0.0 package lists a skill or MCP server when that component is safe and maps onto the loadout. Credential-shaped text, unsafe paths, hooks, commands, and a plugin marketplace document stay out of the list. Enabling a listed third-party MCP server still waits for the existing permission card.
+The settings page can still construct `createPluginSettingsHost` and write `.claude-plugin/loadout.json` on `PLUGIN_SETTINGS_SESSION_ID`. That kernel is not the Craft session. A failed catalog read adds no entries. The MCP Apps pane reads the loadout and does not admit a tool call. See `docs/modules/00-platform-spine.md` §13.
