@@ -24,6 +24,7 @@ import type {
 
 // Mode types from dedicated subpath export (avoids pulling in SDK)
 import type { PermissionMode } from '@craft-agent/shared/agent/modes';
+import type { McpAppFocus } from '@craft-agent/shared/protocol/mcp-apps-pane';
 export type { PermissionMode };
 export { PERMISSION_MODE_CONFIG } from '@craft-agent/shared/agent/modes';
 
@@ -764,6 +765,7 @@ export type WhatsAppUiEvent =
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
   | { type: 'history' }
+  | { type: 'mcp-apps'; focus?: McpAppFocus }
   | { type: 'none' }
 
 /**

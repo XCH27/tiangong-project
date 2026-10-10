@@ -180,7 +180,7 @@ async function writeLoadout(
   input: PluginMutationCall & { callerKind: 'human_ui' | 'agent' },
   next: PluginLoadoutFile,
   requireHumanApproval: boolean,
-  payloadOp = input.op,
+  payloadOp: PluginMutationName | 'grant' = input.op,
 ): Promise<PluginMutationResult> {
   const sessionId = input.sessionId ?? PLUGIN_SETTINGS_SESSION_ID
   const invocation: ActionInvocation = {

@@ -17,6 +17,7 @@ import type {
   RightSidebarPanel,
 } from './types'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
+import { buildMcpAppsSidebarParam, parseMcpAppsSidebarParam } from '@craft-agent/shared/protocol/mcp-apps-pane'
 
 // =============================================================================
 // Route Types
@@ -758,6 +759,8 @@ export function buildRouteFromNavigationState(state: NavigationState): string {
  *   'history' -> { type: 'history' }
  *   'files' -> { type: 'files' }
  *   'files/src/main.ts' -> { type: 'files', path: 'src/main.ts' }
+ *   'mcp-apps' -> { type: 'mcp-apps' }
+ *   'mcp-apps:mcp%3Adocs:tool:search' -> focused MCP app item
  *   'none' -> { type: 'none' }
  */
 export function parseRightSidebarParam(sidebarStr?: string): RightSidebarPanel | undefined {
@@ -769,6 +772,11 @@ export function parseRightSidebarParam(sidebarStr?: string): RightSidebarPanel |
   if (sidebarStr.startsWith('files')) {
     const path = sidebarStr.substring(6) // Remove 'files/' prefix
     return { type: 'files', path: path || undefined }
+  }
+  if (sidebarStr === 'mcp-apps' || sidebarStr.startsWith('mcp-apps:')) {
+    const parsed = parseMcpAppsSidebarParam(sidebarStr)
+    if (!parsed?.open) return undefined
+    return parsed.focus ? { type: 'mcp-apps', focus: parsed.focus } : { type: 'mcp-apps' }
   }
   if (sidebarStr === 'none') {
     return { type: 'none' }
@@ -790,7 +798,11 @@ export function buildRightSidebarParam(panel?: RightSidebarPanel): string | unde
       return 'history'
     case 'files':
       return panel.path ? `files/${panel.path}` : 'files'
-    default:
-      return undefined
+    case 'mcp-apps':
+      return buildMcpAppsSidebarParam({ open: true, focus: panel.focus ?? null })
+    default: {
+      const unexpected: never = panel
+      return unexpected
+    }
   }
 }
