@@ -112,7 +112,7 @@ Status of the items this baseline note clarified, still open:
 | BLK-001 | Behaviour ledger is recorded (D52) and stays incomplete: no populated v0.11 checkout, no fleet-old rows, no file-by-file `app/` diff, and canonical contract parity/re-freeze is still open. | Lead | W1 and every downstream wave |
 | BLK-003 | Required Browser/Spatial/Media/Panel/Web/Deck adapter spikes have no recorded result. | Lead by consumer wave | M06/M07/M09/M16/M18/M19 readiness |
 
-BLK-002 is closed as a name decision by D50 (2026-10-10). Plugin API keys, storage prefixes, and the action-owner namespace strings are recorded in `docs/audits/2026-10-10-blk002-namespace-oss.md`. Closing BLK-002 does not open W0.1, Settings, or a storage adapter. Marketplace ids, extra skill roots, and the M16 contribution table stay under discussion in that note.
+BLK-002 is closed as a name decision by D50 (2026-10-10). Plugin API keys, storage prefixes, and the action-owner namespace strings are recorded in `docs/audits/2026-10-10-blk002-namespace-oss.md`. Closing BLK-002 does not open W0.1 or a storage adapter. The later Settings install, enable, and disable caller is `wired` in D49 (`plugins:mutateLoadout` → `plugin.loadout_mutate` and the Craft card) and is not `usable`. That caller does not open W0.1. Marketplace ids, extra skill roots, and the M16 contribution table stay under discussion in that note.
 
 ## 7. Historical W0 Record
 

@@ -3,8 +3,8 @@
 > **Date:** 2026-10-10
 > **Role:** Fleet Lead. The user authorized the Lead to choose by OSS cross-compare: reuse a mature scheme, and invent a string only when none of the peers fit.
 > **Base:** `92ee3ea5` (`work/fresh-base-spine` after #43).
-> **Ledger:** D50 in `docs/DECISIONS-LEDGER.md`. D49 criterion 2 (the namespace) is met by D50. Settings stays Locked.
-> **What this does not do:** It does not mark W0.1 or W1 Ready. It does not promote any capability to `usable`. It does not add a Settings caller, a shell control, or a new action id. It does not bump `CONTRACT_VERSION`. `plugin.loadout_mutate` still has no production caller.
+> **Ledger:** D50 in `docs/DECISIONS-LEDGER.md`. D49 criterion 2 (the namespace) is met by D50. At this record Settings stayed Locked. The later caller is the follow-up below.
+> **What this does not do:** It does not mark W0.1 or W1 Ready. It does not promote any capability to `usable`. It does not add a Settings caller, a shell control, or a new action id. It does not bump `CONTRACT_VERSION`. At this record `plugin.loadout_mutate` had no production caller.
 
 ## How the comparison was bounded
 
@@ -176,8 +176,8 @@ These are consequences of the strings above. None of them is a packet, and none 
 | M00 | Keep `fleet_host_session_event` and `fleet_host_turn_admission`. Do not publish either string as a plugin id. |
 | M03 | Leave the v1.3.0 action-id table as it is. A future `ActionOwner.namespace` for a core row is `fleet`. |
 | M05 | Workspace bytes stay on the filesystem the agent already uses. No new control directory for plugins. |
-| M12 | Product ids and manifest keys are section 2. Distribution, signing, and marketplaces stay W4. The Settings caller stays absent. |
-| M13 | Settings → Plugins stays Locked (D49). Criterion 2 is met. The page still does not call `plugin.loadout_mutate`. |
+| M12 | Product ids and manifest keys are section 2. Distribution, signing, and marketplaces stay W4. This namespace note did not add the Settings caller. The later caller is `wired` in M12 §16 and in M00 §13. |
+| M13 | At this record the page did not call `plugin.loadout_mutate`. Criterion 2 is met. The later caller is `wired`: `plugins:mutateLoadout` → `plugin.loadout_mutate` and the Craft card. It is not `usable`. |
 | M16 | Contribution prefixes are section 4. The contribution table is not frozen. |
 
 ## Still under discussion
@@ -195,9 +195,9 @@ These are consequences of the strings above. None of them is a packet, and none 
 
 ## D49 after this decision
 
-Criterion 2 in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` is met: the product and internal strings are D50. Criteria 3, 4, and 5 are not met. There is still no production Settings caller. Install, enable, and disable stay Locked.
+Criterion 2 in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` is met: the product and internal strings are D50. At this record criteria 3, 4, and 5 were not met, and there was no production Settings caller.
 
-Follow-up: `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` now build `plugin.loadout_mutate` and stay `test-only`. `file.update` still refuses that payload. Settings stays Locked. D50 is unchanged.
+Follow-up: `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` build `plugin.loadout_mutate`. `file.update` still refuses that payload. Settings install, enable, and disable are `wired` through `plugins:mutateLoadout` → `plugin.loadout_mutate` and the Craft session card. Allow writes the catalog the agent loads. Deny writes nothing. The caller is not `usable`. D50 is unchanged. W0.1 stays Locked.
 
 ## W0.1
 

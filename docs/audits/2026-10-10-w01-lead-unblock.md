@@ -2,31 +2,31 @@
 
 > **Date:** 2026-10-10
 > **Base inspected:** `7c36bb6dd761fb9c719850cb0b59e61c9c8db248` (`work/fresh-base-spine` after merged PR #37)
-> **Current base:** `92ee3ea5` (`work/fresh-base-spine` after merged PR #43)
-> **What this file is:** the Lead decision list written after #37 for unflag, the action-id split, and Settings plugin writes. #39 landed the first two. #41–#43 admit three of the split ids on test hosts and leave them `test-only`. Settings stays Locked.
+> **Current base:** `9fdb881e` (`work/fresh-base-spine` after merged PR #49)
+> **What this file is:** the Lead decision list written after #37 for unflag, the action-id split, and Settings plugin writes. #39 landed the first two. #41–#43 admit three of the split ids on test hosts and leave them `test-only`. #49 wires Settings install, enable, and disable through `plugins:mutateLoadout` → `plugin.loadout_mutate` and the Craft card. That caller is `wired`, not `usable`. W0.1 stays Locked.
 > **Inventory:** `docs/audits/2026-10-10-w01-exit-checklist.md` records the chrome chain. This packet does not replace that inventory and does not check any exit item off.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This packet does not edit that map. Exit item 6 was later decided by D50. The other exit items stay open.
 > **Frozen table:** `docs/contracts/action-ids.md` is v1.3.0. `CONTRACT_VERSION` in `app/packages/shared/src/protocol/internal-action.ts` is `1.3.0`.
 >
 > **Status after #39 (`31b2e1b`):** D47 freezes `session.unflag`. §13 in `docs/modules/00-platform-spine.md` labels the human command `wired`. D48 freezes `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus`. At that commit those four ids have no production caller. D49 keeps Settings plugin writes Locked. The choice record is `docs/audits/2026-10-10-w01-lead-decisions-oss.md`. W0.1 stays Locked. This packet does not mark Ready or `usable`.
 >
-> **Status after the DOM host:** `captureDomFromHuman` and `captureDomFromAgent` admit `browser.dom_snapshot` on the guest host. The row is L2, so an unapproved turn does not read the page. The host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `file.create` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
+> **Status after the DOM host:** `captureDomFromHuman` and `captureDomFromAgent` admit `browser.dom_snapshot` on the guest host. The row is L2, so an unapproved turn does not read the page. The host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `file.create` still refuses that payload. At that host plugin loadout still sent `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
-> **Status after the page-target host:** `update-target` admits `file.page_target` on the page-local host. The row is L2. The host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `file.update` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
+> **Status after the page-target host:** `update-target` admits `file.page_target` on the page-local host. The row is L2. The host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `file.update` still refuses that payload. At that host plugin loadout still sent `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
-> **Status after the sidebar host:** open, focus, and close admit `workbench.sidebar_focus` on the MCP Apps test host. The row is L0, so there is no card and the host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `canvas.node_select` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
+> **Status after the sidebar host:** open, focus, and close admit `workbench.sidebar_focus` on the MCP Apps test host. The row is L0, so there is no card and the host does not publish the Craft session card. No shell or IPC caller. §13 stays `test-only`. `canvas.node_select` still refuses that payload. At that host plugin loadout still sent `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
 > **Status after #43 (`92ee3ea5`):** `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts. §13 stays `test-only` for each. None has a shell or IPC caller. None publishes the Craft session card. The old verbs still refuse those payloads. At that commit `plugin.loadout_mutate` has no caller. Settings stays Locked. W0.1 stays Locked. Nothing in #41–#43 is `usable`.
 >
-> **Status after D50 (2026-10-10):** BLK-002 is closed as a name decision. The strings are `docs/audits/2026-10-10-blk002-namespace-oss.md`. D49 criterion 2 is met. Settings stays Locked. The other §3 exit items stay open. This packet does not mark Ready or `usable`.
+> **Status after D50 (2026-10-10):** BLK-002 is closed as a name decision. The strings are `docs/audits/2026-10-10-blk002-namespace-oss.md`. D49 criterion 2 is met. At that record Settings stayed Locked. The other §3 exit items stay open. This packet does not mark Ready or `usable`.
 >
-> **Status after the loadout host:** `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` admit `plugin.loadout_mutate`. The row is L2, so an unapproved call does not write. `op: grant` is `standing_grant_rejected`. No shell or IPC caller. §13 stays `test-only`. `file.update` still refuses that payload. Settings stays Locked. D50 is unchanged. W0.1 stays Locked. This note does not mark Ready or `usable`.
+> **Status after the loadout host:** `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` admit `plugin.loadout_mutate`. The row is L2, so an unapproved call does not write. `op: grant` is `standing_grant_rejected`. At that host there was no shell or IPC caller, so §13 stayed `test-only`. `file.update` still refuses that payload. Settings stayed Locked. D50 is unchanged. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
 > **Status after the sidebar shell:** the MCP Apps pane constructs one host. Human open, focus, and close admit `workbench.sidebar_focus`. §13 labels that path `wired`. Agent helpers stay `test-only`. Settings does not construct the host. DOM capture and page-target stay `test-only`. `canvas.node_select` still refuses the payload. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
 > **Status after the v0.11 pin (D51/D52):** the tag pin and the behaviour ledger are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`. Exit items 1 and 2 stay open. BLK-001 stays open. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
-> **Status after the Settings plugin caller:** Settings → Plugins calls `plugins:mutateLoadout`. That handler calls `SessionManager.applySessionPluginMutation` with `plugin.loadout_mutate`. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow writes the skills and MCP sources the agent loads. Deny writes nothing. §13 labels that caller `wired`. `createPluginSettingsHost` stays `test-only`. `file.update` still refuses the payload. `op: grant` stays `standing_grant_rejected`. The caller is not `usable`. W0.1 stays Locked. This note does not mark Ready.
+> **Status after the Settings plugin caller (#49 `9fdb881e`):** Settings install, enable, and disable are `wired`. The page calls `plugins:mutateLoadout`. That handler calls `SessionManager.applySessionPluginMutation` with `plugin.loadout_mutate` and publishes the Craft session permission card. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow writes the skills and MCP sources the agent loads. Deny writes nothing. §13 labels that caller `wired`. `createPluginSettingsHost` stays `test-only`. `file.update` still refuses the payload. `op: grant` stays `standing_grant_rejected`. The caller is not `usable`. W0.1 stays Locked. This note does not mark Ready.
 
 ## Gate status (unchanged)
 
@@ -39,7 +39,7 @@ Ready cells in `docs/WAVE-MODULE-MAP.md` stay as they are. D47–D49 are in `doc
 These merges are on the spine. They admit existing frozen ids, or they are docs. They add no action id. At that base `CONTRACT_VERSION` was `1.2.0`. #39 set it to `1.3.0`. Those merges do not unlock Settings and do not promote `usable`.
 
 - **Chrome admits.** PRs #28 and #30–#33 and #35 admit frozen session chrome on the one Craft session kernel and journal `fleet_host_session_event` in `session.jsonl`: human flag, rename, status, and labels; agent status, labels, and `rename_session`; title generation; send-time auto-labels. PR #29 only records that `Locked` is an execution gate. §13 in `docs/modules/00-platform-spine.md` is the row source. Those `wired` labels are shell or live tool paths.
-- **L2 card.** PR #36 admits frozen `workspace.rename` from Settings → Workspace name. The L2 row publishes the existing permission card. Allow writes the folder name. Deny, a credential-shaped name, and a missing session leave the name unchanged. That is the only production host-card caller. Other card publish and approve stay `test-only`.
+- **L2 card.** PR #36 admits frozen `workspace.rename` from Settings → Workspace name. The L2 row publishes the existing permission card. Allow writes the folder name. Deny, a credential-shaped name, and a missing session leave the name unchanged. At those merges it was the only production host-card caller. Settings plugin install, enable, and disable are the later Craft-card caller and §13 labels them `wired`. Other card publish and approve stay `test-only`.
 - **D46 footnote.** PR #37 records the footnote in `docs/modules/19-presentation-motion-surface.md` §10. The shell PPTX overlay is a first-slide text viewer. D46 stays Final and unmet. Office edit and save stay Locked. MotionDeck stays Locked.
 - **No L3 shell delete caller.** After `25e53895`, Electron, `SessionManager`, and the RPC handlers still have no production caller for frozen `file.delete` or `canvas.node_delete`. `sessions:delete`, `skills:delete`, and `sources:delete` are not `file.delete`. No permission card was wired for either id.
 
@@ -64,7 +64,7 @@ These merges are on the spine. They admit existing frozen ids, or they are docs.
 
 ## 2. Action-id re-freeze
 
-**Landed in #39 (`31b2e1b`), D48.** v1.3.0 gives each operation below its own frozen id, with the policy columns from "W0.1 Re-freeze Requirements", and sets `CONTRACT_VERSION` to `1.3.0` in that same commit. No v1.2.0 id was renamed. The four ids are `plugin.loadout_mutate` (M12), `file.page_target` (M05), `browser.dom_snapshot` (M06), and `workbench.sidebar_focus` (M16). #41–#43 admit `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` on their test hosts. DOM capture and page-target stay `test-only`: no shell or IPC caller, and no Craft session card. The MCP Apps pane is the human caller for `workbench.sidebar_focus`. Agent helpers stay `test-only`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` admit `plugin.loadout_mutate` and stay `test-only`. No shell or IPC caller uses that path. `browser.screenshot` and binding deletion stay unfrozen. The columns do not close the rest of exit item 3.
+**Landed in #39 (`31b2e1b`), D48.** v1.3.0 gives each operation below its own frozen id, with the policy columns from "W0.1 Re-freeze Requirements", and sets `CONTRACT_VERSION` to `1.3.0` in that same commit. No v1.2.0 id was renamed. The four ids are `plugin.loadout_mutate` (M12), `file.page_target` (M05), `browser.dom_snapshot` (M06), and `workbench.sidebar_focus` (M16). #41–#43 admit `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` on their test hosts. DOM capture and page-target stay `test-only`: no shell or IPC caller, and no Craft session card. The MCP Apps pane is the human caller for `workbench.sidebar_focus`. Agent helpers stay `test-only`. Settings install, enable, and disable call `plugins:mutateLoadout`, which admits `plugin.loadout_mutate` and publishes the Craft session card. §13 labels that caller `wired`. It is not `usable`. `browser.screenshot` and binding deletion stay unfrozen. The columns do not close the rest of exit item 3.
 
 ### Payloads the old verbs still refuse
 
@@ -72,7 +72,7 @@ These merges are on the spine. They admit existing frozen ids, or they are docs.
 
 | Operation the payload means | Caller | Refusal reason |
 |---|---|---|
-| Plugin loadout install, enable, or disable | SessionManager sends `plugin.loadout_mutate` and stays `test-only`. `file.update` is still refused. `op: grant` is `standing_grant_rejected` | `action_owner_mismatch:plugin_loadout` on `file.update` |
+| Plugin loadout install, enable, or disable | Settings calls `plugins:mutateLoadout` → `plugin.loadout_mutate` and the Craft card. §13 labels that caller `wired`. `file.update` is still refused. `op: grant` is `standing_grant_rejected` | `action_owner_mismatch:plugin_loadout` on `file.update` |
 | DOM evidence snapshot | guest host sends `browser.dom_snapshot` and stays `test-only`. `file.create` is still refused | `action_owner_mismatch:dom_evidence` on `file.create` |
 | MCP Apps sidebar focus | The pane constructs the host and admits `workbench.sidebar_focus`. Agent helpers stay `test-only`. `canvas.node_select` is still refused | `action_owner_mismatch:sidebar_focus` on `canvas.node_select` |
 | Page-target write | page-local host sends `file.page_target` and stays `test-only`. `file.update` is still refused | `action_owner_mismatch:page_target` on `file.update` |
@@ -93,28 +93,28 @@ The bump was minor: ids added, none renamed or removed, in the same commit as th
 4. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still send the old verbs and still fail closed. That sentence is the #39 result. The guest host now admits `browser.dom_snapshot` and stays `test-only`. It does not send `file.create` and it does not publish the Craft session card. The page-local host now admits `file.page_target` and stays `test-only`. It does not send `file.update` and it does not publish the Craft session card. The MCP Apps pane constructs the host and admits `workbench.sidebar_focus`. It does not send `canvas.node_select` and it does not publish the Craft session card. Agent helpers stay `test-only`. The SessionManager plugin path admits `plugin.loadout_mutate`. Settings → Plugins is the shell and IPC caller and §13 labels it `wired`. It does not send `file.update`. It is not `usable`.
 5. `action-owner-policy.ts` remains a guard beside the new rows.
 
-Workers do not implement a production caller for these ids from this packet.
+Workers do not add another production caller for these ids from this packet.
 
 ## 3. Settings plugin writes
 
 **Settings plugin caller is `wired` (D49).** #39 froze `plugin.loadout_mutate` and did not add a Settings caller. D50 meets the namespace criterion. The acceptance tests in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` now pass. Install, enable, and disable call `plugins:mutateLoadout`. That handler calls `SessionManager.applySessionPluginMutation`. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow writes the catalog the agent loads. Deny writes nothing. The page does not construct `createPluginSettingsHost` and does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`. The row is L2, so an unapproved call does not write. `op: grant` is `standing_grant_rejected`. §13 labels the caller `wired`. It is not `usable`. This packet does not open W0.1.
 
-### D49 criteria still open
+### D49 criteria the caller met
 
 - The loadout id is `plugin.loadout_mutate`, owner M12, frozen in §2. A `file.update` request stays an owner mismatch.
-- Exit item 6 and BLK-002 are closed as a name decision by D50. A Settings caller does not decide that namespace, and D50 does not add one.
-- The production caller, when it exists, is a Settings → Plugins shell control or an IPC/RPC handler that calls `SessionManager` on the existing session kernel. `createPluginSettingsHost` stays off that path so the page does not grow a second host.
-- The frozen row publishes the existing permission card. There is no standing loadout grant.
+- Exit item 6 and BLK-002 are closed as a name decision by D50. The Settings caller does not decide that namespace, and D50 does not add one.
+- The production caller is Settings → Plugins through `plugins:mutateLoadout`, which calls `SessionManager` on the existing session kernel. `createPluginSettingsHost` stays off that path so the page does not grow a second host.
+- The frozen row publishes the existing Craft permission card. There is no standing loadout grant.
 
-### Acceptance criteria before the write is unlocked
+### Acceptance criteria the write met
 
 All of these are true on the spine:
 
-1. `plugin.loadout_mutate` is in the frozen table and `CONTRACT_VERSION` is `1.3.0` (met in #39). The product/internal namespace for that identifier is D50 (exit item 6). That record does not unlock the write.
+1. `plugin.loadout_mutate` is in the frozen table and `CONTRACT_VERSION` is `1.3.0` (met in #39). The product/internal namespace for that identifier is D50 (exit item 6). That record does not by itself add the caller.
 2. A production shell or IPC caller on Settings → Plugins invokes `SessionManager.applySessionPluginMutation` for install, enable, or disable with `plugin.loadout_mutate`.
 3. That caller settles the card through `SessionManager.resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow is the only path that writes `.claude-plugin/loadout.json`. Deny writes nothing.
 4. `createPluginSettingsHost` is still not the production caller.
-5. §13 may then label the caller that actually runs. `applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only` in any commit that has no shell or IPC caller.
+5. §13 labels the caller `wired`. `applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only` only when no shell or IPC caller exists. This spine has that caller.
 
 The Settings caller is `wired`. `createPluginSettingsHost` stays `test-only`. The caller is not `usable` and does not close W0.1.
 
@@ -134,7 +134,7 @@ The unflag freeze and the split-id freeze are on the spine. `browser.dom_snapsho
 8. Active packets still have to agree with the map and grant no Worker frozen-protocol writes.
 9. W1 Ready is still undeclared. W1–W5, including W3A/W3B, stay Locked.
 
-Also still closed to workers after #43:
+Also still closed to workers after #49:
 
 - BLK-003 adapter spikes for Browser, Spatial, Media, Panel, Web, and Deck stay unrecorded.
 - D46 stays unmet. The first-slide viewer is not a MotionDeck. Office edit and save stay Locked. M19 stays Locked.
@@ -143,4 +143,4 @@ Also still closed to workers after #43:
 
 ## Worker rule
 
-This file is a Lead decision list. It is not an implementation packet. Workers do not add action ids, do not bump `CONTRACT_VERSION`, do not unlock Settings, and do not edit `docs/DECISIONS-LEDGER.md` or Ready cells in `docs/WAVE-MODULE-MAP.md` from this note. W0.1 stays Locked until the Lead closes §3 of the map.
+This file is a Lead decision list. It is not an implementation packet. Workers do not add action ids, do not bump `CONTRACT_VERSION`, do not promote the Settings caller to `usable`, and do not edit `docs/DECISIONS-LEDGER.md` or Ready cells in `docs/WAVE-MODULE-MAP.md` from this note. W0.1 stays Locked until the Lead closes §3 of the map.
