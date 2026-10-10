@@ -10,6 +10,11 @@
 > contributions. The non-frozen change proposal is
 > `docs/contracts/composable-workspace-contracts.md`. Workers must not combine that proposal with
 > this recorded baseline as if two contracts were active.
+>
+> **Version gate (D53, 2026-10-10):** ArtifactRef, the capability manifest, ExternalJob, workflow,
+> spatial, and view drafts stay outside `CONTRACT_VERSION` 1.3.0. Exit item 4 stays open. The
+> consumer rule is `docs/audits/2026-10-10-w01-exit4-contract-version-gate.md`. This notice does
+> not promote those drafts into this file.
 
 > **Lead-owned.** These type stubs define the shared vocabulary that all module Workers depend on.
 > The canonical implementation lives in `app/packages/shared/src/protocol/`.
@@ -225,3 +230,8 @@ The Lead must either promote or explicitly reject each item in the composable-wo
 
 No downstream implementation begins until its consumed items exist in one canonical frozen
 version and implementation parity is recorded.
+
+D53 (2026-10-10) version-gates items 6–11 (ArtifactRef, capability manifests, ExternalJob,
+WorkflowDefinition/WorkflowRun, SpatialDocument, and view contributions). Those items stay
+proposed. `CONTRACT_VERSION` stays 1.3.0. Exit item 4 stays open. Items 1–5 stay with Exit
+item 3 and are not closed by D53.

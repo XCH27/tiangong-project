@@ -56,19 +56,19 @@ canonical re-freeze are incomplete.
 | M02 Terminal/CLI | contract draft | runtime discovery, host/process/PTY paths and real commands unverified on v0.11 |
 | M03 Action Registry | contract draft | action-id policy columns frozen at 1.3.0 (D47–D49); caller, idempotency, revision, and typed-event envelopes not frozen (`docs/audits/2026-10-10-w01-exit3-canonical-parity.md`) |
 | M04 Runtime Lanes/TeamRun | contract draft | TaskRun/TeamRun authority and W2-only dependency boundary need reconciliation |
-| M05 Files/Library/ArtifactRef | contract draft | canonical workspace store, ArtifactRef/lease schema and limits not frozen |
+| M05 Files/Library/ArtifactRef | contract draft | canonical workspace store and lease limits not frozen; ArtifactRef stays proposed and version-gated (D53); W2 M05 may not consume it until a later freeze |
 | M06 Browser Evidence | contract draft | WebContentsView selection-overlay/lifecycle spike and setting/action contracts missing |
-| M07 Spatial Canvas | contract draft | spatial renderer/license spike and new SpatialDocument contract missing |
-| M08 External Jobs | contract draft | ExternalJob/provider/idempotency/protected-input contract and real provider missing |
+| M07 Spatial Canvas | contract draft | spatial renderer/license spike open (BLK-003); SpatialDocument stays proposed and version-gated (D53); W3A M07 may not consume it; historical CanvasDocument is not the spatial contract |
+| M08 External Jobs | contract draft | ExternalJob draft is version-gated (D53), not frozen; W2 M08 may not consume it; real provider still missing |
 | M09 Media Composition | contract draft | native media/render adapter, codec/license/platform decision and benchmark missing |
 | M10 Memory/Context | contract draft | physical store/index adapter, delete/isolation proof, and canonical schemas missing |
 | M11 Routing/Cost | contract draft | W2 usage core versus W4 routing split, provider facts, and persistence boundary unresolved |
-| M12 Capability System | contract draft | capability core must be promoted in W0.1; external distribution remains concept |
+| M12 Capability System | contract draft | capability manifest stays proposed and version-gated (D53); W1 M12 may not consume it; D50 namespace strings are not this schema; external distribution remains concept |
 | M13 Settings/Preferences | concept | full IA, canonical preference keys/migrations, and risk classes missing; M16 boundary is now defined |
 | M14 Onboarding | contract draft | canonical v0.11 startup routes/preference keys and real diagnostics missing |
 | M15 Messaging | contract draft | canonical secrets/session route, one bridge adapter, provider retention/terms evidence missing |
-| M16 Panel Platform | contract draft | v0.11 shell primitive inspection, layout schema/preferences/actions missing |
-| M17 Composable Workflows | contract draft | canonical workflow/run/TaskRun relationship and action IDs missing |
+| M16 Panel Platform | contract draft | v0.11 shell primitive inspection still open; ViewContribution, ViewInstance, and LayoutSnapshot stay proposed and version-gated (D53); W2 M16 host may not consume them |
+| M17 Composable Workflows | contract draft | WorkflowDefinition and WorkflowRun stay proposed and version-gated (D53); W3A M17 may not consume them; TaskRun relationship and workflow action ids stay unfrozen |
 | M18 Web Artifact | contract draft | real local project/build/preview adapter and action schemas missing |
 | M19 Presentation/Motion | contract draft | native deck/PPTX/HTML/render adapter and fidelity evidence missing |
 
@@ -76,10 +76,12 @@ canonical re-freeze are incomplete.
 
 1. Complete the clean Craft Agents v0.11 migration ledger and record retained extension points.
 2. Re-freeze one canonical W0.1 contract covering caller provenance, idempotency, document
-   revisions, typed event payloads, and the remaining product contracts (ArtifactRef, capability
-   manifest, workflow, ExternalJob, and view contribution). Orthogonal action-id policy columns
-   are already frozen at 1.3.0. The Exit 3 note records the open fields and does not bump
-   `CONTRACT_VERSION`.
+   revisions, and typed event payloads. Those fields stay partial (Exit 3). ArtifactRef, the
+   capability manifest, workflow, ExternalJob, spatial, and view contribution are version-gated
+   by D53 and stay proposed. They are not part of this re-freeze and are not in
+   `CONTRACT_VERSION` 1.3.0. Orthogonal action-id policy columns are already frozen at 1.3.0.
+   The Exit 3 note records the open fields and does not bump `CONTRACT_VERSION`. Exit item 4
+   stays open.
 3. Resolve physical persistence from `PERSISTENCE-AUTHORITY-MAP.md`; remove active claims that
    assume unverified SQLite/JSON authorities.
 4. Align wave gates, phase mapping, ownership precedence, and the hidden upstream gate.

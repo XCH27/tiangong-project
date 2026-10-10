@@ -292,7 +292,7 @@ Board Cards section. Do not create a new file format for this; append the block 
 - Status: not implemented
 - UI State: not started
 - Backend State: not started
-- Contracts: action IDs v1.3.0 (D47–D49) frozen; composable contracts still proposed; pin D51; behaviour ledger D52; Exit 3 parity note recorded and item 3 still open (`docs/audits/2026-10-10-w01-exit3-canonical-parity.md`)
+- Contracts: action IDs v1.3.0 (D47–D49) frozen; composable contracts still proposed and version-gated by D53, Exit item 4 still open (`docs/audits/2026-10-10-w01-exit4-contract-version-gate.md`); pin D51; behaviour ledger D52; Exit 3 parity note recorded and item 3 still open (`docs/audits/2026-10-10-w01-exit3-canonical-parity.md`)
 - Allowed Files:
   - Lead-owned docs and canonical protocol implementation files
 - Forbidden Files:
@@ -303,7 +303,7 @@ Board Cards section. Do not create a new file format for this; append the block 
   - Mac source tree at the v0.11 pin is recorded. Non-frozen `bun install` finished. `typecheck:all` failed (exit 2) and remains that #52 failure. Electron launch and relaunch are recorded. RPC project create, session turn, and `browser-pane:create` are recorded. `route=board` and `route=settings` restores are recorded (not an AX click, not a `Cmd+,` or 设置... menu click). Branch `fleet/migration-from-v0.11.0` is open on the pin; adapt ports are not started; `app/` is still 0.10.5. Exit item 1 stays open (`docs/audits/2026-10-10-w01-exit1-routes-migration.md`)
   - fleet-old rows and the file-by-file `app/` diff (behaviour ledger is D52; BLK-001 stays open)
   - Canonical implementation parity stays open. The Exit 3 note records action ids as frozen at 1.3.0 and AgentSeat, caller provenance, idempotency, revisions, typed events, and HostTurnKernel admission as partial. `CONTRACT_VERSION` stays 1.3.0
-  - Freeze or explicit version gate for ArtifactRef, capability, ExternalJob, workflow, spatial, and view contracts
+  - ArtifactRef, capability, ExternalJob, workflow, spatial, and view contracts are version-gated (D53) and stay unfrozen. Exit item 4 stays open. `CONTRACT_VERSION` stays 1.3.0
   - Physical persistence gate. Product/internal namespace strings are recorded in D50.
   - Documentation Readiness promotion for the exact W1 slices
   - Replacement W1/W2+ packets
