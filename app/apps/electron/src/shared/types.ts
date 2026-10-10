@@ -190,6 +190,7 @@ import type {
   SessionCommand,
   ShareResult,
   SessionFlagAdmission,
+  SessionChromeAdmission,
   RefreshTitleResult,
   FileSearchResult,
   SessionSearchResult,
@@ -231,7 +232,7 @@ export interface ElectronAPI {
   respondToCredential(sessionId: string, requestId: string, response: CredentialResponse): Promise<boolean>
 
   // Consolidated session command handler
-  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | SessionFlagAdmission | { count: number }>
+  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | SessionFlagAdmission | SessionChromeAdmission | { count: number }>
 
   // Server info (REMOTE_ELIGIBLE — returns data from whichever server owns the workspace)
   getServerHomeDir(): Promise<string>

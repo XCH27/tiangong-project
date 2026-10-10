@@ -96,7 +96,10 @@ describe('cold-session metadata persistence', () => {
     const path = getSessionFilePath(tmpRoot, sessionId)
     if (!existsSync(path)) return []
     const lines = readFileSync(path, 'utf-8').trim().split('\n').slice(1)
-    return lines.map(l => JSON.parse(l)).map(m => m.id as string)
+    return lines
+      .map(l => JSON.parse(l) as { id?: string; record?: string })
+      .filter(entry => entry.record !== 'fleet_host_session_event')
+      .map(entry => entry.id as string)
   }
 
   function makeUserMessage(id: string, content: string): StoredMessage {
@@ -135,9 +138,8 @@ describe('cold-session metadata persistence', () => {
     const sessionId = 'cold-rename'
     seedColdSession(sessionId, { name: 'old name' })
 
-    // renameSession does not flush internally; mirror the production order
-    // (rename → flushSession). Without the cold-load fix, this assertion fails
-    // because persistSession silently dropped the enqueue.
+    // renameSession flushes through the session kernel. The extra flush mirrors
+    // callers that still wait on flushSession after the command returns.
     await sm.renameSession(sessionId, 'new name')
     await sm.flushSession(sessionId)
 

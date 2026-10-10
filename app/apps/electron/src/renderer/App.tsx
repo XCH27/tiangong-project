@@ -34,7 +34,7 @@ import { getSessionsToRefreshAfterStaleReconnect } from './lib/reconnect-recover
 import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallback } from './lib/session-load'
 import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
 import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
-import { isRefusedSessionFlag } from '@craft-agent/shared/protocol'
+import { isRefusedSessionChrome, isRefusedSessionFlag } from '@craft-agent/shared/protocol'
 import { initRendererPerf } from './lib/perf'
 import {
   initializeSessionsAtom,
@@ -1194,14 +1194,24 @@ export default function App() {
   }, [updateSessionById])
 
   const handleSessionStatusChange = useCallback((sessionId: string, state: SessionStatus) => {
+    const previous = store.get(sessionAtomFamily(sessionId))?.sessionStatus
     updateSessionById(sessionId, { sessionStatus: state })
-    window.electronAPI.sessionCommand(sessionId, { type: 'setSessionStatus', state })
-  }, [updateSessionById])
+    void window.electronAPI.sessionCommand(sessionId, { type: 'setSessionStatus', state }).then((result) => {
+      if (isRefusedSessionChrome(result)) updateSessionById(sessionId, { sessionStatus: previous })
+    }).catch(() => {
+      updateSessionById(sessionId, { sessionStatus: previous })
+    })
+  }, [store, updateSessionById])
 
   const handleRenameSession = useCallback((sessionId: string, name: string) => {
+    const previous = store.get(sessionAtomFamily(sessionId))?.name
     updateSessionById(sessionId, { name })
-    window.electronAPI.sessionCommand(sessionId, { type: 'rename', name })
-  }, [updateSessionById])
+    void window.electronAPI.sessionCommand(sessionId, { type: 'rename', name }).then((result) => {
+      if (isRefusedSessionChrome(result)) updateSessionById(sessionId, { name: previous })
+    }).catch(() => {
+      updateSessionById(sessionId, { name: previous })
+    })
+  }, [store, updateSessionById])
 
   const handleSendMessage = useCallback(async (sessionId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[], externalBadges?: ContentBadge[]) => {
     try {
