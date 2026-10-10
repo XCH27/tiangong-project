@@ -1,11 +1,12 @@
 /**
  * MCP Apps side pane admission.
  *
- * Open, focus, and close ask for canvas.node_select. That id is M07 canvas
- * selection. workbench.sidebar_focus is the frozen M16 id. This host does not
- * use it. HostTurnKernel refuses the canvas payload and the pane does not
- * change. workbench.view_open is not frozen. This host does not add an action
- * id. It does not write a canvas document, a session file, or the plugin loadout.
+ * Open, focus, and close admit workbench.sidebar_focus. That row is L0, so
+ * the turn does not wait for a card and does not call approve. The same
+ * payload on canvas.node_select is still refused. The Electron pane does not
+ * construct this host, and no shell or IPC caller invokes it. workbench.view_open
+ * is not frozen. This host does not add an action id. It does not write a
+ * canvas document, a session file, or the plugin loadout.
  *
  * A human control and an agent caller share one function. Sandboxed ui://
  * rendering and tool invocation stay Locked and do not admit a turn.
@@ -66,7 +67,7 @@ const beforeRuns = new WeakMap<McpAppsShared, McpAppsHostOptions['beforeRun']>()
 export function createMcpAppsHost(options: McpAppsHostOptions = {}): McpAppsShared {
   const memory: PaneMemory = { view: emptyMcpAppsPane(), listing: [] }
   const effects = new NativeEffectRegistry()
-  effects.register(InternalActionId.CANVAS_NODE_SELECT, async (request) => {
+  effects.register(InternalActionId.WORKBENCH_SIDEBAR_FOCUS, async (request) => {
     if (request.signal.aborted) throw abortError()
     const next = applyPanePayload(memory.view, memory.listing, request.payload)
     if (!next) throw new Error('mcp_apps_focus_rejected')
@@ -135,7 +136,7 @@ export async function executeMcpAppsOp(
   const sessionId = input.sessionId ?? MCP_APPS_SESSION_ID
   const invocation: ActionInvocation = {
     invocationId: input.invocationId,
-    actionId: InternalActionId.CANVAS_NODE_SELECT,
+    actionId: InternalActionId.WORKBENCH_SIDEBAR_FOCUS,
     payload: planned.payload,
     targets: [{ kind: 'unknown', id: planned.targetId, label: 'mcp-apps' }],
     callerKind: input.callerKind,
