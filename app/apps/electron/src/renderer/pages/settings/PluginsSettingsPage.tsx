@@ -3,18 +3,20 @@
  *
  * One settings page on the existing navigator. Five views, Market content
  * filters, and catalog source filters list workspace skills, MCP sources,
- * and catalog reads. Install, enable, and disable do not run here. This
- * page does not construct createPluginSettingsHost and does not write
- * .claude-plugin/loadout.json. It does not render the Craft session
- * permission card. The MCP Apps side pane opens on the existing right
- * sidebar. This page does not construct the MCP Apps host. The pane does.
- * Its sandboxed app view stays Locked. A local Agent Plugins 1.0.0 package is
- * listed when a skill or MCP server maps onto the loadout shape. This page
- * does not open a remote store.
+ * and catalog reads. Install, enable, and disable on a workspace skill or
+ * MCP source call plugins:mutateLoadout. That RPC admits plugin.loadout_mutate
+ * on the Craft session kernel. Allow and Deny use the existing permission
+ * card. This page does not render that card and does not write the loadout
+ * itself. The MCP Apps side pane opens on the existing right sidebar. This
+ * page does not construct the MCP Apps host. The pane does. Its sandboxed
+ * app view stays Locked. A local Agent Plugins 1.0.0 package is listed when
+ * a skill or MCP server maps onto the loadout shape. This page does not open
+ * a remote store.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
@@ -38,6 +40,7 @@ import {
   type MarketContentFilter,
   type PluginCatalogEntry,
   type PluginLoadoutFile,
+  type PluginMutationName,
   type PluginView,
   emptyPluginLoadout,
 } from '@craft-agent/shared/protocol/plugin-settings'
@@ -104,7 +107,7 @@ export default function PluginsSettingsPage() {
     contentFilter: marketFilter,
   }), [workspaceSkills, workspaceSources, reads, sourceKind, marketFilter])
 
-  useEffect(() => {
+  const refreshLoadout = useCallback(() => {
     if (!filePath) {
       setLoadout(emptyPluginLoadout())
       return
@@ -112,6 +115,16 @@ export default function PluginsSettingsPage() {
     const read = readPluginLoadout(filePath)
     if (read.status === 'ok' || read.status === 'missing') setLoadout(read.loadout)
   }, [filePath])
+
+  useEffect(() => {
+    refreshLoadout()
+  }, [refreshLoadout])
+
+  useEffect(() => {
+    const onSettled = () => { refreshLoadout() }
+    window.addEventListener('fleet-plugin-loadout-settled', onSettled)
+    return () => window.removeEventListener('fleet-plugin-loadout-settled', onSettled)
+  }, [refreshLoadout])
 
   useEffect(() => {
     const packageRoot = workspace?.rootPath
@@ -172,8 +185,31 @@ export default function PluginsSettingsPage() {
     updateRightSidebar({ type: 'mcp-apps' })
   }, [navState.rightSidebar, updateRightSidebar])
 
+  const mutatePlugin = useCallback(async (pluginId: string, op: PluginMutationName) => {
+    if (!workspace || !window.electronAPI) return
+    try {
+      const result = await window.electronAPI.mutatePluginLoadout(workspace.id, op, pluginId)
+      if (result.status === 'approval_required') {
+        toast.message(t('settings.plugins.needsApproval'))
+        return
+      }
+      if (result.status === 'completed') {
+        setLoadout(result.loadout)
+        return
+      }
+      if ('reason' in result && (result.reason === 'session_missing' || result.reason === 'session_file_missing')) {
+        toast.error(t('settings.plugins.needsSession'))
+        return
+      }
+      toast.error(t('settings.plugins.failed'))
+    } catch (error) {
+      console.error('Plugin loadout mutation failed', error)
+      toast.error(t('settings.plugins.failed'))
+    }
+  }, [t, workspace])
+
   return (
-    <div className="h-full flex flex-col" data-plugin-view={view} data-market-filter={marketFilter} data-catalog-source={sourceKind} data-plugin-writes="locked" data-plugin-approval="display-only">
+    <div className="h-full flex flex-col" data-plugin-view={view} data-market-filter={marketFilter} data-catalog-source={sourceKind} data-plugin-writes="wired" data-plugin-approval="wired">
       <PanelHeader
         title={t('settings.plugins.title')}
         actions={<HeaderMenu route={routes.view.settings('plugins')} helpFeature="app-settings" />}
@@ -244,7 +280,7 @@ export default function PluginsSettingsPage() {
                       entry={entry}
                       installed={loadoutRecord(loadout, entry.id)?.installed === true}
                       enabled={loadoutRecord(loadout, entry.id)?.enabled === true}
-                      lockedLabel={t('settings.plugins.statusLocked')}
+                      onMutate={(pluginId, op) => { void mutatePlugin(pluginId, op) }}
                     />
                   ))}
                 </SettingsCard>
@@ -297,22 +333,44 @@ function PluginEntryRow({
   entry,
   installed,
   enabled,
-  lockedLabel,
+  onMutate,
 }: {
   entry: PluginCatalogEntry
   installed: boolean
   enabled: boolean
-  lockedLabel: string
+  onMutate: (pluginId: string, op: PluginMutationName) => void
 }) {
+  const { t } = useTranslation()
   const readState = installed ? (enabled ? 'enabled' : 'installed') : 'listed'
+  if (entry.origin !== 'workspace') {
+    return (
+      <SettingsRow
+        label={entry.name}
+        description={entry.description}
+        action={<span className="text-xs text-muted-foreground" data-plugin-read={readState}>{readState}</span>}
+      />
+    )
+  }
+  const op: PluginMutationName = !installed ? 'install' : enabled ? 'disable' : 'enable'
+  const label = op === 'install'
+    ? t('settings.plugins.install')
+    : op === 'enable'
+      ? t('settings.plugins.enable')
+      : t('common.disable')
   return (
     <SettingsRow
       label={entry.name}
       description={entry.description}
       action={(
-        <span className="text-xs text-muted-foreground" data-plugin-read={readState}>
-          {lockedLabel}
-        </span>
+        <Button
+          variant="secondary"
+          size="sm"
+          data-plugin-op={op}
+          data-plugin-read={readState}
+          onClick={() => { onMutate(entry.id, op) }}
+        >
+          {label}
+        </Button>
       )}
     />
   )

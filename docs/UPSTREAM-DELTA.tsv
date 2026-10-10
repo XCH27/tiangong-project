@@ -303,3 +303,25 @@ app/apps/electron/src/renderer/pages/settings/PluginsSettingsPage.tsx	adapt	The 
 app/packages/ui/src/components/overlay/admission-presentation.ts	adapt	The list presentation stays a read. It does not admit the sidebar focus.	bun test src/components/overlay/__tests__/admission-presentation.test.ts
 app/packages/ui/src/components/overlay/__tests__/admission-presentation.test.ts	adapt	The pane source constructs the host. Settings and the presentation module do not.	bun test src/components/overlay/__tests__/admission-presentation.test.ts
 app/packages/shared/src/protocol/plugin-settings.ts	adapt	Comment records that the MCP Apps pane admits sidebar focus on its own host. This file does not.	bun test src/protocol/__tests__/mcp-apps-pane.test.ts
+app/packages/shared/src/protocol/channels.ts	adapt	plugins:mutateLoadout is the Settings plugin RPC.	bun test src/protocol/__tests__/routing.test.ts
+app/packages/shared/src/protocol/routing.ts	adapt	plugins:mutateLoadout is remote-eligible with workspace settings.	bun test src/protocol/__tests__/routing.test.ts
+app/packages/shared/src/protocol/plugin-settings.ts	adapt	Comment records that Settings calls the session kernel. Allow writes. Deny writes nothing.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/packages/shared/src/protocol/plugin-settings-host.ts	adapt	Comment records that createPluginSettingsHost stays a test host. Settings calls plugins:mutateLoadout.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/packages/shared/src/protocol/__tests__/plugin-settings.test.ts	adapt	The settings page calls mutatePluginLoadout and does not name createPluginSettingsHost.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/packages/shared/src/i18n/locales/en.json	adapt	Settings plugin enable, failure, approval, and session strings.	bun test src/i18n/__tests__/locale-parity.test.ts
+app/packages/shared/src/i18n/locales/es.json	adapt	Settings plugin enable, failure, approval, and session strings.	bun test src/i18n/__tests__/locale-parity.test.ts
+app/packages/shared/src/i18n/locales/zh-Hans.json	adapt	Settings plugin enable, failure, approval, and session strings.	bun test src/i18n/__tests__/locale-parity.test.ts
+app/packages/server-core/src/sessions/SessionManager.ts	adapt	requestSettingsPluginMutation admits plugin.loadout_mutate. Allow writes after the card. Deny writes nothing.	bun test src/sessions/session-plugin-admission.test.ts
+app/packages/server-core/src/sessions/session-plugin-admission.test.ts	adapt	Settings install, enable, and disable write only after Allow. file.update still refuses the payload.	bun test src/sessions/session-plugin-admission.test.ts
+app/packages/server-core/src/handlers/session-manager-interface.ts	adapt	requestSettingsPluginMutation and whenHostTurnSettled are on the session manager.	bun test src/sessions/session-plugin-admission.test.ts
+app/packages/server-core/src/handlers/rpc/settings.ts	adapt	plugins:mutateLoadout calls requestSettingsPluginMutation.	bun test src/sessions/session-plugin-admission.test.ts
+app/packages/server-core/src/handlers/rpc/sessions.ts	adapt	respondToPermission waits until the host turn settles.	bun test src/sessions/session-plugin-admission.test.ts
+app/apps/electron/src/shared/types.ts	adapt	mutatePluginLoadout is on the desktop API.	bun test src/shared/__tests__/ipc-channels.test.ts
+app/apps/electron/src/transport/channel-map.ts	adapt	mutatePluginLoadout invokes plugins:mutateLoadout.	bun test src/shared/__tests__/ipc-channels.test.ts
+app/apps/electron/src/shared/__tests__/ipc-channels.test.ts	adapt	Expected wire list includes plugins:mutateLoadout.	bun test src/shared/__tests__/ipc-channels.test.ts
+app/apps/electron/src/renderer/pages/settings/PluginsSettingsPage.tsx	adapt	Workspace install, enable, and disable call mutatePluginLoadout. The page does not construct the test host.	bun test src/protocol/__tests__/plugin-settings.test.ts
+app/apps/electron/src/renderer/App.tsx	adapt	A settled plugin.loadout_mutate card asks the plugins page to reread the loadout.	bun test src/sessions/session-plugin-admission.test.ts
+app/packages/shared/src/i18n/locales/de.json	adapt	Settings plugin enable, failure, approval, and session strings.	bun test src/i18n/__tests__/locale-parity.test.ts
+app/packages/shared/src/i18n/locales/ja.json	adapt	Settings plugin enable, failure, approval, and session strings.	bun test src/i18n/__tests__/locale-parity.test.ts
+app/packages/shared/src/i18n/locales/pl.json	adapt	Settings plugin enable, failure, approval, and session strings.	bun test src/i18n/__tests__/locale-parity.test.ts
+app/packages/shared/src/i18n/locales/hu.json	adapt	Settings plugin enable, failure, approval, and session strings.	bun test src/i18n/__tests__/locale-parity.test.ts

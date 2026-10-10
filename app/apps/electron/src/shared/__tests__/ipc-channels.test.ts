@@ -188,6 +188,7 @@ const EXPECTED_CHANNELS: string[] = [
   'pi:getApiKeyProviders',
   'pi:getProviderBaseUrl',
   'pi:getProviderModels',
+  'plugins:mutateLoadout',
   'power:getKeepAwake',
   'power:setKeepAwake',
   'preferences:read',

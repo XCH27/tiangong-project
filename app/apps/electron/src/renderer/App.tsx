@@ -1558,6 +1558,9 @@ export default function App() {
     if (success && allowed && toolName === 'workspace.rename') {
       window.electronAPI.getWorkspaces().then(setWorkspaces)
     }
+    if (success && toolName === 'plugin.loadout_mutate') {
+      window.dispatchEvent(new Event('fleet-plugin-loadout-settled'))
+    }
 
     if (success) {
       // Remove only the first permission from the queue (the one we just responded to)

@@ -24,11 +24,13 @@
 >
 > **Status after the sidebar shell:** the MCP Apps pane constructs one host. Human open, focus, and close admit `workbench.sidebar_focus`. §13 labels that path `wired`. Agent helpers stay `test-only`. Settings does not construct the host. DOM capture and page-target stay `test-only`. `canvas.node_select` still refuses the payload. W0.1 stays Locked. This note does not mark Ready or `usable`.
 >
-> **Status after the v0.11 pin (D51/D52):** the tag pin and the behaviour ledger are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`. Exit items 1 and 2 stay open. BLK-001 stays open. Settings stays Locked. W0.1 stays Locked. This note does not mark Ready or `usable`.
+> **Status after the v0.11 pin (D51/D52):** the tag pin and the behaviour ledger are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`. Exit items 1 and 2 stay open. BLK-001 stays open. W0.1 stays Locked. This note does not mark Ready or `usable`.
+>
+> **Status after the Settings plugin caller:** Settings → Plugins calls `plugins:mutateLoadout`. That handler calls `SessionManager.applySessionPluginMutation` with `plugin.loadout_mutate`. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow writes the skills and MCP sources the agent loads. Deny writes nothing. §13 labels that caller `wired`. `createPluginSettingsHost` stays `test-only`. `file.update` still refuses the payload. `op: grant` stays `standing_grant_rejected`. The caller is not `usable`. W0.1 stays Locked. This note does not mark Ready.
 
 ## Gate status (unchanged)
 
-W0.1 stays Locked for worker implementation. The Lead reconciliation row stays In Progress and blocking all Workers. This packet does not mark W0.1 or W1 Ready. It does not promote any row to `usable`. Settings plugin writes stay Locked. M00 stays capability `not implemented` and execution gate Locked. W1–W5, including W3A/W3B, stay Locked.
+W0.1 stays Locked for worker implementation. The Lead reconciliation row stays In Progress and blocking all Workers. This packet does not mark W0.1 or W1 Ready. It does not promote any row to `usable`. The Settings plugin caller is `wired` and is not `usable`. M00 stays capability `not implemented` and execution gate Locked. W1–W5, including W3A/W3B, stay Locked.
 
 Ready cells in `docs/WAVE-MODULE-MAP.md` stay as they are. D47–D49 are in `docs/DECISIONS-LEDGER.md`.
 
@@ -88,16 +90,14 @@ The bump was minor: ids added, none renamed or removed, in the same commit as th
 1. Each operation's id is a row in the frozen Action Table, and the Owner Module matches the operation.
 2. The row has the separate policy columns from "W0.1 Re-freeze Requirements".
 3. `InternalActionId` and `CONTRACT_VERSION` changed in the same commit as that table.
-4. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still send the old verbs and still fail closed. That sentence is the #39 result. The guest host now admits `browser.dom_snapshot` and stays `test-only`. It does not send `file.create` and it does not publish the Craft session card. The page-local host now admits `file.page_target` and stays `test-only`. It does not send `file.update` and it does not publish the Craft session card. The MCP Apps pane constructs the host and admits `workbench.sidebar_focus`. It does not send `canvas.node_select` and it does not publish the Craft session card. Agent helpers stay `test-only`. The SessionManager plugin path now admits `plugin.loadout_mutate` and stays `test-only`. It does not send `file.update`. It has no shell or IPC caller.
+4. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still send the old verbs and still fail closed. That sentence is the #39 result. The guest host now admits `browser.dom_snapshot` and stays `test-only`. It does not send `file.create` and it does not publish the Craft session card. The page-local host now admits `file.page_target` and stays `test-only`. It does not send `file.update` and it does not publish the Craft session card. The MCP Apps pane constructs the host and admits `workbench.sidebar_focus`. It does not send `canvas.node_select` and it does not publish the Craft session card. Agent helpers stay `test-only`. The SessionManager plugin path admits `plugin.loadout_mutate`. Settings → Plugins is the shell and IPC caller and §13 labels it `wired`. It does not send `file.update`. It is not `usable`.
 5. `action-owner-policy.ts` remains a guard beside the new rows.
 
 Workers do not implement a production caller for these ids from this packet.
 
 ## 3. Settings plugin writes
 
-**Settings stays Locked (D49).** #39 froze `plugin.loadout_mutate` and did not add a Settings caller. Install, enable, and disable on Settings → Plugins stay Locked until the acceptance tests in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` pass. D50 meets the namespace criterion. The caller criteria are still open. This packet does not unlock Settings.
-
-Today the page does not write `.claude-plugin/loadout.json`. It does not construct `createPluginSettingsHost` and does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`. `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` build `plugin.loadout_mutate`. The row is L2, so an unapproved call does not write. `op: grant` is `standing_grant_rejected`. No shell or IPC caller uses those methods, so the API stays `test-only`. §13 keeps "Plugin loadout install, enable, and disable from Settings" at `Locked`.
+**Settings plugin caller is `wired` (D49).** #39 froze `plugin.loadout_mutate` and did not add a Settings caller. D50 meets the namespace criterion. The acceptance tests in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` now pass. Install, enable, and disable call `plugins:mutateLoadout`. That handler calls `SessionManager.applySessionPluginMutation`. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow writes the catalog the agent loads. Deny writes nothing. The page does not construct `createPluginSettingsHost` and does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`. The row is L2, so an unapproved call does not write. `op: grant` is `standing_grant_rejected`. §13 labels the caller `wired`. It is not `usable`. This packet does not open W0.1.
 
 ### D49 criteria still open
 
@@ -116,20 +116,20 @@ All of these are true on the spine:
 4. `createPluginSettingsHost` is still not the production caller.
 5. §13 may then label the caller that actually runs. `applySessionPluginMutation` and `resolveSessionPluginGrant` stay `test-only` in any commit that has no shell or IPC caller.
 
-This packet leaves the methods `test-only` and the Settings rows `Locked`. A later unlock is not `usable` and does not close W0.1.
+The Settings caller is `wired`. `createPluginSettingsHost` stays `test-only`. The caller is not `usable` and does not close W0.1.
 
 ## 4. What still does not unblock W0.1, Ready, or usable
 
 **W0.1 stays Locked.** The Lead has not closed `docs/WAVE-MODULE-MAP.md` §3 and has not changed W1 to Ready. Absence of that declaration means Locked. Only the Lead promotes a gate to Ready or a capability to `usable`. A documentation change does not promote capability.
 
-The unflag freeze and the split-id freeze are on the spine. `browser.dom_snapshot` and `file.page_target` admit on their test hosts and stay `test-only`. The MCP Apps pane admits `workbench.sidebar_focus` and §13 labels that human path `wired`. Settings stays Locked. Exit item 6 is D50. The other exit items stay open:
+The unflag freeze and the split-id freeze are on the spine. `browser.dom_snapshot` and `file.page_target` admit on their test hosts and stay `test-only`. The MCP Apps pane admits `workbench.sidebar_focus` and §13 labels that human path `wired`. Settings → Plugins admits `plugin.loadout_mutate` and §13 labels that caller `wired`. Exit item 6 is D50. The other exit items stay open:
 
 1. The v0.11.0 pin is D51. A populated checkout, desktop loop, and migration branch are still absent. `docs/UPSTREAM-BASELINE.md` still requires that loop before W1 packets.
 2. The behaviour ledger is D52. `fleet-old` rows, the file-by-file `app/` diff, and contract parity are still open, so BLK-001 stays open.
 3. Canonical parity for AgentSeat, identity, caller provenance, idempotency, revisions, typed events, and action policy is still open. An action-id bump covers only the action-id slice of this item.
 4. ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts are still unfrozen and not version-gated for their first consumer wave.
 5. Physical persistence authority and recovery from `docs/PERSISTENCE-AUTHORITY-MAP.md` are still unrecorded as the W0.1 exit.
-6. The product/internal namespace is D50 (BLK-002 closed as a name decision). A Settings plugin caller is still absent.
+6. The product/internal namespace is D50 (BLK-002 closed as a name decision). The Settings plugin caller is `wired` and is not a W0.1 close.
 7. Ownership precedence and non-overlapping domains are still an open exit item.
 8. Active packets still have to agree with the map and grant no Worker frozen-protocol writes.
 9. W1 Ready is still undeclared. W1–W5, including W3A/W3B, stay Locked.
@@ -138,8 +138,8 @@ Also still closed to workers after #43:
 
 - BLK-003 adapter spikes for Browser, Spatial, Media, Panel, Web, and Deck stay unrecorded.
 - D46 stays unmet. The first-slide viewer is not a MotionDeck. Office edit and save stay Locked. M19 stays Locked.
-- `file.delete` and `canvas.node_delete` still have no production shell or IPC caller. Generic permission-card rows stay `test-only` except Settings `workspace.rename`. DOM capture, page-target, and the MCP Apps pane do not publish that card.
-- M00's header stays `not implemented` and Locked. Nothing in PRs #28–#43 is `usable`. DOM capture and page-target stay `test-only`. The MCP Apps human path is `wired` and is not `usable`. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. No shell or IPC caller uses it.
+- `file.delete` and `canvas.node_delete` still have no production shell or IPC caller. Generic permission-card rows stay `test-only` except Settings `workspace.rename` and Settings `plugin.loadout_mutate`. DOM capture, page-target, and the MCP Apps pane do not publish that card.
+- M00's header stays `not implemented` and Locked. Nothing in PRs #28–#43 is `usable`. DOM capture and page-target stay `test-only`. The MCP Apps human path is `wired` and is not `usable`. Settings → Plugins calls `applySessionPluginMutation` and is `wired`, not `usable`.
 
 ## Worker rule
 

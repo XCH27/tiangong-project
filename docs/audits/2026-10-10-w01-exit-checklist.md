@@ -30,13 +30,15 @@
 >
 > **Follow-up (sidebar shell):** The MCP Apps pane constructs one `createMcpAppsHost`. Human open, focus, and close admit `workbench.sidebar_focus`. L0 does not wait for a card. The right-sidebar slot changes after the kernel completes. §13 labels that human path `wired`. Agent helpers stay `test-only`. `canvas.node_select` still refuses the payload. Settings plugin writes, DOM capture, and page-target are not this caller. This note does not close W0.1 and does not promote `usable`.
 >
-> **Follow-up (v0.11 pin and BLK-001 ledger):** `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`, D51, and D52. The pin is tag `v0.11.0` at `f4e172bf`. The behaviour ledger is recorded. Exit items 1 and 2 stay open: there is no populated checkout, no desktop loop, no fleet-old tree, and no file-by-file `app/` diff. Items 3–5 and 7–9 stay open. Item 6 stays D50. BLK-001 stays open. Settings stays Locked. This note does not close W0.1 and does not promote `usable`.
+> **Follow-up (v0.11 pin and BLK-001 ledger):** `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`, D51, and D52. The pin is tag `v0.11.0` at `f4e172bf`. The behaviour ledger is recorded. Exit items 1 and 2 stay open: there is no populated checkout, no desktop loop, no fleet-old tree, and no file-by-file `app/` diff. Items 3–5 and 7–9 stay open. Item 6 stays D50. BLK-001 stays open. This note does not close W0.1 and does not promote `usable`.
+>
+> **Follow-up (Settings plugin caller):** Settings → Plugins calls `plugins:mutateLoadout`. Install, enable, and disable admit `plugin.loadout_mutate`. Allow and Deny settle through `resolveSessionPluginGrant` and `sessions:respondToPermission`. Allow writes the catalog the agent loads. Deny writes nothing. §13 labels that caller `wired`. `createPluginSettingsHost` stays `test-only`. `file.update` still refuses the payload. This note does not close W0.1 and does not promote `usable`.
 
 ## Gate status (unchanged)
 
 W0.1 stays Locked for worker implementation. `docs/WAVE-MODULE-MAP.md` still records the Lead reconciliation row as In Progress and blocking all Workers. This note does not close that row and does not mark W0.1 or W1 Ready.
 
-`docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked. Nothing in this checklist is `usable`. Settings plugin writes stay Locked (D49). The #39 freeze is CONTRACT 1.3.0, recorded as D47–D49. PRs #28–#33 themselves added no action id. PRs #41–#43 add no action id. DOM capture and page-target stay `test-only`. The MCP Apps pane is the human caller for `workbench.sidebar_focus`.
+`docs/modules/00-platform-spine.md` header stays capability `not implemented` and execution gate Locked. Nothing in this checklist is `usable`. The Settings plugin caller is `wired` (D49) and is not `usable`. The #39 freeze is CONTRACT 1.3.0, recorded as D47–D49. PRs #28–#33 themselves added no action id. PRs #41–#43 add no action id. DOM capture and page-target stay `test-only`. The MCP Apps pane is the human caller for `workbench.sidebar_focus`.
 
 W1–W5, including W3A/W3B, stay Locked. M00 as a module stays Locked.
 
