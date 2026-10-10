@@ -1,5 +1,10 @@
 # W0.1 Exit item 4 — contract version-gate
 
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this note.
+>
+> Product baseline is `.fleet/zcode` (ZCode). This Exit / Craft v0.11 pin / W0.1 Craft-migration material stays in git as reference-only historical audit. Do not treat these W0.1 Exit items as open product gates. Craft Agents remains interaction reference only. This banner does not delete the record below, does not mark `usable` or Ready, and does not invent a typecheck pass.
+
+
 > **Date:** 2026-10-10
 > **Role:** Fleet Lead. This note is the Exit item 4 version-gate. It is not a freeze.
 > **Base:** `bd761f083f45d358b52061136b6949167b24b632` (`work/fresh-base-spine` after #56).

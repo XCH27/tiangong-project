@@ -1,5 +1,10 @@
 # Spine honesty audit — PRs #3–#19 on `work/fresh-base-spine`
 
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this note.
+>
+> Product baseline is `.fleet/zcode` (ZCode). This Exit / Craft v0.11 pin / W0.1 Craft-migration material stays in git as reference-only historical audit. Do not treat these W0.1 Exit items as open product gates. Craft Agents remains interaction reference only. This banner does not delete the record below, does not mark `usable` or Ready, and does not invent a typecheck pass.
+
+
 > **Date:** 2026-10-10
 > **Base inspected:** `89b2e8a6` (`work/fresh-base-spine` after merged PR #19)
 > **What this file is:** a review note. It does not promote a decision, open a wave, or change capability status. `DECISIONS-LEDGER.md`, `WAVE-MODULE-MAP.md`, and `OWNERSHIP-MATRIX.md` stay Lead-owned.

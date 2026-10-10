@@ -1,5 +1,10 @@
 # W0.1 Exit 1 — board and settings route restores, migration branch open
 
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this note.
+>
+> Product baseline is `.fleet/zcode` (ZCode). This Exit / Craft v0.11 pin / W0.1 Craft-migration material stays in git as reference-only historical audit. Do not treat these W0.1 Exit items as open product gates. Craft Agents remains interaction reference only. This banner does not delete the record below, does not mark `usable` or Ready, and does not invent a typecheck pass.
+
+
 > **Date:** 2026-10-10 PT. Attached record timestamp `2026-10-10T07:18:03-07:00`.
 > **Role:** Fleet Lead evidence note.
 > **Spine:** `20a8d2fd0f7debcadbeb129747750d2f1a356a55` (`work/fresh-base-spine` after merged PR #54). Confirmed with `git rev-parse` on `origin/work/fresh-base-spine`.

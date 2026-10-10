@@ -52,14 +52,14 @@ product behaviour:
   catalogs.
 - Capability manifests generate UI/Agent/workflow projections; do not hand-maintain three APIs.
 - Panels/canvas cards are views; domain state stays with the owning module.
-- Exact file paths enter an execution packet only after the current v0.11 baseline is inspected.
+- Exact file paths enter an execution packet only when the assigned packet names them. Inspecting the Craft v0.11 baseline is not the product gate (D56). The product candidate is `.fleet/zcode`.
 
 ## 4. Planned Modules
 
 | Module | File | Responsibility |
 |---|---|---|
 | M00 | `00-platform-spine.md` | identity, permission, session, event, durable control authority |
-| M01 | `01-clean-craft-baseline.md` | clean Craft Agents v0.11 base and retained shell |
+| M01 | `01-clean-craft-baseline.md` | historical Craft Agents v0.11 audit and interaction reference; not the product base (D56) |
 | M02 | `02-terminal-cli-runtime/SPEC.md` | terminal surface and bounded CLI/runtime host |
 | M03 | `03-internal-action-registry.md` | canonical action definition/invocation/executor path |
 | M04 | `04-runtime-lanes-teamrun.md` | AgentSeat, RuntimeLane, TaskRun/TeamRun coordination |

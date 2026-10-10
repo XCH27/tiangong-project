@@ -1,13 +1,13 @@
 # Composable Workspace Architecture
 
-> **Authority:** binding product architecture; field-level contracts remain proposed until W0.1 re-freeze.  
-> **Product status:** `not implemented`  
-> **Spec maturity:** architecture approved; contracts in draft  
-> **Updated:** 2026-07-09
+> **Authority:** binding composition shape; Craft-shell wording is interaction reference. Field-level contracts stay proposed. W0.1 re-freeze is not the product gate (D56).
+> **Product status:** `not implemented`
+> **Spec maturity:** architecture approved; contracts in draft
+> **Updated:** 2026-07-09; product-baseline note 2026-10-10 (D56)
 
 ## 1. Product Decision
 
-Fleet is a modular spatial work operating system inside the retained Craft Agents shell.
+Fleet is a modular spatial work operating system. The product candidate is ZCode (D56). The retained Craft Agents shell below is interaction reference, not the runtime baseline.
 The infinite canvas is the place where people and agents arrange project objects, compose
 capabilities, inspect results, and open native editors. It is not a new shell and it is not a
 single document model that replaces files, browser evidence, design documents, media timelines,
@@ -202,8 +202,7 @@ This diagram describes the target composition, not the first implementation slic
 
 ### Slice A — Composable Spine
 
-Freeze the capability, ArtifactRef, workflow, view, idempotency, and revision contracts. Build
-no creative surface before the contracts and v0.11 migration gate agree.
+Freeze the capability, ArtifactRef, workflow, view, idempotency, and revision contracts before a creative surface on this spine. D56: the v0.11 migration gate is not the product gate. The product path is the ZCode candidate. This slice does not mark Ready or `usable`.
 
 ### Slice B — First Real Loop
 

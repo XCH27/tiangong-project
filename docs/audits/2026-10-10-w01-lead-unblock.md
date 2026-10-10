@@ -1,5 +1,10 @@
 # W0.1 Lead-unblock packet
 
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this note.
+>
+> Product baseline is `.fleet/zcode` (ZCode). This Exit / Craft v0.11 pin / W0.1 Craft-migration material stays in git as reference-only historical audit. Do not treat these W0.1 Exit items as open product gates. Craft Agents remains interaction reference only. This banner does not delete the record below, does not mark `usable` or Ready, and does not invent a typecheck pass.
+
+
 > **Date:** 2026-10-10
 > **Base inspected:** `7c36bb6dd761fb9c719850cb0b59e61c9c8db248` (`work/fresh-base-spine` after merged PR #37)
 > **Current base:** `9fdb881e` (`work/fresh-base-spine` after merged PR #49)
@@ -31,6 +36,8 @@
 ## Gate status (unchanged)
 
 W0.1 stays Locked for worker implementation. The Lead reconciliation row stays In Progress and blocking all Workers. This packet does not mark W0.1 or W1 Ready. It does not promote any row to `usable`. The Settings plugin caller is `wired` and is not `usable`. M00 stays capability `not implemented` and execution gate Locked. W1–W5, including W3A/W3B, stay Locked.
+
+Follow-up (D56, 2026-10-10): the wave-map cell no longer treats that Craft row as a product gate. The sentence above is the record before that correction. Spine worker waves stay Locked. This follow-up does not mark Ready or `usable`.
 
 Ready cells in `docs/WAVE-MODULE-MAP.md` stay as they are. D47–D49 are in `docs/DECISIONS-LEDGER.md`.
 

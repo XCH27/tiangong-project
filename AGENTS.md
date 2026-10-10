@@ -1,3 +1,12 @@
+> ## Hard rule — product baseline (2026-10-10)
+>
+> **产品基线 = `.fleet/zcode`（ZCode）；Craft Agents / `app/` / 本 spine 的 Craft Exit 证据仅交互参考与历史审计，不是产品底座。**
+>
+> Product baseline = `.fleet/zcode` (ZCode Host + ordered `patches/zcode/`). Agents must not resume Craft-as-baseline.
+> Do not resume Craft Exit 1–7 / v0.11 pin / Electron desktop-loop as the delivery path.
+> D56 records this correction. It does not mark any capability `usable` or any wave Ready, and it does not invent a typecheck pass.
+> `docs/engineering.md` is not on this branch.
+
 # AGENTS.md
 
 This file is the forced-read execution summary for agents working in this repository.
@@ -15,7 +24,7 @@ Read these files first in this exact order to understand the entry orientation a
 
 ## Non-Negotiable Rules
 
--   **Build on Fleet Base**: Build on the clean Fleet desktop base in `app/`; keep the shell and simplify it.
+-   **Build on Fleet Base**: Product baseline is `.fleet/zcode` (ZCode) plus ordered `patches/zcode/` (D56). `app/` and the Craft shell are interaction reference and historical audit, not the product base. Do not resume Craft Exit 1–7 or the v0.11 pin as the delivery path.
 -   **Complete Loops**: Every deliverable must cover user interface, core backend, state persistence, timelines, and permissions.
 -   **No Second Systems**: Do not create a second session store, permission model, or memory database.
 -   **Status Transparency**: Report capability status as `not implemented`, `display-only`, `wired but not visually checked`, or `usable`. `Locked` is an execution gate (`Locked`, `Ready`, `In Progress`, `Blocked` on `docs/WAVE-MODULE-MAP.md`), not a capability result. Do not start work while the assigned gate is Locked. Only the Lead promotes `usable`.

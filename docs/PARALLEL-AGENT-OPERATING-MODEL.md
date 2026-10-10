@@ -36,7 +36,7 @@ confirm the map says Ready. Starting work while Locked is a blocking violation.
 
 To resolve parallel development dependency issues between M00 and M03:
 
-1. **Checkpoint 1 (Skeleton Parallelism)**: M00 skeleton and M03 executor-domain skeleton can start in parallel only after W0.1 passes. Frozen protocol type exports and action IDs remain Lead-owned.
+1. **Checkpoint 1 (Skeleton Parallelism)**: On this Craft spine, M00 and M03 stay Locked. W0.1 Craft migration is not the product gate and does not have to pass before ZCode work (D56). This checkpoint does not open W1 and does not mark Ready. Frozen protocol type exports and action IDs remain Lead-owned on this spine.
 2. **Checkpoint 2 (M00 backbone-merged)**: The Lead explicitly declares `M00 backbone-merged` (session store, permission model, event bus are implemented and stable). M03 executor implementation MUST wait for this checkpoint.
 3. **Checkpoint 3 (M03 executor usable)**: M03 executor completes implementation and is verified, unblocking the Wave 2 gate.
 

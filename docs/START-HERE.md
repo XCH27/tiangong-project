@@ -1,12 +1,15 @@
 # Start Here
 
+> **Hard rule — product baseline (2026-10-10, D56):** 产品基线 = `.fleet/zcode`（ZCode）；Craft Agents / `app/` / 本 spine 的 Craft Exit 证据仅交互参考与历史审计，不是产品底座。 Agents must not resume Craft-as-baseline. This note does not mark `usable` or Ready.
+
 This document is the entry point for any agent or human beginning work in this repository.
 
 ---
 
 ## What Is This Project?
 
-Fleet is a local-first modular spatial work platform built on the Craft Agents base.
+Fleet is a local-first modular spatial work platform. The product candidate is ZCode at
+`.fleet/zcode`. Craft Agents is interaction reference only.
 The core product concept is in `docs/PROJECT-DIRECTION.md`; the approved composition boundary is
 in `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md`.
 
@@ -14,9 +17,9 @@ in `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md`.
 
 ## Current Delivery Spine
 
-Fleet's first delivery spine is the core backend and terminal interaction loop. It is currently
-locked while W0.1 migrates to the clean v0.11 baseline and reconciles the complete contract. The
-first modules remain:
+The product path is the ZCode candidate at `.fleet/zcode` (D56). This branch's W0.1 Craft v0.11
+migration is a historical audit. It does not block that product path. Craft Agents, `app/`, and
+the Exit 1–7 evidence stay interaction reference and history. Spine modules recorded here are:
 - **[M00 (Platform Spine)](modules/00-platform-spine.md)**
 - **[M03 (Internal Action Registry)](modules/03-internal-action-registry.md)**
 - **[M02 (Terminal CLI Runtime)](modules/02-terminal-cli-runtime/SPEC.md)**
@@ -25,8 +28,10 @@ first modules remain:
 
 ## Do Not Start Yet (Locked Waves)
 
-Work has not yet commenced on downstream waves. W1 through W5, including W3A/W3B, are Locked until
-the Lead closes W0.1. Parallel Workers must not create branches or write stubs for Locked modules.
+Downstream waves on this Craft spine stay Locked. Closing W0.1 is not the product path. Product
+work follows the ZCode candidate. Do not start Craft Exit or v0.11 migration as delivery. Parallel
+Workers must not create branches or write stubs for Locked modules on this map. D56 does not mark
+any wave Ready.
 
 ---
 
@@ -70,9 +75,10 @@ To orient yourself, read documents in this sequence:
 
 See `docs/WAVE-MODULE-MAP.md` for the live wave and module status table.
 
-- **W0** ✅ Recorded frozen baseline (2026-07-09).
-- **W0.1** In Progress — Lead-only v0.11 migration and contract/document parity re-freeze.
-- **W1–W5**, including W3A/W3B: Locked.
+- **Product path:** ZCode candidate (`.fleet/zcode`). Not Ready. Not `usable`.
+- **W0** ✅ Recorded frozen baseline (2026-07-09), historical on this spine.
+- **W0.1** Historical Craft-migration audit. Not an open product gate (D56).
+- **W1–W5**, including W3A/W3B: Locked on this map. D56 does not open them.
 
 ---
 
@@ -82,7 +88,8 @@ See `docs/WAVE-MODULE-MAP.md` for the live wave and module status table.
 |---|---|
 | What Fleet is and is not | `docs/PROJECT-DIRECTION.md` |
 | Modular spatial/workflow architecture | `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md` |
-| Verified upstream base and migration gate | `docs/UPSTREAM-BASELINE.md` |
+| Historical Craft v0.11 pin (not the product gate) | `docs/UPSTREAM-BASELINE.md` |
+| ZCode baseline correction | `docs/audits/2026-10-10-zcode-baseline-correction.md` |
 | Persistence/state authority | `docs/PERSISTENCE-AUTHORITY-MAP.md` |
 | Documentation maturity | `docs/DOCUMENT-READINESS.md` |
 | Final product decisions | `docs/DECISIONS-LEDGER.md` |

@@ -282,7 +282,9 @@ Board Cards section. Do not create a new file format for this; append the block 
 
 ## Current Board
 
-### Wave 0.1 — Control-Plane Reconciliation (Lead-only)
+### Wave 0.1 — Control-Plane Reconciliation (historical Craft audit)
+
+> **SUPERSEDED 2026-10-10 (D56):** Historical only. Not a product gate. ZCode-first supersedes this card. Product baseline is `.fleet/zcode`. The blocker line below does not block that path. This card does not mark Ready or `usable`.
 
 #### Card: W0.1 / Control Plane / Contract and packet re-freeze
 
@@ -309,4 +311,4 @@ Board Cards section. Do not create a new file format for this; append the block 
   - Documentation Readiness promotion for the exact W1 slices
   - Replacement W1/W2+ packets
 - Blocker:
-  - v0.11 desktop loop, contract parity, and the physical-store gate are not closed / W1 cannot be assigned / Settings install, enable, and disable are `wired` and not `usable` / W0.1 stays Locked
+  - Historical Craft-spine record: v0.11 desktop loop, contract parity, and the physical-store gate are not closed. Spine W1 stays Locked and is not assigned from this card. Settings install, enable, and disable are `wired` and not `usable`. D56: this does not block the ZCode product path.

@@ -1,7 +1,6 @@
 # Fleet Documentation
 
-Start with [START-HERE.md](START-HERE.md). No module implementation is currently authorized;
-W0.1 is reconciling the clean Craft Agents v0.11 baseline and canonical contracts.
+Start with [START-HERE.md](START-HERE.md). Product baseline is `.fleet/zcode` (D56). This spine's W0.1 Craft v0.11 reconciliation is historical audit and does not block the product path. No module is `usable`. No wave is Ready.
 
 ## Binding Orientation
 
@@ -12,7 +11,7 @@ W0.1 is reconciling the clean Craft Agents v0.11 baseline and canonical contract
 - [WAVE-MODULE-MAP.md](WAVE-MODULE-MAP.md) — only execution-gate/module placement source.
 - [DOCUMENT-READINESS.md](DOCUMENT-READINESS.md) — spec maturity and blockers.
 - [PERSISTENCE-AUTHORITY-MAP.md](PERSISTENCE-AUTHORITY-MAP.md) — one state authority per class.
-- [UPSTREAM-BASELINE.md](UPSTREAM-BASELINE.md) — required v0.11 migration gate.
+- [UPSTREAM-BASELINE.md](UPSTREAM-BASELINE.md) — historical Craft v0.11 pin record; not the product gate (D56).
 
 ## Execution Material
 
