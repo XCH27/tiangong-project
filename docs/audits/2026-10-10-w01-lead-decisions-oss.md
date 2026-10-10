@@ -4,7 +4,7 @@
 > **Role:** Fleet Lead. Vella authorized the Lead to choose. This note is the choice.
 > **Base:** `6887f1ec` (`work/fresh-base-spine` after #38), then this freeze.
 > **Contract:** `docs/contracts/action-ids.md` v1.3.0 and `CONTRACT_VERSION` `1.3.0` in `app/packages/shared/src/protocol/internal-action.ts`, same change.
-> **What this does not do:** It does not mark W0.1 or W1 Ready. It does not promote any capability to `usable`. It does not edit Ready cells in `docs/WAVE-MODULE-MAP.md`. Settings plugin writes stay Locked.
+> **What this does not do:** It does not mark W0.1 or W1 Ready. It does not promote any capability to `usable`. It does not edit Ready cells in `docs/WAVE-MODULE-MAP.md`. The Settings plugin caller is `wired` and is not `usable`.
 >
 > **Amendment (2026-10-10, D50):** Criterion 2 below is met. The product and internal strings are `docs/audits/2026-10-10-blk002-namespace-oss.md`. At that amendment, criteria 3, 4, and 5 were not met.
 >
@@ -72,7 +72,7 @@ Directions stay separate:
 
 `action-owner-policy.ts` stays a guard for the old verbs. `file.update`, `file.create`, and `canvas.node_select` still refuse those payloads. The new ids do not. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still use the old verbs and still fail closed. §13 does not call those callers `wired`. That paragraph is the #39 result.
 
-After #41–#43 (`92ee3ea5`), the guest host admits `browser.dom_snapshot`, the page-local host admits `file.page_target`, and the MCP Apps host admits `workbench.sidebar_focus`. Each stays `test-only` in §13. None publishes the Craft session card. None has a shell or IPC caller. The old verbs still refuse those payloads. `plugin.loadout_mutate` still has no caller. Settings stays Locked (D49). W0.1 stays Locked. Nothing in those admits is `usable`.
+After #41–#43 (`92ee3ea5`), the guest host admits `browser.dom_snapshot`, the page-local host admits `file.page_target`, and the MCP Apps host admits `workbench.sidebar_focus`. Each stays `test-only` in §13. None publishes the Craft session card. None has a shell or IPC caller. The old verbs still refuse those payloads. At that commit `plugin.loadout_mutate` had no caller and Settings stayed Locked (D49). W0.1 stays Locked. Nothing in those admits is `usable`.
 
 `aigc.job_submit` keeps its L1 gate and `undo: not_supported`, so admission is still the human card (`undo_contract_missing`). The new columns say side effect `external_job`, approval `human_card`, cancellation `before_external_submit`, retry `reconcile_no_repeat`. That records the split without changing the gate.
 

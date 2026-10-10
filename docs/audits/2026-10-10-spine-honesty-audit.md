@@ -17,7 +17,9 @@
 >
 > **Follow-up after PRs #41–#43 (2026-10-10):** squash `92ee3ea5` on `work/fresh-base-spine`. This audit body is not rewritten. `browser.dom_snapshot`, `file.page_target`, and `workbench.sidebar_focus` admit on their test hosts. §13 labels each `test-only`. None has a shell or IPC caller, and none publishes the Craft session card. `file.create`, `file.update`, and `canvas.node_select` still refuse those payloads. `plugin.loadout_mutate` still has no caller. Settings plugin writes stay Locked (D49). W0.1 stays Locked. Nothing in those admits is `usable`. The DOM-capture and owner-mismatch sections below are historical for the audited base.
 >
-> **Follow-up (D50, 2026-10-10):** BLK-002 is closed as a name decision. The §4 row that lists namespace (BLK-002) among the reasons W1 stays Locked is historical for that cell. W1 stays Locked because the other W0.1 exit items are open and no Ready declaration exists. Settings stays Locked. This audit body is not rewritten.
+> **Follow-up (D50, 2026-10-10):** BLK-002 is closed as a name decision. The §4 row that lists namespace (BLK-002) among the reasons W1 stays Locked is historical for that cell. W1 stays Locked because the other W0.1 exit items are open and no Ready declaration exists. At that record Settings stayed Locked. This audit body is not rewritten.
+>
+> **Follow-up after PR #49 (2026-10-10):** squash `9fdb881e` on `work/fresh-base-spine`. This audit body is not rewritten. Settings install, enable, and disable are `wired`. The page calls `plugins:mutateLoadout`. That handler admits `plugin.loadout_mutate` and publishes the Craft session permission card. Allow writes the catalog the agent loads. Deny writes nothing. `createPluginSettingsHost` stays `test-only`. `file.update` still refuses the payload. `op: grant` stays `standing_grant_rejected`. The caller is not `usable`. W0.1 stays Locked. Earlier follow-ups that say Settings stays Locked describe those earlier bases. The plugin section below is historical for the audited base.
 
 ## Verdict
 

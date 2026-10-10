@@ -308,4 +308,4 @@ Board Cards section. Do not create a new file format for this; append the block 
   - Documentation Readiness promotion for the exact W1 slices
   - Replacement W1/W2+ packets
 - Blocker:
-  - v0.11 checkout and contract parity are not closed / W1 cannot be assigned / Settings stays Locked
+  - v0.11 checkout and contract parity are not closed / W1 cannot be assigned / Settings install, enable, and disable are `wired` and not `usable` / W0.1 stays Locked
