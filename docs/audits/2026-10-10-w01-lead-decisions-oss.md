@@ -64,7 +64,9 @@ Directions stay separate:
 | `browser.dom_snapshot` | M06 | L2, undo not required, card | Page text can carry secrets (D23). It is not a file create and it is not a screenshot bundle. |
 | `workbench.sidebar_focus` | M16 | L0, undo not required, no card | One sidebar slot. No domain write. `workbench.view_open` stays a draft. |
 
-`action-owner-policy.ts` stays a guard for the old verbs. `file.update`, `file.create`, and `canvas.node_select` still refuse those payloads. The new ids do not. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still use the old verbs and still fail closed. §13 does not call those callers `wired`.
+`action-owner-policy.ts` stays a guard for the old verbs. `file.update`, `file.create`, and `canvas.node_select` still refuse those payloads. The new ids do not. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still use the old verbs and still fail closed. §13 does not call those callers `wired`. That paragraph is the #39 result.
+
+After #41–#43 (`92ee3ea5`), the guest host admits `browser.dom_snapshot`, the page-local host admits `file.page_target`, and the MCP Apps host admits `workbench.sidebar_focus`. Each stays `test-only` in §13. None publishes the Craft session card. None has a shell or IPC caller. The old verbs still refuse those payloads. `plugin.loadout_mutate` still has no caller. Settings stays Locked (D49). W0.1 stays Locked. Nothing in those admits is `usable`.
 
 `aigc.job_submit` keeps its L1 gate and `undo: not_supported`, so admission is still the human card (`undo_contract_missing`). The new columns say side effect `external_job`, approval `human_card`, cancellation `before_external_submit`, retry `reconcile_no_repeat`. That records the split without changing the gate.
 
