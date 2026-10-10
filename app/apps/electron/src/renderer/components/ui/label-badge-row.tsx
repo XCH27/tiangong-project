@@ -31,6 +31,8 @@ export interface LabelBadgeRowProps {
   /** Called when a label value is changed — receives the updated full sessionLabels array */
   onLabelsChange?: (updatedLabels: string[]) => void
   /** Additional className for the container */
+  autoOpenLabelId?: string | null
+  onAutoOpenConsumed?: () => void
   className?: string
 }
 
@@ -57,6 +59,8 @@ export function LabelBadgeRow({
   labels,
   onLabelsChange,
   className,
+  autoOpenLabelId,
+  onAutoOpenConsumed,
 }: LabelBadgeRowProps) {
   const { isDark } = useTheme()
 
@@ -65,6 +69,15 @@ export function LabelBadgeRow({
 
   // Memoize flat lookup map (only recompute when labels config changes)
   const labelMap = React.useMemo(() => flattenLabelTree(labels), [labels])
+
+  React.useEffect(() => {
+    if (!autoOpenLabelId) return
+    const index = sessionLabels.findIndex(entry => parseLabelEntry(entry).id === autoOpenLabelId)
+    if (index >= 0) {
+      setOpenIndex(index)
+      onAutoOpenConsumed?.()
+    }
+  }, [autoOpenLabelId, sessionLabels, onAutoOpenConsumed])
 
   // Don't render if no labels applied
   if (sessionLabels.length === 0) return null

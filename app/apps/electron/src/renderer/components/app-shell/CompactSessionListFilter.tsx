@@ -24,12 +24,16 @@ import { useTranslation } from 'react-i18next'
 import {
   Calendar,
   Check,
+  CheckCheck,
+  Archive,
   Flag,
+  Folder,
   Inbox,
   Layers,
   ListFilter,
   MailOpen,
   Search,
+  Settings2,
   X,
 } from 'lucide-react'
 
@@ -84,6 +88,12 @@ interface CompactSessionListFilterProps {
   setChatGroupingMode: (mode: ChatGroupingMode) => void
   isStateSubView: boolean
   onOpenSearch: () => void
+  onOpenProjects: () => void
+  isArchived: boolean
+  onToggleArchive: () => void
+  onConfigureStatuses: (trigger: HTMLButtonElement | null) => void
+  onMarkAllRead: () => void
+  canMarkAllRead: boolean
 }
 
 export function CompactSessionListFilter({
@@ -99,10 +109,17 @@ export function CompactSessionListFilter({
   setChatGroupingMode,
   isStateSubView,
   onOpenSearch,
+  onOpenProjects,
+  isArchived,
+  onToggleArchive,
+  onConfigureStatuses,
+  onMarkAllRead,
+  canMarkAllRead,
 }: CompactSessionListFilterProps) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
 
   React.useEffect(() => {
     if (!open) setQuery('')
@@ -180,6 +197,7 @@ export function CompactSessionListFilter({
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>
         <HeaderIconButton
+          ref={triggerRef}
           icon={<ListFilter className="h-4 w-4" />}
           aria-label={t('sidebar.filterChats')}
           className={cn(
@@ -327,6 +345,34 @@ export function CompactSessionListFilter({
           {!isSearching && (
             <div className="px-2 pt-2">
               <DrawerClose asChild>
+                <button type="button" onClick={onOpenProjects}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-[10px] hover:bg-foreground/5 active:bg-foreground/10 transition-colors text-left">
+                  <Folder className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium">{t('sidebar.projects')}</span>
+                </button>
+              </DrawerClose>
+              <DrawerClose asChild>
+                <button type="button" onClick={onToggleArchive} aria-pressed={isArchived}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-[10px] hover:bg-foreground/5 active:bg-foreground/10 transition-colors text-left">
+                  <Archive className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium">{t(isArchived ? 'sidebar.allSessions' : 'sidebar.archived')}</span>
+                </button>
+              </DrawerClose>
+              <DrawerClose asChild>
+                <button type="button" onClick={() => onConfigureStatuses(triggerRef.current)}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-[10px] hover:bg-foreground/5 active:bg-foreground/10 transition-colors text-left">
+                  <Settings2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium">{t('sidebarMenu.configureStatuses')}</span>
+                </button>
+              </DrawerClose>
+              <DrawerClose asChild>
+                <button type="button" onClick={onMarkAllRead} disabled={!canMarkAllRead}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-[10px] hover:bg-foreground/5 active:bg-foreground/10 transition-colors text-left disabled:opacity-50 disabled:pointer-events-none">
+                  <CheckCheck className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium">{t('sidebarMenu.markAllRead')}</span>
+                </button>
+              </DrawerClose>
+              <DrawerClose asChild>
                 <button
                   type="button"
                   onClick={onOpenSearch}
@@ -342,6 +388,27 @@ export function CompactSessionListFilter({
       </DrawerContent>
     </Drawer>
   )
+}
+
+/** A filtered click is a fixed set of IDs, never a later view or another Host. */
+export async function applyFilteredReadSnapshot(
+  sessionIds: readonly string[],
+  workspaceId: string,
+  isCurrent: () => boolean,
+  getWindowWorkspace: () => Promise<string | null>,
+  markRead: (sessionId: string) => void,
+): Promise<void> {
+  const snapshot = [...sessionIds]
+  if (!isCurrent()) return
+  let windowWorkspace: string | null
+  try { windowWorkspace = await getWindowWorkspace() } catch { return }
+  if (windowWorkspace !== workspaceId || !isCurrent()) return
+  // No asynchronous gap between dispatches: the routed client captures its
+  // current Host synchronously. Recheck scope if a callback changes context.
+  for (const sessionId of snapshot) {
+    if (!isCurrent()) break
+    markRead(sessionId)
+  }
 }
 
 function Section({

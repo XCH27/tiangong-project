@@ -23,7 +23,7 @@ import type { LoadedPage } from '@craft-agent/shared/pages/types'
  * and the New Page action; tiles open the embedded page render.
  */
 export function PagesHome() {
-  const { activeWorkspaceId } = useAppShellContext()
+  const { activeWorkspaceId, rightSidebarButton } = useAppShellContext()
   const { t } = useTranslation()
   const { navigate } = useNavigation()
   const pages = useAtomValue(pagesAtom)
@@ -140,6 +140,7 @@ export function PagesHome() {
             />
           )}
         </div>
+        <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
           onClick={handleCreatePage}
@@ -148,6 +149,8 @@ export function PagesHome() {
         >
           <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('pages.newPage')}
         </button>
+        {rightSidebarButton}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

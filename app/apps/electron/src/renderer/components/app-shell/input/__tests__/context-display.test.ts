@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { getContextDisplay } from '../context-display'
+import { getContextDisplay, getContextDisplayLabels } from '../context-display'
 
 describe('truthful context occupancy', () => {
   it('uses the resolved compaction window and does not cap over-limit usage at 99%', () => {
@@ -22,5 +22,13 @@ describe('truthful context occupancy', () => {
   it('does not invent a limit for snapshots or show a stale count as a live warning', () => {
     expect(getContextDisplay({ contextUsage: { usedTokens: 419000, limitKind: 'compaction', isEstimate: false, isStale: true, canCompact: false } }, 200000)).toMatchObject({ limitTokens: null, percent: null, showWarning: false })
     expect(getContextDisplay(undefined, 200000).visible).toBe(false)
+  })
+  it('keeps known capacity inspectable before usage arrives without claiming an estimate or zero', () => {
+    const display = getContextDisplay({ inputTokens: 0 }, 200000)
+    const labels = getContextDisplayLabels(display, key => key)
+    expect(labels.capacity).toBe('200k')
+    expect(labels.usage).toBe('chat.contextUsage.unknown')
+    expect(labels.qualifier).toBe('')
+    expect(display.percent).toBeNull()
   })
 })

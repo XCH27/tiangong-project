@@ -230,3 +230,14 @@ export function highlightMatch(text: string, query: string): React.ReactNode {
     highlightMatch(after, query),
   )
 }
+
+/** ZCode/Cindy's activity projection, using Craft's existing live Session metadata.
+ * Manual Board status is deliberately not an execution signal. */
+export function getSessionActivity(item: SessionMeta, hasPendingPrompt = false) {
+  if (hasPendingPrompt) return 'waiting'
+  if (item.isProcessing) return 'running'
+  if (item.lastMessageRole === 'error') return 'failed'
+  if (item.lastMessageRole === 'plan') return 'planReady'
+  if (hasUnreadMeta(item)) return 'unread'
+  return null
+}

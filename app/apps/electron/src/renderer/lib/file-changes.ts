@@ -1,4 +1,4 @@
-import type { ActivityItem, FileChange } from '@craft-agent/ui'
+import type { ActivityItem, FileChange, Turn } from '@craft-agent/ui'
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
@@ -88,4 +88,12 @@ export function getFirstFileChangeIdForActivity(activityId: string, changes: Fil
     change.id.startsWith(`${activityId}:`) ||
     change.id.startsWith(`${activityId}-`),
   )?.id
+}
+
+/** Historical tool changes only: pending calls are not completed edits, and a
+ * missing requested turn must never silently fall back to another turn. */
+export function collectTurnReviewChanges(turns: Turn[], turnId?: string): FileChange[] {
+  return turns.flatMap(turn => turn.type === 'assistant' && (!turnId || turn.turnId === turnId)
+    ? collectFileChangesFromActivities(turn.activities.filter(activity => activity.status === 'completed' || activity.status === 'error'))
+    : [])
 }

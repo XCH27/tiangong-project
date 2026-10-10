@@ -38,6 +38,22 @@ export { generateMessageId } from '@craft-agent/core/types'
  */
 export type SessionStatus = string
 
+/** Public gh CLI identity only. Credentials stay in gh's own credential store. */
+export interface GitHubCliAccount { host: string; login: string; active: boolean }
+export interface GitHubCliStatus {
+  state: 'connected' | 'disconnected' | 'unavailable' | 'error'
+  accounts: GitHubCliAccount[]
+}
+export type GitHubCliCommand =
+  | { action: 'start' }
+  | { action: 'poll' | 'cancel'; flowId: string }
+  | { action: 'switch' | 'logout'; host: string; login: string }
+export interface GitHubCliAuthResult {
+  state: 'starting' | 'waiting' | 'complete' | 'cancelled' | 'error'
+  flowId?: string
+  userCode?: string
+}
+
 export type BuiltInStatusId = 'todo' | 'in-progress' | 'needs-review' | 'done' | 'cancelled'
 
 /**

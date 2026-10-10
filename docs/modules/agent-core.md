@@ -53,6 +53,10 @@ constrain binding, permission, recovery and native adapter behavior before featu
 The Host owns Session identity, accepted inputs, Project/loadout, permissions, events and accounting.
 Each admitted run has one executor; its private continuation is not another editable history.
 
+Shutdown belongs to the same Host/App owner: synchronously fence ordinary/Guide/deferred admission and undispatched commands. Accepted payloads/bindings retain their existing journal and cold-reopen discard policy, without replay.
+Foreground cancellation and owned residency/late-receipt settlement are separate; execution dependencies and Session storage remain available until actual settlement, including App construction already in flight.
+An existing bounded acknowledgement may report incomplete close while that owner retains deferred cleanup; it cannot claim completion or close SQLite under a live writer. Explicit process termination remains a separate survival limit.
+
 1. Capture executor, runtime target, provider/account handle, model, effort/Fast and loadout on
    admission. Persist each queued input's own binding. A later picker change affects a later input;
    retries retain identity except an explicitly enabled, recorded same-model account fallback.
@@ -85,17 +89,13 @@ The [impact table](../architecture.md#executor-choice-and-feature-development) o
 ## First proof
 
 Pi uses `turn-loop.ts` → `pi-turn.ts` → Pi Core `runAgentLoop`; Claude uses `native-agent-turn.ts` → official SDK 0.3.289. Neither runs the legacy outer inference loop.
-Host preparation, request admission, tool scheduling, permissions, effect receipts and SQLite remain canonical.
-Pi Agent Core schedules rounds, invokes Host tool wrappers and settles the admitted run. Its stream port delegates request
-assembly/provider calls and actual tool execution to Host ports. Host retains retry, compaction
-and durable history. OV-084 removes the empty Coding Agent resource/session wrapper. Public
-Agent Core prepare/finish hooks schedule Host requests without hidden continuation messages.
-No Coding Agent prompt, built-in tool or ambient extension autoload is enabled.
-Pi release intake keeps Agent Core and Host Pi AI on one exact version. The 1.0.1 update retains
-the existing prepare/finish hooks and Host retry/compaction owners. OAuth changes
-must preserve Host-scoped transport, selected-registration/account validation and one listener per
-login; a failed listener rejects before opening a browser. Released Coding Agent features are not
-enabled by updating these libraries, and an SDK update does not resolve live account failures.
+Host preparation, admission, tools, permissions, receipts and SQLite remain canonical. Pi Agent Core schedules rounds, invokes Host wrappers and settles the admitted run.
+Its stream delegates request assembly/provider calls and tool execution to Host ports; Host retains retry, compaction and durable history. Public prepare/finish hooks schedule requests without hidden continuation messages.
+OV-084 retires the empty Coding Agent resource/session wrapper; no Coding Agent prompt, built-in tool or ambient extension autoload is enabled.
+Pi release intake keeps Agent Core and Host Pi AI on one exact version, retaining prepare/finish hooks
+and Host retry/compaction owners. OAuth changes preserve Host-scoped transport, selected-registration/
+account validation and one listener per login; a failed listener rejects before opening a browser.
+Library updates enable no Coding Agent features and do not resolve live account failures.
 Using Agent Core does not enable the Coding Agent CLI/extensions or prove context efficiency. Its
 public loop receives actual schemas and completed text/reasoning/tool outcomes. The redundant Agent
 queue/state wrapper and detached tool fallback are retired; one awaited Host batch closes every call.

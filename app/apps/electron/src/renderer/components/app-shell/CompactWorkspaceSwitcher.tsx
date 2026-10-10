@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { useState, useCallback, useRef } from "react"
-import { Check, FolderPlus, ExternalLink, ChevronDown, Cloud, CloudOff, Trash2 } from "lucide-react"
+import { Check, ExternalLink, ChevronDown, Cloud, CloudOff, Trash2 } from "lucide-react"
 import { AnimatePresence } from "motion/react"
 import { useSetAtom } from "jotai"
 import { toast } from "sonner"
@@ -14,7 +14,6 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
-  DrawerClose,
 } from "@/components/ui/drawer"
 import { WorkspaceAvatar } from "@/components/ui/workspace-avatar"
 import { WorkspaceCreationScreen } from "@/components/workspace"
@@ -111,12 +110,6 @@ export function CompactWorkspaceSwitcher({
     if (!activeWorkspaceId || !workspaceUnreadMap) return false
     return workspaces.some((workspace) => workspace.id !== activeWorkspaceId && workspaceUnreadMap[workspace.id])
   }, [workspaces, activeWorkspaceId, workspaceUnreadMap])
-
-  const handleNewWorkspace = () => {
-    setShowCreationScreen(true)
-    setFullscreenOverlayOpen(true)
-    setOpen(false)
-  }
 
   const handleWorkspaceCreated = (workspace: Workspace) => {
     setShowCreationScreen(false)
@@ -282,18 +275,6 @@ export function CompactWorkspaceSwitcher({
               )
             })}
 
-            <DrawerClose asChild>
-              <button
-                type="button"
-                onClick={handleNewWorkspace}
-                className="mt-1 flex items-center gap-3 px-3 py-3 rounded-[10px] hover:bg-foreground/5 transition-colors text-left"
-              >
-                <div className="h-7 w-7 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
-                  <FolderPlus className="h-4 w-4 text-foreground/60" />
-                </div>
-                <span className="text-sm font-medium">{t("workspace.addWorkspace")}</span>
-              </button>
-            </DrawerClose>
           </div>
         </DrawerContent>
       </Drawer>

@@ -48,7 +48,7 @@ interface LeaseState {
  * live pages flows into the frame as a replacement snapshot.
  */
 export function PageView({ pageSlug }: PageViewProps) {
-  const { activeWorkspaceId, onOpenFile, enabledSources } = useAppShellContext()
+  const { activeWorkspaceId, onOpenFile, enabledSources, rightSidebarButton } = useAppShellContext()
   const { t } = useTranslation()
   const { navigate } = useNavigation()
   const pages = useAtomValue(pagesAtom)
@@ -220,7 +220,9 @@ export function PageView({ pageSlug }: PageViewProps) {
   // ------------------------------------------------------------------
   if (!page) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full flex-col">
+        <div className="flex justify-end p-2">{rightSidebarButton}</div>
+        <div className="flex flex-1 items-center justify-center">
         {fallbackResolved ? (
           <div className="flex flex-col items-center gap-3 text-sm text-foreground/50">
             <span>{t('pages.notFound')}</span>
@@ -234,6 +236,7 @@ export function PageView({ pageSlug }: PageViewProps) {
         ) : (
           <LoadingIndicator label={t('common.loading')} />
         )}
+        </div>
       </div>
     )
   }
@@ -353,6 +356,7 @@ export function PageView({ pageSlug }: PageViewProps) {
               </StyledDropdownMenuItem>
             </StyledDropdownMenuContent>
           </DropdownMenu>
+          {rightSidebarButton}
         </div>
       </div>
 

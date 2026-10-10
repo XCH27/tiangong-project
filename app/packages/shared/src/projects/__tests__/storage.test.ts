@@ -122,4 +122,18 @@ describe('ensureProjectForFolder (a Project is one folder)', () => {
     expect(reopened.archivedAt).toBeUndefined();
     expect(loadWorkspaceProjects(workspaceRoot)).toHaveLength(1);
   });
+
+  it('does not let a generic metadata edit move a project to another folder', () => {
+    const firstFolder = join(tempDir, 'first');
+    const secondFolder = join(tempDir, 'second');
+    mkdirSync(firstFolder);
+    mkdirSync(secondFolder);
+    const project = ensureProjectForFolder(workspaceRoot, firstFolder);
+
+    expect(() => updateProject(workspaceRoot, project.slug, {
+      workingDirectory: secondFolder,
+    })).toThrow('A project folder cannot be changed through project settings');
+    expect(findProjectByFolder(workspaceRoot, firstFolder)?.config.id).toBe(project.id);
+    expect(findProjectByFolder(workspaceRoot, secondFolder)).toBeNull();
+  });
 });

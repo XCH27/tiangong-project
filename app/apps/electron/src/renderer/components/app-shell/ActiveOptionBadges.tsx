@@ -3,23 +3,13 @@ import { useTranslation } from "react-i18next"
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SlashCommandMenu, DEFAULT_SLASH_COMMAND_GROUPS, type SlashCommandId } from '@/components/ui/slash-command-menu'
-import { ChevronDown, Info } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { PERMISSION_MODE_CONFIG, type PermissionMode } from '@craft-agent/shared/agent/modes'
 import { ActiveTasksBar, type BackgroundTask } from './ActiveTasksBar'
 import type { TerminalOverlayData } from './TaskActionMenu'
-import { LabelIcon, LabelValueTypeIcon } from '@/components/ui/label-icon'
-import { LabelValuePopover } from '@/components/ui/label-value-popover'
+import { LabelBadgeRow } from '@/components/ui/label-badge-row'
 import type { LabelConfig } from '@craft-agent/shared/labels'
-import { flattenLabels, parseLabelEntry, formatLabelEntry, formatDisplayValue } from '@craft-agent/shared/labels'
-import { resolveEntityColor } from '@craft-agent/shared/colors'
-import { useTheme } from '@/context/ThemeContext'
-import { useDynamicStack } from '@/hooks/useDynamicStack'
 import type { SessionStatus } from '@/config/session-status-config'
-import { getState } from '@/config/session-status-config'
-import { SessionStatusMenu } from '@/components/ui/session-status-menu'
-import { MetadataBadge } from '@/components/ui/metadata-badge'
-import { openLabelLink } from '@/lib/open-label-link'
-import { SessionInfoPopover } from './SessionInfoPopover'
 
 // ============================================================================
 // Permission Mode Icon Component
@@ -43,6 +33,7 @@ function PermissionModeIcon({ mode, className }: { mode: PermissionMode; classNa
 }
 
 export interface ActiveOptionBadgesProps {
+  showPermissionMode?: boolean
   /** Current permission mode */
   permissionMode?: PermissionMode
   /** Callback when permission mode changes */
@@ -82,359 +73,29 @@ export interface ActiveOptionBadgesProps {
   className?: string
 }
 
-/** Resolved label entry: config + parsed value + original index in sessionLabels */
-interface ResolvedLabelEntry {
-  config: LabelConfig
-  rawValue?: string
-  index: number
-}
-
-export function ActiveOptionBadges({
-  permissionMode = 'ask',
-  onPermissionModeChange,
-  tasks = [],
-  sessionId,
-  sessionFolderPath,
-  onKillTask,
-  onInsertMessage,
-  onShowTerminalOverlay,
-  sessionLabels = [],
-  labels = [],
-  onRemoveLabel,
-  onLabelsChange,
-  autoOpenLabelId,
-  onAutoOpenConsumed,
-  sessionStatuses = [],
-  currentSessionStatus,
-  onSessionStatusChange,
-  className,
-}: ActiveOptionBadgesProps) {
-  // Resolve session label entries to their config objects + parsed values.
-  // Entries may be bare IDs ("bug") or valued ("priority::3").
-  // Preserves the raw value and original index for editing/removal.
-  const resolvedLabels = React.useMemo((): ResolvedLabelEntry[] => {
-    if (sessionLabels.length === 0 || labels.length === 0) return []
-    const flat = flattenLabels(labels)
-    const result: ResolvedLabelEntry[] = []
-    for (let i = 0; i < sessionLabels.length; i++) {
-      const parsed = parseLabelEntry(sessionLabels[i])
-      const config = flat.find(l => l.id === parsed.id)
-      if (config) {
-        result.push({ config, rawValue: parsed.rawValue, index: i })
-      }
-    }
-    return result
-  }, [sessionLabels, labels])
-
-  const hasLabels = resolvedLabels.length > 0
-
-  // Resolve the current state from sessionStatuses for the badge display.
-  // Every session always has a state — fall back to the default state (or 'todo')
-  // when currentSessionStatus isn't explicitly set, matching SessionList's behavior.
-  const effectiveStateId = currentSessionStatus || 'todo'
-  const resolvedState = sessionStatuses.length > 0 ? getState(effectiveStateId, sessionStatuses) : undefined
-  const hasState = !!resolvedState
-
-  // Show the stacking container when there are labels (state badge is now rendered standalone on the left)
-  const hasStackContent = hasLabels
-
-  // Dynamic stacking with equal visible strips: ResizeObserver computes per-badge
-  // margins directly on children. Wider badges get more negative margins so each
-  // shows the same visible strip when stacked. No React re-renders needed.
-  const stackRef = useDynamicStack({ gap: 8, minVisible: 20, reservedStart: 0 })
-
-  // Only render if badges or tasks are active
-  if (!permissionMode && tasks.length === 0 && !hasState && !hasStackContent) {
-    return null
-  }
-
-  return (
-    <>
-      {/* Background tasks row — running / done / orphaned chips. Rendered above the
-       * options row so a growing number of tasks wraps without disturbing the
-       * mode/label badges. Only present when there are active/recent tasks. */}
-      {tasks.length > 0 && sessionId && (
-        <div className="flex items-center flex-wrap gap-2 mb-2 px-px">
-          <ActiveTasksBar
-            tasks={tasks}
-            sessionId={sessionId}
-            onKillTask={onKillTask}
-            onInsertMessage={onInsertMessage}
-            onShowTerminalOverlay={onShowTerminalOverlay}
-          />
-        </div>
-      )}
-
-    <div className={cn("flex items-start gap-2 mb-2 px-px pt-px pb-0.5", className)}>
-      {/* Left side: mode → state → labels stack */}
-      <div className="flex items-start gap-2 min-w-0 flex-1">
-        {/* Permission Mode Badge */}
-        {permissionMode && (
-          <div className="shrink-0">
-            <PermissionModeDropdown
-              permissionMode={permissionMode}
-              onPermissionModeChange={onPermissionModeChange}
-              sessionId={sessionId}
-            />
-          </div>
-        )}
-
-        {/* State Badge — standalone on the left, after Mode */}
-        {hasState && resolvedState && (
-          <div className="shrink-0">
-            <StateBadge
-              state={resolvedState}
-              sessionStatuses={sessionStatuses}
-              onSessionStatusChange={onSessionStatusChange}
-              sessionId={sessionId}
-            />
-          </div>
-        )}
-
-        {/* Stacking container for label badges (left side).
-         * useDynamicStack sets per-child marginLeft directly via ResizeObserver.
-         * overflow: clip prevents scroll container while py/-my gives shadow room. */}
-        {hasStackContent && (
-          <div
-            className="flex-1 min-w-0 max-w-full py-0.5 -my-0.5"
-            style={{
-              // shadow-minimal replicated as drop-shadow (traces masked alpha, no clipping).
-              // Ring uses higher blur+opacity for visible border feel (hard 1px ring can't be replicated exactly).
-              // Blur shadows use reduced blur+opacity to stay tight (accounting for no negative spread in drop-shadow).
-              filter: 'drop-shadow(0px 0px 0.5px rgba(var(--foreground-rgb), 0.3)) drop-shadow(0px 1px 0.1px rgba(0,0,0,0.04)) drop-shadow(0px 3px 0.2px rgba(0,0,0,0.03))',
-            }}
-          >
-            <div
-              ref={stackRef}
-              className="flex items-center min-w-0 py-1 -my-1"
-              style={{ overflow: 'clip' }}
-            >
-              {/* Label badges */}
-              {resolvedLabels.map(({ config, rawValue, index }) => (
-                <LabelBadge
-                  key={`${config.id}-${index}`}
-                  label={config}
-                  value={rawValue}
-                  autoOpen={config.id === autoOpenLabelId}
-                  onAutoOpenConsumed={onAutoOpenConsumed}
-                  sessionId={sessionId}
-                  onValueChange={(newValue) => {
-                    // Rebuild the sessionLabels array with the updated entry
-                    const updated = [...sessionLabels]
-                    updated[index] = formatLabelEntry(config.id, newValue)
-                    onLabelsChange?.(updated)
-                  }}
-                  onRemove={() => {
-                    if (onLabelsChange) {
-                      onLabelsChange(sessionLabels.filter((_, i) => i !== index))
-                    } else {
-                      onRemoveLabel?.(config.id)
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* Right side: Files popover button */}
-      <div className="shrink-0">
-        <FilesPopoverButton sessionId={sessionId} sessionFolderPath={sessionFolderPath} />
-      </div>
-    </div>
-    </>
-  )
-}
-
-// ============================================================================
-// Label Badge Component
-// ============================================================================
-
-/**
- * Renders a single label badge with LabelValuePopover for editing/removal.
- * No box-shadow on the badge itself — all shadows come from the parent
- * wrapper's drop-shadow filter (traces masked alpha without clipping).
- * Shows: [color circle] [name] [· value in mono] [chevron]
- */
-function LabelBadge({
-  label,
-  value,
-  autoOpen,
-  onAutoOpenConsumed,
-  onValueChange,
-  onRemove,
-  sessionId,
-}: {
-  label: LabelConfig
-  value?: string
-  /** When true, auto-open the value popover on mount (for newly added valued labels) */
-  autoOpen?: boolean
-  onAutoOpenConsumed?: () => void
-  onValueChange?: (newValue: string | undefined) => void
-  onRemove: () => void
-  sessionId?: string
-}) {
-  const { isDark } = useTheme()
-  const [open, setOpen] = React.useState(false)
-
-  // Auto-open the value popover when this label was just added via # menu
-  // and has a valueType. Opens exactly once, then clears the signal.
-  React.useEffect(() => {
-    if (autoOpen && label.valueType) {
-      setOpen(true)
-      onAutoOpenConsumed?.()
-    }
-  }, [autoOpen, label.valueType, onAutoOpenConsumed])
-
-  // Resolve label color for tinting background and text via CSS color-mix
-  const resolvedColor = label.color
-    ? resolveEntityColor(label.color, isDark)
-    : 'var(--foreground)'
-
-  const displayValue = value ? formatDisplayValue(value, label.valueType) : undefined
-
-  return (
-    <LabelValuePopover
-      label={label}
-      value={value}
-      open={open}
-      onOpenChange={setOpen}
-      onValueChange={onValueChange}
-      onRemove={onRemove}
-      sessionId={sessionId}
-    >
-      <MetadataBadge
-        label={label.name}
-        value={displayValue}
-        onValueClick={label.valueType === 'link' && value ? () => openLabelLink(value) : undefined}
-        icon={<LabelIcon label={label} size="lg" />}
-        valueHintIcon={label.valueType ? <LabelValueTypeIcon valueType={label.valueType} /> : undefined}
-        badgeColor={resolvedColor}
-        interactive
-        isActive={open}
-        showChevron
-        shadow="none"
-        className="relative"
-      />
-    </LabelValuePopover>
-  )
-}
-
-// ============================================================================
-// State Badge Component
-// ============================================================================
-
-/**
- * Renders the current workflow state as a badge in the dynamic stacking container.
- * Click opens a SessionStatusMenu popover for changing the state.
- * Styled consistently with label badges (h-[30px], rounded-[8px], color-mix tinting).
- */
-function StateBadge({
-  state,
-  sessionStatuses,
-  onSessionStatusChange,
-  sessionId,
-}: {
-  state: SessionStatus
-  sessionStatuses: SessionStatus[]
-  onSessionStatusChange?: (stateId: string) => void
-  sessionId?: string
-}) {
-  const { t } = useTranslation()
-  const [open, setOpen] = React.useState(false)
-
-  const handleSelect = React.useCallback((stateId: string) => {
-    setOpen(false)
-    onSessionStatusChange?.(stateId)
-  }, [onSessionStatusChange])
-
-  // Use the state's resolved color for tinting (same color-mix pattern as labels)
-  const badgeColor = state.resolvedColor || 'var(--foreground)'
-  const applyColor = state.iconColorable
-
-  const DEFAULT_STATUS_IDS = new Set(['backlog', 'todo', 'needs-review', 'done', 'cancelled'])
-  const stateLabel = DEFAULT_STATUS_IDS.has(state.id) ? t(`status.${state.id}`, state.label) : state.label
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <MetadataBadge
-          label={stateLabel}
-          badgeColor={badgeColor}
-          interactive
-          isActive={open}
-          showChevron
-          icon={(
-            <span
-              className="shrink-0 flex items-center w-3.5 h-3.5 [&>svg]:w-full [&>svg]:h-full [&>img]:w-full [&>img]:h-full [&>span]:text-xs"
-              style={applyColor ? { color: state.resolvedColor } : undefined}
-            >
-              {state.icon}
-            </span>
-          )}
-          className="pl-2.5"
-        />
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-auto p-0 border-0 shadow-none bg-transparent"
-        side="top"
-        align="end"
-        sideOffset={4}
-        onCloseAutoFocus={(e) => {
-          e.preventDefault()
-          window.dispatchEvent(new CustomEvent('craft:focus-input', {
-            detail: { sessionId }
-          }))
-        }}
-      >
-        <SessionStatusMenu
-          activeState={state.id}
-          onSelect={handleSelect}
-          states={sessionStatuses}
-        />
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-function FilesPopoverButton({ sessionId, sessionFolderPath }: { sessionId?: string; sessionFolderPath?: string }) {
-  const { t } = useTranslation()
-  const [open, setOpen] = React.useState(false)
-
-  if (!sessionId) return null
-
-  return (
-    <SessionInfoPopover
-      sessionId={sessionId}
-      sessionFolderPath={sessionFolderPath}
-      trigger={(
-        <button
-          type="button"
-          className={cn(
-            "h-[30px] pl-[12px] pr-[14px] text-xs font-medium rounded-[8px] flex items-center gap-1.5 shrink-0",
-            "outline-none select-none transition-colors shadow-minimal",
-            "hover:bg-foreground/5 data-[state=open]:bg-foreground/5",
-            "bg-[color-mix(in_srgb,var(--background)_97%,var(--foreground)_3%)]",
-            "text-foreground/80",
-          )}
-        >
-          <Info className="h-3.5 w-3.5 shrink-0" />
-          <span className="whitespace-nowrap">{t("common.info")}</span>
-        </button>
-      )}
-    />
-  )
+/** Compatibility preview composition; production keeps tasks above the input and labels inside it. */
+export function ActiveOptionBadges(props: ActiveOptionBadgesProps) {
+  return <div className={cn('space-y-2', props.className)}>
+    {!!props.tasks?.length && props.sessionId && <ActiveTasksBar
+      tasks={props.tasks} sessionId={props.sessionId} onKillTask={props.onKillTask}
+      onInsertMessage={props.onInsertMessage} onShowTerminalOverlay={props.onShowTerminalOverlay} />}
+    {props.showPermissionMode !== false && <PermissionModeDropdown
+      permissionMode={props.permissionMode ?? 'ask'} onPermissionModeChange={props.onPermissionModeChange}
+      sessionId={props.sessionId} toolbar />}
+    <LabelBadgeRow sessionLabels={props.sessionLabels ?? []} labels={props.labels ?? []}
+      onLabelsChange={props.onLabelsChange} autoOpenLabelId={props.autoOpenLabelId}
+      onAutoOpenConsumed={props.onAutoOpenConsumed} />
+  </div>
 }
 
 interface PermissionModeDropdownProps {
+  toolbar?: boolean
   permissionMode: PermissionMode
   onPermissionModeChange?: (mode: PermissionMode) => void
   sessionId?: string
 }
 
-function PermissionModeDropdown({ permissionMode, onPermissionModeChange, sessionId }: PermissionModeDropdownProps) {
+export function PermissionModeDropdown({ permissionMode, onPermissionModeChange, sessionId, toolbar = false }: PermissionModeDropdownProps) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
   // Optimistic local state - updates immediately, syncs with prop
@@ -488,7 +149,9 @@ function PermissionModeDropdown({ permissionMode, onPermissionModeChange, sessio
           type="button"
           data-tutorial="permission-mode-dropdown"
           className={cn(
-            "h-[30px] pl-2.5 pr-2 text-xs font-medium rounded-[8px] flex items-center gap-1.5 shadow-tinted outline-none select-none",
+            toolbar
+              ? "input-toolbar-btn inline-flex h-7 min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 text-[13px] outline-none select-none"
+              : "h-[30px] pl-2.5 pr-2 text-xs font-medium rounded-[8px] flex items-center gap-1.5 shadow-tinted outline-none select-none",
             currentStyle.className
           )}
           style={{ '--shadow-color': currentStyle.shadowVar } as React.CSSProperties}

@@ -895,6 +895,13 @@ export function buildRouteFromNavigationState(state: NavigationState): string {
 export function parseRightSidebarParam(sidebarStr?: string): RightSidebarPanel | undefined {
   if (!sidebarStr) return undefined
 
+  if (sidebarStr === 'review' || sidebarStr.startsWith('review/')) {
+    const [, sessionId, turnId, changeId, ...extra] = sidebarStr.split('/')
+    if (extra.length) return undefined
+    try {
+      return { type: 'review', ...(sessionId ? { sessionId: decodeURIComponent(sessionId) } : {}), ...(turnId ? { turnId: decodeURIComponent(turnId) } : {}), ...(changeId ? { changeId: decodeURIComponent(changeId) } : {}) }
+    } catch { return undefined }
+  }
   if (sidebarStr === 'history') {
     return { type: 'history' }
   }
@@ -918,6 +925,8 @@ export function buildRightSidebarParam(panel?: RightSidebarPanel): string | unde
   if (!panel || panel.type === 'none') return undefined
 
   switch (panel.type) {
+    case 'review':
+      return panel.sessionId && panel.turnId ? `review/${encodeURIComponent(panel.sessionId)}/${encodeURIComponent(panel.turnId)}${panel.changeId ? `/${encodeURIComponent(panel.changeId)}` : ''}` : 'review'
     case 'history':
       return 'history'
     case 'files':

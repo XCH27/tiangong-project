@@ -271,3 +271,40 @@ describe('isLocalOnly consistency', () => {
     expect(isLocalOnly(REMOTE_CHANNEL)).toBe(false)
   })
 })
+
+describe('GitHub authorization Host binding', () => {
+  it('cancels the initiating local Host after switching to a remote workspace', async () => {
+    const channel = RPC_CHANNELS.git.GITHUB_CLI_AUTH
+    const local = stubClient({ invoke: mock(async (name: string, command: any) => {
+      if (name === SWITCH_CHANNEL) return { workspaceId: 'remote', remoteServer: { url: 'ws://remote', remoteWorkspaceId: 'remote-id' } }
+      return { state: command.action === 'start' ? 'starting' : 'cancelled', flowId: 'origin-flow' }
+    }) })
+    const remote = stubClient()
+    const routed = new RoutedClient(local, local)
+    routed.setClientFactory(() => remote)
+    await routed.invoke(channel, { action: 'start' })
+    await routed.invoke(SWITCH_CHANNEL, 'remote')
+    await routed.invoke(channel, { action: 'cancel', flowId: 'origin-flow' })
+    expect(local.invoke).toHaveBeenCalledWith(channel, { action: 'cancel', flowId: 'origin-flow' })
+    expect(remote.invoke).not.toHaveBeenCalledWith(channel, expect.anything())
+  })
+  it('pins a late start reply before its unmounted caller cancels it', async () => {
+    const channel = RPC_CHANNELS.git.GITHUB_CLI_AUTH
+    const reply = Promise.withResolvers<any>()
+    const local = stubClient({ invoke: mock(async (name: string, command: any) => {
+      if (name === SWITCH_CHANNEL) return { workspaceId: 'remote', remoteServer: { url: 'ws://remote', remoteWorkspaceId: 'remote-id' } }
+      if (command.action === 'start') return reply.promise
+      return { state: 'cancelled', flowId: command.flowId }
+    }) })
+    const remote = stubClient()
+    const routed = new RoutedClient(local, local)
+    routed.setClientFactory(() => remote)
+    const start = routed.invoke(channel, { action: 'start' })
+    await routed.invoke(SWITCH_CHANNEL, 'remote')
+    reply.resolve({ state: 'starting', flowId: 'late-flow' })
+    await start
+    await routed.invoke(channel, { action: 'cancel', flowId: 'late-flow' })
+    expect(local.invoke).toHaveBeenCalledWith(channel, { action: 'cancel', flowId: 'late-flow' })
+    expect(remote.invoke).not.toHaveBeenCalledWith(channel, expect.anything())
+  })
+})

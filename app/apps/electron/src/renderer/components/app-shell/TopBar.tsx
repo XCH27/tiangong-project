@@ -55,6 +55,12 @@ interface TopBarProps {
   onToggleFocusMode: () => void
   onAddSessionPanel: () => void
   onAddBrowserPanel: () => void
+  onOpenReview: () => void
+  isReviewOpen: boolean
+  onOpenPagesPanel: () => void
+  onToggleSessionInfo: () => void
+  isSessionInfoOpen: boolean
+  canOpenSessionInfo: boolean
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
 }
@@ -80,9 +86,18 @@ export function TopBar({
   onToggleFocusMode,
   onAddSessionPanel,
   onAddBrowserPanel,
+  onOpenReview,
+  isReviewOpen,
+  onOpenPagesPanel,
+  onToggleSessionInfo,
+  isSessionInfoOpen,
+  canOpenSessionInfo,
   isCompact,
 }: TopBarProps) {
   const { t } = useTranslation()
+  // A single local compatibility store is not a user-selectable context.
+  // Keep the real selector only where older records or a remote connection require it.
+  const showWorkspaceSelector = workspaces.length > 1 || workspaces.some(workspace => !!workspace.remoteServer)
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
   const rightSlotRef = useRef<HTMLDivElement | null>(null)
 
@@ -168,7 +183,7 @@ export function TopBar({
             drill-in chevron in PanelHeader plus the browser's native back gesture
             cover that affordance, and the freed width lets the workspace pill
             actually fit on phone-width viewports. */}
-        <div className={cn("ml-1 flex min-w-0 items-center gap-1", isCompact ? "flex-1" : "w-[clamp(220px,42vw,640px)]")}>
+        <div className={cn("ml-1 flex min-w-0 items-center gap-1", isCompact ? "flex-1" : showWorkspaceSelector ? "w-[clamp(220px,42vw,640px)]" : "")}>
           {!isCompact && (
             <>
               <Tooltip>
@@ -191,7 +206,7 @@ export function TopBar({
             </>
           )}
 
-          <div className="min-w-0 flex-1">
+          {showWorkspaceSelector && <div className="min-w-0 flex-1">
             {isCompact ? (
               <CompactWorkspaceSwitcher
                 workspaces={workspaces}
@@ -212,7 +227,7 @@ export function TopBar({
                 workspaceUnreadMap={workspaceUnreadMap}
               />
             )}
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -229,6 +244,21 @@ export function TopBar({
             </TopBarButton>
           </DropdownMenuTrigger>
           <StyledDropdownMenuContent align="end" minWidth="min-w-56">
+            <StyledDropdownMenuItem onClick={onToggleSessionInfo} disabled={!canOpenSessionInfo}>
+              <Icons.Info className="h-3.5 w-3.5" />
+              <span className="flex-1">{t('chat.sessionInfo')}</span>
+              {isSessionInfoOpen && <Icons.Check className="h-3.5 w-3.5" />}
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onClick={onOpenReview} disabled={!canOpenSessionInfo}>
+              <Icons.FileDiff className="h-3.5 w-3.5" />
+              <span className="flex-1">{t('chat.review.title')}</span>
+              {isReviewOpen && <Icons.Check className="h-3.5 w-3.5" />}
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onClick={onOpenPagesPanel}>
+              <Icons.PanelsTopLeft className="h-3.5 w-3.5" />
+              {t('sidebar.pages')}
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuSeparator />
             <StyledDropdownMenuItem onClick={onAddSessionPanel}>
               <SquarePenRounded className="h-3.5 w-3.5" />
               {t("session.newSessionInPanel")}

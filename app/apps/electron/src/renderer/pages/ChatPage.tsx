@@ -1,3 +1,4 @@
+import { useNavigation } from '@/contexts/NavigationContext'
 /**
  * ChatPage
  *
@@ -10,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { AlertCircle, Globe, Copy, RefreshCw, Link2Off, Info, Pencil } from 'lucide-react'
 import { ChatDisplay, type ChatDisplayHandle } from '@/components/app-shell/ChatDisplay'
+import { WorkingDirectoryBadge } from '@/components/app-shell/input/FreeFormInput'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { SessionMenu } from '@/components/app-shell/SessionMenu'
 import { CompactSessionMenu } from '@/components/app-shell/CompactSessionMenu'
@@ -38,6 +40,7 @@ export interface ChatPageProps {
 
 const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
   const { t } = useTranslation()
+  const { updateRightSidebar } = useNavigation()
   // Diagnostic: mark when component runs
   React.useLayoutEffect(() => {
     rendererPerf.markSessionSwitch(sessionId, 'panel.mounted')
@@ -637,6 +640,16 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
   }, [isTaskOrchestrator, handleEditTask, t])
 
   const primaryHeaderAction = isCompactMode ? compactInfoButton : shareButton
+  // ZCode puts the draft folder above the editor and ongoing context in the header.
+  const conversationLeadingAction = leadingAction || session?.messages.length ? <>
+    {leadingAction}
+    {!!session?.messages.length && <WorkingDirectoryBadge
+      workingDirectory={workingDirectory}
+      onWorkingDirectoryChange={handleWorkingDirectoryChange}
+      sessionFolderPath={session?.sessionFolderPath}
+      workspaceId={activeWorkspaceId ?? undefined}
+    />}
+  </> : undefined
   const headerActions = editTaskButton ? (
     <div className="flex items-center gap-1.5">
       {editTaskButton}
@@ -739,12 +752,13 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
       return (
         <>
           <div className="h-full flex flex-col">
-            <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
+            <PanelHeader conversation title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={conversationLeadingAction} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
             <div className="flex-1 flex flex-col min-h-0">
               <ChatDisplay
                 ref={chatDisplayRef}
                 session={skeletonSession}
                 onSendMessage={() => {}}
+                onOpenReview={isCompactMode ? undefined : (turnId, changeId) => updateRightSidebar({ type: 'review', sessionId, turnId, changeId })}
                 onOpenFile={handleOpenFile}
                 onOpenUrl={handleOpenUrl}
                 currentModel={effectiveModel}
@@ -799,7 +813,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
     // Session truly doesn't exist
     return (
       <div className="h-full flex flex-col">
-        <PanelHeader  title={t('chat.session')} leadingAction={leadingAction} rightSidebarButton={rightSidebarButton} />
+        <PanelHeader conversation title={t('chat.session')} leadingAction={conversationLeadingAction} rightSidebarButton={rightSidebarButton} />
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
           <AlertCircle className="h-10 w-10" />
           <p className="text-sm">{t('chat.sessionNoLongerExists')}</p>
@@ -811,7 +825,13 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
   return (
     <>
       <div className="h-full flex flex-col">
-        <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
+        <PanelHeader conversation
+          title={session.messages.length || isTaskOrchestrator ? displayTitle : undefined}
+          titleMenu={session.messages.length || isTaskOrchestrator ? titleMenu : undefined}
+          compactTitleMenu={session.messages.length || isTaskOrchestrator ? compactTitleMenu : undefined}
+          leadingAction={conversationLeadingAction}
+          actions={session.messages.length || isTaskOrchestrator ? headerActions : compactInfoButton}
+          rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
         <div className="flex-1 flex flex-col min-h-0">
           <ChatDisplay
             ref={chatDisplayRef}
@@ -821,7 +841,8 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
                 onSendMessage(session.id, message, attachments, skillSlugs)
               }
             }}
-            onOpenFile={handleOpenFile}
+            onOpenReview={isCompactMode ? undefined : (turnId, changeId) => updateRightSidebar({ type: 'review', sessionId, turnId, changeId })}
+                onOpenFile={handleOpenFile}
             onOpenUrl={handleOpenUrl}
             currentModel={effectiveModel}
             onModelChange={handleModelChange}

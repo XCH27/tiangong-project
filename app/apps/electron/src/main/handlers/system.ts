@@ -28,6 +28,8 @@ export const CORE_HANDLED_CHANNELS = [
   RPC_CHANNELS.releaseNotes.GET,
   RPC_CHANNELS.releaseNotes.GET_LATEST_VERSION,
   RPC_CHANNELS.git.GET_BRANCH,
+  RPC_CHANNELS.git.GITHUB_CLI_STATUS,
+  RPC_CHANNELS.git.GITHUB_CLI_AUTH,
   RPC_CHANNELS.gitbash.CHECK,
   RPC_CHANNELS.gitbash.BROWSE,
   RPC_CHANNELS.gitbash.SET_PATH,
@@ -102,6 +104,17 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
   server.handle(RPC_CHANNELS.releaseNotes.GET_LATEST_VERSION, async () => {
     const { getLatestReleaseVersion } = require('@craft-agent/shared/release-notes') as typeof import('@craft-agent/shared/release-notes')
     return getLatestReleaseVersion()
+  })
+
+  // Expose only gh's public account identity; gh remains the credential owner.
+  server.handle(RPC_CHANNELS.git.GITHUB_CLI_AUTH, async (ctx, command: import('@craft-agent/shared/protocol').GitHubCliCommand) => {
+    const { githubCliAuth } = await import('@craft-agent/server-core/services')
+    return githubCliAuth(ctx.clientId, command)
+  })
+
+  server.handle(RPC_CHANNELS.git.GITHUB_CLI_STATUS, async () => {
+    const { getGitHubCliStatus } = await import('@craft-agent/server-core/services')
+    return getGitHubCliStatus()
   })
 
   // Get git branch for a directory (returns null if not a git repo or git unavailable)

@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, Check, ChevronDown, LayoutGrid } from 'lucide-react'
+import { ModelCapabilityBadges } from '@/components/apisetup/ModelCapabilityBadges'
 import { Spinner } from '@craft-agent/ui'
 import { Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
@@ -13,7 +14,7 @@ import { useOptionalAppShellContext } from '@/context/AppShellContext'
 import { getModelDisplayName, getModelContextWindow } from '@config/models'
 import { resolveEffectiveConnectionSlug } from '@config/llm-connections'
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
-import { getModelPickerGroups, stripPiPrefixForDisplay, formatTokenCount } from './model-picker-helpers'
+import { getModelPickerGroups, stripPiPrefixForDisplay } from './model-picker-helpers'
 import { getContextDisplay, getContextDisplayLabels, type ContextStatus } from './context-display'
 
 interface CompactModelSelectorProps {
@@ -43,6 +44,7 @@ export function CompactModelSelector({
   const modelUnavailable = active?.models !== undefined && !selected
   const definition = typeof selected === 'string' ? undefined : selected
   const displayName = definition?.name ?? stripPiPrefixForDisplay(getModelDisplayName(currentModel))
+  const triggerLabel = active && connections.length > 1 ? `${getConnectionDisplayName(active, connections)} / ${displayName}` : displayName
   const groups = getModelPickerGroups(connections, effectiveConnection, isEmptySession)
   // Searching spans every eligible source, as in Cindy's unified list.
   const visibleGroups = groups.filter(group => query.trim() || !source || group.connection.slug === source)
@@ -54,14 +56,14 @@ export function CompactModelSelector({
   }
   const openSettings = () => { setOpen(false); navigate(routes.view.settings('ai')) }
   const trigger = (
-    <button type="button" aria-label={`${t('common.model')}: ${connectionUnavailable ? t('common.unavailable') : displayName}`}
+    <button type="button" aria-label={`${t('common.model')}: ${connectionUnavailable ? t('common.unavailable') : triggerLabel}`}
       title={active ? getConnectionDisplayName(active, connections) : undefined}
       className={cn('input-toolbar-btn inline-flex h-7 min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 text-[13px] select-none hover:bg-foreground/5',
         presentation === 'drawer' && 'bg-foreground/5 text-foreground/70', (connectionUnavailable || modelUnavailable) && 'text-destructive')}>
       {connectionUnavailable ? <><AlertCircle className="h-3.5 w-3.5" />{t('common.unavailable')}</> : <>
         {modelUnavailable && <AlertCircle className="h-3.5 w-3.5" />}
         {active && connections.length > 1 && storage.get(storage.KEYS.showConnectionIcons, true) && <ConnectionIcon connection={active} size={14} />}
-        <span className="truncate">{displayName}</span>
+        <span className="max-w-56 truncate">{triggerLabel}</span>
       </>}
       <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
     </button>
@@ -74,15 +76,15 @@ export function CompactModelSelector({
       {modelUnavailable && <p className="px-3 py-2 text-xs text-destructive">{t('chat.modelUnavailableForConnection')}</p>}
       <CommandInput placeholder={t('apiSetup.searchModels')} value={query} onValueChange={setQuery} />
       <div className="flex max-h-[300px] min-h-0">
-        {groups.length > 1 && <div className="flex w-12 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border/60 p-1.5" aria-label={t('settings.ai.connections')}>
+        {groups.length > 1 && <div className="flex w-32 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border/60 p-1.5" aria-label={t('settings.ai.connections')}>
           <button type="button" title={t('settings.ai.modelFilter.all')} aria-label={t('settings.ai.modelFilter.all')} aria-pressed={!source}
-            onClick={() => { setSource(null); setQuery('') }} className={cn('flex h-8 shrink-0 items-center justify-center rounded-md hover:bg-foreground/5', !source && 'bg-foreground/10')}>
-            <LayoutGrid className="h-4 w-4" />
+            onClick={() => { setSource(null); setQuery('') }} className={cn('flex h-8 shrink-0 items-center gap-2 px-2 rounded-md hover:bg-foreground/5', !source && 'bg-foreground/10')}>
+            <LayoutGrid className="h-4 w-4 shrink-0" /><span className="truncate text-xs">{t('settings.ai.modelFilter.all')}</span>
           </button>
           {groups.map(({ connection }) => <button key={connection.slug} type="button"
             title={getConnectionDisplayName(connection, connections)} aria-label={getConnectionDisplayName(connection, connections)} aria-pressed={source === connection.slug}
-            onClick={() => { setSource(connection.slug); setQuery('') }} className={cn('flex h-8 shrink-0 items-center justify-center rounded-md hover:bg-foreground/5', source === connection.slug && 'bg-foreground/10')}>
-            <ConnectionIcon connection={connection} size={16} />
+            onClick={() => { setSource(connection.slug); setQuery('') }} className={cn('flex h-8 shrink-0 items-center gap-2 px-2 rounded-md hover:bg-foreground/5', source === connection.slug && 'bg-foreground/10')}>
+            <ConnectionIcon connection={connection} size={16} /><span className="truncate text-xs">{getConnectionDisplayName(connection, connections)}</span>
           </button>)}
         </div>}
         <CommandList className="min-h-0 flex-1">
@@ -95,8 +97,10 @@ export function CompactModelSelector({
               const isSelected = effectiveConnection === connection.slug && currentModel === id
               return <CommandItem key={id} value={`${connection.slug}/${id}`} keywords={[name, getConnectionDisplayName(connection, connections)]}
                 disabled={!connection.isAuthenticated} onSelect={() => { onModelChange(id, connection.slug); setOpen(false) }} className="gap-2 text-[13px]">
-                <span className="min-w-0 flex-1 truncate">{name}</span>
-                {typeof model !== 'string' && model.contextWindow != null && <span className="text-xs text-muted-foreground">{formatTokenCount(model.contextWindow)}</span>}
+                <span className="min-w-0 flex-1">
+                  <span className="mb-1 block truncate">{name}</span>
+                  <ModelCapabilityBadges model={typeof model === 'string' ? undefined : model} />
+                </span>
                 <Check className={cn('h-3 w-3 shrink-0', !isSelected && 'invisible')} />
               </CommandItem>
             })}
@@ -113,7 +117,7 @@ export function CompactModelSelector({
   </>
   return presentation === 'popover' ? <Popover open={open} onOpenChange={handleOpenChange}>
     <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-    <PopoverContent side="top" align="end" sideOffset={8} className="w-80 max-w-[calc(100vw-2rem)] overflow-hidden p-0">{content}</PopoverContent>
+    <PopoverContent side="top" align="end" sideOffset={8} className="w-[480px] max-w-[calc(100vw-2rem)] overflow-hidden p-0">{content}</PopoverContent>
   </Popover> : <Drawer open={open} onOpenChange={handleOpenChange}>
     <DrawerTrigger asChild>{trigger}</DrawerTrigger>
     <DrawerContent><DrawerHeader><DrawerTitle>{t('common.model')}</DrawerTitle></DrawerHeader>{content}</DrawerContent>

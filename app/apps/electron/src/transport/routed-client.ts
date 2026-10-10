@@ -39,6 +39,8 @@ export type WorkspaceClientFactory = (remoteServer: RemoteServerConfig) => WsRpc
 
 export class RoutedClient implements RpcClient {
   private workspaceClient: WsRpcClient
+  // A CLI authorization is an opaque continuation on its initiating Host.
+  private githubAuthFlows = new Map<string, WsRpcClient>()
 
   /** REMOTE_ELIGIBLE listener registry — survives workspace switches. */
   private remoteListeners = new Map<string, Set<ListenerEntry>>()
@@ -94,7 +96,10 @@ export class RoutedClient implements RpcClient {
 
   async invoke(channel: string, ...args: any[]): Promise<any> {
     const isLocal = isLocalOnly(channel)
-    const target = isLocal ? this.localClient : this.workspaceClient
+    const authCommand = channel === RPC_CHANNELS.git.GITHUB_CLI_AUTH ? args[0] : undefined
+    const flowId = typeof authCommand?.flowId === 'string' ? authCommand.flowId : undefined
+    const target = (flowId ? this.githubAuthFlows.get(flowId) : undefined)
+      ?? (isLocal ? this.localClient : this.workspaceClient)
 
     // Translate local workspace IDs → remote workspace IDs for remote-routed calls.
     // RPC handlers receive workspaceId as a method argument (not from connection context).
@@ -112,7 +117,16 @@ export class RoutedClient implements RpcClient {
         })
       : args
 
-    const result = await target.invoke(channel, ...translatedArgs)
+    let result: any
+    try {
+      result = await target.invoke(channel, ...translatedArgs)
+      if (authCommand && typeof result?.flowId === 'string') {
+        if (result.state === 'starting' || result.state === 'waiting') this.githubAuthFlows.set(result.flowId, target)
+        else this.githubAuthFlows.delete(result.flowId)
+      }
+    } finally {
+      if (authCommand?.action === 'cancel' && flowId) this.githubAuthFlows.delete(flowId)
+    }
 
     // Intercept SWITCH_WORKSPACE response to swap workspace client
     if (channel === RPC_CHANNELS.window.SWITCH_WORKSPACE) {

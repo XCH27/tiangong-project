@@ -614,6 +614,8 @@ export interface ElectronAPI {
 
   // Git operations
   getGitBranch(dirPath: string): Promise<string | null>
+  getGitHubCliStatus(): Promise<import('@craft-agent/shared/protocol').GitHubCliStatus>
+  githubCliAuth(command: import('@craft-agent/shared/protocol').GitHubCliCommand): Promise<import('@craft-agent/shared/protocol').GitHubCliAuthResult>
 
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>
@@ -840,6 +842,7 @@ export type WhatsAppUiEvent =
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
   | { type: 'history' }
+  | { type: 'review'; sessionId?: string; turnId?: string; changeId?: string }
   | { type: 'none' }
 
 /**

@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react"
+import { SessionGroupHeader } from './SessionGroupHeader'
+import { useState, useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react"
 import { useTranslation } from "react-i18next"
 import { useSetAtom } from "jotai"
 import { isToday, isYesterday, format, startOfDay } from "date-fns"
@@ -77,10 +78,17 @@ interface SessionListProps {
   onLabelsChange?: (sessionId: string, labels: string[]) => void
   /** Workspace projects (for the Projects submenu in SessionMenu) */
   projects?: Array<{ id: string; slug: string; name: string; color?: string }>
+  /** Open existing project data from its group header. */
+  onOpenProject?: (slug: string) => void
+  onStartProject?: (slug: string) => void
   /** Callback to bind/unbind a session to a project (null = unbind) */
   onSetProjectId?: (sessionId: string, projectId: string | null) => void
   /** How to group sessions: 'date' (default) or 'status' */
   groupingMode?: ChatGroupingMode
+  /** Show flagged sessions first in their own group (the sidebar's pinned section). */
+  pinnedFirst?: boolean
+  /** Lets a host header drive collapse/expand of every group (the sidebar's collapse-all button). */
+  groupControlsRef?: MutableRefObject<{ collapseAll: () => void; expandAll: () => void } | null>
   /** Workspace ID for content search (optional - if not provided, content search is disabled) */
   workspaceId?: string
   /** Secondary status filter (status chips in "All Sessions" view) - for search result grouping */
@@ -138,8 +146,12 @@ export function SessionList({
   labels = [],
   onLabelsChange,
   projects,
+  onOpenProject,
+  onStartProject,
   onSetProjectId,
   groupingMode = 'date',
+  pinnedFirst = false,
+  groupControlsRef,
   workspaceId,
   statusFilter,
   labelFilterMap,
@@ -265,7 +277,7 @@ export function SessionList({
     scrollViewportRef,
   })
 
-  const rowData = useMemo(() => {
+  const baseRowData = useMemo(() => {
     if (isSearchMode) {
       const matchingRows: SessionListRow[] = matchingFilterItems.map(item => ({ item }))
       const otherRows: SessionListRow[] = otherResultItems.map(item => ({ item }))
@@ -396,8 +408,14 @@ export function SessionList({
       ;(projects ?? []).forEach((p, index) => projectOrder.set(p.id, index))
       const projectNameById = new Map<string, string>()
       ;(projects ?? []).forEach(p => projectNameById.set(p.id, p.name))
+      const projectSlugById = new Map<string, string>()
+      ;(projects ?? []).forEach(p => projectSlugById.set(p.id, p.slug))
 
       const groupsByKey = new Map<string, { rows: SessionListRow[], projectId: string | null }>()
+      // Project records with no conversations still need an accessible row.
+      for (const project of projects ?? []) {
+        groupsByKey.set(`project-${project.id}`, { rows: [], projectId: project.id })
+      }
       for (const row of rows) {
         const rawProjectId = (row.item as { projectId?: string }).projectId
         const resolvedProjectId = rawProjectId && projectNameById.has(rawProjectId) ? rawProjectId : null
@@ -421,12 +439,16 @@ export function SessionList({
         const collapsedMeta = collapsedGroupsMeta.find(m => m.key === key)
         const label = projectId
           ? (projectNameById.get(projectId) ?? t('sidebar.unknownProject', { defaultValue: 'Unknown project' }))
-          : t('sidebar.noProject', { defaultValue: 'No project' })
+          : t('sidebar.modeConversations')
+        const projectSlug = projectId ? projectSlugById.get(projectId) : undefined
         orderedGroups.push({
           key,
           label,
           items: groupRows,
           collapsible: true,
+          ...(projectSlug && onOpenProject
+            ? { onOpen: () => onOpenProject(projectSlug) }
+            : {}),
           ...(collapsedMeta ? { collapsedCount: collapsedMeta.count } : {}),
         })
       }
@@ -439,7 +461,7 @@ export function SessionList({
         return aOrder - bOrder
       })
 
-      if (orderedGroups.length === 1) {
+      if (orderedGroups.length === 1 && !orderedGroups[0].onOpen) {
         orderedGroups[0].collapsible = false
       }
 
@@ -500,7 +522,22 @@ export function SessionList({
       rows,
       groups: orderedGroups,
     }
-  }, [isSearchMode, matchingFilterItems, otherResultItems, flatItems, groupingMode, sessionStatuses, projects, collapsedGroupsMeta, t])
+  }, [isSearchMode, matchingFilterItems, otherResultItems, flatItems, groupingMode, sessionStatuses, projects, onOpenProject, collapsedGroupsMeta, t])
+
+  // Pinned section: flagged sessions lift out of their group into a fixed first group,
+  // whatever the grouping mode. Search results keep their own grouping.
+  const rowData = useMemo(() => {
+    if (!pinnedFirst || isSearchMode) return baseRowData
+    const pinned = baseRowData.rows.filter(row => row.item.isFlagged)
+    if (pinned.length === 0) return baseRowData
+    const groups = baseRowData.groups
+      .map(group => ({ ...group, items: group.items.filter(row => !row.item.isFlagged) }))
+      .filter(group => group.items.length > 0 || group.collapsedCount || group.onOpen)
+    return {
+      rows: [...pinned, ...groups.flatMap(group => group.items)],
+      groups: [{ key: 'pinned', label: t('sidebar.flagged'), items: pinned, collapsible: false }, ...groups],
+    }
+  }, [pinnedFirst, isSearchMode, baseRowData, t])
 
   const flatRows = rowData.rows
 
@@ -512,11 +549,7 @@ export function SessionList({
       const allKeys = new Set(items.map(item => item.hasUnread ? 'unread-yes' : 'unread-no'))
       setCollapsedGroups(allKeys)
     } else if (groupingMode === 'project') {
-      const knownProjectIds = new Set((projects ?? []).map(p => p.id))
-      const allKeys = new Set(items.map(item => {
-        const pid = (item as { projectId?: string }).projectId
-        return pid && knownProjectIds.has(pid) ? `project-${pid}` : 'project-__none__'
-      }))
+      const allKeys = new Set((projects ?? []).map(project => `project-${project.id}`))
       setCollapsedGroups(allKeys)
     } else {
       const allKeys = new Set(items.map(item =>
@@ -528,6 +561,12 @@ export function SessionList({
   const expandAllGroups = useCallback(() => {
     setCollapsedGroups(new Set())
   }, [])
+
+  useEffect(() => {
+    if (!groupControlsRef) return
+    groupControlsRef.current = { collapseAll: collapseAllGroups, expandAll: expandAllGroups }
+    return () => { groupControlsRef.current = null }
+  }, [groupControlsRef, collapseAllGroups, expandAllGroups])
 
   const rowIndexMap = useMemo(() => {
     const map = new Map<string, number>()
@@ -757,6 +796,13 @@ export function SessionList({
       <SessionListProvider value={listContext}>
       <EntityList<SessionListRow>
         groups={rowData.groups}
+        renderGroupHeader={groupingMode === 'project' && !isSearchMode ? (group, collapsed, toggle) => {
+          const project = projects?.find(item => group.key === `project-${item.id}`)
+          return <SessionGroupHeader label={group.label} collapsed={collapsed} project={!!project}
+            onToggle={toggle}
+            onStart={project && onStartProject ? () => onStartProject(project.slug) : undefined}
+            onDetails={project && onOpenProject ? () => onOpenProject(project.slug) : undefined} />
+        } : undefined}
         getKey={(row) => row.item.id}
         renderItem={(row, _indexInGroup, isFirstInGroup) => {
           const flatIndex = rowIndexMap.get(row.item.id) ?? 0

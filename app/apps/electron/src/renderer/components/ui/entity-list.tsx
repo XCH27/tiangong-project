@@ -38,6 +38,8 @@ export interface EntityListGroup<T> {
   collapsible?: boolean
   /** Number of hidden items when collapsed. Present on collapsed placeholder groups (items will be []). */
   collapsedCount?: number
+  /** Optional group destination; the chevron continues to own collapse. */
+  onOpen?: () => void
 }
 
 export interface EntityListProps<T> {
@@ -72,6 +74,8 @@ export interface EntityListProps<T> {
   onCollapseAll?: () => void
   /** Expand all collapsible groups */
   onExpandAll?: () => void
+  /** Consumer-owned group presentation; shared list scrolling/selection is retained. */
+  renderGroupHeader?: (group: EntityListGroup<T>, collapsed: boolean, toggle: () => void) => React.ReactNode
 }
 
 // ============================================================================
@@ -94,6 +98,7 @@ function CollapsibleGroupHeader({
   isCollapsed,
   itemCount,
   onToggle,
+  onOpen,
   onCollapseAll,
   onExpandAll,
 }: {
@@ -101,27 +106,32 @@ function CollapsibleGroupHeader({
   isCollapsed: boolean
   itemCount: number
   onToggle: () => void
+  onOpen?: () => void
   onCollapseAll?: () => void
   onExpandAll?: () => void
 }) {
   return (
     <ContextMenu modal>
       <ContextMenuTrigger asChild>
-        <button
-          onClick={onToggle}
-          className="w-full py-2 px-4 flex items-center gap-1.5 cursor-pointer group/header relative"
-        >
-          <div className="absolute inset-y-0.5 left-2 right-2 rounded-[6px] group-hover/header:bg-foreground/2 transition-colors pointer-events-none" />
-          <ChevronRight
-            className={cn(
-              "h-3 w-3 text-muted-foreground/60 transition-transform relative",
-              !isCollapsed && "rotate-90"
-            )}
-          />
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground relative">
-            {label}{isCollapsed && <> · <span className="text-muted-foreground/50">{itemCount}</span></>}
-          </span>
-        </button>
+        {onOpen ? (
+          <div className="w-full py-2 px-4 flex items-center gap-1.5 group/header relative">
+            <div className="absolute inset-y-0.5 left-2 right-2 rounded-[6px] group-hover/header:bg-foreground/2 transition-colors pointer-events-none" />
+            <button type="button" onClick={onToggle} aria-label={`Toggle ${label}`} className="relative">
+              <ChevronRight className={cn("h-3 w-3 text-muted-foreground/60 transition-transform", !isCollapsed && "rotate-90")} />
+            </button>
+            <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground relative">
+              {label}{isCollapsed && <> · <span className="text-muted-foreground/50">{itemCount}</span></>}
+            </button>
+          </div>
+        ) : (
+          <button onClick={onToggle} className="w-full py-2 px-4 flex items-center gap-1.5 cursor-pointer group/header relative">
+            <div className="absolute inset-y-0.5 left-2 right-2 rounded-[6px] group-hover/header:bg-foreground/2 transition-colors pointer-events-none" />
+            <ChevronRight className={cn("h-3 w-3 text-muted-foreground/60 transition-transform relative", !isCollapsed && "rotate-90")} />
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground relative">
+              {label}{isCollapsed && <> · <span className="text-muted-foreground/50">{itemCount}</span></>}
+            </span>
+          </button>
+        )}
       </ContextMenuTrigger>
       <StyledContextMenuContent>
         <StyledContextMenuItem onClick={onToggle}>
@@ -160,6 +170,7 @@ export function EntityList<T>({
   onToggleCollapse,
   onCollapseAll,
   onExpandAll,
+  renderGroupHeader,
 }: EntityListProps<T>) {
   // Determine if we have content
   const hasGroups = groups && groups.length > 0
@@ -192,12 +203,13 @@ export function EntityList<T>({
 
                   return (
                     <div key={group.key}>
-                      {group.collapsible && onToggleCollapse ? (
+                      {renderGroupHeader ? renderGroupHeader(group, !!isCollapsed, () => onToggleCollapse?.(group.key)) : group.collapsible && onToggleCollapse ? (
                         <CollapsibleGroupHeader
                           label={group.label}
                           isCollapsed={!!isCollapsed}
                           itemCount={isCollapsed ? (group.collapsedCount ?? 0) : group.items.length}
                           onToggle={() => onToggleCollapse(group.key)}
+                          onOpen={group.onOpen}
                           onCollapseAll={onCollapseAll}
                           onExpandAll={onExpandAll}
                         />

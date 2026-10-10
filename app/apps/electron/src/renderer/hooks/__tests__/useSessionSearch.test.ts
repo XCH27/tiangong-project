@@ -13,6 +13,20 @@ function makeSession(id: string, opts: Partial<SessionMeta> = {}): SessionMeta {
 }
 
 describe('computeCollapsedPagination', () => {
+  it('does not strand folderless conversations behind a legacy collapsed key', () => {
+    const sessions = [makeSession('folderless'), makeSession('project', { projectId: 'folder' })]
+    const result = computeCollapsedPagination(sessions, 50, new Set(['project-__none__', 'project-folder']), 'project')
+    expect(result.paginatedItems.map(item => item.id)).toEqual(['folderless'])
+    expect(result.collapsedGroupsMeta).toEqual([{ key: 'project-folder', count: 1 }])
+  })
+  it('collapses a sole project while retaining its header and count', () => {
+    const sessions = [makeSession('s1', { projectId: 'folder' }), makeSession('s2', { projectId: 'folder' })]
+    const collapsed = computeCollapsedPagination(sessions, 50, new Set(['project-folder']), 'project')
+    expect(collapsed.paginatedItems).toEqual([])
+    expect(collapsed.collapsedGroupsMeta).toEqual([{ key: 'project-folder', count: 2 }])
+    expect(collapsed.hasMore).toBe(false)
+    expect(computeCollapsedPagination(sessions, 50, new Set(), 'project').paginatedItems).toEqual(sessions)
+  })
   it('does not hide items when current view has only one group and that group is collapsed', () => {
     const sessions = [
       makeSession('s1'),

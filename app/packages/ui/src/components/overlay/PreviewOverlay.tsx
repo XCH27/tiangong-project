@@ -95,7 +95,7 @@ export function PreviewOverlay({
 
   // Handle Escape key for modal mode only (fullscreen mode uses FullscreenOverlayBase which handles ESC)
   useEffect(() => {
-    if (!isOpen || !isModal) return
+    if (!isOpen || !isModal || embedded) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -105,7 +105,7 @@ export function PreviewOverlay({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, isModal, onClose])
+  }, [isOpen, isModal, embedded, onClose])
 
   if (!isOpen && !embedded) return null
 

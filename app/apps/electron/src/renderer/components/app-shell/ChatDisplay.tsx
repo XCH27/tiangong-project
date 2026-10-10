@@ -1,3 +1,4 @@
+import { useDiffViewerSettings } from '@/hooks/useDiffViewerSettings'
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { useEffect, useState, useMemo, useCallback } from "react"
@@ -38,7 +39,6 @@ import {
   detectLanguage,
   type ActivityItem,
   type FileChange,
-  type DiffViewerSettings,
 } from "@craft-agent/ui"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useTheme } from "@/hooks/useTheme"
@@ -132,6 +132,7 @@ function getTurnKey(turn: Turn): string {
 interface ChatDisplayProps {
   session: Session | null
   onSendMessage: (message: string, attachments?: FileAttachment[], skillSlugs?: string[]) => void
+  onOpenReview?: (turnId: string, changeId?: string) => void
   onOpenFile: (path: string) => void
   onOpenUrl: (url: string) => void
   // Model selection
@@ -437,6 +438,7 @@ function ScrollOnMount({
 export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>(function ChatDisplay({
   session,
   onSendMessage,
+  onOpenReview,
   onOpenFile,
   onOpenUrl,
   currentModel,
@@ -973,40 +975,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Overlay state - controls which overlay is shown (if any)
   const [overlayState, setOverlayState] = useState<OverlayState>(null)
 
-  // Diff viewer settings - loaded from user preferences on mount, persisted on change
-  // These settings are stored in ~/.craft-agent/preferences.json (not localStorage)
-  const [diffViewerSettings, setDiffViewerSettings] = useState<Partial<DiffViewerSettings>>({})
-
-  // Load diff viewer settings from preferences on mount
-  useEffect(() => {
-    window.electronAPI.readPreferences().then(({ content }) => {
-      try {
-        const prefs = JSON.parse(content)
-        if (prefs.diffViewer) {
-          setDiffViewerSettings(prefs.diffViewer)
-        }
-      } catch {
-        // Ignore parse errors, use defaults
-      }
-    })
-  }, [])
-
-  // Persist diff viewer settings to preferences when changed
-  const handleDiffViewerSettingsChange = useCallback((settings: DiffViewerSettings) => {
-    setDiffViewerSettings(settings)
-    // Read current preferences, merge in new settings, write back
-    window.electronAPI.readPreferences().then(({ content }) => {
-      try {
-        const prefs = JSON.parse(content)
-        prefs.diffViewer = settings
-        prefs.updatedAt = Date.now()
-        window.electronAPI.writePreferences(JSON.stringify(prefs, null, 2))
-      } catch {
-        // If preferences malformed, create fresh with just diffViewer
-        window.electronAPI.writePreferences(JSON.stringify({ diffViewer: settings, updatedAt: Date.now() }, null, 2))
-      }
-    })
-  }, [])
+  const [diffViewerSettings, handleDiffViewerSettingsChange] = useDiffViewerSettings()
 
   // Close overlay handler
   const handleCloseOverlay = useCallback(() => {
@@ -1315,16 +1284,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     })
   }
 
-  // Per-frame scroll compensation during input height animation
-  // Only compensate when user is "stuck to bottom" - otherwise let them control their scroll position
-  const handleAnimatedHeightChange = React.useCallback((delta: number) => {
-    if (!isStickToBottomRef.current) return
-    const viewport = scrollViewportRef.current
-    if (!viewport) return
-    // Adjust scroll to maintain position relative to content
-    viewport.scrollTop += delta
-  }, [])
-
   // Handle structured input responses (permissions and credentials)
   const handleStructuredResponse = (response: StructuredResponse) => {
     if ((response.type === 'permission' || response.type === 'admin_approval') && pendingPermission && onRespondToPermission) {
@@ -1485,14 +1444,18 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     && turns.length === 0
     && ((session?.messages?.length ?? 0) > 0 || (session?.messageCount ?? 0) > 0)
 
+  const isNewConversation = !!session && session.messages.length === 0 && !session.isProcessing
+    && !messagesLoading && !messagesLoadError && !structuredInput
+    && (!compactMode || enableCompactModelPicker)
+
   return (
     <div ref={zoneRef} className="flex h-full flex-col min-w-0" data-focus-zone="chat">
       {session ? (
         <div className="flex flex-1 flex-col min-h-0 min-w-0 relative">
           {/* Content layer */}
-          <div className="flex flex-1 flex-col min-h-0 min-w-0 relative z-10">
+          <div className={cn("flex flex-1 flex-col min-h-0 min-w-0 relative z-10", isNewConversation && "justify-center overflow-y-auto")}>
           {/* === MESSAGES AREA: Scrollable list of message bubbles === */}
-          <div className="relative flex-1 min-h-0">
+          <div className={cn("relative flex-1 min-h-0", isNewConversation && "hidden")}>
             {/* Mask wrapper - fades content at top and bottom over transparent/image backgrounds */}
             <div
               className="h-full"
@@ -1858,7 +1821,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           if ((activity.toolName === 'Edit' || activity.toolName === 'Write') && !isDocumentWrite) {
                             const changes = collectFileChangesFromActivities(turn.activities)
                             if (changes.length > 0) {
-                              setOverlayState({
+                              if (onOpenReview) onOpenReview(turn.turnId, getFirstFileChangeIdForActivity(activity.id, changes))
+                              else setOverlayState({
                                 type: 'multi-diff',
                                 changes,
                                 consolidated: false, // Ungrouped mode - show individual changes
@@ -1876,7 +1840,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         onOpenMultiFileDiff={() => {
                           const changes = collectFileChangesFromActivities(turn.activities)
                           if (changes.length > 0) {
-                            setOverlayState({
+                            if (onOpenReview) onOpenReview(turn.turnId)
+                            else setOverlayState({
                               type: 'multi-diff',
                               changes,
                               consolidated: true, // Consolidated mode - group by file
@@ -1912,6 +1877,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
           {/* === INPUT CONTAINER: FreeForm or Structured Input === */}
           <ChatInputZone
+            newConversation={isNewConversation}
             compactMode={compactMode}
             permissionMode={permissionMode}
             onPermissionModeChange={onPermissionModeChange}
@@ -1930,8 +1896,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               placeholder,
               disabled: isInputDisabled,
               isProcessing: session.isProcessing,
-              onAnimatedHeightChange: handleAnimatedHeightChange,
               onSubmit: handleSubmit,
+              onCompact: () => onSendMessage('/compact', []),
               onStop: handleStop,
               textareaRef,
               currentModel,

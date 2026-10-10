@@ -361,6 +361,8 @@ export const RPC_CHANNELS = {
   },
   git: {
     GET_BRANCH: 'git:getBranch',
+    GITHUB_CLI_STATUS: 'git:githubCliStatus',
+    GITHUB_CLI_AUTH: 'git:githubCliAuth',
   },
   gitbash: {
     CHECK: 'gitbash:check',

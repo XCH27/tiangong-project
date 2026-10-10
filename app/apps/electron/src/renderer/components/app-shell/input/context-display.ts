@@ -18,7 +18,11 @@ const validLimit = (value: number | undefined): number | null =>
  * Never resurrect a pre-compaction legacy count or fabricate a policy threshold. */
 export function getContextDisplay(status?: ContextStatus, modelContextWindow?: number | null) {
   const snapshot = status?.contextUsage
-  const usedTokens = validCount(snapshot ? snapshot.usedTokens : status?.inputTokens)
+  // Legacy Session records initialize billing inputTokens to 0 before any request.
+  // Only a context snapshot can establish that the live occupancy really is zero.
+  const legacyTokens = validCount(status?.inputTokens)
+  const usedTokens = snapshot ? validCount(snapshot.usedTokens)
+    : legacyTokens !== null && legacyTokens > 0 ? legacyTokens : null
   const limitTokens = snapshot
     ? validLimit(snapshot.limitTokens)
     : validLimit(status?.contextWindow) ?? validLimit(modelContextWindow ?? undefined)
@@ -45,12 +49,13 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
 export function getContextDisplayLabels(display: ReturnType<typeof getContextDisplay>, t: Translate) {
   return {
     window: t(display.limitKind === 'compaction' ? 'chat.contextUsage.compactionWindow' : 'chat.contextUsage.contextWindow'),
+    capacity: display.limitTokens !== null ? formatTokenCount(display.limitTokens) : null,
     usage: display.usedTokens === null
       ? t('chat.contextUsage.unknown')
       : display.limitTokens !== null
         ? t('chat.contextUsage.tokensOfLimit', { used: formatTokenCount(display.usedTokens), limit: formatTokenCount(display.limitTokens) })
         : t('chat.tokensUsed', { displayCount: formatTokenCount(display.usedTokens) }),
     percent: display.percent !== null ? t('chat.contextUsage.percentUsed', { percent: display.percent }) : '',
-    qualifier: [display.isEstimate && t('chat.contextUsage.estimated'), display.isStale && t('chat.contextUsage.stale')].filter(Boolean).join(' · '),
+    qualifier: [display.isEstimate && display.usedTokens !== null && !display.isStale && t('chat.contextUsage.estimated'), display.isStale && t('chat.contextUsage.stale')].filter(Boolean).join(' · '),
   }
 }

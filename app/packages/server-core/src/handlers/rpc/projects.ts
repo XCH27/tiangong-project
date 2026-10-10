@@ -43,20 +43,17 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
       ?? loadProjectById(workspace.rootPath, projectIdOrSlug)
   })
 
-  // Create a new project
+  // The UI's Open Folder action reuses the folder's one project, including an
+  // archived one. A name-only project is retained on disk for compatibility,
+  // but can no longer be created through this RPC.
   server.handle(RPC_CHANNELS.projects.CREATE, async (_ctx, workspaceId: string, input: import('@craft-agent/shared/projects').CreateProjectInput) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
-    const { createProject } = await import('@craft-agent/shared/projects')
-    const project = createProject(workspace.rootPath, {
-      name: input.name?.trim() || 'New Project',
-      description: input.description,
-      workingDirectory: input.workingDirectory,
-      details: input.details,
-      colorTheme: input.colorTheme,
-    })
+    if (!input.workingDirectory?.trim()) throw new Error('Choose a project folder first')
+    const { ensureProjectForFolder } = await import('@craft-agent/shared/projects')
+    const project = ensureProjectForFolder(workspace.rootPath, input.workingDirectory)
     await broadcastChanged(workspaceId, workspace.rootPath)
-    log.info(`Created project: ${project.slug}`)
+    log.info(`Opened project folder: ${project.slug}`)
     return project
   })
 

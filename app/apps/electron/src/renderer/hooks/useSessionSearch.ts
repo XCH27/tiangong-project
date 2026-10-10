@@ -152,9 +152,9 @@ export function computeCollapsedPagination(
 
   const groupKeysInView = new Set(items.map(item => getCollapseGroupKey(item, groupingMode)))
 
-  // Safety guard: don't allow collapse state to hide the entire list when only one
-  // group exists in the current filtered view (there would be no meaningful collapse UX).
-  if (groupKeysInView.size <= 1) {
+  // Date/status lists keep their original single-group guard. Project folders
+  // always retain a header and independent actions, so even one can collapse.
+  if (groupKeysInView.size <= 1 && groupingMode !== 'project') {
     return {
       paginatedItems: items.slice(0, displayLimit),
       hasMore: displayLimit < items.length,
@@ -163,7 +163,8 @@ export function computeCollapsedPagination(
   }
 
   const effectiveCollapsedKeys = new Set(
-    Array.from(collapsedGroups).filter(key => groupKeysInView.has(key))
+    Array.from(collapsedGroups).filter(key => groupKeysInView.has(key)
+      && !(groupingMode === 'project' && key === 'project-__none__'))
   )
 
   if (effectiveCollapsedKeys.size === 0) {

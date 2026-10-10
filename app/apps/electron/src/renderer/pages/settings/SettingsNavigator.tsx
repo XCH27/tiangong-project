@@ -34,11 +34,12 @@ const GROUPS: { id: GroupId; labelKey?: string }[] = [
 ]
 
 interface SettingsNavigatorProps {
-  selectedSubpage: SettingsSubpage
+  selectedSubpage: SettingsSubpage | null
+  capabilityLinks?: LinkItem[]
   onSelectSubpage: (subpage: SettingsSubpage) => void
 }
 
-export default function SettingsNavigator({ selectedSubpage, onSelectSubpage }: SettingsNavigatorProps) {
+export default function SettingsNavigator({ selectedSubpage, onSelectSubpage, capabilityLinks = [] }: SettingsNavigatorProps) {
   const { t } = useTranslation()
 
   return (
@@ -56,6 +57,7 @@ export default function SettingsNavigator({ selectedSubpage, onSelectSubpage }: 
               onClick: () => onSelectSubpage(item.id),
             }
           })
+        if (group.id === 'agent') links.push(...capabilityLinks)
         if (links.length === 0) return null
         return (
           <div

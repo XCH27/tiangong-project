@@ -71,6 +71,7 @@ export interface RichTextInputHandle {
   /** The text value */
   value: string
   /** Selection start position in text model */
+  selectionEnd: number
   selectionStart: number
   /** Set the text value */
   setValue: (value: string) => void
@@ -245,16 +246,17 @@ function getTextFromElement(element: HTMLElement): string {
 // Helper: Get cursor position in text model
 // ============================================================================
 
-function getCursorPosition(element: HTMLElement, fallback: number = 0): number {
+function getCursorPosition(element: HTMLElement, fallback: number = 0, edge: 'start' | 'end' = 'start'): number {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0) return fallback
 
   const range = selection.getRangeAt(0)
+  if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return fallback
 
   // Create a range from start of element to cursor
   const preRange = document.createRange()
   preRange.selectNodeContents(element)
-  preRange.setEnd(range.startContainer, range.startOffset)
+  preRange.setEnd(edge === 'end' ? range.endContainer : range.startContainer, edge === 'end' ? range.endOffset : range.startOffset)
 
   // Get text length before cursor, excluding badge content
   const fragment = preRange.cloneContents()
@@ -554,7 +556,8 @@ export const RichTextInput = React.forwardRef<RichTextInputHandle, RichTextInput
       focus: () => divRef.current?.focus(),
       blur: () => divRef.current?.blur(),
       get value() { return lastValueRef.current },
-      get selectionStart() { return cursorPositionRef.current },
+      get selectionStart() { return divRef.current ? getCursorPosition(divRef.current, cursorPositionRef.current) : cursorPositionRef.current },
+      get selectionEnd() { return divRef.current ? getCursorPosition(divRef.current, cursorPositionRef.current, 'end') : cursorPositionRef.current },
       setValue: (newValue: string) => {
         lastValueRef.current = newValue
       },

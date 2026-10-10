@@ -14,10 +14,8 @@ import {
   StyledDropdownMenuSubTrigger,
   StyledDropdownMenuSubContent,
 } from "@/components/ui/styled-dropdown"
-import { CraftAgentsSymbol } from "../icons/CraftAgentsSymbol"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { TopBarButton } from "../ui/TopBarButton"
-import { Button } from "../ui/button"
 import {
   EDIT_MENU,
   VIEW_MENU,
@@ -129,7 +127,8 @@ function renderMenuSection(
 }
 
 /**
- * Desktop AppMenu — Craft logo dropdown. Retain the original Edit/View/Window
+ * Desktop AppMenu — application actions only. Account actions have their own control.
+ * Retain the original Edit/View/Window
  * controls and their displayed shortcuts on every desktop platform.
  *
  * Behavior matches the pre-refactor version that lived inline in `TopBar.tsx`.
@@ -147,7 +146,6 @@ export function DesktopAppMenu({
 }: AppMenuProps) {
   const { t } = useTranslation()
   const [isDebugMode, setIsDebugMode] = useState(false)
-
   const newChatHotkey = useActionLabel('app.newChat').hotkey
   const newWindowHotkey = useActionLabel('app.newWindow').hotkey
   const settingsHotkey = useActionLabel('app.settings').hotkey
@@ -166,18 +164,9 @@ export function DesktopAppMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        {placement === 'sidebar' ? (
-          <Button variant="ghost" size="sm" aria-label={t("menu.craftMenu")}
-            className="min-w-0 flex-1 justify-start gap-2 rounded-[6px] px-2 text-[13px] font-normal">
-            <CraftAgentsSymbol className="h-4 shrink-0 text-accent" />
-            <span className="min-w-0 flex-1 truncate text-left">Craft Agents</span>
-            <Icons.ChevronUp className="h-3.5 w-3.5 text-foreground/40" />
-          </Button>
-        ) : (
-          <TopBarButton aria-label={t("menu.craftMenu")}>
-            <CraftAgentsSymbol className="h-4 text-accent" />
-          </TopBarButton>
-        )}
+        <TopBarButton aria-label={t("menu.craftMenu")}>
+          <Icons.Ellipsis className="h-4 w-4" />
+        </TopBarButton>
       </DropdownMenuTrigger>
       <StyledDropdownMenuContent align="start" side={placement === 'sidebar' ? 'top' : 'bottom'} minWidth="min-w-48">
         {placement !== 'sidebar' && (

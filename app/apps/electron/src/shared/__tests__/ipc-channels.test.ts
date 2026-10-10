@@ -98,6 +98,8 @@ const EXPECTED_CHANNELS: string[] = [
   'fs:listDirectory',
   'fs:search',
   'git:getBranch',
+  'git:githubCliAuth',
+  'git:githubCliStatus',
   'gitbash:browse',
   'gitbash:check',
   'gitbash:setPath',

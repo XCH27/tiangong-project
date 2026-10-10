@@ -12,11 +12,13 @@ import { describe, it, expect, mock, beforeAll } from 'bun:test';
 mock.module('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: '' }));
 mock.module('pdfjs-dist', () => ({ GlobalWorkerOptions: { workerSrc: '' }, getDocument: () => ({}) }));
 
+let insertMention: typeof import('../mention-menu').insertMention;
 let isValidMentionTrigger: (text: string, position: number) => boolean;
 
 beforeAll(async () => {
   const mod = await import('../mention-menu');
   isValidMentionTrigger = mod.isValidMentionTrigger;
+  insertMention = mod.insertMention;
 });
 
 describe('isValidMentionTrigger', () => {
@@ -121,5 +123,24 @@ describe('isValidMentionTrigger', () => {
       expect(isValidMentionTrigger('user@test @', 4)).toBe(false);  // first @
       expect(isValidMentionTrigger('user@test @', 10)).toBe(true); // second @
     });
+  });
+});
+
+
+describe('shared + / @ draft insertion', () => {
+  it('replaces an @ query and retains text after the caret', () => {
+    expect(insertMention('Read @rea before editing', 5, 9, 'file', 'README.md'))
+      .toEqual({ value: 'Read [' + 'file:README.md' + ']  before editing', cursorPosition: 22 });
+  });
+  it('inserts from + at the saved caret without losing the rest of the draft', () => {
+    expect(insertMention('检查文件后再继续', 4, 4, 'file', '说明.md').value)
+      .toBe('检查文件 [' + 'file:说明.md' + '] 后再继续');
+  });
+  it('replaces only selected text and retains qualified skill identity', () => {
+    expect(insertMention('Use this instead', 4, 8, 'skill', '.agents:review').value)
+      .toBe('Use [' + 'skill:.agents:review' + ']  instead');
+  });
+  it('opening the attachment chooser does not consume or change the draft', () => {
+    expect(insertMention('Keep my draft', 5, 8, 'attachment', 'attach').value).toBe('Keep my draft');
   });
 });

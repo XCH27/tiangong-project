@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { useState, useCallback, useRef } from "react"
-import { Check, FolderPlus, ExternalLink, ChevronDown, Cloud, CloudOff, Trash2 } from "lucide-react"
+import { Check, ExternalLink, ChevronDown, Cloud, CloudOff, Trash2 } from "lucide-react"
 import { AnimatePresence } from "motion/react"
 import { useSetAtom } from "jotai"
 import { toast } from "sonner"
@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
-  StyledDropdownMenuSeparator,
 } from "@/components/ui/styled-dropdown"
 import { WorkspaceAvatar } from "@/components/ui/workspace-avatar"
 import { FadingText } from "@/components/ui/fading-text"
@@ -123,11 +122,6 @@ export function WorkspaceSwitcher({
     if (!activeWorkspaceId || !workspaceUnreadMap) return false
     return workspaces.some((workspace) => workspace.id !== activeWorkspaceId && workspaceUnreadMap[workspace.id])
   }, [workspaces, activeWorkspaceId, workspaceUnreadMap])
-
-  const handleNewWorkspace = () => {
-    setShowCreationScreen(true)
-    setFullscreenOverlayOpen(true)
-  }
 
   const handleWorkspaceCreated = (workspace: Workspace) => {
     setShowCreationScreen(false)
@@ -322,15 +316,6 @@ export function WorkspaceSwitcher({
             )
           })}
 
-          {/* Separator and New Workspace option */}
-          <StyledDropdownMenuSeparator />
-          <StyledDropdownMenuItem
-            onClick={handleNewWorkspace}
-            className="font-sans"
-          >
-            <FolderPlus className="h-4 w-4" />
-            {t("workspace.addWorkspace")}
-          </StyledDropdownMenuItem>
         </StyledDropdownMenuContent>
       </DropdownMenu>
     </>

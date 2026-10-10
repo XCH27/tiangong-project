@@ -1,15 +1,18 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { CHAT_LAYOUT } from '@/config/layout'
-import { flattenLabels, type LabelConfig } from '@craft-agent/shared/labels'
+import { flattenLabels, parseLabelEntry, type LabelConfig } from '@craft-agent/shared/labels'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
 import type { SessionStatus } from '@/config/session-status-config'
 import type { BackgroundTask } from '../ActiveTasksBar'
-import { ActiveOptionBadges } from '../ActiveOptionBadges'
+import { PermissionModeDropdown } from '../ActiveOptionBadges'
+import { ActiveTasksBar } from '../ActiveTasksBar'
 import { InputContainer } from './InputContainer'
 import { InputErrorBoundary } from './InputErrorBoundary'
+import { NewConversationGreeting } from './NewConversationGreeting'
 
 interface ChatInputZoneProps {
+  newConversation?: boolean
   compactMode?: boolean
   showOptionBadges?: boolean
   permissionMode?: PermissionMode
@@ -30,6 +33,7 @@ interface ChatInputZoneProps {
 }
 
 export function ChatInputZone({
+  newConversation = false,
   compactMode = false,
   showOptionBadges,
   permissionMode = 'ask',
@@ -49,7 +53,6 @@ export function ChatInputZone({
   inputProps,
 }: ChatInputZoneProps) {
   const [autoOpenLabelId, setAutoOpenLabelId] = React.useState<string | null>(null)
-  const shouldShowOptionBadges = showOptionBadges ?? !compactMode
   const inputResetKey = `${sessionId}::${inputProps.structuredInput?.type ?? 'freeform'}`
 
   const handleClearDraft = React.useCallback(() => {
@@ -59,7 +62,7 @@ export function ChatInputZone({
 
   const handleLabelAdd = React.useCallback((labelId: string) => {
     const current = sessionLabels || []
-    if (current.includes(labelId)) return
+    if (current.some(entry => parseLabelEntry(entry).id === labelId)) return
 
     onLabelsChange?.([...current, labelId])
 
@@ -72,32 +75,21 @@ export function ChatInputZone({
   return (
     <div className={cn(
       CHAT_LAYOUT.maxWidth,
-      'mx-auto w-full mt-1',
+      'mx-auto w-full',
+      newConversation ? 'py-8' : 'mt-1',
       compactMode ? 'px-2 pb-3' : 'px-3 @xs/panel:px-4 pb-4',
       className,
     )}>
-      {shouldShowOptionBadges && (
-        <ActiveOptionBadges
-          permissionMode={permissionMode}
-          onPermissionModeChange={onPermissionModeChange}
-          tasks={tasks}
-          sessionId={sessionId}
-          sessionFolderPath={sessionFolderPath}
-          onKillTask={onKillTask}
-          onInsertMessage={onInsertMessage ?? inputProps.onInputChange}
-          sessionLabels={sessionLabels}
-          labels={labels}
-          onLabelsChange={onLabelsChange}
-          onRemoveLabel={(labelId) => {
-            const next = (sessionLabels || []).filter(entry => entry !== labelId && !entry.startsWith(`${labelId}::`))
-            onLabelsChange?.(next)
-          }}
-          autoOpenLabelId={autoOpenLabelId}
-          onAutoOpenConsumed={() => setAutoOpenLabelId(null)}
-          sessionStatuses={sessionStatuses}
-          currentSessionStatus={currentSessionStatus}
-          onSessionStatusChange={onSessionStatusChange}
-        />
+      {newConversation && <NewConversationGreeting />}
+      {tasks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <ActiveTasksBar tasks={tasks} sessionId={sessionId} onKillTask={onKillTask} onInsertMessage={onInsertMessage ?? inputProps.onInputChange} />
+        </div>
+      )}
+      {inputProps.structuredInput && (
+        <div className="mb-2">
+          <PermissionModeDropdown toolbar permissionMode={permissionMode} onPermissionModeChange={onPermissionModeChange} sessionId={sessionId} />
+        </div>
       )}
 
       <InputErrorBoundary
@@ -113,6 +105,9 @@ export function ChatInputZone({
           labels={labels}
           sessionLabels={sessionLabels}
           onLabelAdd={handleLabelAdd}
+          onLabelsChange={onLabelsChange}
+          autoOpenLabelId={autoOpenLabelId}
+          onAutoOpenLabelConsumed={() => setAutoOpenLabelId(null)}
           sessionFolderPath={sessionFolderPath}
           sessionId={sessionId}
           currentSessionStatus={currentSessionStatus}

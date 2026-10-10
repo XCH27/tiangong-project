@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { createPortal } from 'react-dom'
+import { Check, Paperclip, Tag, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { FadingText } from '@/components/ui/fading-text'
@@ -11,7 +13,7 @@ import { AGENTS_PLUGIN_NAME } from '@craft-agent/shared/skills/types'
 // Types
 // ============================================================================
 
-export type MentionItemType = 'skill' | 'source' | 'file' | 'folder'
+export type MentionItemType = 'skill' | 'source' | 'file' | 'folder' | 'attachment' | 'label'
 
 export interface MentionItem {
   id: string
@@ -42,6 +44,11 @@ export interface InlineMentionMenuProps {
   className?: string
   /** Whether file search is in progress */
   isSearching?: boolean
+  searchFailed?: boolean
+  /** The + entry searches the same catalogue as @ without editing the draft. */
+  onFilterChange?: (value: string) => void
+  selectedSourceSlugs?: string[]
+  onToggleSource?: (slug: string) => void
 }
 
 // ============================================================================
@@ -209,6 +216,11 @@ export function InlineMentionMenu({
   workspaceId,
   maxWidth = 280,
   className,
+  isSearching,
+  searchFailed,
+  onFilterChange,
+  selectedSourceSlugs = [],
+  onToggleSource,
 }: InlineMentionMenuProps) {
   const { t } = useTranslation()
   const menuRef = React.useRef<HTMLDivElement>(null)
@@ -216,6 +228,11 @@ export function InlineMentionMenu({
   const [selectedIndex, setSelectedIndex] = React.useState(0)
   const filteredSections = filterSections(sections, filter)
   const flatItems = flattenItems(filteredSections)
+
+  const selectItem = React.useCallback((item: MentionItem) => {
+    if (item.type === 'source' && onToggleSource) onToggleSource(item.id)
+    else { onSelect(item); onOpenChange(false) }
+  }, [onToggleSource, onSelect, onOpenChange])
 
   // Reset selection when filter changes
   React.useEffect(() => {
@@ -225,9 +242,10 @@ export function InlineMentionMenu({
   // Keyboard navigation
   // Don't attach listener when no items - allows Enter to propagate to input handler
   React.useEffect(() => {
-    if (!open || flatItems.length === 0) return
+    if (!open) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing) return
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault()
@@ -240,10 +258,7 @@ export function InlineMentionMenu({
         case 'Enter':
         case 'Tab':
           e.preventDefault()
-          if (flatItems[selectedIndex]) {
-            onSelect(flatItems[selectedIndex])
-            onOpenChange(false)
-          }
+          if (flatItems[selectedIndex]) selectItem(flatItems[selectedIndex])
           break
         case 'Escape':
           e.preventDefault()
@@ -254,13 +269,14 @@ export function InlineMentionMenu({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, flatItems, selectedIndex, onSelect, onOpenChange])
+  }, [open, flatItems, selectedIndex, onOpenChange, selectItem])
 
   // Close on click outside
   React.useEffect(() => {
     if (!open) return
 
     const handleClickOutside = (e: MouseEvent) => {
+      if ((e.target as Element).closest?.('[data-mention-trigger]')) return
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onOpenChange(false)
       }
@@ -286,38 +302,55 @@ export function InlineMentionMenu({
     ? window.innerHeight - Math.round(position.y) + 8
     : 0
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
       data-inline-menu
-      className={cn('fixed z-dropdown', MENU_CONTAINER_STYLE, className)}
+      className={cn('fixed z-dropdown flex flex-col', MENU_CONTAINER_STYLE, className)}
       style={{
-        left: Math.round(position.x) - 10,
-        bottom: bottomPosition,
+        left: Math.max(8, Math.min(Math.round(position.x), window.innerWidth - maxWidth - 8)),
+        bottom: Math.max(8, bottomPosition),
         width: maxWidth,
-        maxWidth,
+        maxWidth: 'calc(100vw - 16px)',
+        maxHeight: Math.max(100, position.y - 16),
       }}
     >
-      {/* Menu header — sticky above scroll area */}
-      <div className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground border-b border-foreground/5">
-        {t('chat.mentionFilesSkillsSources')}
-      </div>
+      {onFilterChange ? (
+        <label className="flex shrink-0 items-center gap-2 border-b border-foreground/5 px-3 py-2">
+          <Search className="h-4 w-4 text-foreground/50" />
+          <input autoFocus value={filter} onChange={event => onFilterChange(event.target.value)}
+            aria-label={t('chat.mentionFilesSkillsSources')} placeholder={t('chat.mentionFilesSkillsSources')}
+            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-foreground/50" />
+        </label>
+      ) : (
+        <div className="shrink-0 border-b border-foreground/5 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+          {t('chat.mentionFilesSkillsSources')}
+        </div>
+      )}
+      {searchFailed && <p role="status" className="px-3 py-2 text-xs text-destructive">{t('chat.fileSearchFailed')}</p>}
+      {isSearching && <p role="status" className="px-3 py-2 text-xs text-foreground/50">{t('common.loading')}</p>}
 
-      <div ref={listRef} className={MENU_LIST_STYLE}>
+      <div ref={listRef} role="listbox" aria-label={t('chat.mentionFilesSkillsSources')} className={cn(MENU_LIST_STYLE, 'min-h-0')}>
         {flatItems.length === 0 && filter && (
           <div className="px-3 py-2 text-[12px] text-muted-foreground/60">{t('chat.noResults')}</div>
         )}
         {flatItems.map((item, itemIndex) => {
           const isSelected = itemIndex === selectedIndex
 
+          const sectionLabel = item.type === 'attachment' ? t('chat.addSection')
+            : item.type === 'label' ? t('settings.labels.title')
+            : item.type === 'skill' ? t('sidebar.skills')
+            : item.type === 'source' ? t('sidebar.sources') : t('chat.filesSection')
+          const startsSection = itemIndex === 0 || flatItems[itemIndex - 1]?.type !== item.type
           return (
+            <React.Fragment key={`${item.type}-${item.id}`}>
+            {onFilterChange && startsSection && <div className="px-3 pt-2 pb-1 text-xs font-medium text-foreground/50" role="presentation">{sectionLabel}</div>}
             <div
-              key={`${item.type}-${item.id}`}
               data-selected={isSelected}
-              onClick={() => {
-                onSelect(item)
-                onOpenChange(false)
-              }}
+              role="option"
+              aria-selected={item.type === 'source' && onToggleSource ? selectedSourceSlugs.includes(item.id) : isSelected}
+              onMouseDown={event => event.preventDefault()}
+              onClick={() => selectItem(item)}
               onMouseEnter={() => setSelectedIndex(itemIndex)}
               className={cn(
                 MENU_ITEM_STYLE,
@@ -326,6 +359,8 @@ export function InlineMentionMenu({
             >
               {/* Icon based on type */}
               <div className="shrink-0">
+                {item.type === 'label' && <Tag className="h-4 w-4 text-muted-foreground" />}
+                {item.type === 'attachment' && <Paperclip className="h-4 w-4 text-muted-foreground" />}
                 {item.type === 'skill' && item.skill && (
                   <SkillAvatar skill={item.skill} size="sm" workspaceId={workspaceId} />
                 )}
@@ -356,20 +391,24 @@ export function InlineMentionMenu({
               ) : (
                 <>
                   {/* Skill/source: label with type badge */}
-                  <div className="flex-1 min-w-0">
-                    <span className="truncate block">{item.label}</span>
+                  <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                    <span className={cn('truncate', onFilterChange && item.description && 'shrink-0 max-w-[50%]')}>{item.label}</span>
+                    {onFilterChange && item.description && <span className="truncate text-xs text-foreground/50">{item.description}</span>}
                   </div>
-                  <span className={MENU_TYPE_BADGE}>
-                    {item.type === 'skill' ? t('common.skill') : t('common.source')}
-                  </span>
+                  {item.type === 'source' && onToggleSource
+                    ? <Check className={cn('h-4 w-4 shrink-0', !selectedSourceSlugs.includes(item.id) && 'invisible')} />
+                    : item.type !== 'attachment' && item.type !== 'label' && <span className={MENU_TYPE_BADGE}>
+                      {item.type === 'skill' ? t('common.skill') : t('common.source')}
+                    </span>}
                 </>
               )}
             </div>
+            </React.Fragment>
           )
         })}
 
       </div>
-    </div>
+    </div>, document.body
   )
 }
 
@@ -443,6 +482,7 @@ export interface MentionInputElement {
   getCaretRect?: () => DOMRect | null
   value: string
   selectionStart: number
+  selectionEnd?: number
 }
 
 export interface UseInlineMentionOptions {
@@ -455,6 +495,7 @@ export interface UseInlineMentionOptions {
   onSelect: (item: MentionItem) => void
   /** Workspace ID for fully-qualified skill names */
   workspaceId?: string
+  scopeKey?: string
 }
 
 export interface UseInlineMentionReturn {
@@ -464,6 +505,10 @@ export interface UseInlineMentionReturn {
   sections: MentionSection[]
   /** Whether file search is in progress */
   isSearching: boolean
+  searchFailed: boolean
+  fromButton: boolean
+  openFromButton: (position: { x: number; y: number }) => void
+  search: (value: string) => void
   handleInputChange: (value: string, cursorPosition: number) => void
   close: () => void
   handleSelect: (item: MentionItem) => { value: string; cursorPosition: number }
@@ -476,32 +521,48 @@ export function useInlineMention({
   basePath,
   onSelect,
   workspaceId,
+  scopeKey,
 }: UseInlineMentionOptions): UseInlineMentionReturn {
   const [isOpen, setIsOpen] = React.useState(false)
   const [filter, setFilter] = React.useState('')
-  // committedFilter: only updates when IPC returns (or immediately when no IPC needed).
-  // Prevents visual jumps — the menu shows all items until results are ready,
-  // then applies filter + file results in a single frame.
-  const [committedFilter, setCommittedFilter] = React.useState('')
   const [position, setPosition] = React.useState({ x: 0, y: 0 })
-  const [atStart, setAtStart] = React.useState(-1)
+  const [fromButton, setFromButton] = React.useState(false)
   const [fileResults, setFileResults] = React.useState<MentionItem[]>([])
-  const fileSearchTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Cache of raw IPC file search results for the current menu session.
-  // Allows instant client-side filtering when user edits the query (add/delete chars)
-  // without waiting for a new IPC round-trip. Cleared when menu closes.
-  const fileCache = React.useRef<FileSearchResult[]>([])
-  // Store current input state for handleSelect
-  const currentInputRef = React.useRef({ value: '', cursorPosition: 0 })
+  const [isSearching, setIsSearching] = React.useState(false)
+  const [searchFailed, setSearchFailed] = React.useState(false)
+  const insertion = React.useRef<{ value: string; start: number; end: number } | null>(null)
 
-  // Cleanup pending timeout on unmount
-  React.useEffect(() => {
-    return () => {
-      if (fileSearchTimeout.current) {
-        clearTimeout(fileSearchTimeout.current)
-      }
-    }
+  const close = React.useCallback(() => {
+    setIsOpen(false)
+    setFilter('')
+    setFileResults([])
+    setSearchFailed(false)
+    setIsSearching(false)
+    insertion.current = null
   }, [])
+  React.useEffect(close, [close, basePath, workspaceId, scopeKey])
+
+  // Each query is scoped to the current folder and open menu. Late responses from a
+  // previous query, folder or closed menu cannot overwrite the current catalogue.
+  React.useEffect(() => {
+    let cancelled = false
+    setFileResults([])
+    setSearchFailed(false)
+    setIsSearching(false)
+    if (!isOpen || !basePath || !filter.trim()) return
+    setIsSearching(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const results = await window.electronAPI.searchFiles(basePath, filter)
+        if (!cancelled) setFileResults(filterCacheResults(results, filter))
+      } catch {
+        if (!cancelled) setSearchFailed(true)
+      } finally {
+        if (!cancelled) setIsSearching(false)
+      }
+    }, 150)
+    return () => { cancelled = true; clearTimeout(timeout) }
+  }, [isOpen, basePath, filter, scopeKey])
 
   // Build sections from available data (skills, sources, and file search results)
   const sections = React.useMemo((): MentionSection[] => {
@@ -552,202 +613,50 @@ export function useInlineMention({
   }, [skills, sources, fileResults])
 
   const handleInputChange = React.useCallback((value: string, cursorPosition: number) => {
-    // Store current state for handleSelect
-    currentInputRef.current = { value, cursorPosition }
+    const before = value.slice(0, cursorPosition)
+    const match = before.match(/@([^@\[\]\n]{0,100})$/u)
+    const start = match ? before.lastIndexOf('@') : -1
+    if (!match || !isValidMentionTrigger(before, start)) { close(); return }
+    insertion.current = { value, start, end: cursorPosition }
+    setFromButton(false)
+    setFilter(match[1] || '')
+    const rect = inputRef.current?.getCaretRect?.() ?? inputRef.current?.getBoundingClientRect()
+    if (rect) setPosition({ x: rect.left, y: rect.top })
+    setIsOpen(true)
+  }, [inputRef, close])
 
-    const textBeforeCursor = value.slice(0, cursorPosition)
-    // Match @ followed by up to 100 chars (word chars, hyphens, slashes, dots, and spaces).
-    // Spaces are allowed so users can type filenames with spaces (e.g. @app availability.md).
-    // The menu auto-closes when a space produces no matches (Slack-style behavior).
-    const atMatch = textBeforeCursor.match(/@([\w\-\/.\s]{0,100})?$/)
-
-    // Check if this is a valid @ mention trigger
-    const matchStart = atMatch ? textBeforeCursor.lastIndexOf('@') : -1
-    const isValidTrigger = atMatch && isValidMentionTrigger(textBeforeCursor, matchStart)
-
-    if (isValidTrigger) {
-      const filterText = atMatch[1] || ''
-
-      // Slack-style auto-close: if the query contains a space and the file cache is
-      // populated but produces zero matches, close the menu. This prevents the
-      // "infinite spaces" problem while still allowing multi-word queries like
-      // "app availability.md". Skills/sources rarely have spaces in names, so
-      // file cache is the authoritative signal here.
-      if (filterText.includes(' ') && fileCache.current.length > 0) {
-        const fileMatches = filterCacheResults(fileCache.current, filterText)
-        if (fileMatches.length === 0) {
-          setIsOpen(false)
-          setFilter('')
-          setCommittedFilter('')
-          setAtStart(-1)
-          if (fileSearchTimeout.current) {
-            clearTimeout(fileSearchTimeout.current)
-            fileSearchTimeout.current = null
-          }
-          setFileResults([])
-          fileCache.current = []
-          return
-        }
-      }
-
-      setAtStart(matchStart)
-      setFilter(filterText)
-
-      // Cache-first file search: if cache has entries from a previous IPC call,
-      // filter client-side instantly (no IPC, no debounce). Otherwise fire a
-      // debounced IPC to populate the cache. Cache clears when menu closes.
-      window.electronAPI.debugLog('[mention] filterText:', filterText, 'basePath:', basePath, 'cacheSize:', fileCache.current.length)
-      if (basePath && filterText.length >= 1) {
-        if (fileCache.current.length > 0) {
-          // Cache exists — filter client-side instantly, no IPC needed
-          if (fileSearchTimeout.current) {
-            clearTimeout(fileSearchTimeout.current)
-            fileSearchTimeout.current = null
-          }
-          const filtered = filterCacheResults(fileCache.current, filterText)
-          window.electronAPI.debugLog('[mention] cache hit:', filtered.length, 'items')
-          setFileResults(filtered)
-          setCommittedFilter(filterText)
-        } else {
-          // First search — fire debounced IPC to populate cache
-          if (fileSearchTimeout.current) clearTimeout(fileSearchTimeout.current)
-
-          fileSearchTimeout.current = setTimeout(async () => {
-            try {
-              window.electronAPI.debugLog('[mention] calling IPC searchFiles:', basePath, filterText)
-              const results = await window.electronAPI.searchFiles(basePath, filterText)
-              window.electronAPI.debugLog('[mention] IPC returned:', results?.length, 'results')
-              fileCache.current = results
-              const filtered = filterCacheResults(fileCache.current, filterText)
-              window.electronAPI.debugLog('[mention] after cache filter:', filtered.length, 'items')
-              setFileResults(filtered)
-              setCommittedFilter(filterText)
-            } catch (err) {
-              window.electronAPI.debugLog('[mention] IPC searchFiles error:', String(err))
-            }
-          }, 150)
-        }
-      } else {
-        window.electronAPI.debugLog('[mention] skipping file search (no basePath or empty filter)')
-        if (fileSearchTimeout.current) {
-          clearTimeout(fileSearchTimeout.current)
-          fileSearchTimeout.current = null
-        }
-        setFileResults([])
-        setCommittedFilter(filterText)
-      }
-
-      if (inputRef.current) {
-        // Try to get actual caret position from the input element
-        const caretRect = inputRef.current.getCaretRect?.()
-
-        if (caretRect && caretRect.x > 0) {
-          // Use actual caret position
-          setPosition({
-            x: caretRect.x,
-            y: caretRect.y,
-          })
-        } else {
-          // Fallback: position at input element's left edge
-          const rect = inputRef.current.getBoundingClientRect()
-          const lineHeight = 20
-          const linesBeforeCursor = textBeforeCursor.split('\n').length - 1
-          setPosition({
-            x: rect.left,
-            y: rect.top + (linesBeforeCursor + 1) * lineHeight,
-          })
-        }
-      }
-
-      setIsOpen(true)
-    } else {
-      setIsOpen(false)
-      setFilter('')
-      setCommittedFilter('')
-      setAtStart(-1)
-      // Clear file search state and cache when menu closes
-      if (fileSearchTimeout.current) {
-        clearTimeout(fileSearchTimeout.current)
-        fileSearchTimeout.current = null
-      }
-      setFileResults([])
-      fileCache.current = []
-    }
-  }, [inputRef, basePath])
-
-  const handleSelect = React.useCallback((item: MentionItem): { value: string; cursorPosition: number } => {
-    let result = ''
-    let newCursorPosition = 0
-
-    if (atStart >= 0) {
-      const { value: currentValue, cursorPosition } = currentInputRef.current
-      const before = currentValue.slice(0, atStart)
-      const after = currentValue.slice(cursorPosition)
-
-      const buildMentionText = (kind: 'skill' | 'source' | 'file' | 'folder', value: string): string =>
-        '[' + kind + ':' + value + '] '
-
-      // Build the mention text based on type using bracket syntax.
-      // Skills use fully-qualified names (workspaceId:slug) because the SDK's
-      // Skill tool requires this format to resolve workspace-scoped skills.
-      let mentionText: string
-      if (item.type === 'skill') {
-        // Plugin name depends on which tier the skill came from:
-        //   workspace → workspaceId, project/global → ".agents"
-        const pluginName = item.skill?.source === 'workspace' ? workspaceId : AGENTS_PLUGIN_NAME
-        const qualifiedName = pluginName ? `${pluginName}:${item.id}` : item.id
-        mentionText = buildMentionText('skill', qualifiedName)
-      } else if (item.type === 'source') {
-        mentionText = buildMentionText('source', item.id)
-      } else if (item.type === 'file') {
-        // Use relative path for file mentions
-        mentionText = buildMentionText('file', item.file?.relativePath || item.id)
-      } else if (item.type === 'folder') {
-        mentionText = buildMentionText('folder', item.file?.relativePath || item.id)
-      } else {
-        mentionText = buildMentionText('skill', item.id)
-      }
-
-      result = before + mentionText + after
-      newCursorPosition = before.length + mentionText.length
-    }
-
-    onSelect(item)
-    setIsOpen(false)
-    setCommittedFilter('')
-    // Clear file search state and cache to prevent stale results on next open
-    if (fileSearchTimeout.current) {
-      clearTimeout(fileSearchTimeout.current)
-      fileSearchTimeout.current = null
-    }
-    setFileResults([])
-    fileCache.current = []
-
-    return { value: result, cursorPosition: newCursorPosition }
-  }, [onSelect, atStart, workspaceId])
-
-  const close = React.useCallback(() => {
-    setIsOpen(false)
+  const openFromButton = React.useCallback((anchor: { x: number; y: number }) => {
+    const input = inputRef.current
+    if (!input) return
+    insertion.current = { value: input.value, start: input.selectionStart, end: input.selectionEnd ?? input.selectionStart }
+    setFromButton(true)
     setFilter('')
-    setCommittedFilter('')
-    setAtStart(-1)
-    // Clear file search state and cache to prevent stale results on next open
-    if (fileSearchTimeout.current) {
-      clearTimeout(fileSearchTimeout.current)
-      fileSearchTimeout.current = null
-    }
-    setFileResults([])
-    fileCache.current = []
-  }, [])
+    setPosition(anchor)
+    setIsOpen(true)
+  }, [inputRef])
 
-  return {
-    isOpen,
-    filter: committedFilter,
-    position,
-    sections,
-    isSearching: false,
-    handleInputChange,
-    close,
-    handleSelect,
-  }
+  const handleSelect = React.useCallback((item: MentionItem) => {
+    const range = insertion.current
+    // A stale click must never replace the draft with an empty string.
+    if (!range) return { value: inputRef.current?.value ?? '', cursorPosition: inputRef.current?.selectionStart ?? 0 }
+    const plugin = item.skill?.source === 'workspace' ? workspaceId : AGENTS_PLUGIN_NAME
+    const id = item.type === 'skill' && plugin ? `${plugin}:${item.id}` : item.file?.relativePath ?? item.id
+    const result = insertMention(range.value, range.start, range.end, item.type, id)
+    onSelect(item)
+    close()
+    return result
+  }, [inputRef, onSelect, workspaceId, close])
+
+  return { isOpen, filter, position, sections, isSearching, searchFailed, fromButton,
+    openFromButton, search: setFilter, handleInputChange, close, handleSelect }
+}
+
+/** Both @ completion and the + catalogue replace only the saved selection. */
+export function insertMention(value: string, start: number, end: number, type: MentionItemType, id: string) {
+  const left = Math.max(0, Math.min(start, value.length))
+  const right = Math.max(left, Math.min(end, value.length))
+  if (type === 'attachment' || type === 'label') return { value, cursorPosition: left }
+  const prefix = left > 0 && !/\s/.test(value[left - 1]!) ? ' ' : ''
+  const text = `${prefix}[${type}:${id}] `
+  return { value: value.slice(0, left) + text + value.slice(right), cursorPosition: left + text.length }
 }

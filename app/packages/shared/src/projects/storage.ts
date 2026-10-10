@@ -360,6 +360,16 @@ export function updateProject(
     throw new Error(`Project not found: ${projectSlug}`);
   }
 
+  // Changing this field in a generic settings patch silently splits the one
+  // folder identity from existing sessions. Moving a project needs a separate
+  // operation that rebinds its sessions and checks for an existing destination.
+  if (
+    Object.prototype.hasOwnProperty.call(patch, 'workingDirectory') &&
+    patch.workingDirectory !== existing.workingDirectory
+  ) {
+    throw new Error('A project folder cannot be changed through project settings');
+  }
+
   const updated: ProjectConfig = {
     ...existing,
     ...patch,

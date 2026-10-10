@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import type { ActivityItem } from '@craft-agent/ui'
-import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from '../file-changes'
+import type { ActivityItem, AssistantTurn } from '@craft-agent/ui'
+import { collectFileChangesFromActivities, collectTurnReviewChanges, getFirstFileChangeIdForActivity } from '../file-changes'
 
 function activity(overrides: Partial<ActivityItem>): ActivityItem {
   return {
@@ -88,5 +88,21 @@ describe('collectFileChangesFromActivities', () => {
     ])
 
     expect(getFirstFileChangeIdForActivity('edit-4', changes)).toBe('edit-4-/src/a.ts')
+  })
+})
+
+describe('turn review projection', () => {
+  const turn = (id: string, activities: ActivityItem[]): AssistantTurn => ({ type: 'assistant', turnId: id, timestamp: 1, isComplete: true, isStreaming: false, activities })
+  const edit = (id: string, status: ActivityItem['status'] = 'completed') => activity({ id, status, toolInput: { file_path: '/a.ts', old_string: id, new_string: 'changed' } })
+  it('pins a historical turn even after later edits arrive; missing targets stay empty', () => {
+    const turns = [turn('first', [edit('one')]), turn('second', [edit('two')])]
+    expect(collectTurnReviewChanges(turns, 'first').map(c => c.id)).toEqual(['one'])
+    expect(collectTurnReviewChanges(turns).map(c => c.id)).toEqual(['one', 'two'])
+    expect(collectTurnReviewChanges(turns, 'missing')).toEqual([])
+  })
+  it('does not present in-flight calls as completed changes; failed operations retain their error', () => {
+    const changes = collectTurnReviewChanges([turn('t', [edit('running', 'running'), edit('done'), activity({ id: 'failed', status: 'error', error: 'Permission denied', toolInput: { file_path: '/b.ts', old_string: 'a', new_string: 'b' } })])])
+    expect(changes.map(c => c.id)).toEqual(['done', 'failed'])
+    expect(changes[1]?.error).toBe('Permission denied')
   })
 })

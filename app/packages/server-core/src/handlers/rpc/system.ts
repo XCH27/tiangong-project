@@ -5,7 +5,7 @@ import { execSync } from 'child_process'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import { getWorkspaceByNameOrId, getGitBashPath, setGitBashPath, clearGitBashPath } from '@craft-agent/shared/config'
 import { classifyExternalUrl, formatBlockedUrlError } from '@craft-agent/shared/utils/url-safety'
-import { isUsableGitBashPath, validateGitBashPath } from '@craft-agent/server-core/services'
+import { getGitHubCliStatus, isUsableGitBashPath, validateGitBashPath } from '@craft-agent/server-core/services'
 import { validateFilePath, getWorkspaceAllowedDirs } from '@craft-agent/server-core/handlers'
 import type { RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
@@ -28,6 +28,8 @@ export const CORE_HANDLED_CHANNELS = [
   RPC_CHANNELS.releaseNotes.GET,
   RPC_CHANNELS.releaseNotes.GET_LATEST_VERSION,
   RPC_CHANNELS.git.GET_BRANCH,
+  RPC_CHANNELS.git.GITHUB_CLI_STATUS,
+  RPC_CHANNELS.git.GITHUB_CLI_AUTH,
   RPC_CHANNELS.gitbash.CHECK,
   RPC_CHANNELS.gitbash.BROWSE,
   RPC_CHANNELS.gitbash.SET_PATH,
@@ -180,6 +182,13 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
   })
 
   // Get git branch for a directory (returns null if not a git repo or git unavailable)
+  server.handle(RPC_CHANNELS.git.GITHUB_CLI_AUTH, async (ctx, command: import('@craft-agent/shared/protocol').GitHubCliCommand) => {
+    const { githubCliAuth } = await import('@craft-agent/server-core/services')
+    return githubCliAuth(ctx.clientId, command)
+  })
+
+  server.handle(RPC_CHANNELS.git.GITHUB_CLI_STATUS, async () => getGitHubCliStatus())
+
   server.handle(RPC_CHANNELS.git.GET_BRANCH, async (_ctx, dirPath: string) => {
     try {
       const branch = execSync('git rev-parse --abbrev-ref HEAD', {

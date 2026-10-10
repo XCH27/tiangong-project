@@ -1,19 +1,17 @@
 /**
  * ProjectInfoPage
  *
- * Workspace-project detail page with three tabs: Sessions, Assets, Settings.
+ * Project details for assets and settings. Conversations live in the sidebar.
  * v1 scope only — no memory tab, no provider selection, no plugin marketplace.
  */
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useAtomValue } from 'jotai'
-import { FolderKanban, FolderOpen, Plus, Trash2, Upload } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { FolderKanban, FolderOpen, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { useActiveWorkspace, useAppShellContext } from '@/context/AppShellContext'
 import { navigate, routes } from '@/lib/navigate'
-import { sessionMetaMapAtom } from '@/atoms/sessions'
 import {
   Info_Page,
   Info_Section,
@@ -32,23 +30,21 @@ interface ProjectInfoPageProps {
   projectSlug: string
 }
 
-type TabKey = 'sessions' | 'assets' | 'settings'
+type TabKey = 'assets' | 'settings'
 
 export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
   const { t } = useTranslation()
   const workspace = useActiveWorkspace()
+  const { onOpenFile } = useAppShellContext()
   const workspaceId = workspace?.id
-  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
-  const { onCreateSession } = useAppShellContext()
 
   const [project, setProject] = useState<LoadedProject | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<TabKey>('sessions')
+  const [tab, setTab] = useState<TabKey>('settings')
   const [assets, setAssets] = useState<ProjectAsset[]>([])
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
-  const [editWorkingDir, setEditWorkingDir] = useState('')
   const [editDetails, setEditDetails] = useState('')
   const [editColor, setEditColor] = useState<string>('')
   const [saving, setSaving] = useState(false)
@@ -69,7 +65,6 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
       setProject(loaded)
       setEditName(loaded.config.name)
       setEditDescription(loaded.config.description ?? '')
-      setEditWorkingDir(loaded.config.workingDirectory ?? '')
       setEditDetails(loaded.config.details ?? '')
       setEditColor(loaded.config.color ?? '')
     } catch (err) {
@@ -109,41 +104,6 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
     if (tab === 'assets') refreshAssets()
   }, [tab, refreshAssets])
 
-  const projectSessions = useMemo(() => {
-    if (!project) return []
-    const result: { id: string; name: string }[] = []
-    for (const meta of sessionMetaMap.values()) {
-      if ((meta as { projectId?: string }).projectId === project.config.id) {
-        result.push({ id: meta.id, name: meta.name ?? meta.id })
-      }
-    }
-    return result
-  }, [project, sessionMetaMap])
-
-  const handleStartSession = useCallback(async () => {
-    if (!workspaceId || !project) return
-    try {
-      const session = await onCreateSession(workspaceId, { projectId: project.config.id })
-      if (session?.id) {
-        navigate(routes.view.allSessions(session.id))
-      }
-    } catch (err) {
-      console.error('[ProjectInfoPage] Failed to create session:', err)
-      toast.error(t('projectInfo.newSessionFailed'))
-    }
-  }, [workspaceId, project, onCreateSession, t])
-
-  const handlePickWorkingDirectory = useCallback(async () => {
-    try {
-      const picked = await window.electronAPI.openFolderDialog?.()
-      if (typeof picked === 'string' && picked.trim()) {
-        setEditWorkingDir(picked)
-      }
-    } catch (err) {
-      console.error('[ProjectInfoPage] Folder picker failed:', err)
-    }
-  }, [])
-
   const handleSaveSettings = useCallback(async () => {
     if (!workspaceId || !project) return
     setSaving(true)
@@ -151,7 +111,6 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
       await window.electronAPI.updateProject(workspaceId, project.config.slug, {
         name: editName.trim() || project.config.name,
         description: editDescription.trim() || undefined,
-        workingDirectory: editWorkingDir.trim() || undefined,
         details: editDetails.trim() || undefined,
         color: editColor.trim() || undefined,
       })
@@ -162,14 +121,14 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
     } finally {
       setSaving(false)
     }
-  }, [workspaceId, project, editName, editDescription, editWorkingDir, editDetails, editColor, t])
+  }, [workspaceId, project, editName, editDescription, editDetails, editColor, t])
 
   const handleDeleteProject = useCallback(async () => {
     if (!workspaceId || !project) return
     if (!window.confirm(t('projectInfo.deleteConfirm', { name: project.config.name }))) return
     try {
       await window.electronAPI.deleteProject(workspaceId, project.config.slug)
-      navigate(routes.view.projects())
+      navigate(routes.view.allSessions())
     } catch (err) {
       console.error('[ProjectInfoPage] Delete failed:', err)
       toast.error(t('projectInfo.deleteFailed'))
@@ -222,9 +181,6 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
 
           {/* Tab bar */}
           <div className="flex items-center gap-1 border-b border-border/50 px-2 mb-4">
-            <TabButton active={tab === 'sessions'} onClick={() => setTab('sessions')}>
-              {t('projectInfo.tabSessions')}
-            </TabButton>
             <TabButton active={tab === 'assets'} onClick={() => setTab('assets')}>
               {t('projectInfo.tabAssets')}
             </TabButton>
@@ -232,39 +188,6 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
               {t('projectInfo.tabSettings')}
             </TabButton>
           </div>
-
-          {/* Sessions tab */}
-          {tab === 'sessions' && (
-            <Info_Section
-              title={t('projectInfo.tabSessions')}
-              actions={
-                <Button size="sm" variant="ghost" onClick={handleStartSession}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  {t('projectInfo.newSessionButton', { name: project.config.name })}
-                </Button>
-              }
-            >
-              {projectSessions.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-muted-foreground">
-                  {t('projectInfo.noSessions')}
-                </div>
-              ) : (
-                <ul className="divide-y divide-border/50">
-                  {projectSessions.map((s) => (
-                    <li key={s.id} className="px-4 py-2">
-                      <button
-                        type="button"
-                        className="text-sm text-foreground hover:underline text-left"
-                        onClick={() => navigate(routes.view.allSessions(s.id))}
-                      >
-                        {s.name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Info_Section>
-          )}
 
           {/* Assets tab */}
           {tab === 'assets' && (
@@ -337,17 +260,8 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
                   />
                 </Field>
                 <Field label={t('projectInfo.workingDirectory')}>
-                  <div className="flex gap-2">
-                    <Input
-                      value={editWorkingDir}
-                      onChange={(e) => setEditWorkingDir(e.target.value)}
-                      placeholder={t('projectInfo.workingDirectoryPlaceholder')}
-                      className="flex-1"
-                    />
-                    <Button size="sm" variant="outline" onClick={handlePickWorkingDirectory}>
-                      <FolderOpen className="h-3.5 w-3.5 mr-1" />
-                      {t('projectInfo.workingDirectoryPicker')}
-                    </Button>
+                  <div className="rounded-md bg-foreground/3 px-3 py-2 text-sm text-foreground/60 select-text">
+                    {project.config.workingDirectory || t('workspace.noFolderSelected')}
                   </div>
                 </Field>
                 <Field
@@ -397,12 +311,12 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
               <Info_Table.Row label={t('common.slug')} value={project.config.slug} />
               <Info_Table.Row label={t('common.location')}>
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="flex-1 min-w-0 truncate font-mono text-xs">{project.folderPath}</span>
+                  <span className="flex-1 min-w-0 truncate font-mono text-xs">{project.config.workingDirectory || project.folderPath}</span>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => window.electronAPI.openFile(project.folderPath)}
+                        onClick={() => onOpenFile(project.config.workingDirectory || project.folderPath)}
                         className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded text-foreground/50 hover:text-foreground hover:bg-foreground/5 transition-colors"
                         aria-label={t('projectInfo.openLocation')}
                       >

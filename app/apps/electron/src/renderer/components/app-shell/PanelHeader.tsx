@@ -30,7 +30,9 @@
 import * as React from 'react'
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Ellipsis } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
 import { cn } from '@/lib/utils'
 import { useCompensateForStoplight } from '@/context/StoplightContext'
 import { useAppShellContext } from '@/context/AppShellContext'
@@ -70,6 +72,8 @@ export interface PanelHeaderProps {
   badge?: React.ReactNode
   /** Optional dropdown menu content for interactive title (renders chevron when provided) */
   titleMenu?: React.ReactNode
+  /** Conversation chrome: left-aligned title and a separate menu, as in ZCode. */
+  conversation?: boolean
   /**
    * Compact-mode replacement for the interactive title. When provided AND
    * `isCompactMode === true`, this node is rendered in place of the desktop
@@ -105,6 +109,7 @@ export function PanelHeader({
   title,
   badge,
   titleMenu,
+  conversation = false,
   compactTitleMenu,
   leadingAction: explicitLeadingAction,
   centerButton,
@@ -115,6 +120,7 @@ export function PanelHeader({
   className,
   isRegeneratingTitle,
 }: PanelHeaderProps) {
+  const { t } = useTranslation()
   // Fall back to AppShellContext.leadingAction so per-panel back buttons (set by
   // PanelSlot in compact mode) propagate to every page's PanelHeader without each
   // page having to forward the prop manually. ChatPage explicitly passes its own
@@ -140,7 +146,7 @@ export function PanelHeader({
 
   // Title content - either static or interactive with dropdown
   // Shimmer effect shows during title regeneration
-  const titleContent = (
+  const titleContent = conversation && !title ? null : (
     <motion.div
       initial={false}
       animate={{ opacity: title ? 1 : 0 }}
@@ -160,7 +166,21 @@ export function PanelHeader({
   // In compact mode, `compactTitleMenu` (if provided) takes over the slot so
   // consumers can render a Drawer-based menu instead of a Radix popover that
   // would otherwise get clipped by the panel container query.
-  const desktopTitleNode = titleMenu ? (
+  const desktopTitleNode = conversation ? (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <div className="min-w-0">{titleContent}</div>
+      {titleMenu && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <PanelHeaderCenterButton icon={<Ellipsis className="h-4 w-4" />} aria-label={t('common.more')} />
+          </DropdownMenuTrigger>
+          <StyledDropdownMenuContent align="start" sideOffset={8}>
+            {titleMenu}
+          </StyledDropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  ) : titleMenu ? (
     <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
       {/* Wrapper button for the whole clickable area */}
       <button
@@ -240,7 +260,7 @@ export function PanelHeader({
         </div>
       )}
       <div className="flex-1 min-w-0 flex items-center select-none">
-        <div className={cn("max-w-full overflow-hidden", !leadingAction && "mx-auto")}>
+        <div className={cn("max-w-full overflow-hidden", !leadingAction && !conversation && "mx-auto")}>
           {titleNode}
         </div>
       </div>

@@ -5,6 +5,10 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from 
 import { Input } from '@/components/ui/input'
 import { useAppShellContext, useSession } from '@/context/AppShellContext'
 import { cn } from '@/lib/utils'
+import { X } from 'lucide-react'
+import { PanelHeader } from './PanelHeader'
+import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
+import { RADIUS_INNER } from './panel-constants'
 import { SessionFilesSection } from '../right-sidebar/SessionFilesSection'
 
 interface SessionInfoPopoverProps {
@@ -98,7 +102,7 @@ export function SessionInfoPopover({
   )
 }
 
-function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId: string; sessionFolderPath?: string }) {
+export function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId: string; sessionFolderPath?: string }) {
   const { t } = useTranslation()
   const session = useSession(sessionId)
   const { onRenameSession } = useAppShellContext()
@@ -151,11 +155,26 @@ function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId
       <div className="flex-1 min-h-0 overflow-hidden">
         <SessionFilesSection
           sessionId={sessionId}
-          sessionFolderPath={sessionFolderPath}
+          sessionFolderPath={sessionFolderPath ?? session?.sessionFolderPath}
           hideHeader={false}
           className="h-full min-h-0"
         />
       </div>
     </div>
+  )
+}
+
+/** Desktop information uses the existing NavigationContext files slot, scoped to the focused Session. */
+export function SessionInfoPanel({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <aside aria-label={t('chat.sessionInfo')} className="h-full w-[360px] max-w-[40vw] shrink-0 flex flex-col overflow-hidden bg-foreground-2 shadow-middle" style={{ borderRadius: RADIUS_INNER }}>
+      <PanelHeader title={t('chat.sessionInfo')} rightSidebarButton={
+        <PanelHeaderCenterButton icon={<X className="h-4 w-4" />} onClick={onClose} tooltip={t('common.close')} />
+      } />
+      <div className="min-h-0 flex-1">
+        <SessionInfoPopoverContent key={sessionId} sessionId={sessionId} />
+      </div>
+    </aside>
   )
 }

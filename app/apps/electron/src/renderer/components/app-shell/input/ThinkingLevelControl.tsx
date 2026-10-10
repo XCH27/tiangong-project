@@ -9,7 +9,6 @@ import { getThinkingLevelNameKey, type ThinkingLevel, type ThinkingLevelDefiniti
 interface ThinkingLevelControlProps {
   level: ThinkingLevel
   levels: readonly ThinkingLevelDefinition[]
-  capabilityUnknown: boolean
   compact: boolean
   onChange?: (level: ThinkingLevel) => void
   onRequestFocus?: () => void
@@ -19,19 +18,16 @@ interface ThinkingLevelControlProps {
 export function ThinkingLevelControl({
   level,
   levels,
-  capabilityUnknown,
   compact,
   onChange,
   onRequestFocus,
 }: ThinkingLevelControlProps) {
   const { t } = useTranslation()
-  if (!levels.length && !capabilityUnknown) return null
+  if (!levels.length) return null
 
   const currentLabel = t(getThinkingLevelNameKey(level))
   const currentValid = levels.some(option => option.id === level)
-  const hint = !levels.length
-    ? `${currentLabel} · ${t('common.unknown')}`
-    : currentValid ? currentLabel : `${currentLabel} · ${t('common.unavailable')}`
+  const hint = currentValid ? currentLabel : `${currentLabel} · ${t('common.unavailable')}`
   const accessibleLabel = `${t('settings.ai.thinking')}: ${hint}`
   const selectable = !!onChange && levels.length > 0 && (levels.length > 1 || !currentValid)
   const content = <>

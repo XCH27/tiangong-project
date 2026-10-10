@@ -2,13 +2,9 @@ import * as React from 'react'
 import { useTranslation } from "react-i18next"
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  Paperclip,
+  Plus,
   ArrowUp,
   Square,
-  Check,
-  DatabaseZap,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react'
 import { Icon_Folder, Spinner } from '@craft-agent/ui'
 
@@ -23,13 +19,13 @@ import {
   InlineMentionMenu,
   useInlineMention,
   type MentionItem,
-  type MentionItemType,
 } from '@/components/ui/mention-menu'
 import {
   InlineLabelMenu,
   useInlineLabelMenu,
 } from '@/components/ui/label-menu'
-import type { LabelConfig } from '@craft-agent/shared/labels'
+import { flattenLabels, parseLabelEntry, type LabelConfig } from '@craft-agent/shared/labels'
+import { LabelBadgeRow } from '@/components/ui/label-badge-row'
 import { parseMentions } from '@/lib/mentions'
 import { RichTextInput, type RichTextInputHandle } from '@/components/ui/rich-text-input'
 import { useInputAvailableHeight } from '@/hooks/useInputAvailableHeight'
@@ -39,21 +35,8 @@ import { ContextUsageRing } from './ContextUsageRing'
 import { createPendingPlanDispatcher } from './pending-plan-dispatch'
 import { scrollFocusedCaretIntoView } from '@/lib/scroll-focused-caret'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuPortal,
-} from '@/components/ui/dropdown-menu'
-import {
-  StyledDropdownMenuContent,
-  StyledDropdownMenuItem,
-  StyledDropdownMenuSubTrigger,
-  StyledDropdownMenuSubContent,
-} from '@/components/ui/styled-dropdown'
 import { cn } from '@/lib/utils'
 import { coerceInputText } from '@/lib/input-text'
-import { isMac } from '@/lib/platform'
 import { applySmartTypography } from '@/lib/smart-typography'
 import { AttachmentPreview } from '../AttachmentPreview'
 import { ImageSupportWarningBanner } from './ImageSupportWarningBanner'
@@ -65,11 +48,6 @@ import {
 } from '@config/llm-connections'
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
 import { EditPopover, getEditConfig } from '@/components/ui/EditPopover'
-import { SourceAvatar } from '@/components/ui/source-avatar'
-import { SourceSelectorPopover } from '@/components/ui/SourceSelectorPopover'
-import { CompactSourceSelector } from '@/components/ui/CompactSourceSelector'
-import { CompactWorkingDirectorySelector } from '@/components/ui/CompactWorkingDirectorySelector'
-import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
@@ -86,6 +64,7 @@ import {
 } from './working-directory-history'
 import { WorkingDirectorySelector, formatPathForDisplay } from './WorkingDirectorySelector'
 import { CompactPermissionModeSelector } from './CompactPermissionModeSelector'
+import { PermissionModeDropdown } from '../ActiveOptionBadges'
 import { CompactModelSelector } from './CompactModelSelector'
 import { ThinkingLevelControl } from './ThinkingLevelControl'
 import {
@@ -104,19 +83,10 @@ function formatFollowUpChipText(text: string, fallback: string, maxLength = 50):
 
 
 /** Platform-specific modifier key for keyboard shortcuts */
-const cmdKey = isMac ? '⌘' : 'Ctrl'
 
 /** Default rotating placeholders are now generated inside FreeFormInput via useMemo + t() */
 
-/** Fisher-Yates shuffle — returns a new array in random order */
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array]
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-  }
-  return shuffled
-}
+
 
 export interface FollowUpInputItem {
   id: string
@@ -139,6 +109,8 @@ export interface FreeFormInputProps {
   onSubmit: (message: string, attachments?: FileAttachment[], skillSlugs?: string[]) => void
   /** Callback to stop processing. Pass silent=true to skip "Response interrupted" message */
   onStop?: (silent?: boolean) => void
+  /** Session command path, independent of the message draft and follow-up annotations. */
+  onCompact?: () => void
   /** External ref for the input */
   inputRef?: React.RefObject<RichTextInputHandle>
   /** Current model ID */
@@ -189,6 +161,9 @@ export interface FreeFormInputProps {
   sessionLabels?: string[]
   /** Callback when a label is added via # menu */
   onLabelAdd?: (labelId: string) => void
+  onLabelsChange?: (labels: string[]) => void
+  autoOpenLabelId?: string | null
+  onAutoOpenLabelConsumed?: () => void
   /** Workspace ID for loading skill icons */
   workspaceId?: string
   /** Current working directory path */
@@ -232,14 +207,6 @@ export interface FreeFormInputProps {
   currentConnection?: string
   /** When true, the session's locked connection has been removed */
   connectionUnavailable?: boolean
-  /**
-   * True when the input is collapsed because the agent is processing in
-   * compact mode and the user hasn't expanded it yet. Owned by
-   * `InputContainer`; toggle back via `onRequestExpand`.
-   */
-  isCollapsedInCompact?: boolean
-  /** Callback fired when the user clicks or hovers the collapsed-input strip. */
-  onRequestExpand?: () => void
 }
 
 /**
@@ -258,6 +225,7 @@ export function FreeFormInput({
   isProcessing = false,
   onSubmit,
   onStop,
+  onCompact,
   inputRef: externalInputRef,
   currentModel,
   onModelChange,
@@ -281,6 +249,9 @@ export function FreeFormInput({
   labels = [],
   sessionLabels = [],
   onLabelAdd,
+  onLabelsChange,
+  autoOpenLabelId,
+  onAutoOpenLabelConsumed,
   workspaceId,
   workingDirectory,
   onWorkingDirectoryChange,
@@ -297,23 +268,8 @@ export function FreeFormInput({
   enableCompactModelPicker = false,
   currentConnection,
   connectionUnavailable = false,
-  isCollapsedInCompact = false,
-  onRequestExpand,
 }: FreeFormInputProps) {
   const { t } = useTranslation()
-
-  // Default rotating placeholders for onboarding/empty state (i18n-aware)
-  const defaultPlaceholders = React.useMemo(() => [
-    t("chatInput.placeholder.workOn"),
-    t("chatInput.placeholder.shiftTab"),
-    t("chatInput.placeholder.mention"),
-    t("chatInput.placeholder.labels"),
-    t("chatInput.placeholder.newLine"),
-    t("chatInput.placeholder.sidebar", { key: cmdKey }),
-    t("chatInput.placeholder.focusMode", { key: cmdKey }),
-  ], [t])
-
-  const effectivePlaceholderProp = placeholder ?? defaultPlaceholders
 
   // Read connection default model, connections, and workspace info from context.
   // Uses optional variant so playground (no provider) doesn't crash.
@@ -352,7 +308,6 @@ export function FreeFormInput({
     return typeof model === 'string' ? undefined : model
   }, [availableModels, currentModel])
   const availableThinkingLevels = getThinkingLevelsForModel(selectedModelDefinition)
-  const thinkingCapabilityUnknown = selectedModelDefinition?.supportsThinking !== false && selectedModelDefinition?.reasoningEfforts === undefined
 
   // Get display name for current model (full name, not short name)
   const currentModelDisplayName = React.useMemo(() => {
@@ -383,9 +338,6 @@ export function FreeFormInput({
   }, [llmConnections, effectiveConnection])
 
 
-  // Access sessionStatuses and onSessionStatusChange from context for the # menu state picker
-  const sessionStatuses = appShellCtx?.sessionStatuses ?? []
-  const onSessionStatusChange = appShellCtx?.onSessionStatusChange
   // Resolve workspace rootPath for "Add New Label" deep link
   const workspaceRootPath = React.useMemo(() => {
     if (!appShellCtx || !workspaceId) return null
@@ -403,29 +355,9 @@ export function FreeFormInput({
   const appShellContext = useOptionalAppShellContext()
   const isFocusedPanel = appShellContext?.isFocusedPanel ?? true
 
-  // Shuffle placeholder order once per mount so each session feels fresh.
-  // In compact mode, suppress desktop-keyboard guidance that is noisy or misleading
-  // on narrow/mobile-like layouts.
-  const placeholderOptions = React.useMemo(() => {
-    if (!Array.isArray(placeholder)) return placeholder
-    if (!compactMode) return placeholder
-    return placeholder.filter((entry) => {
-      const lower = entry.toLowerCase()
-      return !lower.includes('shift + tab')
-        && !lower.includes('shift + return')
-        && !lower.includes('toggle the sidebar')
-        && !lower.includes('focus mode')
-        && !lower.includes('⌘')
-        && !lower.includes('ctrl')
-    })
-  }, [placeholder, compactMode])
-
-  // Hide placeholder entirely when panel is unfocused in multi-panel layout
-  const shuffledPlaceholder = React.useMemo(
-    () => Array.isArray(effectivePlaceholderProp) ? shuffleArray(effectivePlaceholderProp) : effectivePlaceholderProp,
-    [] // eslint-disable-line react-hooks/exhaustive-deps -- intentionally shuffle only on mount
-  )
-  const effectivePlaceholder = isFocusedPanel ? shuffledPlaceholder : ''
+  // One stable instruction, shared by empty/ongoing and focused/unfocused panels.
+  const effectivePlaceholder = (Array.isArray(placeholder) ? placeholder[0] : placeholder)
+    ?? t(isEmptySession ? 'chatInput.placeholder.startConversation' : 'chatInput.placeholder.followUp')
 
   // Performance optimization: Always use internal state for typing to avoid parent re-renders
   // Sync FROM parent on mount/change (for restoring drafts)
@@ -528,7 +460,6 @@ export function FreeFormInput({
 
   const [isDraggingOver, setIsDraggingOver] = React.useState(false)
   const [loadingCount, setLoadingCount] = React.useState(0)
-  const [sourceDropdownOpen, setSourceDropdownOpen] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
 
   // Input settings (loaded from config)
@@ -561,10 +492,10 @@ export function FreeFormInput({
 
   const dragCounterRef = React.useRef(0)
   const containerRef = React.useRef<HTMLDivElement>(null)
+  const [contextMenuWidth, setContextMenuWidth] = React.useState(280)
   const contentScrollRef = React.useRef<HTMLDivElement>(null)
   const availableHeight = useInputAvailableHeight(containerRef, maxHeight === undefined)
   const composerMaxHeight = maxHeight ?? getComposerMaxHeight(availableHeight, 'freeform')
-  const sourceButtonRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // Merge refs for RichTextInput
@@ -887,6 +818,7 @@ export function FreeFormInput({
     onSelect: handleMentionSelect,
     // Use workspace slug (not UUID) for SDK skill qualification
     workspaceId: workspaceSlug,
+    scopeKey: sessionId,
   })
 
   // Inline label menu hook (for #labels)
@@ -899,8 +831,6 @@ export function FreeFormInput({
     labels,
     sessionLabels,
     onSelect: handleLabelSelect,
-    sessionStatuses,
-    activeStateId: currentSessionStatus,
   })
 
   // "Add New Label" handler: cleans up the #trigger text and opens a controlled
@@ -944,18 +874,6 @@ export function FreeFormInput({
     return () => observer.disconnect()
   }, [onHeightChange])
 
-  // In compact mode, immediately report collapsed height when the input is
-  // collapsed during processing. This ensures smooth animation timing.
-  // When the user expands (or processing ends), the ResizeObserver takes
-  // over and reports the actual rendered height.
-  React.useEffect(() => {
-    if (!onHeightChange) return
-    if (isCollapsedInCompact) {
-      // Collapsed state - only bottom bar visible (~44px)
-      onHeightChange(44)
-    }
-  }, [isCollapsedInCompact, onHeightChange])
-
   // Check if running in Electron environment (has electronAPI)
   const hasElectronAPI = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -973,10 +891,10 @@ export function FreeFormInput({
   }
 
   // File attachment handlers
-  const handleAttachClick = () => {
+  const handleAttachClick = React.useCallback(() => {
     if (disabled) return
     fileInputRef.current?.click()
-  }
+  }, [disabled])
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -1398,6 +1316,15 @@ export function FreeFormInput({
 
   // Handle inline mention selection (inserts appropriate mention text)
   const handleInlineMentionSelect = React.useCallback((item: MentionItem) => {
+    if (item.type === 'attachment') { inlineMention.close(); handleAttachClick(); return }
+    if (item.type === 'label') {
+      onLabelAdd?.(item.id)
+      inlineMention.close()
+      if (!flattenLabels(labels).find(label => label.id === item.id)?.valueType) {
+        requestAnimationFrame(() => richInputRef.current?.focus())
+      }
+      return
+    }
     const { value: newValue, cursorPosition } = inlineMention.handleSelect(item)
     setInput(newValue)
     syncToParent(newValue)
@@ -1406,7 +1333,7 @@ export function FreeFormInput({
       richInputRef.current?.focus()
       richInputRef.current?.setSelectionRange(cursorPosition, cursorPosition)
     }, 0)
-  }, [inlineMention, syncToParent])
+  }, [inlineMention, syncToParent, handleAttachClick, onLabelAdd, richInputRef, labels])
 
   // Handle inline label selection (removes the #label text from input)
   const handleInlineLabelSelect = React.useCallback((labelId: string) => {
@@ -1416,16 +1343,6 @@ export function FreeFormInput({
     richInputRef.current?.focus()
   }, [inlineLabel, syncToParent])
 
-  // Handle inline state selection from # menu (removes #text, changes session state)
-  const handleInlineStateSelect = React.useCallback((stateId: string) => {
-    const newValue = inlineLabel.handleSelect('')
-    setInput(newValue)
-    syncToParent(newValue)
-    if (sessionId) {
-      onSessionStatusChange?.(sessionId, stateId)
-    }
-    richInputRef.current?.focus()
-  }, [inlineLabel, syncToParent, sessionId, onSessionStatusChange])
 
   const followUpLayoutKey = React.useMemo(
     () => followUpItems.map(item => [
@@ -1474,17 +1391,27 @@ export function FreeFormInput({
 
   React.useLayoutEffect(() => {
     if (contentScrollRef.current) scrollFocusedCaretIntoView(contentScrollRef.current)
-  }, [composerMaxHeight, attachments, followUpItems, showVisionWarning, isCollapsedInCompact])
+  }, [composerMaxHeight, attachments, followUpItems, showVisionWarning])
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className={cn('relative', isEmptySession && onWorkingDirectoryChange && !unstyled && 'rounded-[12px] bg-foreground/3 shadow-minimal')}>
+      {/* ZCode ConversationComposer: draft context is outside the editor surface. */}
+      {isEmptySession && onWorkingDirectoryChange && (
+        <div className="flex min-w-0 flex-wrap items-center p-1.5">
+          <WorkingDirectoryBadge
+            workingDirectory={workingDirectory}
+            onWorkingDirectoryChange={onWorkingDirectoryChange}
+            sessionFolderPath={sessionFolderPath}
+            isEmptySession
+            workspaceId={workspaceId}
+          />
+        </div>
+      )}
       <div
         ref={containerRef}
         className={cn(
           'flex flex-col min-h-0 overflow-hidden transition-colors',
-          // Container styling - only when not wrapped by InputContainer
-          !unstyled && 'rounded-[16px] shadow-middle',
-          !unstyled && 'bg-background',
+          !unstyled && 'rounded-[12px] border border-foreground/10 bg-background shadow-minimal hover:border-foreground/20 focus-within:border-foreground/30 focus-within:shadow-middle',
           isDraggingOver && 'ring-2 ring-foreground ring-offset-2 ring-offset-background bg-foreground/5'
         )}
         style={{ maxHeight: composerMaxHeight }}
@@ -1508,14 +1435,33 @@ export function FreeFormInput({
         {/* Inline Mention Autocomplete (skills, sources, files) */}
         <InlineMentionMenu
           open={inlineMention.isOpen}
-          onOpenChange={(open) => !open && inlineMention.close()}
-          sections={inlineMention.sections}
+          onOpenChange={(open) => {
+            if (open) return
+            inlineMention.close()
+            if (inlineMention.fromButton) requestAnimationFrame(() => richInputRef.current?.focus())
+          }}
+          sections={inlineMention.fromButton ? [
+            { id: 'attach', label: t('chat.attachFiles'), items: [{ id: 'attach', type: 'attachment', label: t('chat.attachFiles') }] },
+            ...inlineMention.sections,
+            ...(onLabelAdd ? [{ id: 'labels', label: t('settings.labels.title'), items: flattenLabels(labels)
+              .filter(label => !sessionLabels.some(entry => parseLabelEntry(entry).id === label.id))
+              .map(label => ({ id: label.id, type: 'label' as const, label: label.name })) }] : []),
+          ] : inlineMention.sections}
           onSelect={handleInlineMentionSelect}
           filter={inlineMention.filter}
           position={inlineMention.position}
           workspaceId={workspaceId}
-          maxWidth={280}
+          maxWidth={inlineMention.fromButton ? contextMenuWidth : 280}
           isSearching={inlineMention.isSearching}
+          searchFailed={inlineMention.searchFailed}
+          onFilterChange={inlineMention.fromButton ? inlineMention.search : undefined}
+          selectedSourceSlugs={optimisticSourceSlugs}
+          onToggleSource={inlineMention.fromButton && onSourcesChange ? (slug) => {
+            const next = optimisticSourceSlugs.includes(slug)
+              ? optimisticSourceSlugs.filter(current => current !== slug) : [...optimisticSourceSlugs, slug]
+            setOptimisticSourceSlugs(next)
+            onSourcesChange(next)
+          } : undefined}
         />
 
         {/* Inline Label & State Autocomplete (#labels / #states) */}
@@ -1527,9 +1473,6 @@ export function FreeFormInput({
           onAddLabel={handleAddLabel}
           filter={inlineLabel.filter}
           position={inlineLabel.position}
-          states={inlineLabel.states}
-          activeStateId={inlineLabel.activeStateId}
-          onSelectState={handleInlineStateSelect}
         />
 
         {/* Controlled EditPopover for "Add New Label" — opens when user selects
@@ -1556,6 +1499,7 @@ export function FreeFormInput({
           />
         )}
 
+        <div className="flex min-h-0 flex-col">
         {/* Text and ancillary content share one scroll region. Keeping actions
             outside it reserves their measured flex height, even with many chips. */}
         <div ref={contentScrollRef} className="min-h-0 overflow-y-auto overscroll-contain" data-composer-content>
@@ -1568,6 +1512,14 @@ export function FreeFormInput({
             onEnable={() => handleToggleModelVision(effectiveConnectionDetails.slug, currentModel, true)}
           />
         )}
+
+        <LabelBadgeRow
+          sessionLabels={sessionLabels}
+          labels={labels}
+          onLabelsChange={onLabelsChange}
+          autoOpenLabelId={autoOpenLabelId}
+          onAutoOpenConsumed={onAutoOpenLabelConsumed}
+        />
 
         {/* Attachment Preview */}
         <AttachmentPreview
@@ -1662,9 +1614,6 @@ export function FreeFormInput({
         </AnimatePresence>
 
         {/* Rich Text Input with inline mention badges */}
-        {/* In compact mode, hide input while the agent is processing — until the
-            user clicks / hovers the collapsed bar to expand it back. */}
-        {!isCollapsedInCompact && (
         <RichTextInput
           ref={richInputRef}
           value={input}
@@ -1685,11 +1634,10 @@ export function FreeFormInput({
           skills={skills}
           sources={sources}
           workspaceId={workspaceSlug}
-          className="pl-5 pr-4 pt-4 pb-3 min-h-[88px]"
+          className="px-3 pt-2 pb-3 min-h-[88px]"
           data-tutorial="chat-input"
           spellCheck={spellCheck}
         />
-        )}
 
         </div>
 
@@ -1701,7 +1649,7 @@ export function FreeFormInput({
             sessionId={sessionId}
           />
 
-          <div className={cn("flex items-center gap-1 px-2 py-2", !compactMode && "border-t border-border/50")}>
+          <div className="flex items-center gap-1 px-3 pb-3 pt-1">
           {/* Hidden file input for attach button (shared by compact and desktop) */}
           <input
             ref={fileInputRef}
@@ -1711,255 +1659,42 @@ export function FreeFormInput({
             onChange={handleFileInputChange}
           />
 
-          {/* Compact mode: permission mode drawer + standard icon badges for attach/sources/working dir.
-              Wrapper absorbs all squeeze so the model label truncates first and the send button stays
-              anchored to the right (craft-agents-oss#798). overflow-hidden is safe — Radix Drawer /
-              dropdowns inside render via portals, so they aren't clipped. */}
-          {compactMode && (
-          <div className="flex items-center gap-1 min-w-0 shrink overflow-hidden">
-          {onPermissionModeChange && (
-            <CompactPermissionModeSelector
-              permissionMode={permissionMode}
-              onPermissionModeChange={onPermissionModeChange}
-            />
-          )}
-          {enableCompactModelPicker && (
-            <CompactModelSelector
-              currentModel={currentModel}
-              currentConnection={currentConnection}
-              onModelChange={onModelChange}
-              isEmptySession={isEmptySession}
-              connectionUnavailable={connectionUnavailable}
-              contextStatus={contextStatus}
-            />
-          )}
-          <FreeFormInputContextBadge
-            icon={<Paperclip className="h-4 w-4" />}
-            label={attachments.length > 0
-              ? t("chat.filesCount", { count: attachments.length })
-              : t("chat.attach")
-            }
-            isExpanded={false}
-            hasSelection={attachments.length > 0}
-            showChevron={false}
-            onClick={handleAttachClick}
-            tooltip={t("chat.attachFilesTooltip")}
-            disabled={disabled}
-          />
-          {onSourcesChange && (
-            <div className="relative shrink min-w-0">
-              <FreeFormInputContextBadge
-                buttonRef={sourceButtonRef}
-                icon={
-                  optimisticSourceSlugs.length === 0 ? (
-                    <DatabaseZap className="h-4 w-4" />
-                  ) : (
-                    <div className="flex items-center -ml-0.5">
-                      {(() => {
-                        const enabledSources = sources.filter(s => optimisticSourceSlugs.includes(s.config.slug))
-                        const displaySources = enabledSources.slice(0, 3)
-                        const remainingCount = enabledSources.length - 3
-                        return (
-                          <>
-                            {displaySources.map((source, index) => (
-                              <div
-                                key={source.config.slug}
-                                className={cn("relative h-5 w-5 rounded-[4px] bg-background shadow-minimal flex items-center justify-center", index > 0 && "-ml-1")}
-                                style={{ zIndex: index + 1 }}
-                              >
-                                <SourceAvatar source={source} size="xs" />
-                              </div>
-                            ))}
-                            {remainingCount > 0 && (
-                              <div
-                                className="-ml-1 h-5 w-5 rounded-[4px] bg-background shadow-minimal flex items-center justify-center text-[8px] font-medium text-muted-foreground"
-                                style={{ zIndex: displaySources.length + 1 }}
-                              >
-                                +{remainingCount}
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )
+          {/* ZCode/Cindy: + and @ share a catalogue; permission belongs beside +. */}
+          <div className="flex min-w-0 items-center gap-1">
+            <Button type="button" variant="ghost" size="icon" disabled={disabled}
+              aria-label={t('chat.addContext')} aria-haspopup="listbox" aria-expanded={inlineMention.isOpen && inlineMention.fromButton}
+              data-mention-trigger data-tutorial="source-selector-button" className="h-7 w-7 shrink-0 rounded-[6px]"
+              onMouseDown={event => event.preventDefault()}
+              onClick={event => {
+                if (inlineMention.isOpen && inlineMention.fromButton) inlineMention.close()
+                else {
+                  inlineSlash.close(); inlineLabel.close()
+                  const rect = containerRef.current?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect()
+                  setContextMenuWidth(rect.width)
+                  inlineMention.openFromButton({ x: rect.left, y: rect.top })
                 }
-                label={
-                  optimisticSourceSlugs.length === 0
-                    ? t("chat.sourcesTooltip")
-                    : (() => {
-                        const enabledSources = sources.filter(s => optimisticSourceSlugs.includes(s.config.slug))
-                        if (enabledSources.length === 1) return enabledSources[0].config.name
-                        return t("chat.sourcesCount", { count: enabledSources.length })
-                      })()
-                }
-                isExpanded={false}
-                hasSelection={optimisticSourceSlugs.length > 0}
-                showChevron={false}
-                isOpen={sourceDropdownOpen}
-                disabled={disabled}
-                onClick={() => setSourceDropdownOpen(prev => !prev)}
-                tooltip={t("chat.sourcesTooltip")}
-              />
-              <CompactSourceSelector
-                open={sourceDropdownOpen}
-                onOpenChange={setSourceDropdownOpen}
-                sources={sources}
-                selectedSlugs={optimisticSourceSlugs}
-                onToggleSlug={(slug) => {
-                  const isEnabled = optimisticSourceSlugs.includes(slug)
-                  const newSlugs = isEnabled
-                    ? optimisticSourceSlugs.filter(currentSlug => currentSlug !== slug)
-                    : [...optimisticSourceSlugs, slug]
-                  setOptimisticSourceSlugs(newSlugs)
-                  onSourcesChange?.(newSlugs)
-                }}
-              />
-            </div>
-          )}
-          {onWorkingDirectoryChange && (
-            <CompactWorkingDirectorySelector
-              workingDirectory={workingDirectory}
-              onWorkingDirectoryChange={onWorkingDirectoryChange}
-              sessionFolderPath={sessionFolderPath}
-              isEmptySession={false}
-              workspaceId={workspaceId}
-            />
-          )}
+              }}>
+              <Plus className="h-4 w-4" />
+            </Button>
+            {onPermissionModeChange && (compactMode
+              ? <CompactPermissionModeSelector permissionMode={permissionMode} onPermissionModeChange={onPermissionModeChange} />
+              : <PermissionModeDropdown toolbar permissionMode={permissionMode} onPermissionModeChange={onPermissionModeChange} sessionId={sessionId} />)}
           </div>
-          )}
 
-          {/* Desktop: full badges row with labels and working directory */}
-          {!compactMode && (
-          <div className="flex items-center gap-1 min-w-32 shrink overflow-hidden">
-          {/* 1. Attach Files Badge */}
-          <FreeFormInputContextBadge
-            icon={<Paperclip className="h-4 w-4" />}
-            label={attachments.length > 0
-              ? t("chat.filesCount", { count: attachments.length })
-              : t("chat.attachFiles")
-            }
-            isExpanded={isEmptySession}
-            hasSelection={attachments.length > 0}
-            showChevron={false}
-            onClick={handleAttachClick}
-            tooltip={t("chat.attachFilesTooltip")}
-            disabled={disabled}
-          />
-
-          {/* 2. Source Selector Badge - only show if onSourcesChange is provided */}
-          {onSourcesChange && (
-            <div className="relative shrink min-w-0 overflow-hidden">
-              <FreeFormInputContextBadge
-                buttonRef={sourceButtonRef}
-                icon={
-                  optimisticSourceSlugs.length === 0 ? (
-                    <DatabaseZap className="h-4 w-4" />
-                  ) : (
-                    <div className="flex items-center -ml-0.5">
-                      {(() => {
-                        const enabledSources = sources.filter(s => optimisticSourceSlugs.includes(s.config.slug))
-                        const displaySources = enabledSources.slice(0, 3)
-                        const remainingCount = enabledSources.length - 3
-                        return (
-                          <>
-                            {displaySources.map((source, index) => (
-                              <div
-                                key={source.config.slug}
-                                className={cn("relative h-5 w-5 rounded-[4px] bg-background shadow-minimal flex items-center justify-center", index > 0 && "-ml-1")}
-                                style={{ zIndex: index + 1 }}
-                              >
-                                <SourceAvatar source={source} size="xs" />
-                              </div>
-                            ))}
-                            {remainingCount > 0 && (
-                              <div
-                                className="-ml-1 h-5 w-5 rounded-[4px] bg-background shadow-minimal flex items-center justify-center text-[8px] font-medium text-muted-foreground"
-                                style={{ zIndex: displaySources.length + 1 }}
-                              >
-                                +{remainingCount}
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )
-                }
-                label={
-                  optimisticSourceSlugs.length === 0
-                    ? t("chat.chooseSources")
-                    : (() => {
-                        const enabledSources = sources.filter(s => optimisticSourceSlugs.includes(s.config.slug))
-                        if (enabledSources.length === 1) return enabledSources[0].config.name
-                        if (enabledSources.length === 2) return enabledSources.map(s => s.config.name).join(', ')
-                        return t("chat.sourcesCount", { count: enabledSources.length })
-                      })()
-                }
-                isExpanded={isEmptySession}
-                hasSelection={optimisticSourceSlugs.length > 0}
-                showChevron={true}
-                isOpen={sourceDropdownOpen}
-                disabled={disabled}
-                data-tutorial="source-selector-button"
-                onClick={() => setSourceDropdownOpen(prev => !prev)}
-                tooltip={t("chat.sourcesTooltip")}
-              />
-
-              <SourceSelectorPopover
-                open={sourceDropdownOpen}
-                onOpenChange={setSourceDropdownOpen}
-                anchorRef={sourceButtonRef}
-                sources={sources}
-                selectedSlugs={optimisticSourceSlugs}
-                onToggleSlug={(slug) => {
-                  const isEnabled = optimisticSourceSlugs.includes(slug)
-                  const newSlugs = isEnabled
-                    ? optimisticSourceSlugs.filter(currentSlug => currentSlug !== slug)
-                    : [...optimisticSourceSlugs, slug]
-                  setOptimisticSourceSlugs(newSlugs)
-                  onSourcesChange?.(newSlugs)
-                }}
-              />
-            </div>
-          )}
-
-          {/* 3. Working Directory Selector Badge */}
-          {onWorkingDirectoryChange && (
-            <WorkingDirectoryBadge
-              workingDirectory={workingDirectory}
-              onWorkingDirectoryChange={onWorkingDirectoryChange}
-              sessionFolderPath={sessionFolderPath}
-              isEmptySession={isEmptySession}
-              workspaceId={workspaceId}
-            />
-          )}
-          </div>
-          )}
-
-          {/* Spacer — doubles as a tap / hover target while the input is
-              collapsed during processing in compact mode, so the user can
-              type a follow-up without waiting for the agent to finish. */}
-          {isCollapsedInCompact ? (
-            <button
-              type="button"
-              onClick={onRequestExpand}
-              onMouseEnter={onRequestExpand}
-              aria-label={t('chat.tapToType')}
-              className="flex-1 h-7 mx-1 flex items-center justify-center text-foreground/30 hover:text-foreground/60 transition-colors cursor-pointer rounded-[6px] hover:bg-foreground/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <ChevronUp className="h-4 w-4" />
-            </button>
-          ) : (
-            <div className="flex-1" />
-          )}
+          <div className="flex-1" />
 
           {/* Right side: Model + Send - never shrink so they're always visible */}
-          <div className="flex items-center shrink-0">
+          <div className="flex min-w-0 items-center">
+          <ContextUsageRing
+            display={contextDisplay}
+            labels={contextLabels}
+            compactHint={contextDisplay.canCompact ? t(isProcessing ? 'chat.contextUsage.waitToCompact' : 'chat.contextUsage.compact') : undefined}
+            onCompact={contextDisplay.canCompact && !isProcessing && !connectionUnavailable && !disabled && !disableSend ? onCompact : undefined}
+          />
           {/* 5. Model/Connection Selector - Hidden in compact mode (EditPopover embedding) */}
-          {!compactMode && (
+          {(!compactMode || enableCompactModelPicker) && (
           <CompactModelSelector
-            presentation="popover"
+            presentation={compactMode ? 'drawer' : 'popover'}
             currentModel={currentModel}
             currentConnection={currentConnection}
             onModelChange={onModelChange}
@@ -1972,18 +1707,12 @@ export function FreeFormInput({
           {!connectionUnavailable && <ThinkingLevelControl
             level={reconcileThinkingLevelForModel(thinkingLevel, selectedModelDefinition)}
             levels={availableThinkingLevels}
-            capabilityUnknown={thinkingCapabilityUnknown}
             compact={compactMode}
             onChange={onThinkingLevelChange}
             onRequestFocus={() => richInputRef.current?.focus()}
           />}
 
-          <ContextUsageRing
-            display={contextDisplay}
-            labels={contextLabels}
-            compactHint={contextDisplay.canCompact ? t(isProcessing ? 'chat.contextUsage.waitToCompact' : 'chat.contextUsage.compact') : undefined}
-            onCompact={contextDisplay.canCompact && !isProcessing ? () => onSubmit('/compact', []) : undefined}
-          />
+
 
           {/* 6. Send/Stop Button - Always show stop when processing */}
           {isProcessing ? (
@@ -1992,7 +1721,7 @@ export function FreeFormInput({
               size="icon"
               variant="secondary"
               aria-label={t('chat.stopResponse')}
-              className="send-btn h-7 w-7 rounded-full shrink-0 hover:bg-foreground/15 active:bg-foreground/20 ml-2"
+              className="send-btn h-7 w-7 rounded-[6px] shrink-0 hover:bg-foreground/15 active:bg-foreground/20 ml-2"
               onClick={() => handleStop(false)}
             >
               <Square className="h-3 w-3 fill-current" />
@@ -2002,7 +1731,7 @@ export function FreeFormInput({
               type="submit"
               size="icon"
               aria-label={t('shortcuts.sendMessage')}
-              className="send-btn h-7 w-7 rounded-full shrink-0 ml-2"
+              className="send-btn h-7 w-7 rounded-[6px] shrink-0 ml-2"
               disabled={!hasContent || disabled || disableSend}
               data-tutorial="send-button"
             >
@@ -2011,6 +1740,7 @@ export function FreeFormInput({
           )}
           </div>
           </div>
+        </div>
         </div>
       </div>
     </form>
@@ -2024,7 +1754,7 @@ export function FreeFormInput({
  * live in {@link WorkingDirectorySelector} so the Tasks editor reuses the same
  * picker (and can supply its own trigger).
  */
-function WorkingDirectoryBadge({
+export function WorkingDirectoryBadge({
   workingDirectory,
   onWorkingDirectoryChange,
   sessionFolderPath,

@@ -464,6 +464,8 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
 
   // git — workspace filesystem
   RPC_CHANNELS.git.GET_BRANCH,
+  RPC_CHANNELS.git.GITHUB_CLI_STATUS,
+  RPC_CHANNELS.git.GITHUB_CLI_AUTH,
 
   // resources — workspace resource export/import
   RPC_CHANNELS.resources.EXPORT,
