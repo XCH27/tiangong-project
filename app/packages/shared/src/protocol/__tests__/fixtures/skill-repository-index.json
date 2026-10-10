@@ -1,0 +1,38 @@
+{
+  "name": "example-skills",
+  "skills": [
+    {
+      "slug": "review-diff",
+      "name": "Review diff",
+      "description": "Reads a diff and lists risks."
+    },
+    {
+      "id": "lint-hook",
+      "name": "Lint hook",
+      "description": "Runs a formatter before a commit.",
+      "kind": "hook"
+    },
+    {
+      "slug": "commit-note",
+      "name": "Commit note",
+      "description": "Drafts a commit message from the staged diff.",
+      "kind": "command"
+    },
+    {
+      "slug": "../escape",
+      "name": "Escape",
+      "description": "Rejected because the slug is not safe."
+    },
+    {
+      "slug": "remote-mcp",
+      "name": "Remote MCP",
+      "description": "Rejected because MCP servers come from the registry source.",
+      "kind": "mcp"
+    },
+    {
+      "slug": "secret-skill",
+      "name": "Secret skill",
+      "description": "Includes sk-livekey12345678 in the summary."
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "example-plugins",
+  "owner": { "name": "Example" },
+  "plugins": [
+    {
+      "name": "review-tools",
+      "source": "./plugins/review-tools",
+      "description": "A plugin marketplace entry. It is not a skill index."
+    }
+  ]
+}

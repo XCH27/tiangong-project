@@ -1,9 +1,11 @@
 /**
  * Settings → Plugins page state.
  *
- * Five views share one local catalog projected from workspace skills and MCP
- * sources. Market content filters narrow that catalog. This is not a remote
- * store, an MCP Registry catalog, or Agent Plugins 1.0.0.
+ * Five views share one catalog. Workspace skills and MCP sources are local.
+ * Catalog reads can add Market entries. Market content filters narrow that
+ * list. Install still admits file.update. Third-party hook approval, the MCP
+ * Apps side pane, and Agent Plugins 1.0.0 stay Locked. This is not a remote
+ * store and it is not a plugin marketplace.
  */
 
 export const PLUGIN_VIEWS = ['installed', 'market', 'skills', 'mcp', 'hooks'] as const
@@ -13,7 +15,6 @@ export const MARKET_CONTENT_FILTERS = ['all', 'skill', 'mcp', 'hook', 'command']
 export type MarketContentFilter = (typeof MARKET_CONTENT_FILTERS)[number]
 
 export const LOCKED_PLUGIN_PHASES = [
-  'mcp_registry_catalogs',
   'third_party_hook_approval',
   'mcp_apps_side_pane',
   'agent_plugins_1_0_0',
@@ -22,7 +23,7 @@ export type LockedPluginPhase = (typeof LOCKED_PLUGIN_PHASES)[number]
 
 export type PluginContentKind = Exclude<MarketContentFilter, 'all'>
 export type PluginTrust = 'first_party' | 'third_party'
-export type PluginOrigin = 'workspace' | 'caller'
+export type PluginOrigin = 'workspace' | 'caller' | 'catalog'
 
 export interface PluginCatalogEntry {
   id: string
@@ -93,7 +94,6 @@ export function parseMarketFilter(value: string): MarketContentFilter | null {
 
 export function pluginPhaseStatus(phase: LockedPluginPhase): 'Locked' {
   switch (phase) {
-    case 'mcp_registry_catalogs':
     case 'third_party_hook_approval':
     case 'mcp_apps_side_pane':
     case 'agent_plugins_1_0_0':

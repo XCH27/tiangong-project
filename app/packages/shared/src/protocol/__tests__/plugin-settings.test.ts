@@ -129,8 +129,12 @@ describe('plugin settings navigation and market filters', () => {
   })
 
   test('later plugin phases stay Locked', () => {
+    expect(LOCKED_PLUGIN_PHASES).toEqual([
+      'third_party_hook_approval',
+      'mcp_apps_side_pane',
+      'agent_plugins_1_0_0',
+    ])
     expect(LOCKED_PLUGIN_PHASES.map((phase) => pluginPhaseStatus(phase))).toEqual([
-      'Locked',
       'Locked',
       'Locked',
       'Locked',
