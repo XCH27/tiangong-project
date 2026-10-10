@@ -9,7 +9,9 @@
 >
 > **Status after #39 (`31b2e1b`):** D47 freezes `session.unflag`. §13 in `docs/modules/00-platform-spine.md` labels the human command `wired`. D48 freezes `plugin.loadout_mutate`, `file.page_target`, `browser.dom_snapshot`, and `workbench.sidebar_focus`. Those four ids have no production caller. D49 keeps Settings plugin writes Locked. The choice record is `docs/audits/2026-10-10-w01-lead-decisions-oss.md`. W0.1 stays Locked. This packet does not mark Ready or `usable`.
 >
-> **Status after the page-target host:** `update-target` admits `file.page_target` on the page-local host. No shell or IPC caller. §13 stays `test-only`. `file.update` still refuses that payload. Sidebar focus and plugin loadout still send the old verbs. W0.1 stays Locked. This note does not mark Ready or `usable`.
+> **Status after the page-target host:** `update-target` admits `file.page_target` on the page-local host. No shell or IPC caller. §13 stays `test-only`. `file.update` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
+>
+> **Status after the sidebar host:** open, focus, and close admit `workbench.sidebar_focus` on the MCP Apps test host. The row is L0, so there is no card. No shell or IPC caller. §13 stays `test-only`. `canvas.node_select` still refuses that payload. Plugin loadout still sends `file.update`. W0.1 stays Locked. This note does not mark Ready or `usable`.
 
 ## Gate status (unchanged)
 
@@ -57,7 +59,7 @@ These merges are on the spine. They admit existing frozen ids, or they are docs.
 |---|---|---|
 | Plugin loadout install, enable, disable, or grant | `file.update` (owner M05, file bytes) | `action_owner_mismatch:plugin_loadout` |
 | DOM evidence snapshot | `file.create` (owner M05) | `action_owner_mismatch:dom_evidence` |
-| MCP Apps sidebar focus | `canvas.node_select` (owner M07) | `action_owner_mismatch:sidebar_focus` |
+| MCP Apps sidebar focus | MCP Apps host sends `workbench.sidebar_focus` and stays `test-only`. `canvas.node_select` is still refused | `action_owner_mismatch:sidebar_focus` on `canvas.node_select` |
 | Page-target write | page-local host sends `file.page_target` and stays `test-only`. `file.update` is still refused | `action_owner_mismatch:page_target` on `file.update` |
 
 v1.3.0 also fills side-effect, approval, undo, cancellation, retry, and evidence columns on the frozen rows, including `aigc.job_submit` and `canvas.export_selection`. `browser.screenshot` stays under discussion. Binding deletion has no id. The required columns are listed under "W0.1 Re-freeze Requirements" in `docs/contracts/action-ids.md`.
@@ -73,7 +75,7 @@ The bump was minor: ids added, none renamed or removed, in the same commit as th
 1. Each operation's id is a row in the frozen Action Table, and the Owner Module matches the operation.
 2. The row has the separate policy columns from "W0.1 Re-freeze Requirements".
 3. `InternalActionId` and `CONTRACT_VERSION` changed in the same commit as that table.
-4. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still send the old verbs and still fail closed. That sentence is the #39 result. The page-local host now admits `file.page_target` and stays `test-only`. It does not send `file.update`.
+4. No production caller was switched onto the new ids. Settings, the DOM capture, the MCP Apps host, and `update-target` still send the old verbs and still fail closed. That sentence is the #39 result. The page-local host now admits `file.page_target` and stays `test-only`. It does not send `file.update`. The MCP Apps host now admits `workbench.sidebar_focus` and stays `test-only`. It does not send `canvas.node_select`.
 5. `action-owner-policy.ts` remains a guard beside the new rows.
 
 Workers do not implement a production caller for these ids from this packet.
