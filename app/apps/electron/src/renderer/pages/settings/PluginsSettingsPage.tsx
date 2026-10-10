@@ -2,21 +2,20 @@
  * PluginsSettingsPage
  *
  * One settings page on the existing navigator. Five views, Market content
- * filters, and catalog source filters use the same list as the host loadout.
- * Install, enable, and disable write through HostTurnKernel. A third-party
- * hook or MCP server waits for the existing permission card. The MCP Apps
- * side pane opens on the existing right sidebar and reads this loadout. It
- * does not construct a host kernel. Its sandboxed app view stays Locked. A local
- * Agent Plugins 1.0.0 package is listed when a skill or MCP server maps onto
- * the loadout. This page does not open a remote store.
+ * filters, and catalog source filters list workspace skills, MCP sources,
+ * and catalog reads. Install, enable, and disable do not run here. This
+ * page does not construct createPluginSettingsHost and does not write
+ * .claude-plugin/loadout.json. It does not render the Craft session
+ * permission card. The MCP Apps side pane opens on the existing right
+ * sidebar and reads the loadout. It does not construct a host kernel. Its
+ * sandboxed app view stays Locked. A local Agent Plugins 1.0.0 package is
+ * listed when a skill or MCP server maps onto the loadout shape. This page
+ * does not open a remote store.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
-import { PermissionRequest } from '@/components/app-shell/input/structured/PermissionRequest'
-import type { PermissionResponse } from '@/components/app-shell/input/structured/types'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
@@ -27,7 +26,6 @@ import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import {
   LOCKED_PLUGIN_PHASES,
   MARKET_CONTENT_FILTERS,
-  PLUGIN_SETTINGS_SESSION_ID,
   PLUGIN_VIEWS,
   entriesForView,
   loadoutRecord,
@@ -40,7 +38,6 @@ import {
   type MarketContentFilter,
   type PluginCatalogEntry,
   type PluginLoadoutFile,
-  type PluginMutationName,
   type PluginView,
   emptyPluginLoadout,
 } from '@craft-agent/shared/protocol/plugin-settings'
@@ -56,29 +53,18 @@ import {
   type CatalogRead,
   type CatalogSourceKind,
 } from '@craft-agent/shared/protocol/plugin-catalog-sources'
-import {
-  applyPluginMutationFromHuman,
-  createPluginSettingsHost,
-  DESKTOP_APPROVER,
-  pendingPluginCard,
-  readPluginLoadout,
-  resolvePluginGrant,
-  type HostPermissionCard,
-} from '@craft-agent/shared/protocol/plugin-settings-host'
+import { readPluginLoadout } from '@craft-agent/shared/protocol/plugin-settings-host'
 import {
   SettingsCard,
   SettingsRow,
   SettingsSection,
   SettingsSegmentedControl,
-  SettingsToggle,
 } from '@/components/settings'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
   slug: 'plugins',
 }
-
-const desktopActor = { kind: 'human' as const, id: 'desktop-user', displayName: 'Desktop' }
 
 export default function PluginsSettingsPage() {
   const { t } = useTranslation()
@@ -87,14 +73,11 @@ export default function PluginsSettingsPage() {
   const navState = useNavigationState()
   const workspace = shell?.workspaces.find((item) => item.id === shell.activeWorkspaceId) ?? null
   const filePath = workspace ? pluginLoadoutPath(workspace.rootPath) : null
-  const host = useMemo(() => createPluginSettingsHost(), [])
-  const invocationCount = useRef(0)
   const [view, setView] = useState<PluginView>('installed')
   const [marketFilter, setMarketFilter] = useState<MarketContentFilter>('all')
   const [sourceKind, setSourceKind] = useState<CatalogSourceKind | 'all'>('all')
   const [reads, setReads] = useState<CatalogRead[]>([])
   const [loadout, setLoadout] = useState<PluginLoadoutFile>(emptyPluginLoadout())
-  const [pendingCard, setPendingCard] = useState<HostPermissionCard | null>(null)
 
   const workspaceSkills = useMemo(() => (shell?.skills ?? []).map((skill) => ({
     slug: skill.slug,
@@ -189,51 +172,8 @@ export default function PluginsSettingsPage() {
     updateRightSidebar({ type: 'mcp-apps' })
   }, [navState.rightSidebar, updateRightSidebar])
 
-  const mutate = useCallback(async (op: PluginMutationName, pluginId: string) => {
-    if (!filePath) return
-    invocationCount.current += 1
-    const result = await applyPluginMutationFromHuman(host, {
-      op,
-      pluginId,
-      invocationId: `plugin-${invocationCount.current}`,
-      sessionId: PLUGIN_SETTINGS_SESSION_ID,
-      actor: desktopActor,
-      filePath,
-      catalog,
-    })
-    if (result.status === 'completed') {
-      setLoadout(result.loadout)
-      setPendingCard(null)
-      return
-    }
-    if (result.status === 'approval_required') {
-      setPendingCard(pendingPluginCard(host, result.invocationId) ?? null)
-      return
-    }
-    if (result.status === 'Locked') {
-      toast.message(t(lockedLabelKey(result.phase)))
-    }
-  }, [catalog, filePath, host, t])
-
-  const respondToCard = useCallback(async (response: PermissionResponse) => {
-    if (!filePath || !pendingCard) return
-    const result = await resolvePluginGrant(host, {
-      invocationId: pendingCard.requestId,
-      approver: DESKTOP_APPROVER,
-      decision: { allowed: response.allowed, alwaysAllow: response.alwaysAllow },
-      filePath,
-    })
-    setPendingCard(null)
-    if (result.status === 'completed') {
-      setLoadout(result.loadout)
-      return
-    }
-    const read = readPluginLoadout(filePath)
-    if (read.status === 'ok' || read.status === 'missing') setLoadout(read.loadout)
-  }, [filePath, host, pendingCard])
-
   return (
-    <div className="h-full flex flex-col" data-plugin-view={view} data-market-filter={marketFilter} data-catalog-source={sourceKind} data-plugin-approval={pendingCard ? 'awaiting' : 'idle'}>
+    <div className="h-full flex flex-col" data-plugin-view={view} data-market-filter={marketFilter} data-catalog-source={sourceKind} data-plugin-writes="locked" data-plugin-approval="display-only">
       <PanelHeader
         title={t('settings.plugins.title')}
         actions={<HeaderMenu route={routes.view.settings('plugins')} helpFeature="app-settings" />}
@@ -296,21 +236,6 @@ export default function PluginsSettingsPage() {
 
               <SettingsSection title={viewLabel(view, t)} description={viewApprovalDescription(view, t)}>
                 <SettingsCard>
-                  {pendingCard && (
-                    <div className="px-4 py-3.5">
-                      <PermissionRequest
-                        request={{
-                          requestId: pendingCard.requestId,
-                          sessionId: pendingCard.sessionId,
-                          toolName: pendingCard.toolName,
-                          description: pendingCard.description,
-                          command: pendingCard.command,
-                          type: pendingCard.type,
-                        }}
-                        onResponse={(response) => { void respondToCard(response) }}
-                      />
-                    </div>
-                  )}
                   {entries.length === 0 ? (
                     <SettingsRow label={t('settings.plugins.empty')} />
                   ) : entries.map((entry) => (
@@ -319,10 +244,7 @@ export default function PluginsSettingsPage() {
                       entry={entry}
                       installed={loadoutRecord(loadout, entry.id)?.installed === true}
                       enabled={loadoutRecord(loadout, entry.id)?.enabled === true}
-                      canWrite={filePath !== null && pendingCard === null}
-                      installLabel={t('settings.plugins.install')}
-                      onInstall={() => { void mutate('install', entry.id) }}
-                      onEnabledChange={(checked) => { void mutate(checked ? 'enable' : 'disable', entry.id) }}
+                      lockedLabel={t('settings.plugins.statusLocked')}
                     />
                   ))}
                 </SettingsCard>
@@ -375,39 +297,23 @@ function PluginEntryRow({
   entry,
   installed,
   enabled,
-  canWrite,
-  installLabel,
-  onInstall,
-  onEnabledChange,
+  lockedLabel,
 }: {
   entry: PluginCatalogEntry
   installed: boolean
   enabled: boolean
-  canWrite: boolean
-  installLabel: string
-  onInstall: () => void
-  onEnabledChange: (checked: boolean) => void
+  lockedLabel: string
 }) {
-  if (!installed) {
-    return (
-      <SettingsRow
-        label={entry.name}
-        description={entry.description}
-        action={(
-          <Button variant="secondary" size="sm" disabled={!canWrite} onClick={onInstall}>
-            {installLabel}
-          </Button>
-        )}
-      />
-    )
-  }
+  const readState = installed ? (enabled ? 'enabled' : 'installed') : 'listed'
   return (
-    <SettingsToggle
+    <SettingsRow
       label={entry.name}
       description={entry.description}
-      checked={enabled}
-      disabled={!canWrite}
-      onCheckedChange={onEnabledChange}
+      action={(
+        <span className="text-xs text-muted-foreground" data-plugin-read={readState}>
+          {lockedLabel}
+        </span>
+      )}
     />
   )
 }

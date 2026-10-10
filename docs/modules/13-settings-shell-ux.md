@@ -49,7 +49,7 @@ The Browser settings page should be a compact Codex-style settings surface:
 
 Do not scatter browser switches across BrowserPane, capability settings, and developer settings.
 
-The Plugins settings page reuses this settings navigator. Five views and Market filters are `wired`. Catalog reads are not a trusted marketplace (`display-only`). The Hooks view renders `PermissionRequest` on a renderer-local kernel, not `SessionManager.respondToPermission` (`display-only`). The MCP Apps side pane is a read projection of that loadout (`display-only`). The sandboxed MCP App view stays `Locked`. A local Agent Plugins 1.0.0 package is not a plugin runtime (`display-only`). The page is not a remote store.
+The Plugins settings page reuses this settings navigator. Five views and Market filters are `wired`. Install, enable, and disable do not run on this page (`Locked` until the session kernel owns the loadout). Catalog reads are not a trusted marketplace (`display-only`). The page does not render the Craft session permission card (`display-only`). The MCP Apps side pane is a read projection of the loadout file (`display-only`). The sandboxed MCP App view stays `Locked`. A local Agent Plugins 1.0.0 package is not a plugin runtime (`display-only`). The page is not a remote store.
 
 About, licenses, and diagnostics stay on the App settings page. The notices row, the Fleet update row, and the packaging dry-run row read `releaseAboutModel`. The notices row is `wired` when every admitted dependency has a license. The packaging dry-run row is `wired` when version metadata and the unsigned artifact layout pass. The signed production feed row stays `Locked`. The existing Check for Updates control remains the Craft updater. It is not a Fleet release feed.
 

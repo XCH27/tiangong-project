@@ -4,6 +4,10 @@
 > **Base inspected:** `89b2e8a6` (`work/fresh-base-spine` after merged PR #19)
 > **What this file is:** a review note. It does not promote a decision, open a wave, or change capability status. `DECISIONS-LEDGER.md`, `WAVE-MODULE-MAP.md`, and `OWNERSHIP-MATRIX.md` stay Lead-owned.
 > **Handoff docs:** this checkout has no `交接` document. The handoff system is `docs/PARALLEL-AGENT-OPERATING-MODEL.md` plus `docs/agent-packets/`. No worker handoff report for PRs #3–#19 is committed in-tree.
+>
+> **Follow-up after PR #25 (2026-10-10):** this note still describes base `89b2e8a6`. It is not rewritten. Two gaps the later §13 relabel left open are closed in the checkout that carries this addendum:
+> 1. `PluginsSettingsPage` does not construct `createPluginSettingsHost` and does not call `applyPluginMutationFromHuman` or `resolvePluginGrant`. Five views and market filters stay on the settings navigator. Install, enable, and disable are `Locked` until the `SessionManager` session kernel owns the loadout. The page does not render the Craft session permission card. `createPluginSettingsHost` is `test-only`. The production-caller row in §2.1 for that factory is historical for the audited base.
+> 2. `cli-executors/capabilities.ts` marks Codex, ACP, and the Codex peer preset `display-only`. Locked effects stay `Locked`. No production path spawns those peers.
 
 ## Verdict
 
