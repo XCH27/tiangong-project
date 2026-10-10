@@ -7,9 +7,14 @@
 > **Authority:** the Mac path below. This cloud workspace does not contain that checkout. Claims below are from the attached RPC record for the live Craft Electron. This note does not reconstruct results that record does not contain.
 > **Capability:** `not implemented` for the clean v0.11 baseline. Nothing in this note is `usable`.
 > **Gates:** W0.1 stays In Progress. W1 stays Locked. No wave is Ready.
-> **Exit item 1:** stays open. The RPC results below do not close it. `typecheck:all` remains the #52 failure. The migration branch is still absent.
+> **Exit item 1:** stays open. The RPC results below do not close it. `typecheck:all` remains the #52 failure. At this RPC record the migration branch was still absent.
+> **Later route note:** `docs/audits/2026-10-10-w01-exit1-routes-migration.md`. It records `route=board` and `route=settings` restores and branch `fleet/migration-from-v0.11.0`. It does not close Exit item 1. The "NOT verified" and "still absent" rows below are this RPC pass.
 > **Binding exit list:** `docs/WAVE-MODULE-MAP.md` §3. This note does not check item 1 off.
 > **Earlier notes:** `docs/audits/2026-10-10-w01-exit1-mac-checkout.md` and `docs/audits/2026-10-10-w01-exit1-electron-launch.md`.
+
+## Follow-up after #54 (`20a8d2fd`)
+
+`docs/audits/2026-10-10-w01-exit1-routes-migration.md` is the later record. `bun run electron:dev` restored window-state `route=board` (log `Restoring window ... route=board`; AX title `Craft Agents`; sessions board navigator `routes.view.board()` → `board`) and later `route=settings` (log `Restoring window ... route=settings`; window title stayed `Craft Agents`). Those are route restores. They are not an AX click on Kanban chrome and not the `tasks:list` result in the table below. `Cmd+,` and Craft Agents → 设置... were not verified: the frontmost menu bar stayed on pid `4855` `Fleet 项目审查` (also Electron, `com.github.Electron`). Branch `fleet/migration-from-v0.11.0` is open on the pin. Adapt row ports are not started. Fleet `app/` stays `0.10.5`. `typecheck:all` remains the #52 failure. Exit item 1 stays open. Docs decides whether the route restores and this branch open meet the remaining UI and migration bullets.
 
 ## Authority path
 
@@ -66,7 +71,9 @@ The settings RPC responses included a token. This note does not write that token
 
 ## What is still required before Exit item 1 can close
 
-On the same Mac path:
+The list below is what this RPC pass still required. `docs/audits/2026-10-10-w01-exit1-routes-migration.md` records later `route=board` and `route=settings` restores and branch `fleet/migration-from-v0.11.0`. That note does not close Exit item 1. `typecheck:all` remains the #52 failure. Adapt row ports are not started. `app/` stays `0.10.5`.
+
+On the same Mac path, as of this RPC pass:
 
 1. Open the Kanban board UI. `tasks:list` returning `0` does not open the board.
 2. Verify the Settings panel UI. `settings:getServerStatus` and `settings:getServerConfig` do not open that panel. `menu:openSettings` is unregistered on this path, and there is no screenshot.
