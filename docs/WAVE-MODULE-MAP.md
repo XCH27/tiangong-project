@@ -3,6 +3,7 @@
 > **Lead-owned.** This is the only active source for execution gates and module placement.
 > **Updated:** 2026-07-09
 > **Current state:** W0.1 reconciliation is active; every Worker implementation wave is Locked.
+> **Honesty footnote (2026-10-10):** W0.1 exit is still incomplete. The gates and capability cells below are unchanged. No wave is Ready. No module is `usable`.
 
 ## 1. Status Axes
 

@@ -21,6 +21,7 @@ Every active module spec begins with:
 ```
 
 These are independent axes. Do not invent informal alternatives such as “almost usable.”
+A `Locked` cell in a slice table is the execution gate, not a capability result.
 
 ## 2. Minimum Executable Spec Content
 
