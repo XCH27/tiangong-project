@@ -34,7 +34,7 @@ import { getSessionsToRefreshAfterStaleReconnect } from './lib/reconnect-recover
 import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallback } from './lib/session-load'
 import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
 import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
-import { isRefusedSessionChrome, isRefusedSessionFlag } from '@craft-agent/shared/protocol'
+import { isRefusedSessionChrome, isRefusedSessionFlag, isRefusedSessionUnflag } from '@craft-agent/shared/protocol'
 import { initRendererPerf } from './lib/perf'
 import {
   initializeSessionsAtom,
@@ -1149,7 +1149,11 @@ export default function App() {
 
   const handleUnflagSession = useCallback((sessionId: string) => {
     updateSessionById(sessionId, { isFlagged: false })
-    window.electronAPI.sessionCommand(sessionId, { type: 'unflag' })
+    void window.electronAPI.sessionCommand(sessionId, { type: 'unflag' }).then((result) => {
+      if (isRefusedSessionUnflag(result)) updateSessionById(sessionId, { isFlagged: true })
+    }).catch(() => {
+      updateSessionById(sessionId, { isFlagged: true })
+    })
   }, [updateSessionById])
 
   const handleArchiveSession = useCallback((sessionId: string) => {

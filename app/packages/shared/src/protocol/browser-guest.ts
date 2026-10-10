@@ -3,8 +3,9 @@
  *
  * Page find, loading stop, and the native guest actions share one profile
  * and one owner check. A human control and an agent caller both use that
- * path. A DOM snapshot asks for file.create. That id is M05 file bytes, so
- * HostTurnKernel refuses the turn and does not read or write the page.
+ * path. A DOM snapshot asks for file.create. browser.dom_snapshot is the
+ * frozen M06 id. This caller does not use it. HostTurnKernel refuses the
+ * file.create payload and does not read or write the page.
  * Screenshot evidence and Chrome Store advertising stay Locked. This is not a
  * plugin marketplace and it does not open a second browser profile.
  */

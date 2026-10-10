@@ -54,7 +54,7 @@ export interface ISessionManager {
   // ---------------------------------------------------------------------------
 
   flagSession(sessionId: string): Promise<SessionFlagAdmission>
-  unflagSession(sessionId: string): Promise<void>
+  unflagSession(sessionId: string): Promise<SessionFlagAdmission>
   archiveSession(sessionId: string): Promise<void>
   unarchiveSession(sessionId: string): Promise<void>
   renameSession(sessionId: string, name: string): Promise<SessionChromeAdmission>

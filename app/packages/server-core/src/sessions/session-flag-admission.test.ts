@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { ActorRef, TurnRequest } from '@craft-agent/shared/protocol'
-import { isRefusedSessionFlag } from '@craft-agent/shared/protocol'
+import { isRefusedSessionFlag, isRefusedSessionUnflag } from '@craft-agent/shared/protocol'
 import { InternalActionId, type ActionInvocation } from '../../../shared/src/protocol/internal-action.ts'
 import {
   createSession,
@@ -79,9 +79,14 @@ describe('human session flag on the session kernel', () => {
       expect(reloaded?.messages.map((entry) => entry.content)).toEqual(['keep me'])
 
       const flagCount = text.split('"actionId":"session.flag"').length - 1
-      await sm.unflagSession(created.id)
+      const unflagged = await sm.unflagSession(created.id)
+      expect(unflagged.status).toBe('completed')
+      expect(isRefusedSessionUnflag(unflagged)).toBe(false)
       const afterUnflag = readFileSync(file, 'utf8')
       expect(afterUnflag.split('"actionId":"session.flag"').length - 1).toBe(flagCount)
+      expect(afterUnflag).toContain('"actionId":"session.unflag"')
+      expect(afterUnflag).toContain('"label":"Restore session flag"')
+      expect(afterUnflag).not.toContain('"kind":"supervision_requested"')
       expect(loadSession(root, created.id)?.isFlagged).toBe(false)
 
       expect(sm.admitHostTurn(created.id, smuggle(created.id, InternalActionId.FILE_UPDATE, 'inv-plugin', {
@@ -111,6 +116,10 @@ describe('human session flag on the session kernel', () => {
       ), 'utf8')
       expect(shell.includes("type: 'flag'")).toBe(true)
       expect(shell.includes('isRefusedSessionFlag')).toBe(true)
+      const unflagHandler = shell.slice(shell.indexOf('handleUnflagSession'), shell.indexOf('handleArchiveSession'))
+      expect(unflagHandler.includes("type: 'unflag'")).toBe(true)
+      expect(unflagHandler.includes('isRefusedSessionUnflag')).toBe(true)
+      expect(unflagHandler.includes('isFlagged: true')).toBe(true)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -121,5 +130,33 @@ describe('human session flag on the session kernel', () => {
     const missing = await sm.flagSession('missing-session')
     expect(missing).toMatchObject({ status: 'failed', reason: 'session_missing' })
     expect(isRefusedSessionFlag(missing)).toBe(true)
+    const missingUnflag = await sm.unflagSession('missing-session')
+    expect(missingUnflag).toMatchObject({ status: 'failed', reason: 'session_missing' })
+    expect(isRefusedSessionUnflag(missingUnflag)).toBe(true)
+  })
+
+  it('leaves the flag set when session.unflag is refused', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'session-unflag-refuse-'))
+    try {
+      const created = await createSession(root, { name: 'Stay flagged' })
+      const stored = loadSession(root, created.id)
+      expect(stored).not.toBeNull()
+      stored!.isFlagged = true
+      await saveSession(stored!)
+      const sm = new SessionManager()
+      const managed = createManagedSession(
+        { id: created.id, name: stored!.name, isFlagged: true },
+        { id: 'ws-test', name: 'Test', rootPath: root, createdAt: Date.now() } as never,
+      )
+      ;(sm as unknown as { sessions: Map<string, unknown> }).sessions.set(created.id, managed)
+      ;(sm as unknown as { admitHostTurn: (sessionId: string) => { status: 'denied'; invocationId: string; reason: string } })
+        .admitHostTurn = () => ({ status: 'denied', invocationId: 'inv-refuse', reason: 'denied' })
+      const refused = await sm.unflagSession(created.id)
+      expect(refused.status).toBe('denied')
+      expect(isRefusedSessionUnflag(refused)).toBe(true)
+      expect(loadSession(root, created.id)?.isFlagged).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

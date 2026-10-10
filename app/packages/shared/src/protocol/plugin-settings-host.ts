@@ -6,7 +6,8 @@
  * resolvePluginGrant on the test host is not SessionManager.respondToPermission.
  *
  * SessionManager.applySessionPluginMutation builds a file.update request on
- * the Craft session kernel. HostTurnKernel refuses that verb
+ * the Craft session kernel. plugin.loadout_mutate is the frozen M12 id.
+ * This caller does not use it. HostTurnKernel refuses the file.update verb
  * (action_owner_mismatch:plugin_loadout) and does not write the loadout.
  * No shell or IPC caller uses that API, so the path is test-only. Settings
  * install, enable, and disable stay Locked. Approval is not a side flag on

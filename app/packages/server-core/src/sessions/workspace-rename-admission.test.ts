@@ -126,7 +126,7 @@ describe('settings workspace rename on the session kernel', () => {
     }
   })
 
-  it('keeps the production shell on this path and leaves unflag outside admission', () => {
+  it('keeps the production shell on workspace rename and admits unflag as its own id', () => {
     const settings = readFileSync(new URL(
       '../handlers/rpc/settings.ts',
       import.meta.url,
@@ -155,7 +155,7 @@ describe('settings workspace rename on the session kernel', () => {
 
     const manager = readFileSync(new URL('./SessionManager.ts', import.meta.url), 'utf8')
     const unflag = manager.slice(manager.indexOf('async unflagSession'), manager.indexOf('async archiveSession'))
-    expect(unflag.includes('admitHostTurn')).toBe(false)
+    expect(unflag.includes('sessionUnflagRequest')).toBe(true)
     expect(unflag.includes('requestWorkspaceRename')).toBe(false)
     expect(manager.includes('requireHumanApproval')).toBe(false)
   })

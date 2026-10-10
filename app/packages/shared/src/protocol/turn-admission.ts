@@ -200,7 +200,11 @@ export class HostTurnKernel {
       return this.deny(safeRequest, invocationId, 'unknown_action')
     }
 
-    const ownerMismatch = actionOwnerMismatchReason(safeRequest.invocation.payload, safeRequest.invocation.targets)
+    const ownerMismatch = actionOwnerMismatchReason(
+      safeRequest.invocation.actionId,
+      safeRequest.invocation.payload,
+      safeRequest.invocation.targets,
+    )
     if (ownerMismatch) {
       return this.deny(safeRequest, invocationId, ownerMismatch)
     }
