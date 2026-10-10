@@ -2,5 +2,5 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "demo-plugin",
   "version": "1.0.0",
-  "description": "An Agent Plugins 1.0.0 manifest. It stays Locked."
+  "description": "A manifest with no skills directory and no mcp.json."
 }

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "local-validator": {
+      "type": "stdio",
+      "command": "./bin/validator",
+      "args": ["--data", "${PLUGIN_DATA}/validator"],
+      "cwd": "${PLUGIN_ROOT}"
+    },
+    "deployment-api": {
+      "type": "streamable-http",
+      "url": "https://deploy.example.com/mcp",
+      "headers": {
+        "X-Tenant": "public-tenant"
+      }
+    },
+    "escaped": {
+      "type": "stdio",
+      "command": "../bin/server"
+    },
+    "secret-header": {
+      "type": "streamable-http",
+      "url": "https://deploy.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer super-secret-token"
+      }
+    },
+    "plain-http": {
+      "type": "streamable-http",
+      "url": "http://deploy.example.com/mcp"
+    }
+  }
+}

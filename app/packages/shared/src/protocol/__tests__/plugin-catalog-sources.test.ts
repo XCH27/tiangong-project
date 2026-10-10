@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ActorRef } from '../actor'
 import { InternalActionId } from '../internal-action'
+import { DESKTOP_APPROVER } from '../host-approval-bridge'
 import {
+  AGENT_PLUGINS_SOURCE,
   MCP_REGISTRY_LIST_URL,
   MCP_REGISTRY_SOURCE,
   SKILL_REPOSITORY_SOURCE,
@@ -21,6 +23,7 @@ import {
   applyPluginMutationFromAgent,
   applyPluginMutationFromHuman,
   createPluginSettingsHost,
+  resolvePluginGrant,
 } from '../plugin-settings-host'
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
@@ -126,18 +129,86 @@ describe('catalog source adapters', () => {
     expect(catalogSourceStatus('skill_repository')).toBe('wired')
   })
 
-  test('agent plugins and a plugin marketplace do not become market entries', async () => {
-    const locked = await readCatalogSource({
+  test('an Agent Plugins 1.0.0 package lists safe skills and MCP servers', async () => {
+    const manifestOnly = await readCatalogSource({
       source: SKILL_REPOSITORY_SOURCE,
       document: fixture('agent-plugins-1.0.0.json'),
     })
-    expect(locked).toMatchObject({ status: 'Locked', phase: 'agent_plugins_1_0_0', entries: [] })
+    expect(manifestOnly).toMatchObject({ status: 'ok', source: AGENT_PLUGINS_SOURCE, entries: [] })
+
+    const packaged = await readCatalogSource({
+      source: AGENT_PLUGINS_SOURCE,
+      packageRoot: join(fixtureDir, 'agent-plugins-demo'),
+    })
+    expect(packaged.status).toBe('ok')
+    if (packaged.status !== 'ok') return
+    expect(packaged.entries.map((entry) => ({ id: entry.id, kind: entry.kind, trust: entry.trust }))).toEqual([
+      { id: 'skill:demo-plugin.summarize', kind: 'skill', trust: 'third_party' },
+      { id: 'mcp:demo-plugin/local-validator', kind: 'mcp', trust: 'third_party' },
+      { id: 'mcp:demo-plugin/deployment-api', kind: 'mcp', trust: 'third_party' },
+    ])
+    expect(packaged.entries.every((entry) => entry.origin === 'catalog')).toBe(true)
+    expect(listCatalogMarket({
+      reads: [packaged],
+      sourceFilter: { kind: 'type', sourceKind: 'agent_plugins' },
+      contentFilter: 'skill',
+    }).map((entry) => entry.id)).toEqual(['skill:demo-plugin.summarize'])
+    expect(catalogSourceStatus('agent_plugins')).toBe('wired')
+
+    const credential = await readCatalogSource({
+      source: AGENT_PLUGINS_SOURCE,
+      document: fixture('agent-plugins-credential.json'),
+    })
+    expect(credential).toMatchObject({ status: 'closed', reason: 'credential_material_rejected', entries: [] })
+    const unsafeName = await readCatalogSource({
+      source: AGENT_PLUGINS_SOURCE,
+      document: fixture('agent-plugins-unsafe-name.json'),
+    })
+    expect(unsafeName).toMatchObject({ status: 'closed', reason: 'invalid_manifest', entries: [] })
+    const future = await readCatalogSource({
+      source: AGENT_PLUGINS_SOURCE,
+      document: {
+        $schema: 'https://agent-plugins.org/schemas/9.9.9/plugin.schema.json',
+        name: 'future-plugin',
+      },
+    })
+    expect(future).toMatchObject({ status: 'closed', reason: 'unsupported_agent_plugins_version', entries: [] })
     const marketplace = await readCatalogSource({
       source: SKILL_REPOSITORY_SOURCE,
       document: fixture('plugin-marketplace.json'),
     })
     expect(marketplace).toMatchObject({ status: 'closed', reason: 'plugin_marketplace_rejected', entries: [] })
-    expect(listCatalogMarket({ reads: [locked, marketplace], contentFilter: 'all' })).toEqual([])
+    expect(listCatalogMarket({ reads: [credential, unsafeName, marketplace], contentFilter: 'all' })).toEqual([])
+
+    let calls = 0
+    const fetched = await readCatalogSource({
+      source: AGENT_PLUGINS_SOURCE,
+      allowNetwork: true,
+      url: 'https://agent-plugins.org/packages/demo-plugin.json',
+      fetchImpl: async () => {
+        calls += 1
+        return jsonResponse(200, fixtureText('agent-plugins-1.0.0.json'))
+      },
+    })
+    expect(fetched).toMatchObject({ status: 'closed', reason: 'network_disabled', entries: [] })
+    expect(calls).toBe(0)
+    expect(isAllowedCatalogUrl('agent_plugins', 'https://agent-plugins.org/packages/demo-plugin.json')).toBe(false)
+  })
+
+  test('a skill symlink outside the package is not listed', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-agent-plugin-'))
+    dirs.push(dir)
+    const outside = mkdtempSync(join(tmpdir(), 'fleet-agent-plugin-outside-'))
+    dirs.push(outside)
+    writeFileSync(join(outside, 'SKILL.md'), '---\nname: escape\ndescription: Leaves the package.\n---\n')
+    writeFileSync(join(dir, 'plugin.json'), fixtureText('agent-plugins-1.0.0.json'))
+    const skills = join(dir, 'skills')
+    mkdirSync(skills)
+    symlinkSync(outside, join(skills, 'escape'), 'dir')
+    const read = await readCatalogSource({ source: AGENT_PLUGINS_SOURCE, packageRoot: dir })
+    expect(read.status).toBe('ok')
+    if (read.status !== 'ok') return
+    expect(read.entries).toEqual([])
   })
 
   test('a closed read contributes nothing and live fetch stays optional', async () => {
@@ -270,6 +341,76 @@ describe('catalog source adapters', () => {
     const written = JSON.parse(readFileSync(filePath, 'utf8')) as { records: Array<{ id: string; enabled: boolean }> }
     expect(written.records.find((record) => record.id === 'hook:lint-hook')?.enabled).toBe(false)
     expect(InternalActionId.FILE_UPDATE).toBe('file.update')
+  })
+
+  test('an Agent Plugins MCP server installs through file.update and enable waits for the card', async () => {
+    const packaged = await readCatalogSource({
+      source: AGENT_PLUGINS_SOURCE,
+      packageRoot: join(fixtureDir, 'agent-plugins-demo'),
+    })
+    const catalog = listCatalogMarket({ reads: [packaged], contentFilter: 'all' })
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-agent-plugin-loadout-'))
+    dirs.push(dir)
+    const filePath = join(dir, 'loadout.json')
+    const shared = createPluginSettingsHost()
+    const installed = await applyPluginMutationFromHuman(shared, {
+      op: 'install',
+      pluginId: 'mcp:demo-plugin/local-validator',
+      invocationId: 'invoke-agent-plugin-install',
+      actor: human,
+      filePath,
+      catalog,
+    })
+    expect(installed.status).toBe('completed')
+    if (installed.status !== 'completed') return
+    expect(installed.loadout.records).toEqual([
+      { id: 'mcp:demo-plugin/local-validator', installed: true, enabled: false },
+    ])
+
+    const skillInstalled = await applyPluginMutationFromAgent(shared, {
+      op: 'install',
+      pluginId: 'skill:demo-plugin.summarize',
+      invocationId: 'invoke-agent-plugin-skill',
+      actor: agent,
+      filePath,
+      catalog,
+    })
+    expect(skillInstalled.status).toBe('completed')
+    if (skillInstalled.status !== 'completed') return
+    expect(skillInstalled.loadout.records.find((record) => record.id === 'skill:demo-plugin.summarize')?.enabled).toBe(false)
+
+    const enabled = await applyPluginMutationFromAgent(shared, {
+      op: 'enable',
+      pluginId: 'mcp:demo-plugin/local-validator',
+      invocationId: 'invoke-agent-plugin-enable',
+      actor: agent,
+      filePath,
+      catalog,
+    })
+    expect(enabled).toMatchObject({
+      status: 'approval_required',
+      reason: 'human_approval_required',
+      invocationId: 'invoke-agent-plugin-enable',
+    })
+    const before = JSON.parse(readFileSync(filePath, 'utf8')) as { records: Array<{ id: string; enabled: boolean }> }
+    expect(before.records.find((record) => record.id === 'mcp:demo-plugin/local-validator')?.enabled).toBe(false)
+
+    const allowed = await resolvePluginGrant(shared, {
+      invocationId: 'invoke-agent-plugin-enable',
+      approver: DESKTOP_APPROVER,
+      decision: { allowed: true },
+      filePath,
+    })
+    expect(allowed.status).toBe('completed')
+    if (allowed.status !== 'completed') return
+    expect(allowed.loadout.records.find((record) => record.id === 'mcp:demo-plugin/local-validator')).toEqual({
+      id: 'mcp:demo-plugin/local-validator',
+      installed: true,
+      enabled: true,
+    })
+    expect(allowed.loadout.grants).toEqual([
+      { id: 'mcp:demo-plugin/local-validator', decision: 'approved' },
+    ])
   })
 })
 

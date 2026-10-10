@@ -97,7 +97,6 @@ describe('mcp apps side pane projection', () => {
       'Locked',
       'Locked',
       'Locked',
-      'Locked',
     ])
 
     const listed = projectEnabledMcpApps(read)
@@ -243,7 +242,6 @@ describe('mcp apps side pane admission', () => {
     expect(lockedMcpAppsPhase('tool_invocation').status).toBe('Locked')
     expect(lockedMcpAppsPhase('live_tool_list').status).toBe('Locked')
     expect(lockedMcpAppsPhase('remote_marketplace').status).toBe('Locked')
-    expect(lockedMcpAppsPhase('agent_plugins_1_0_0').status).toBe('Locked')
     expect(shared.kernel.snapshot().turns.length).toBe(turns)
   })
 

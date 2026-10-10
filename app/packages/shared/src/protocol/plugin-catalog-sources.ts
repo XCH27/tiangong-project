@@ -1,12 +1,19 @@
 /**
  * Catalog sources for Settings → Plugins → Market.
  *
- * MCP Registry and skill-repository documents become catalog entries. Market
- * content filters narrow that list the same way the Sources navigator narrows
- * a list by source type. A read that fails returns no entries. Live fetch is
- * optional. Install stays on the plugin loadout host.
+ * MCP Registry and skill-repository documents become catalog entries. A local
+ * Agent Plugins 1.0.0 package becomes entries only where a skill or MCP server
+ * maps onto the loadout. Market content filters narrow that list the same way
+ * the Sources navigator narrows a list by source type. A read that fails
+ * returns no entries. Live fetch is optional and never loads a plugin store.
+ * Install stays on the plugin loadout host.
  */
 
+import {
+  isAgentPluginSchema,
+  projectAgentPluginManifest,
+  readAgentPluginPackage,
+} from './agent-plugin-manifest'
 import { containsCredentialMaterial, isSecretString } from './credential-boundary'
 import {
   createPluginSettingsState,
@@ -20,7 +27,7 @@ import {
   type WorkspacePluginSource,
 } from './plugin-settings'
 
-export const CATALOG_SOURCE_KINDS = ['mcp_registry', 'skill_repository'] as const
+export const CATALOG_SOURCE_KINDS = ['mcp_registry', 'skill_repository', 'agent_plugins'] as const
 export type CatalogSourceKind = (typeof CATALOG_SOURCE_KINDS)[number]
 
 export interface CatalogSourceRef {
@@ -48,9 +55,14 @@ export const SKILL_REPOSITORY_SOURCE: CatalogSourceRef = {
   name: 'Skill repositories',
 }
 
+export const AGENT_PLUGINS_SOURCE: CatalogSourceRef = {
+  kind: 'agent_plugins',
+  slug: 'agent-plugins',
+  name: 'Agent Plugins 1.0.0',
+}
+
 const MCP_REGISTRY_ORIGIN = 'https://registry.modelcontextprotocol.io'
 const MCP_REGISTRY_PATH = '/v0.1/servers'
-const AGENT_PLUGINS_SCHEMA = 'agent-plugins.org/schemas/1.0.0'
 const MARKETPLACE_SCHEMA = 'claude-code-marketplace'
 const OFFICIAL_META = 'io.modelcontextprotocol.registry/official'
 const MAX_BODY_CHARS = 1_000_000
@@ -84,6 +96,7 @@ export function catalogSourceStatus(kind: CatalogSourceKind): 'wired' {
   switch (kind) {
     case 'mcp_registry':
     case 'skill_repository':
+    case 'agent_plugins':
       return 'wired'
     default: {
       const unexpected: never = kind
@@ -139,6 +152,7 @@ export async function readCatalogSource(input: {
   source: CatalogSourceRef
   document?: unknown
   body?: string
+  packageRoot?: string
   allowNetwork?: boolean
   url?: string
   fetchImpl?: CatalogFetch
@@ -148,6 +162,10 @@ export async function readCatalogSource(input: {
   }
   if (input.document !== undefined) return interpret(input.source, input.document)
   if (input.body !== undefined) return interpretBody(input.source, input.body)
+  if (input.packageRoot !== undefined) return interpretPackageRoot(input.source, input.packageRoot)
+  if (input.source.kind === 'agent_plugins') {
+    return { status: 'closed', source: input.source, reason: 'network_disabled', entries: [] }
+  }
   if (input.allowNetwork !== true) {
     return { status: 'closed', source: input.source, reason: 'network_disabled', entries: [] }
   }
@@ -177,6 +195,8 @@ export function isAllowedCatalogUrl(kind: CatalogSourceKind, url: string): boole
       return isOfficialRegistryUrl(parsed)
     case 'skill_repository':
       return !isPrivateHostname(parsed.hostname) && parsed.pathname.endsWith('.json')
+    case 'agent_plugins':
+      return false
     default: {
       const unexpected: never = kind
       return unexpected
@@ -206,11 +226,17 @@ function interpretBody(source: CatalogSourceRef, body: string): CatalogRead {
 }
 
 function interpret(source: CatalogSourceRef, document: unknown): CatalogRead {
+  const marketplace = marketplaceRejection(source, document)
+  if (marketplace) return marketplace
+  const agentPlugin = agentPluginDocument(document)
+  if (agentPlugin) return agentPlugin
   switch (source.kind) {
     case 'mcp_registry':
       return interpretMcpRegistry(source, document)
     case 'skill_repository':
       return interpretSkillRepository(source, document)
+    case 'agent_plugins':
+      return { status: 'closed', source, reason: 'invalid_manifest', entries: [] }
     default: {
       const unexpected: never = source.kind
       return { status: 'closed', source, reason: `unknown_catalog_source:${String(unexpected)}`, entries: [] }
@@ -219,8 +245,6 @@ function interpret(source: CatalogSourceRef, document: unknown): CatalogRead {
 }
 
 function interpretMcpRegistry(source: CatalogSourceRef, document: unknown): CatalogRead {
-  const blocked = blockedDocument(source, document)
-  if (blocked) return blocked
   if (!isRecord(document) || !Array.isArray(document.servers)) {
     return { status: 'closed', source, reason: 'invalid_catalog', entries: [] }
   }
@@ -237,8 +261,6 @@ function interpretMcpRegistry(source: CatalogSourceRef, document: unknown): Cata
 }
 
 function interpretSkillRepository(source: CatalogSourceRef, document: unknown): CatalogRead {
-  const blocked = blockedDocument(source, document)
-  if (blocked) return blocked
   if (!isRecord(document) || !Array.isArray(document.skills)) {
     return { status: 'closed', source, reason: 'invalid_catalog', entries: [] }
   }
@@ -254,16 +276,33 @@ function interpretSkillRepository(source: CatalogSourceRef, document: unknown): 
   return { status: 'ok', source, entries }
 }
 
-function blockedDocument(source: CatalogSourceRef, document: unknown): CatalogRead | null {
+function interpretPackageRoot(source: CatalogSourceRef, packageRoot: string): CatalogRead {
+  if (source.kind !== 'agent_plugins') {
+    return { status: 'closed', source, reason: 'unsafe_package_root', entries: [] }
+  }
+  const projected = readAgentPluginPackage(packageRoot)
+  if (projected.status === 'closed') {
+    return { status: 'closed', source: AGENT_PLUGINS_SOURCE, reason: projected.reason, entries: [] }
+  }
+  return { status: 'ok', source: AGENT_PLUGINS_SOURCE, entries: projected.entries }
+}
+
+function marketplaceRejection(source: CatalogSourceRef, document: unknown): CatalogRead | null {
   if (!isRecord(document)) return null
   const schema = typeof document.$schema === 'string' ? document.$schema : ''
-  if (schema.includes(AGENT_PLUGINS_SCHEMA)) {
-    return { status: 'Locked', source, phase: 'agent_plugins_1_0_0', entries: [] }
-  }
   if (schema.includes(MARKETPLACE_SCHEMA) || (Array.isArray(document.plugins) && isRecord(document.owner))) {
     return { status: 'closed', source, reason: 'plugin_marketplace_rejected', entries: [] }
   }
   return null
+}
+
+function agentPluginDocument(document: unknown): CatalogRead | null {
+  if (!isRecord(document) || typeof document.$schema !== 'string' || !isAgentPluginSchema(document.$schema)) return null
+  const projected = projectAgentPluginManifest(document)
+  if (projected.status === 'closed') {
+    return { status: 'closed', source: AGENT_PLUGINS_SOURCE, reason: projected.reason, entries: [] }
+  }
+  return { status: 'ok', source: AGENT_PLUGINS_SOURCE, entries: projected.entries }
 }
 
 function mcpEntry(value: unknown): PluginCatalogEntry | null {

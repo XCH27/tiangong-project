@@ -5,8 +5,9 @@
  * filters, and catalog source filters use the same list as the host loadout.
  * Install, enable, and disable write through HostTurnKernel. A third-party
  * hook or MCP server waits for the existing permission card. The MCP Apps
- * side pane reads this loadout. Its sandboxed app view and Agent Plugins
- * 1.0.0 stay Locked.
+ * side pane reads this loadout. Its sandboxed app view stays Locked. A local
+ * Agent Plugins 1.0.0 package is listed when a skill or MCP server maps onto
+ * the loadout. This page does not open a remote store.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -43,6 +44,7 @@ import {
   emptyPluginLoadout,
 } from '@craft-agent/shared/protocol/plugin-settings'
 import {
+  AGENT_PLUGINS_SOURCE,
   CATALOG_SOURCE_KINDS,
   MCP_REGISTRY_LIST_URL,
   MCP_REGISTRY_SOURCE,
@@ -129,6 +131,26 @@ export default function PluginsSettingsPage() {
     const read = readPluginLoadout(filePath)
     if (read.status === 'ok' || read.status === 'missing') setLoadout(read.loadout)
   }, [filePath])
+
+  useEffect(() => {
+    const packageRoot = workspace?.rootPath
+    if (!packageRoot) return
+    let cancelled = false
+    void readCatalogSource({
+      source: AGENT_PLUGINS_SOURCE,
+      packageRoot,
+    }).then((read) => {
+      if (cancelled) return
+      setReads((current) => {
+        const rest = current.filter((item) => item.source.kind !== 'agent_plugins')
+        if (read.status === 'closed' && read.reason === 'manifest_missing') return rest
+        return [read, ...rest]
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [workspace?.rootPath])
 
   const state = selectMarketFilter(
     selectPluginView({ view: 'installed', marketFilter: 'all', catalog, loadout }, view),
@@ -464,6 +486,8 @@ function catalogSourceLabel(kind: CatalogSourceKind, t: (key: string) => string)
       return t('settings.plugins.catalog.mcpRegistry')
     case 'skill_repository':
       return t('settings.plugins.catalog.skillRepository')
+    case 'agent_plugins':
+      return t('settings.plugins.catalog.agentPlugins')
     default: {
       const unexpected: never = kind
       return unexpected
@@ -477,6 +501,8 @@ function catalogSourceDescription(kind: CatalogSourceKind, t: (key: string) => s
       return t('settings.plugins.catalog.mcpRegistryDesc')
     case 'skill_repository':
       return t('settings.plugins.catalog.skillRepositoryDesc')
+    case 'agent_plugins':
+      return t('settings.plugins.catalog.agentPluginsDesc')
     default: {
       const unexpected: never = kind
       return unexpected
@@ -508,8 +534,6 @@ function lockedLabelKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
   switch (phase) {
     case 'mcp_apps_sandbox':
       return 'settings.plugins.locked.mcpApps'
-    case 'agent_plugins_1_0_0':
-      return 'settings.plugins.locked.agentPlugins'
     default: {
       const unexpected: never = phase
       return unexpected
@@ -521,8 +545,6 @@ function lockedDescriptionKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): str
   switch (phase) {
     case 'mcp_apps_sandbox':
       return 'settings.plugins.locked.mcpAppsDesc'
-    case 'agent_plugins_1_0_0':
-      return 'settings.plugins.locked.agentPluginsDesc'
     default: {
       const unexpected: never = phase
       return unexpected
