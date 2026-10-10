@@ -38,6 +38,11 @@ interface DocxPreview {
   filePath: string
 }
 
+interface XlsxPreview {
+  type: 'xlsx'
+  filePath: string
+}
+
 interface CodePreview {
   type: 'code'
   filePath: string
@@ -71,6 +76,7 @@ export type FilePreviewState =
   | ImagePreview
   | PDFPreview
   | DocxPreview
+  | XlsxPreview
   | CodePreview
   | MarkdownPreview
   | JSONPreview
@@ -155,7 +161,7 @@ export function useLinkInterceptor(options: LinkInterceptorOptions): LinkInterce
     const type = classification.type
 
     // For image/pdf: set state immediately — the overlay handles its own async loading
-    if (type === 'image' || type === 'pdf' || type === 'docx') {
+    if (type === 'image' || type === 'pdf' || type === 'docx' || type === 'xlsx') {
       setPreviewState({ type, filePath: path })
       return
     }
@@ -234,7 +240,7 @@ export function useLinkInterceptor(options: LinkInterceptorOptions): LinkInterce
  * Content is null initially (loading), and gets populated after async read.
  */
 function buildInitialTextState(
-  type: Exclude<FilePreviewType, 'image' | 'pdf' | 'docx'>,
+  type: Exclude<FilePreviewType, 'image' | 'pdf' | 'docx' | 'xlsx'>,
   path: string,
 ): FilePreviewState {
   switch (type) {

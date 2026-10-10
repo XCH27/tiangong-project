@@ -296,7 +296,7 @@ design module.
 - An image card is an `image_asset`. A video card is a `video_frame`. The node stores the job invocation id and media kind. Preview bytes stay on the `aigc_artifact`.
 - Place admits `canvas.node_create`. Delete admits `canvas.node_delete` and waits for human approval. The effect removes the node from the canvas document.
 - Hide and stop change view state. They do not admit a turn, and they do not call `stop` on the document kernel or the job kernel.
-- XLSX and PPTX return `Locked`. The canvas file does not receive their bytes.
+- XLSX and PPTX cards stay `Locked`. Workbook bytes stay on the document suite. The canvas file does not receive them.
 - `@xyflow/react` is not a dependency in this checkout. Positions are `CanvasNode` `cx` / `cy` / width / height. The renderer spike in §13 stays `Locked`.
 
 | Slice | Status |

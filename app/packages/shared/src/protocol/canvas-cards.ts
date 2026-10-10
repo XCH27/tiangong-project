@@ -8,8 +8,9 @@
  * The DOCX bytes and the job record stay with their owners.
  *
  * @xyflow/react is not installed in this repo. Card positions are the
- * CanvasNode frame. The renderer spike stays Locked. XLSX and PPTX stay
- * Locked. This host is not a plugin marketplace.
+ * CanvasNode frame. The renderer spike stays Locked. XLSX workbook bytes
+ * stay on the document suite. Canvas cards for XLSX and PPTX stay Locked.
+ * This host is not a plugin marketplace.
  */
 
 import { readFileSync } from 'node:fs'
@@ -28,6 +29,7 @@ import {
 } from './canvas-card-view'
 import {
   type DocumentPreviewCommand,
+  type DocumentSuiteId,
   isSafeDocumentPath,
   suiteForPath,
 } from './document-command'
@@ -84,7 +86,7 @@ export interface DeleteCanvasCard {
 
 export type CanvasMutationResult =
   | { status: 'completed'; nodeId: string; invocationId: string }
-  | { status: 'Locked'; suite: 'xlsx' | 'pptx'; reason: 'suite_locked' }
+  | { status: 'Locked'; suite: 'xlsx' | 'xls' | 'pptx'; reason: 'suite_locked' }
   | {
     status: Exclude<TurnOutcome['status'], 'completed'>
     invocationId: string
@@ -176,7 +178,7 @@ async function placeDocx(
   if (refused) return refused
   const suite = suiteForPath(input.filePath)
   if (!suite) return failed(input.invocationId, input.nodeId, 'unknown_suite')
-  if (suite.status === 'Locked') return lockedSuite(suite)
+  if (suite.id !== 'docx') return lockedCard(suite.id)
   if (!isSafeDocumentPath(input.filePath)) return failed(input.invocationId, input.nodeId, 'unsafe_file_path')
   const loaded = readParagraphs(input.filePath)
   if ('reason' in loaded) return failed(input.invocationId, input.nodeId, loaded.reason)
@@ -273,6 +275,9 @@ async function applyDocxCommand(
     actor: input.actor,
     paragraphIndex: input.command.paragraphIndex,
     text: input.command.text,
+    cell: input.command.cell,
+    value: input.command.value,
+    valueType: input.command.valueType,
   }
   const first = await apply(options.documents, call)
   if (first.status !== 'failed' || first.reason !== 'not_open') return first
@@ -600,13 +605,18 @@ function undoOf(sessionId: string, nodeId: string, snapshot: CanvasDocument): Un
   }
 }
 
-function lockedSuite(suite: { id: 'xlsx' | 'pptx'; status: 'Locked' }): CanvasMutationResult {
-  switch (suite.id) {
+function lockedCard(id: DocumentSuiteId): CanvasMutationResult {
+  switch (id) {
+    case 'docx':
+      return { status: 'failed', invocationId: 'docx', reason: 'unexpected_docx_lock' }
     case 'xlsx':
+      return { status: 'Locked', suite: 'xlsx', reason: 'suite_locked' }
+    case 'xls':
+      return { status: 'Locked', suite: 'xls', reason: 'suite_locked' }
     case 'pptx':
-      return { status: 'Locked', suite: suite.id, reason: 'suite_locked' }
+      return { status: 'Locked', suite: 'pptx', reason: 'suite_locked' }
     default: {
-      const unexpected: never = suite.id
+      const unexpected: never = id
       return unexpected
     }
   }

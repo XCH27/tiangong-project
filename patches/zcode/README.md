@@ -24,6 +24,8 @@ The executable loop lives on the retained Craft tree and is declared in `docs/UP
 - `app/packages/shared/src/protocol/document-suite.ts`
 - `app/packages/shared/src/protocol/docx-package.ts`
 - `app/packages/shared/src/protocol/docx-xml.ts`
+- `app/packages/shared/src/protocol/xlsx-package.ts`
+- `app/packages/shared/src/protocol/xlsx-xml.ts`
 - `app/packages/shared/src/protocol/canvas-cards.ts`
 - `app/packages/shared/src/protocol/browser-guest.ts`
 - `app/packages/shared/src/protocol/canvas-card-view.ts`
@@ -55,7 +57,7 @@ When `.fleet/zcode` is available on a machine that has the candidate:
 4. Map Claude and ChatGPT/Pi usage through `turnUsageFromClaude` and `turnUsageFromChatGpt` before `attributeTurnUsage`. Persist only through `HostTurnKernel.snapshot` and `FileKernelSnapshotStore`, which call `sealHostRecord`. That gate drops cache and price numbers that were not observed, including a Craft `cacheReadTokens: 0` that the Claude adapter fills when the field was missing. An explicit provider cache read of zero stays a confirmed miss. Do not copy auth tokens into the snapshot.
 5. Keep the plugin marketplace unchanged. The DOCX suite is the one built-in document host from step 7. Publish an awaiting turn with `publishHostApproval` so the existing Craft permission card can Allow or Deny it. That response calls `HostTurnKernel.approve` or `reject`. Do not add a second approval dialog.
 6. Pass a `CliExecutorHost` as `nativeEffects` when a turn payload selects `executorId` `codex-app-server` or `acp`. The host opens pipe stdio only after `run`. Reverse tool requests admit frozen file actions on the same kernel. The adapter does not approve them and does not fall back to a PTY. Command execution stays `Locked`.
-7. DOCX edits use `createDocumentSuiteHost`. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. A write admits `file.update` and commits only after the byte replace. Leave XLSX and PPTX Locked. Do not add a plugin marketplace.
+7. Document edits use `createDocumentSuiteHost`. `applyDocumentFromHuman` and `applyDocumentFromAgent` both call `executeDocumentOp`. A DOCX write admits `file.update`. An XLSX create admits `file.create` and a first-sheet cell update admits `file.update`. Commit only after the byte replace. Leave legacy XLS, macro workbooks, formulas, and PPTX Locked. Do not add a plugin marketplace.
 8. Canvas cards use `createCanvasCardHost` with that document host and `createAigcHost`. Place admits `canvas.node_create`. Delete admits `canvas.node_delete` and waits for human approval. Hide and stop stay view state. Do not stop the job kernel when a card stops. `@xyflow/react` stays uninstalled until the renderer spike is promoted.
 9. Browser guest actions use `createBrowserGuestHost` on the retained `persist:browser-pane` profile. `runGuestActionFromHuman` and `runGuestActionFromAgent` share page find, loading stop, back, forward, and reload. `captureDomFromHuman` and `captureDomFromAgent` both admit `file.create` for a DOM snapshot. Leave screenshot evidence and Chrome Store advertising Locked. Do not add a plugin marketplace.
 10. Plugin install, enable, and disable use `createPluginSettingsHost`. `applyPluginMutationFromHuman` and `applyPluginMutationFromAgent` both call `executePluginMutation` and admit `file.update` for `.claude-plugin/loadout.json`. A third-party hook or MCP enable sets `requireHumanApproval` and waits for `resolvePluginGrant`, which calls the existing permission card. An agent cannot approve it. The grant decision is stored on that loadout. Market catalog reads use `readCatalogSource`. A local Agent Plugins 1.0.0 package is read by `readAgentPluginPackage` and lists only safe skills and MCP servers. Leave the sandboxed MCP App view and any remote plugin store Locked. Do not treat that loadout as a remote store.
@@ -79,9 +81,12 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Approval-gated AIGC submit, artifact, stop, and recover | `wired` |
 | Subscription observation for the settings reader and the agent DTO | `wired` |
 | DOCX open, edit, undo, save, and reopen through file.update | `wired` |
+| XLSX create through file.create, and first-sheet cell update through file.update | `wired` |
 | Canvas cards for an admitted DOCX and an admitted aigc artifact | `wired` |
 | Hide, stop, and delete of a canvas card, with the file and job retained | `wired` |
-| XLSX and PPTX suites | `Locked` |
+| XLSX formulas, rich text, charts, extra sheets, and a full spreadsheet editor | `Locked` |
+| Legacy XLS, macro workbooks, and PPTX | `Locked` |
+| XLSX and PPTX canvas cards | `Locked` |
 | `@xyflow/react` spatial renderer | `Locked` |
 | Built-in Chromium page find, loading stop, and native guest actions | `wired` |
 | Governed DOM snapshot through file.create | `wired` |
