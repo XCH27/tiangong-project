@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ActorRef } from '../actor'
+import { InternalActionId } from '../internal-action'
 import {
   applyPluginMutationFromAgent,
   applyPluginMutationFromHuman,
@@ -158,7 +159,7 @@ describe('plugin settings navigation and market filters', () => {
 })
 
 describe('plugin loadout admission', () => {
-  test('human and agent install, enable, and disable are refused and do not write', async () => {
+  test('human and agent install, enable, and disable wait on plugin.loadout_mutate and do not write', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-plugin-'))
     dirs.push(dir)
     const filePath = join(dir, 'loadout.json')
@@ -181,8 +182,8 @@ describe('plugin loadout admission', () => {
       catalog,
     })
     expect(installed).toMatchObject({
-      status: 'denied',
-      reason: 'action_owner_mismatch:plugin_loadout',
+      status: 'approval_required',
+      reason: 'human_approval_required',
     })
 
     const enabled = await applyPluginMutationFromAgent(shared, {
@@ -194,8 +195,8 @@ describe('plugin loadout admission', () => {
       catalog,
     })
     expect(enabled).toMatchObject({
-      status: 'denied',
-      reason: 'action_owner_mismatch:plugin_loadout',
+      status: 'approval_required',
+      reason: 'human_approval_required',
     })
 
     const disabled = await applyPluginMutationFromHuman(shared, {
@@ -207,10 +208,19 @@ describe('plugin loadout admission', () => {
       catalog,
     })
     expect(disabled).toMatchObject({
-      status: 'denied',
-      reason: 'action_owner_mismatch:plugin_loadout',
+      status: 'approval_required',
+      reason: 'human_approval_required',
     })
     expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(before)
+    const turns = shared.kernel.snapshot().turns
+    expect(turns.map((turn) => turn.request.invocation.actionId)).toEqual([
+      InternalActionId.PLUGIN_LOADOUT_MUTATE,
+      InternalActionId.PLUGIN_LOADOUT_MUTATE,
+      InternalActionId.PLUGIN_LOADOUT_MUTATE,
+    ])
+    expect(turns.every((turn) => turn.phase === 'awaiting_approval')).toBe(true)
+    expect(turns.every((turn) => turn.request.preAuthorizedBy === undefined)).toBe(true)
+    expect(shared.kernel.approve('invoke-agent-enable', agent).status).toBe('approval_required')
 
     const settled = await resolvePluginGrant(shared, {
       invocationId: 'invoke-agent-enable',
@@ -218,9 +228,89 @@ describe('plugin loadout admission', () => {
       decision: { allowed: true, alwaysAllow: true },
       filePath,
     })
-    expect(settled).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+    expect(settled).toMatchObject({ status: 'failed', reason: 'plugin_grant_not_pending' })
     expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(before)
-    expect(shared.kernel.snapshot().turns.every((turn) => turn.phase === 'denied')).toBe(true)
+  })
+
+  test('the same loadout payload on file.update is still refused', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-plugin-old-'))
+    dirs.push(dir)
+    const filePath = join(dir, 'old-verb.json')
+    const shared = createPluginSettingsHost()
+    expect(shared.kernel.admit({
+      invocation: {
+        invocationId: 'old-verb',
+        actionId: InternalActionId.FILE_UPDATE,
+        payload: {
+          filePath,
+          pluginId: 'hook:lint',
+          op: 'enable',
+          nextDocument: {
+            version: 1,
+            records: [{ id: 'hook:lint', installed: true, enabled: true }],
+          },
+        },
+        targets: [{ kind: 'file', id: filePath, label: 'hook:lint' }],
+        callerKind: 'human_ui',
+        sessionId: 'session-1',
+        createdAt: '2026-10-09T00:00:00.000Z',
+      },
+      actor: human,
+    })).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:plugin_loadout' })
+    expect(existsSync(filePath)).toBe(false)
+  })
+
+  test('a human allow writes the loadout, a deny does not, and op grant is rejected', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-plugin-allow-'))
+    dirs.push(dir)
+    const filePath = join(dir, 'loadout.json')
+    const shared = createPluginSettingsHost()
+    const allowed = {
+      op: 'install' as const,
+      pluginId: 'skill:review',
+      invocationId: 'invoke-allow',
+      actor: human,
+      filePath,
+      catalog,
+    }
+    expect(await applyPluginMutationFromHuman(shared, allowed)).toMatchObject({ status: 'approval_required' })
+    expect(existsSync(filePath)).toBe(false)
+    expect(shared.kernel.approve('invoke-allow', human).status).toBe('admitted')
+    const written = await applyPluginMutationFromHuman(shared, allowed)
+    expect(written).toMatchObject({ status: 'completed', persisted: true })
+    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+      version: 1,
+      records: [{ id: 'skill:review', installed: true, enabled: false }],
+    })
+
+    const deniedPath = join(dir, 'denied.json')
+    writeFileSync(deniedPath, JSON.stringify({
+      version: 1,
+      records: [{ id: 'hook:lint', installed: true, enabled: false }],
+    }))
+    const denied = {
+      op: 'enable' as const,
+      pluginId: 'hook:lint',
+      invocationId: 'invoke-deny',
+      actor: human,
+      filePath: deniedPath,
+      catalog,
+    }
+    expect(await applyPluginMutationFromHuman(shared, denied)).toMatchObject({ status: 'approval_required' })
+    const rejected = await resolvePluginGrant(shared, {
+      invocationId: 'invoke-deny',
+      approver: human,
+      decision: { allowed: false },
+      filePath: deniedPath,
+    })
+    expect(rejected).toMatchObject({ status: 'denied', reason: 'standing_grant_rejected' })
+    expect(JSON.parse(readFileSync(deniedPath, 'utf8')).records[0].enabled).toBe(false)
+    expect(shared.kernel.snapshot().turns.some((turn) => (
+      turn.request.invocation.actionId === InternalActionId.PLUGIN_LOADOUT_MUTATE
+      && turn.request.invocation.payload.op === 'grant'
+      && turn.phase === 'denied'
+      && turn.reason === 'standing_grant_rejected'
+    ))).toBe(true)
   })
 
   test('an unadmitted caller and a credential loadout do not write', async () => {
@@ -236,7 +326,7 @@ describe('plugin loadout admission', () => {
       filePath,
       catalog,
     })
-    expect(denied.status).toBe('denied')
+    expect(denied).toMatchObject({ status: 'denied', reason: 'actor_not_permitted' })
     expect(existsSync(filePath)).toBe(false)
 
     const secretPath = join(dir, 'secret-loadout.json')

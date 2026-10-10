@@ -18,6 +18,7 @@ import {
 import type { StoredMessage } from '@craft-agent/shared/sessions'
 import { SessionManager } from './SessionManager.ts'
 
+const human: ActorRef = { kind: 'human', id: 'user-1', displayName: 'Ada' }
 const agent: ActorRef = { kind: 'agent', id: 'seat-1', displayName: 'Worker' }
 
 const catalog: PluginCatalogEntry[] = [
@@ -52,7 +53,7 @@ function message(id: string, content: string): StoredMessage {
 }
 
 describe('plugin enable and install on the session kernel', () => {
-  it('refuses plugin install and enable on the session kernel and does not write', async () => {
+  it('waits on plugin.loadout_mutate and does not write before a human allow', async () => {
     const root = mkdtempSync(join(tmpdir(), 'session-plugin-admit-'))
     try {
       const created = await createSession(root, { name: 'Plugins' })
@@ -82,8 +83,8 @@ describe('plugin enable and install on the session kernel', () => {
         invocationId: 'inv-install-hook',
       }, 'ws-test')
       expect(installed).toMatchObject({
-        status: 'denied',
-        reason: 'action_owner_mismatch:plugin_loadout',
+        status: 'approval_required',
+        reason: 'human_approval_required',
         invocationId: 'inv-install-hook',
       })
       const enabled = await sm.applySessionPluginMutation(created.id, root, {
@@ -94,7 +95,16 @@ describe('plugin enable and install on the session kernel', () => {
       }, 'ws-test')
       expect(enabled).toMatchObject({ status: 'failed', reason: 'not_installed' })
       expect(existsSync(filePath)).toBe(false)
-      expect(events).toEqual([])
+      expect(events).toHaveLength(1)
+      expect(events[0]).toMatchObject({
+        type: 'permission_request',
+        request: { requestId: 'host:inv-install-hook', toolName: 'plugin.loadout_mutate' },
+      })
+      expect(kernel.snapshot().turns.map((turn) => turn.request.invocation.actionId)).toEqual([
+        InternalActionId.PLUGIN_LOADOUT_MUTATE,
+      ])
+      expect(kernel.snapshot().turns[0]?.request.preAuthorizedBy).toBeUndefined()
+      expect(kernel.approve('inv-install-hook', agent).status).toBe('approval_required')
       expect(sm.openSessionHostKernel(created.id, root, 'ws-test')).toBe(kernel)
 
       const bypass = bypassEnable(created.id, 'inv-bypass')
@@ -121,7 +131,76 @@ describe('plugin enable and install on the session kernel', () => {
       ), 'utf8')
       expect(settings.includes('applySessionPluginMutation')).toBe(false)
       expect(settings.includes('resolveSessionPluginGrant')).toBe(false)
+      expect(settings.includes('createPluginSettingsHost()')).toBe(false)
       expect(settings.includes('data-plugin-writes="locked"')).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('writes the loadout only after a human allow, and op grant writes nothing', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'session-plugin-allow-'))
+    try {
+      const created = await createSession(root, { name: 'Allow plugin' })
+      const sm = new SessionManager()
+      const kernel = sm.openSessionHostKernel(created.id, root, 'ws-test')
+      const filePath = pluginLoadoutPath(root)
+      const allowed = {
+        op: 'install' as const,
+        pluginId: 'skill:review',
+        invocationId: 'inv-allow-skill',
+        actor: human,
+        filePath,
+        catalog,
+        callerKind: 'human_ui' as const,
+      }
+      expect(await sm.applySessionPluginMutation(created.id, root, allowed, 'ws-test')).toMatchObject({
+        status: 'approval_required',
+        reason: 'human_approval_required',
+      })
+      expect(existsSync(filePath)).toBe(false)
+      expect(kernel.approve('inv-allow-skill', DESKTOP_APPROVER).status).toBe('admitted')
+      const written = await sm.applySessionPluginMutation(created.id, root, allowed, 'ws-test')
+      expect(written).toMatchObject({ status: 'completed', persisted: true })
+      expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+        version: 1,
+        records: [{ id: 'skill:review', installed: true, enabled: false }],
+      })
+      const journal = readFileSync(getSessionFilePath(root, created.id), 'utf8')
+      expect(journal).toContain('plugin.loadout_mutate')
+      expect(journal).not.toContain('"actionId":"file.update"')
+
+      const denied = {
+        op: 'enable' as const,
+        pluginId: 'hook:lint',
+        invocationId: 'inv-deny-hook',
+        actor: human,
+        filePath,
+        catalog,
+        callerKind: 'human_ui' as const,
+      }
+      expect(await sm.applySessionPluginMutation(created.id, root, denied, 'ws-test')).toMatchObject({
+        status: 'failed',
+        reason: 'not_installed',
+      })
+      const installedHook = {
+        ...denied,
+        op: 'install' as const,
+        invocationId: 'inv-deny-install',
+      }
+      expect(await sm.applySessionPluginMutation(created.id, root, installedHook, 'ws-test')).toMatchObject({
+        status: 'approval_required',
+      })
+      const rejected = await sm.resolveSessionPluginGrant(created.id, {
+        invocationId: 'inv-deny-install',
+        approver: DESKTOP_APPROVER,
+        decision: { allowed: false },
+        filePath,
+      })
+      expect(rejected).toMatchObject({ status: 'denied', reason: 'standing_grant_rejected' })
+      expect(JSON.parse(readFileSync(filePath, 'utf8')).records).toEqual([
+        { id: 'skill:review', installed: true, enabled: false },
+      ])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

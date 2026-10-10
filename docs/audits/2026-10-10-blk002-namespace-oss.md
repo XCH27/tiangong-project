@@ -195,7 +195,9 @@ These are consequences of the strings above. None of them is a packet, and none 
 
 ## D49 after this decision
 
-Criterion 2 in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` is met: the product and internal strings are D50. Criteria 3, 4, and 5 are not met. There is still no production Settings caller. `SessionManager.applySessionPluginMutation` still sends `file.update`. Install, enable, and disable stay Locked.
+Criterion 2 in `docs/audits/2026-10-10-w01-lead-decisions-oss.md` is met: the product and internal strings are D50. Criteria 3, 4, and 5 are not met. There is still no production Settings caller. Install, enable, and disable stay Locked.
+
+Follow-up: `SessionManager.applySessionPluginMutation` and `resolveSessionPluginGrant` now build `plugin.loadout_mutate` and stay `test-only`. `file.update` still refuses that payload. Settings stays Locked. D50 is unchanged.
 
 ## W0.1
 

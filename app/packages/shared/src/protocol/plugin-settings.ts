@@ -3,8 +3,9 @@
  *
  * Five views share one catalog. Workspace skills and MCP sources are local.
  * Catalog reads can add Market entries. Market content filters narrow that
- * list. Install, enable, and disable ask for file.update and admission refuses
- * that verb. The Settings page does not write the loadout. The MCP Apps side
+ * list. Install, enable, and disable admit plugin.loadout_mutate. The row is
+ * L2, so an unapproved call does not write. The Settings page does not call
+ * that API and does not write the loadout. The MCP Apps side
  * pane reads this loadout. Its sandboxed app view stays Locked. A local Agent
  * Plugins 1.0.0 package can list skills and MCP servers. A remote store stays
  * Locked.
@@ -264,9 +265,10 @@ export function planPluginMutation(
       if (current.enabled) return { status: 'unchanged', loadout }
       const enabled = upsert(loadout, { id: pluginId, installed: true, enabled: true })
       if (needsThirdPartyEnableApproval(entry) && pluginGrant(loadout, pluginId)?.decision !== 'approved') {
+        // The L2 card is the approval. This plan does not store decision approved.
         return {
           status: 'approval',
-          loadout: withPluginGrant(enabled, { id: pluginId, decision: 'approved' }),
+          loadout: enabled,
         }
       }
       return { status: 'write', loadout: enabled }

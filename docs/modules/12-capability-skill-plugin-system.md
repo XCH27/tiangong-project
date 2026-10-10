@@ -244,7 +244,7 @@ The Settings → Plugins subpage reuses the Craft settings navigator. It does no
 | Five views: Installed, Market, Skills, MCP, Hooks | `wired` |
 | Market content filters over workspace skills and MCP sources | `wired` |
 | Install, enable, and disable from Settings. The frozen id is `plugin.loadout_mutate`. D49 keeps this row Locked until the session kernel is the caller. | `Locked` |
-| `createPluginSettingsHost` loadout writes | `test-only` |
+| `createPluginSettingsHost` loadout writes. The host admits `plugin.loadout_mutate` and stays off the Settings page. | `test-only` |
 | Settings approval as the Craft session permission card | `display-only` |
 | MCP Registry and skill-repository catalogs as a trusted marketplace | `display-only` |
 | Per-plugin approval through `SessionManager.respondToPermission` | `display-only` |
@@ -253,4 +253,4 @@ The Settings → Plugins subpage reuses the Craft settings navigator. It does no
 | Local Agent Plugins 1.0.0 package as a plugin runtime | `display-only` |
 | Remote store or plugin marketplace | `Locked` |
 
-The settings page does not construct `createPluginSettingsHost` and does not write `.claude-plugin/loadout.json`. That host stays `test-only` until the `SessionManager` session kernel owns the loadout. It is not the Craft session permission card. A failed catalog read adds no entries. The MCP Apps pane reads the loadout and does not admit a tool call. See `docs/modules/00-platform-spine.md` §13.
+The settings page does not construct `createPluginSettingsHost` and does not write `.claude-plugin/loadout.json`. `SessionManager.applySessionPluginMutation` admits `plugin.loadout_mutate` and stays `test-only`. The page does not call it. That host is not the Craft session permission card. A failed catalog read adds no entries. The MCP Apps pane reads the loadout and does not admit a tool call. See `docs/modules/00-platform-spine.md` §13.

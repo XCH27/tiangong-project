@@ -5,13 +5,13 @@
  * and does not write the loadout. That private kernel is not a Craft session.
  * resolvePluginGrant on the test host is not SessionManager.respondToPermission.
  *
- * SessionManager.applySessionPluginMutation builds a file.update request on
- * the Craft session kernel. plugin.loadout_mutate is the frozen M12 id.
- * This caller does not use it. HostTurnKernel refuses the file.update verb
- * (action_owner_mismatch:plugin_loadout) and does not write the loadout.
+ * SessionManager.applySessionPluginMutation and resolveSessionPluginGrant
+ * build plugin.loadout_mutate on the Craft session kernel. The row is L2.
+ * The request does not set preAuthorizedBy, so an unapproved call does not
+ * write. op grant is standing_grant_rejected and does not write. The same
+ * payload on file.update stays action_owner_mismatch:plugin_loadout.
  * No shell or IPC caller uses that API, so the path is test-only. Settings
- * install, enable, and disable stay Locked. Approval is not a side flag on
- * file.update.
+ * install, enable, and disable stay Locked.
  */
 
 import { readFileSync } from 'node:fs'
@@ -75,7 +75,7 @@ export type PluginLoadoutRead =
   | { status: 'failed'; reason: string }
 
 const loadoutEffects = new NativeEffectRegistry()
-loadoutEffects.register(InternalActionId.FILE_UPDATE, async (request) => {
+loadoutEffects.register(InternalActionId.PLUGIN_LOADOUT_MUTATE, async (request) => {
   const filePath = typeof request.payload.filePath === 'string' ? request.payload.filePath : ''
   const applied = await applyAtomicJsonEffect({
     filePath,
@@ -84,7 +84,7 @@ loadoutEffects.register(InternalActionId.FILE_UPDATE, async (request) => {
     commit: request.commit,
   })
   return {
-    output: { filePath, actionId: InternalActionId.FILE_UPDATE },
+    output: { filePath, actionId: InternalActionId.PLUGIN_LOADOUT_MUTATE },
     undoHandle: {
       undoId: `undo-${request.sessionId}`,
       label: 'Restore previous plugin loadout',
@@ -233,7 +233,7 @@ async function writeLoadout(
   const sessionId = input.sessionId ?? PLUGIN_SETTINGS_SESSION_ID
   const invocation: ActionInvocation = {
     invocationId: input.invocationId,
-    actionId: InternalActionId.FILE_UPDATE,
+    actionId: InternalActionId.PLUGIN_LOADOUT_MUTATE,
     payload: {
       filePath: input.filePath,
       pluginId: input.pluginId,
@@ -249,6 +249,9 @@ async function writeLoadout(
     invocation,
     actor: input.actor,
   }
+  // L2 waits here. A later call with the same invocation id continues after
+  // HostTurnKernel.approve. The request does not set preAuthorizedBy.
+  // op grant is standing_grant_rejected and does not reach the effect.
   const admitted = shared.kernel.admit(request)
   if (admitted.status === 'completed') return failed(input.invocationId, 'duplicate_invocation')
   if (admitted.status !== 'admitted') return turnResult(admitted)
