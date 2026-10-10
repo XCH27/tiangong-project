@@ -1,11 +1,16 @@
 /**
- * Plugin loadout writes. Test host only.
+ * Plugin loadout writes.
  *
- * The settings page does not call this factory. Install, enable, and disable
- * admit file.update on a private HostTurnKernel and write
- * `.claude-plugin/loadout.json`. That kernel is not a Craft session.
- * resolvePluginGrant is not SessionManager.respondToPermission. Installing
- * does not enable. An agent caller cannot approve the test grant.
+ * createPluginSettingsHost is a test host. The Settings page does not call it
+ * and does not write the loadout. That private kernel is not a Craft session.
+ * resolvePluginGrant on the test host is not SessionManager.respondToPermission.
+ *
+ * SessionManager.applySessionPluginMutation admits install, enable, and
+ * disable as file.update on the Craft session kernel from
+ * openSessionHostKernel. The loadout executor is passed to run() only after
+ * admission. No shell or IPC caller uses that API, so the path is test-only.
+ * Installing does not enable. A third-party hook or MCP enable waits on the
+ * session permission card. An agent cannot approve it.
  */
 
 import { readFileSync } from 'node:fs'
@@ -31,7 +36,13 @@ import {
   type PluginLoadoutFile,
   type PluginMutationName,
 } from './plugin-settings'
-import { HostTurnKernel, MemoryTurnJournal, type TurnOutcome } from './turn-admission'
+import {
+  HostTurnKernel,
+  MemoryTurnJournal,
+  type TurnExecutor,
+  type TurnOutcome,
+  type TurnRequest,
+} from './turn-admission'
 
 export { DESKTOP_APPROVER } from './host-approval-bridge'
 export type { HostPermissionCard } from './host-approval-bridge'
@@ -61,27 +72,38 @@ export type PluginLoadoutRead =
   | { status: 'missing'; loadout: PluginLoadoutFile }
   | { status: 'failed'; reason: string }
 
-export function createPluginSettingsHost(): PluginSettingsShared {
-  const effects = new NativeEffectRegistry()
-  effects.register(InternalActionId.FILE_UPDATE, async (request) => {
-    const filePath = typeof request.payload.filePath === 'string' ? request.payload.filePath : ''
-    const applied = await applyAtomicJsonEffect({
-      filePath,
-      next: request.payload.nextDocument,
-      signal: request.signal,
-      commit: request.commit,
-    })
-    return {
-      output: { filePath, actionId: InternalActionId.FILE_UPDATE },
-      undoHandle: {
-        undoId: `undo-${request.sessionId}`,
-        label: 'Restore previous plugin loadout',
-        snapshot: applied.previous,
-      },
-    }
+const loadoutEffects = new NativeEffectRegistry()
+loadoutEffects.register(InternalActionId.FILE_UPDATE, async (request) => {
+  const filePath = typeof request.payload.filePath === 'string' ? request.payload.filePath : ''
+  const applied = await applyAtomicJsonEffect({
+    filePath,
+    next: request.payload.nextDocument,
+    signal: request.signal,
+    commit: request.commit,
   })
-  const kernel = new HostTurnKernel(new MemoryTurnJournal(), { nativeEffects: effects })
-  return { kernel, effects }
+  return {
+    output: { filePath, actionId: InternalActionId.FILE_UPDATE },
+    undoHandle: {
+      undoId: `undo-${request.sessionId}`,
+      label: 'Restore previous plugin loadout',
+      snapshot: applied.previous,
+    },
+  }
+})
+
+export function createPluginSettingsHost(): PluginSettingsShared {
+  const kernel = new HostTurnKernel(new MemoryTurnJournal(), { nativeEffects: loadoutEffects })
+  return { kernel, effects: loadoutEffects }
+}
+
+function loadoutExecutor(request: TurnRequest): TurnExecutor {
+  const executor = loadoutEffects.createExecutor(request)
+  if (!executor) {
+    return async () => {
+      throw new Error('plugin_loadout_executor_missing')
+    }
+  }
+  return executor
 }
 
 export function applyPluginMutationFromHuman(
@@ -96,6 +118,33 @@ export function applyPluginMutationFromAgent(
   input: PluginMutationCall,
 ): Promise<PluginMutationResult> {
   return executePluginMutation(shared, { ...input, callerKind: 'agent' })
+}
+
+/**
+ * Admit install, enable, or disable on a kernel the caller already owns.
+ * SessionManager passes the Craft session kernel. This does not construct one.
+ */
+export function executePluginMutationOnKernel(
+  kernel: HostTurnKernel,
+  input: PluginMutationCall & { callerKind: 'human_ui' | 'agent' },
+): Promise<PluginMutationResult> {
+  return executePluginMutation({ kernel, effects: loadoutEffects }, input)
+}
+
+/**
+ * Settle an awaiting plugin card on a kernel the caller already owns.
+ * An agent approver stays approval_required and does not write.
+ */
+export function resolvePluginGrantOnKernel(
+  kernel: HostTurnKernel,
+  input: {
+    invocationId: string
+    approver: ActorRef
+    decision: CraftPermissionDecision
+    filePath: string
+  },
+): Promise<PluginMutationResult> {
+  return resolvePluginGrant({ kernel, effects: loadoutEffects }, input)
 }
 
 export function readPluginLoadout(filePath: string): PluginLoadoutRead {
@@ -167,7 +216,13 @@ export async function resolvePluginGrant(
     return { status: 'denied', invocationId: bare, reason: outcome.reason ?? 'approval_rejected' }
   }
   if (outcome.status !== 'admitted') return turnResult(outcome)
-  const ran = await shared.kernel.run(bare)
+  const request = requestFromTurn(shared.kernel, bare)
+  if (!request) return failed(bare, 'unknown_invocation')
+  if (request.requireHumanApproval !== true) return failed(bare, 'plugin_grant_not_pending')
+  if (!isHumanApprover(input.approver)) {
+    return { status: 'approval_required', invocationId: bare, reason: 'human_approval_required' }
+  }
+  const ran = await shared.kernel.run(bare, loadoutExecutor(request))
   if (ran.status !== 'completed') return turnResult(ran)
   const read = readPluginLoadout(input.filePath)
   if (read.status !== 'ok') return failed(bare, read.status === 'failed' ? read.reason : 'loadout_missing')
@@ -196,14 +251,15 @@ async function writeLoadout(
     sessionId,
     createdAt: '2026-10-09T00:00:00.000Z',
   }
-  const admitted = shared.kernel.admit({
+  const request: TurnRequest = {
     invocation,
     actor: input.actor,
     ...(requireHumanApproval ? { requireHumanApproval: true } : {}),
-  })
+  }
+  const admitted = shared.kernel.admit(request)
   if (admitted.status === 'completed') return failed(input.invocationId, 'duplicate_invocation')
   if (admitted.status !== 'admitted') return turnResult(admitted)
-  const ran = await shared.kernel.run(input.invocationId)
+  const ran = await shared.kernel.run(input.invocationId, loadoutExecutor(request))
   if (ran.status !== 'completed') return turnResult(ran)
   return { status: 'completed', invocationId: input.invocationId, loadout: next, persisted: true }
 }
@@ -221,16 +277,30 @@ async function persistDeniedGrant(
   if (current === 'version') return failed(invocationId, 'unsupported_loadout_version')
   const loadout = current === 'missing' ? emptyPluginLoadout() : current
   const next = withPluginGrant(loadout, { id: pluginId, decision: 'denied' })
+  const sessionId = sessionIdFromTurn(shared.kernel, invocationId) ?? PLUGIN_SETTINGS_SESSION_ID
   return writeLoadout(shared, {
     op: 'enable',
     pluginId,
     invocationId: `${invocationId}:grant`,
-    sessionId: PLUGIN_SETTINGS_SESSION_ID,
+    sessionId,
     actor: approver,
     filePath,
     catalog: [],
     callerKind: 'human_ui',
   }, next, false, 'grant')
+}
+
+function isHumanApprover(actor: ActorRef): boolean {
+  return actor.kind === 'human' && actor.id.trim().length > 0 && actor.displayName.trim().length > 0
+}
+
+function requestFromTurn(kernel: HostTurnKernel, invocationId: string): TurnRequest | undefined {
+  return kernel.snapshot().turns.find((item) => item.request.invocation.invocationId === invocationId)?.request
+}
+
+function sessionIdFromTurn(kernel: HostTurnKernel, invocationId: string): string | undefined {
+  const sessionId = requestFromTurn(kernel, invocationId)?.invocation.sessionId
+  return sessionId && sessionId.trim().length > 0 ? sessionId : undefined
 }
 
 function pluginIdFromTurn(kernel: HostTurnKernel, invocationId: string): string | undefined {
