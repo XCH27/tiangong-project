@@ -8,8 +8,8 @@
  * registry, and it does not render a ui:// document.
  *
  * Open and focus are layout state on the existing right-sidebar slot. The
- * sandboxed app view, live tool listing, tool invocation, Agent Plugins
- * 1.0.0, and a remote marketplace stay Locked.
+ * sandboxed app view, live tool listing, tool invocation, and a remote
+ * marketplace stay Locked. Agent Plugins 1.0.0 are a catalog read, not a pane.
  */
 
 import { containsCredentialMaterial } from './credential-boundary'
@@ -25,7 +25,6 @@ export const MCP_APPS_SURFACES = [
   { id: 'tool_invocation', status: 'Locked' },
   { id: 'live_tool_list', status: 'Locked' },
   { id: 'mcp_registry_catalogs', status: 'Locked' },
-  { id: 'agent_plugins_1_0_0', status: 'Locked' },
   { id: 'remote_marketplace', status: 'Locked' },
 ] as const
 
@@ -36,7 +35,6 @@ export const MCP_APPS_LOCKED_PHASES = [
   'tool_invocation',
   'live_tool_list',
   'mcp_registry_catalogs',
-  'agent_plugins_1_0_0',
   'remote_marketplace',
 ] as const
 
@@ -95,7 +93,6 @@ export function lockedMcpAppsPhase(phase: McpAppsLockedPhase): { status: 'Locked
     case 'tool_invocation':
     case 'live_tool_list':
     case 'mcp_registry_catalogs':
-    case 'agent_plugins_1_0_0':
     case 'remote_marketplace':
       return { status: 'Locked', phase }
     default: {

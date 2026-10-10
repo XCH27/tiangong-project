@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "demo-plugin",
+  "version": "1.0.0",
+  "description": "Summarizes documents and checks a local validator.",
+  "license": "Apache-2.0",
+  "keywords": ["summary", "validator"],
+  "hooks": "./hooks/hooks.json",
+  "commands": ["./commands/commit.md"],
+  "mcpServers": {
+    "inline": {
+      "type": "stdio",
+      "command": "npx"
+    }
+  },
+  "extensions": {
+    "com.example.client": {
+      "setting": true
+    }
+  }
+}
