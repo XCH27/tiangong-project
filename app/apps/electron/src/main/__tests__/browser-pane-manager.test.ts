@@ -6,9 +6,10 @@
  */
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { InternalActionId } from '../../../../../packages/shared/src/protocol/internal-action.ts'
 
 const createdWindows: any[] = []
 let toolbarLoadFailuresRemaining = 0
@@ -590,7 +591,7 @@ describe('BrowserPaneManager', () => {
     expect(instance.pageView.webContents.stopFindInPage).toHaveBeenCalledWith('clearSelection')
   })
 
-  it('refuses a governed DOM snapshot for the human and the owning agent', async () => {
+  it('admits a governed DOM snapshot as browser.dom_snapshot and waits for a human allow', async () => {
     const root = mkdtempSync(join(tmpdir(), 'fleet-guest-pane-'))
     const id = manager.createForSession('sess-guest', { workspaceId: 'ws-guest' })
     const instance = (manager as any).instances.get(id)
@@ -600,14 +601,16 @@ describe('BrowserPaneManager', () => {
       return { url: 'https://example.com/owned', title: 'Owned', text: 'Page body' }
     })
 
+    const human = { kind: 'human' as const, id: 'user-1', displayName: 'Ada' }
     const humanFile = join(root, 'human.json')
-    const humanResult = await manager.captureGovernedDom(id, {
+    const humanCall = {
       filePath: humanFile,
       sessionId: 'sess-guest',
       invocationId: 'pane-human',
-      actor: { kind: 'human', id: 'user-1', displayName: 'Ada' },
-    })
-    expect(humanResult).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
+      actor: human,
+    }
+    const humanResult = await manager.captureGovernedDom(id, humanCall)
+    expect(humanResult).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
 
     const agentFile = join(root, 'agent.json')
     const agentResult = await manager.captureGovernedDom(id, {
@@ -616,10 +619,36 @@ describe('BrowserPaneManager', () => {
       invocationId: 'pane-agent',
       actor: { kind: 'agent', id: 'seat-1', displayName: 'Worker' },
     })
-    expect(agentResult).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
+    expect(agentResult).toMatchObject({ status: 'approval_required', reason: 'human_approval_required' })
     expect(reads).toBe(0)
+    expect(existsSync(humanFile)).toBe(false)
+    expect(existsSync(agentFile)).toBe(false)
 
-    reads = 0
+    const host = (manager as any).browserGuestHost
+    const turns = host.kernel.snapshot().turns
+    expect(turns.map((turn: { request: { invocation: { actionId: string } } }) => turn.request.invocation.actionId)).toEqual([
+      'browser.dom_snapshot',
+      'browser.dom_snapshot',
+    ])
+    expect(host.kernel.admit({
+      invocation: {
+        invocationId: 'pane-old-verb',
+        actionId: InternalActionId.FILE_CREATE,
+        payload: { captureKind: 'dom_snapshot', filePath: join(root, 'old.json'), instanceId: id },
+        targets: [{ kind: 'file', id: join(root, 'old.json'), label: 'dom_snapshot' }],
+        callerKind: 'human_ui',
+        sessionId: 'sess-guest',
+        createdAt: '2026-10-09T00:00:00.000Z',
+      },
+      actor: human,
+    })).toMatchObject({ status: 'denied', reason: 'action_owner_mismatch:dom_evidence' })
+
+    expect(host.kernel.approve('pane-human', human).status).toBe('admitted')
+    const allowed = await manager.captureGovernedDom(id, humanCall)
+    expect(allowed).toMatchObject({ status: 'completed', snapshot: { text: 'Page body' } })
+    expect(reads).toBe(1)
+    expect(JSON.parse(readFileSync(humanFile, 'utf8'))).toMatchObject({ kind: 'dom_snapshot', text: 'Page body' })
+
     const denied = await manager.captureGovernedDom(id, {
       filePath: join(root, 'foreign.json'),
       sessionId: 'other-session',
@@ -627,7 +656,7 @@ describe('BrowserPaneManager', () => {
       actor: { kind: 'agent', id: 'seat-2', displayName: 'Other' },
     })
     expect(denied).toMatchObject({ status: 'failed', reason: 'owner_mismatch' })
-    expect(reads).toBe(0)
+    expect(reads).toBe(1)
     rmSync(root, { recursive: true, force: true })
   })
 

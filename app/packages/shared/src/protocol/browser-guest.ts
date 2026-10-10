@@ -3,9 +3,10 @@
  *
  * Page find, loading stop, and the native guest actions share one profile
  * and one owner check. A human control and an agent caller both use that
- * path. A DOM snapshot asks for file.create. browser.dom_snapshot is the
- * frozen M06 id. This caller does not use it. HostTurnKernel refuses the
- * file.create payload and does not read or write the page.
+ * path. A DOM snapshot admits browser.dom_snapshot. That row is L2, so the
+ * turn waits for a human allow and does not read the page before that. The
+ * same payload on file.create is still refused. This host does not publish
+ * the Craft session card, and no shell caller invokes the capture.
  * Screenshot evidence and Chrome Store advertising stay Locked. This is not a
  * plugin marketplace and it does not open a second browser profile.
  */
@@ -124,7 +125,7 @@ export function createBrowserGuestHost(options: BrowserGuestHostOptions = {}): B
   const shared = { kernel, effects }
   const guests = new Map<string, ChromiumGuestPort>()
   guestTables.set(shared, guests)
-  effects.register(InternalActionId.FILE_CREATE, async (request) => {
+  effects.register(InternalActionId.BROWSER_DOM_SNAPSHOT, async (request) => {
     if (request.signal.aborted) throw abortError()
     const instanceId = typeof request.payload.instanceId === 'string' ? request.payload.instanceId : ''
     const filePath = typeof request.payload.filePath === 'string' ? request.payload.filePath : ''
@@ -141,7 +142,7 @@ export function createBrowserGuestHost(options: BrowserGuestHostOptions = {}): B
       commit: request.commit,
     })
     return {
-      output: { filePath, actionId: InternalActionId.FILE_CREATE, kind: 'dom_snapshot' },
+      output: { filePath, actionId: InternalActionId.BROWSER_DOM_SNAPSHOT, kind: 'dom_snapshot' },
       undoHandle: {
         undoId: `undo-${request.sessionId}`,
         label: 'Restore previous DOM snapshot file',
@@ -220,7 +221,7 @@ export async function executeGuestCapture(
 
   const invocation: ActionInvocation = {
     invocationId: input.invocationId,
-    actionId: InternalActionId.FILE_CREATE,
+    actionId: InternalActionId.BROWSER_DOM_SNAPSHOT,
     payload: {
       instanceId: input.guest.id,
       filePath: input.filePath,
@@ -232,6 +233,8 @@ export async function executeGuestCapture(
     createdAt: '2026-10-09T00:00:00.000Z',
   }
   const admitted = shared.kernel.admit({ invocation, actor: input.actor })
+  // L2 waits here. A later call with the same invocation id continues after
+  // HostTurnKernel.approve. The request does not set preAuthorizedBy.
   if (admitted.status !== 'admitted') return unwritten(admitted)
   beforeRuns.get(shared)?.(input.invocationId, shared.kernel)
   const stopped = shared.kernel.snapshot().turns.find((turn) => turn.request.invocation.invocationId === input.invocationId)
