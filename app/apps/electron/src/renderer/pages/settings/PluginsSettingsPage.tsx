@@ -292,6 +292,7 @@ export default function PluginsSettingsPage() {
                       <PermissionRequest
                         request={{
                           requestId: pendingCard.requestId,
+                          sessionId: pendingCard.sessionId,
                           toolName: pendingCard.toolName,
                           description: pendingCard.description,
                           command: pendingCard.command,
