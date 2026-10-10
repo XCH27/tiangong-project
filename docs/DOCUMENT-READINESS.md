@@ -52,7 +52,7 @@ canonical re-freeze are incomplete.
 | Module | Spec maturity | Primary blocking evidence/decision |
 |---|---|---|
 | M00 Platform Spine | contract draft | v0.11 storage adapter, AgentSeat/event/caller contract, transaction/recovery parity |
-| M01 Clean Baseline | contract draft | retain/adapt/drop ledger and exact clean-v0.11 classification missing |
+| M01 Clean Baseline | contract draft | behaviour ledger started (`docs/audits/2026-10-10-w01-v011-baseline-blk001.md`); populated v0.11 checkout, desktop loop, and fleet-old rows still missing |
 | M02 Terminal/CLI | contract draft | runtime discovery, host/process/PTY paths and real commands unverified on v0.11 |
 | M03 Action Registry | contract draft | W0.1 caller/idempotency/revision/policy/event contracts not frozen |
 | M04 Runtime Lanes/TeamRun | contract draft | TaskRun/TeamRun authority and W2-only dependency boundary need reconciliation |

@@ -292,7 +292,7 @@ Board Cards section. Do not create a new file format for this; append the block 
 - Status: not implemented
 - UI State: not started
 - Backend State: not started
-- Contracts: action IDs v1.2 baseline; protocol stubs v1.2 baseline; identity matrix v1.2 baseline
+- Contracts: action IDs v1.3.0 (D47–D49); composable contracts still proposed; pin D51; behaviour ledger D52; parity not re-frozen
 - Allowed Files:
   - Lead-owned docs and canonical protocol implementation files
 - Forbidden Files:
@@ -300,11 +300,12 @@ Board Cards section. Do not create a new file format for this; append the block 
 - Validation:
   - Documentation consistency check after the reconciliation block
 - Remaining Not Implemented:
-  - Clean Craft Agents v0.11 migration ledger and baseline validation
-  - Canonical implementation parity evidence and a newly frozen contract version
-  - Caller/idempotency/revision/action-policy plus ArtifactRef/capability/job/workflow/spatial/view contract decisions
-  - Persistence authority. Product/internal namespace strings are recorded in D50.
+  - Populated Craft Agents v0.11 checkout, desktop loop, and migration branch (pin is D51; `app/` is still 0.10.5)
+  - fleet-old rows and the file-by-file `app/` diff (behaviour ledger is D52; BLK-001 stays open)
+  - Canonical implementation parity for AgentSeat, caller provenance, idempotency, revisions, and typed events
+  - Freeze or explicit version gate for ArtifactRef, capability, ExternalJob, workflow, spatial, and view contracts
+  - Physical persistence gate. Product/internal namespace strings are recorded in D50.
   - Documentation Readiness promotion for the exact W1 slices
   - Replacement W1/W2+ packets
 - Blocker:
-  - v0.11 migration and current contract text/canonical implementation parity are not yet re-frozen / W1 cannot be assigned / Lead must record the migration ledger, new contract baseline, and explicit W1 decision
+  - v0.11 checkout and contract parity are not closed / W1 cannot be assigned / Settings stays Locked

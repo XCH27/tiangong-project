@@ -2,10 +2,10 @@
 
 > **Capability status:** `not implemented` for the target baseline
 > **Execution gate:** W0.1 Lead-only; Worker implementation Locked
-> **Spec maturity:** contract draft; migration ledger incomplete
+> **Spec maturity:** contract draft; behaviour ledger started 2026-10-10 (D52); clean checkout and fleet-old rows still open
 > **Wave:** W0.1 migration gate
 > **Owner:** Lead
-> **Depends on:** verified upstream `v0.11.0` in `UPSTREAM-BASELINE.md`
+> **Depends on:** verified upstream `v0.11.0` in `UPSTREAM-BASELINE.md` (pin D51; checkout still absent)
 
 ## 1. Purpose
 

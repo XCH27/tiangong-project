@@ -5,6 +5,7 @@
 > **Current state:** W0.1 reconciliation is active; every Worker implementation wave is Locked.
 > **Honesty footnote (2026-10-10):** W0.1 exit is still incomplete. The gates and capability cells below are unchanged. No wave is Ready. No module is `usable`.
 > **Namespace footnote (2026-10-10):** Exit item 6 and BLK-002 are closed as a name decision by D50. The other exit items stay open. W0.1 stays Locked.
+> **Baseline footnote (2026-10-10):** D51 records the v0.11.0 pin. D52 records the behaviour ledger. Exit items 1 and 2 stay open. The detail is `docs/audits/2026-10-10-w01-v011-baseline-blk001.md`.
 
 ## 1. Status Axes
 
@@ -35,9 +36,11 @@ usable. A wave label never overrides the dependency DAG.
 
 All items are required; there is no hidden secondary gate:
 
-1. clean Craft Agents OSS v0.11.0 baseline and migration branch are recorded;
+1. clean Craft Agents OSS v0.11.0 baseline and migration branch are recorded.
+   **2026-10-10:** pin recorded (D51). Populated checkout, desktop loop, and migration branch are still absent. Item stays open;
 2. a retain/adapt/drop/defer ledger covers current Fleet-only behaviour and useful `fleet-old`
-   behaviour;
+   behaviour.
+   **2026-10-10:** behaviour ledger recorded (D52). `fleet-old` rows and the file-by-file `app/` diff stay deferred. Item stays open;
 3. canonical implementation/text parity is recorded for AgentSeat/identity, actions, caller
    provenance, idempotency, revisions, typed events, and action policy;
 4. ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts are either
@@ -47,13 +50,25 @@ All items are required; there is no hidden secondary gate:
 7. ownership precedence and exact narrow domains are non-overlapping;
 8. all active packets agree with this map and grant no Worker frozen-protocol writes;
 9. the Lead explicitly changes W1 to Ready. Absence of that declaration means Locked.
+   **2026-10-10:** W1 stays Locked. This footnote is not that declaration.
+
+Status of the items this baseline note clarified, still open:
+
+| Item | 2026-10-10 status |
+|---|---|
+| 3 canonical parity | Partial. v1.3.0 covers D47–D49. AgentSeat, caller provenance, idempotency, revisions, and typed events are not one parity record. |
+| 4 proposed contracts | `composable-workspace-contracts.md` stays proposed v0.1. No new contract version. |
+| 5 persistence | Logical map stands. Session, project, and task file layouts were inspected at the pin. The physical-store gate stays open. |
+| 7 ownership | Precedence rule stands. v0.11 project/task/kanban paths are Lead-held in the ownership matrix. Other v0.11 surfaces stay unassigned. |
+| 8 packets | The active packet is the Lead-only W0.1 packet. Superseded packets authorize nothing. Replacement packets are not issued. |
+| 9 W1 Ready | Locked. |
 
 ## 4. Module Table
 
 | Module/slice | Wave | Depends on | Canonical spec | Spec maturity | Capability | Gate |
 |---|---|---|---|---|---|---|
 | M00 Platform Spine | W1 | W0.1 | `modules/00-platform-spine.md` | contract draft | not implemented | Locked |
-| M01 Clean v0.11 Baseline | W0.1 Lead-only | upstream gate | `modules/01-clean-craft-baseline.md` | contract draft | not implemented | Blocked by migration ledger |
+| M01 Clean v0.11 Baseline | W0.1 Lead-only | upstream gate | `modules/01-clean-craft-baseline.md` | contract draft | not implemented | Blocked — pin and behaviour ledger recorded; checkout and fleet-old rows open |
 | M02 Terminal/CLI Runtime | W2 | M00/M03 usable; M16 host | `modules/02-terminal-cli-runtime/SPEC.md` | contract draft | not implemented | Locked |
 | M03 Action Registry | W1 | W0.1; M00 backbone for executor | `modules/03-internal-action-registry.md` | contract draft | not implemented | Locked |
 | M04 Runtime Lanes/TeamRun core | W2 | M00/M03 usable | `modules/04-runtime-lanes-teamrun.md` | contract draft | not implemented | Locked |
@@ -94,7 +109,7 @@ All items are required; there is no hidden secondary gate:
 
 | ID | Blocker | Owner | Affects |
 |---|---|---|---|
-| BLK-001 | Clean v0.11 migration ledger and canonical contract parity/re-freeze are incomplete. | Lead | W1 and every downstream wave |
+| BLK-001 | Behaviour ledger is recorded (D52) and stays incomplete: no populated v0.11 checkout, no fleet-old rows, no file-by-file `app/` diff, and canonical contract parity/re-freeze is still open. | Lead | W1 and every downstream wave |
 | BLK-003 | Required Browser/Spatial/Media/Panel/Web/Deck adapter spikes have no recorded result. | Lead by consumer wave | M06/M07/M09/M16/M18/M19 readiness |
 
 BLK-002 is closed as a name decision by D50 (2026-10-10). Plugin API keys, storage prefixes, and the action-owner namespace strings are recorded in `docs/audits/2026-10-10-blk002-namespace-oss.md`. Closing BLK-002 does not open W0.1, Settings, or a storage adapter. Marketplace ids, extra skill roots, and the M16 contribution table stay under discussion in that note.

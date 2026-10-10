@@ -2,13 +2,30 @@
 
 > **Status:** blocking implementation migration  
 > **Owner:** Lead  
-> **Verified:** 2026-07-09
+> **Verified:** 2026-07-09; pin re-checked 2026-10-10 (D51)
 
 ## Canonical Upstream
 
-Fleet's upstream base is Craft Agents OSS [`v0.11.0`](https://github.com/craft-ai-agents/craft-agents-oss/releases/tag/v0.11.0), published 2026-07-07. The annotated tag resolves to `f4e172bf372f4ccc7389a189be1e0b0541f96282`.
+Fleet's upstream base is Craft Agents OSS [`v0.11.0`](https://github.com/craft-ai-agents/craft-agents-oss/releases/tag/v0.11.0), published 2026-07-07. The tag ref object type is `commit` (a lightweight tag). It resolves to `f4e172bf372f4ccc7389a189be1e0b0541f96282`. The parent commit `c9d9a26fbefa3a5165ee9aa50cb30c25466afd81` is the `v0.10.5` commit. Public `v0.14.1` (2026-10-06) is a later release and is not this pin.
 
-The current `app/package.json` declares `0.10.5`; it is not the latest upstream baseline. The current repository and Craft Agents upstream have unrelated Git histories, so a normal merge is unsafe and was correctly refused in an isolated worktree.
+The current `app/package.json` declares `0.10.5`. The v0.11 projects, tasks, and Kanban directories are absent from `app/`. The current repository and Craft Agents upstream have unrelated Git histories, so a normal merge is unsafe and was correctly refused in an isolated worktree.
+
+## Inspection on 2026-10-10
+
+The pin was read through the public GitHub API. This cloud workspace does not contain a populated Craft checkout. `源码参考/software/craft-agents-oss` is an empty directory whose gitlink is the v0.10.5 parent, not `f4e172bf`. `源码参考/latest`, `源码参考/software/fleet-old`, and any AIGC reference checkout are absent. Peer gitlinks for AionUi, open-design, and rtk are also empty directories.
+
+The behaviour ledger, the gaps, and the Mac acceptance checks are `docs/audits/2026-10-10-w01-v011-baseline-blk001.md` (D51, D52). That note does not close W0.1 and does not replace `app/`.
+
+Paths confirmed at `f4e172bf`:
+
+- projects at `{workspaceRootPath}/projects/{slug}/` with `assets/` and `MEMORY.md`
+- tasks at `{workspaceRoot}/tasks/<slug>/task.yaml` plus `runs/<runId>/run-log.jsonl`
+- sessions at `{workspaceRootPath}/sessions/{id}/session.jsonl`
+- `CONFIG_DIR` at `~/.craft-agent/` unless `CRAFT_CONFIG_DIR` is set
+- `apps/electron/src/main/browser-pane-manager.ts` and `apps/cli/package.json` exist
+- upstream `packages/shared/src/protocol/` contains `channels.ts`, `dto.ts`, `events.ts`, `index.ts`, `routing.ts`, `types.ts`, and `__tests__`
+
+Desktop launch, restart, and a file-by-file diff against `app/` are still required before this gate opens.
 
 ## Required Migration Route
 
@@ -22,13 +39,13 @@ The current `app/package.json` declares `0.10.5`; it is not the latest upstream 
 
 The v0.11.0 difference includes upstream Projects, Tasks, Kanban, background-task surfaces, session/CLI changes, and dependency updates. The current tree also contains Fleet-specific protocol and Browser settings additions. A blind directory replacement would lose one side; a Git merge cannot provide conflict guidance because the histories are unrelated.
 
-Before M16/M17 paths are frozen, the migration ledger must classify the upstream Projects, Tasks,
-Kanban, background-task, panel/view, and layout behaviour as retain/adapt/drop/defer. Documentation
-must not invent a second project/task/panel system while this evidence is missing.
+D52 classifies the inspected upstream Projects, Tasks, Kanban, background-task, and shell
+panel surfaces as retain, and it refuses a second system under Fleet names. M16/M17 path freezes
+still wait on a populated checkout. Conductor-as-TeamRun stays deferred.
 
 ## Old Project Use
 
-`源码参考/software/fleet-old` is an older Craft/Fleet-derived checkout (its own metadata records a v0.10.3-era upstream sync and its manifest is v0.10.4). It is a green-light **reference for selective Fleet behaviour only**, never a base to merge or copy wholesale. Each accepted migration must record source path, source commit, target v0.11.0 path, adaptation owner, license/attribution, and validation evidence.
+`源码参考/software/fleet-old` is described by earlier docs as an older Craft/Fleet-derived checkout (a v0.10.3-era upstream sync and a v0.10.4 manifest). The 2026-10-10 cloud tree has neither that directory nor a gitlink, so those version claims were not re-read from source. It remains a green-light **reference for selective Fleet behaviour only**, never a base to merge or copy wholesale. Each accepted migration must record source path, source commit, target v0.11.0 path, adaptation owner, license/attribution, and validation evidence. Until that checkout is inspected, fleet-old behaviour rows stay deferred (D52).
 
 ## W0.1 Exit Evidence
 
