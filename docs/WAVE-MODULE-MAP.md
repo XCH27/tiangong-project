@@ -4,6 +4,7 @@
 > **Updated:** 2026-07-09
 > **Current state:** W0.1 reconciliation is active; every Worker implementation wave is Locked.
 > **Honesty footnote (2026-10-10):** W0.1 exit is still incomplete. The gates and capability cells below are unchanged. No wave is Ready. No module is `usable`.
+> **Namespace footnote (2026-10-10):** Exit item 6 and BLK-002 are closed as a name decision by D50. The other exit items stay open. W0.1 stays Locked.
 
 ## 1. Status Axes
 
@@ -42,7 +43,7 @@ All items are required; there is no hidden secondary gate:
 4. ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts are either
    frozen now or explicitly version-gated before their first consumer wave;
 5. physical persistence authority and recovery are recorded from `PERSISTENCE-AUTHORITY-MAP.md`;
-6. product/internal namespace is decided before plugin/storage API freeze;
+6. product/internal namespace is decided before plugin/storage API freeze. **Decided 2026-10-10 (D50).** The strings are in `docs/audits/2026-10-10-blk002-namespace-oss.md`. This item does not close W0.1;
 7. ownership precedence and exact narrow domains are non-overlapping;
 8. all active packets agree with this map and grant no Worker frozen-protocol writes;
 9. the Lead explicitly changes W1 to Ready. Absence of that declaration means Locked.
@@ -94,8 +95,9 @@ All items are required; there is no hidden secondary gate:
 | ID | Blocker | Owner | Affects |
 |---|---|---|---|
 | BLK-001 | Clean v0.11 migration ledger and canonical contract parity/re-freeze are incomplete. | Lead | W1 and every downstream wave |
-| BLK-002 | Product/internal namespace is unresolved; plugin/storage API identifiers cannot freeze. | Lead/Owner | M05/M12/M16 and external compatibility |
 | BLK-003 | Required Browser/Spatial/Media/Panel/Web/Deck adapter spikes have no recorded result. | Lead by consumer wave | M06/M07/M09/M16/M18/M19 readiness |
+
+BLK-002 is closed as a name decision by D50 (2026-10-10). Plugin API keys, storage prefixes, and the action-owner namespace strings are recorded in `docs/audits/2026-10-10-blk002-namespace-oss.md`. Closing BLK-002 does not open W0.1, Settings, or a storage adapter. Marketplace ids, extra skill roots, and the M16 contribution table stay under discussion in that note.
 
 ## 7. Historical W0 Record
 

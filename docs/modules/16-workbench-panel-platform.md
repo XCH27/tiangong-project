@@ -181,7 +181,7 @@ sufficient.
 
 - Inspect and classify the Craft Agents v0.11 shell/panel primitives on the clean baseline.
 - Freeze the selected layout graph and canonical preference keys.
-- Resolve the product namespace before freezing contribution IDs.
+- Contribution id prefixes are D50: `fleet:<token>` and `<plugin-name>:<token>`. The contribution table is not frozen.
 - Freeze candidate actions and typed route schemas.
 - Produce a narrow M16 packet; no generic shell ownership is granted to a Worker.
 

@@ -127,7 +127,7 @@ Binding deletion has no id. `file.delete` and `canvas.node_delete` are not that 
 
 v1.3.0 fills the columns for the frozen rows. It does not close W0.1. Still open:
 
-- product/internal namespace (BLK-002), including plugin API keys and storage prefixes;
+- product/internal namespace strings are recorded by D50 (`docs/audits/2026-10-10-blk002-namespace-oss.md`). This line does not bump `CONTRACT_VERSION` and does not add a caller;
 - a caller for `plugin.loadout_mutate`, `browser.dom_snapshot`, `workbench.sidebar_focus`, and `file.page_target`;
 - `browser.screenshot` and binding deletion;
 - ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts;

@@ -112,8 +112,16 @@ their owners; M12 does not delete them.
 
 ## 7. Core and Plugin Namespace
 
-The current core two-segment action IDs remain the recorded v1.2 baseline. Future namespace
-format is a W0.1 decision and must not rely on counting dots as a security mechanism.
+The current core two-segment action IDs remain the recorded v1.3.0 table. D50 records the
+identifier strings. Counting dots is not the security boundary. `ownerKind: 'core_module'`
+uses namespace `fleet`. `ownerKind: 'plugin'` uses the plugin `name`. A plugin name is
+kebab-case and is not `fleet`, `craft-agent`, or `.agents`.
+
+Catalog ids stay `skill:<slug>`, `mcp:<slug>`, `skill:<plugin>.<skill>`, and
+`mcp:<plugin>/<server>`. Product manifest API keys are `$schema` and `name` on root
+`plugin.json` (`https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`), plus the
+optional metadata the Agent Plugins reader already accepts. Skill bytes stay in the Craft
+skill directories. This section does not add a Settings caller and does not open W4.
 
 Every registry entry carries structured ownership:
 
@@ -127,9 +135,9 @@ type ActionOwner = {
 }
 ```
 
-The registry rejects duplicate IDs and unauthorized public exposure. The final product namespace,
-manifest API field name, and workspace storage prefix must be decided before external plugins are
-frozen.
+The registry rejects duplicate IDs and unauthorized public exposure. D50 is the recorded
+product namespace, manifest API field list, and storage prefix. External plugin distribution
+stays W4. Settings install, enable, and disable stay Locked (D49).
 
 ## 8. UI Contributions
 
@@ -173,7 +181,7 @@ M03 per step.
 | `capability.workflow_publish` | expose validated workflow as local capability | L2 policy change |
 | `plugin.install` / `plugin.enable` | deferred distribution actions | L2/L3 after source/trust evaluation |
 
-No Worker may implement these until the W0.1 namespace/schema decision is frozen.
+No Worker may implement these until the candidate ids are frozen. Namespace strings are D50. That record does not freeze this table.
 
 ## 11. External Plugin Isolation — W4
 
@@ -214,7 +222,7 @@ No Worker may implement these until the W0.1 namespace/schema decision is frozen
 
 ## 14. Open Gates
 
-- W0.1 canonical manifest, caller, policy, namespace, and ArtifactRef contracts.
+- W0.1 canonical manifest, caller, policy, and ArtifactRef contracts. Namespace strings are D50.
 - AgentSeat/tag projection and deterministic loadout algorithm.
 - v0.11 baseline mapping for retained skills/sources/MCP behaviour.
 - external plugin distribution ADR before W4.

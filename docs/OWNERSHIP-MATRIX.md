@@ -13,6 +13,9 @@
 >
 > **Migration notice:** existing `app/` paths below are provisional historical mappings until the
 > M01 v0.11 migration ledger verifies them. They do not authorize a packet on the current tree.
+>
+> Parenthetical "namespace" labels in this matrix are file-ownership domains. Identifier
+> prefixes are D50. This matrix does not assign those prefixes.
 
 ---
 

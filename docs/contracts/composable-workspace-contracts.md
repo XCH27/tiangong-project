@@ -452,7 +452,7 @@ until its evidence correlation is durable.
 
 ## 11. W0.1 Promotion Checklist
 
-- Decide product namespace before freezing paths or plugin API keys.
+- Product namespace strings, paths, and plugin API keys are D50. This proposal is still not a frozen contract.
 - Merge accepted shared types into canonical protocol files.
 - Reclassify the existing frozen action table using orthogonal policy fields.
 - Add workflow, view, and canvas actions only after their payload schemas are frozen.
