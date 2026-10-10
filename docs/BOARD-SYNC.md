@@ -300,7 +300,7 @@ Board Cards section. Do not create a new file format for this; append the block 
 - Validation:
   - Documentation consistency check after the reconciliation block
 - Remaining Not Implemented:
-  - Populated Craft Agents v0.11 checkout, desktop loop, and migration branch (pin is D51; `app/` is still 0.10.5)
+  - Mac source tree at the v0.11 pin is recorded. Desktop loop and migration branch are not yet run (pin is D51; `app/` is still 0.10.5; `docs/audits/2026-10-10-w01-exit1-mac-checkout.md`)
   - fleet-old rows and the file-by-file `app/` diff (behaviour ledger is D52; BLK-001 stays open)
   - Canonical implementation parity for AgentSeat, caller provenance, idempotency, revisions, and typed events
   - Freeze or explicit version gate for ArtifactRef, capability, ExternalJob, workflow, spatial, and view contracts
@@ -308,4 +308,4 @@ Board Cards section. Do not create a new file format for this; append the block 
   - Documentation Readiness promotion for the exact W1 slices
   - Replacement W1/W2+ packets
 - Blocker:
-  - v0.11 checkout and contract parity are not closed / W1 cannot be assigned / Settings install, enable, and disable are `wired` and not `usable` / W0.1 stays Locked
+  - v0.11 desktop loop and contract parity are not closed / W1 cannot be assigned / Settings install, enable, and disable are `wired` and not `usable` / W0.1 stays Locked
