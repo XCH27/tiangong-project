@@ -72,6 +72,7 @@ import {
 import { SessionList, type ChatGroupingMode } from "./SessionList"
 import { MainContentPanel } from "./MainContentPanel"
 import { PanelStackContainer } from "./PanelStackContainer"
+import { McpAppsSidePane } from "../right-sidebar/McpAppsSidePane"
 import { CompactSessionListFilter } from "./CompactSessionListFilter"
 import type { ChatDisplayHandle } from "./ChatDisplay"
 import { LeftSidebar } from "./LeftSidebar"
@@ -628,6 +629,7 @@ function AppShellContent({
 
   // Derive automation filter from navigation state (only when in automations navigator)
   const automationFilter: AutomationFilter | null = isAutomationsNavigation(navState) ? navState.filter ?? null : null
+  const mcpAppsPane = !isAutoCompact && navState.rightSidebar?.type === 'mcp-apps' ? navState.rightSidebar : null
 
   // Per-view filter storage: each session list view (allSessions, flagged, state:X, label:X, view:X)
   // has its own independent set of status and label filters.
@@ -3264,10 +3266,19 @@ function AppShellContent({
           }
           navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={false}
+          isRightSidebarVisible={mcpAppsPane !== null}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
+
+        {mcpAppsPane && (
+          <div
+            className="h-full shrink-0 relative z-panel"
+            style={{ paddingBlock: PANEL_STACK_VERTICAL_OVERFLOW }}
+          >
+            <McpAppsSidePane focus={mcpAppsPane.focus} />
+          </div>
+        )}
 
         {/* Sidebar Resize Handle (absolute, hidden in focused mode) */}
         {!effectiveSidebarAndNavigatorHidden && (

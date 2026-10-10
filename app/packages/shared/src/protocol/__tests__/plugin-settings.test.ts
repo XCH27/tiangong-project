@@ -132,10 +132,11 @@ describe('plugin settings navigation and market filters', () => {
     expect(projected.every((entry) => entry.trust === 'first_party' && entry.origin === 'workspace')).toBe(true)
   })
 
-  test('MCP Apps and Agent Plugins stay Locked while hook approval is wired', () => {
+  test('MCP Apps side pane is wired and the sandbox and Agent Plugins stay Locked', () => {
     expect(pluginPhaseStatus('third_party_hook_approval')).toBe('wired')
-    expect(LOCKED_PLUGIN_PHASES).toEqual([
-      'mcp_apps_side_pane',
+    expect(pluginPhaseStatus('mcp_apps_side_pane')).toBe('wired')
+    expect([...LOCKED_PLUGIN_PHASES]).toEqual([
+      'mcp_apps_sandbox',
       'agent_plugins_1_0_0',
     ])
     expect(LOCKED_PLUGIN_PHASES.map((phase) => pluginPhaseStatus(phase))).toEqual([

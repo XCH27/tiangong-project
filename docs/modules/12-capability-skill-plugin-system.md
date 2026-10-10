@@ -238,7 +238,8 @@ The Settings → Plugins subpage reuses the Craft settings navigator. It does no
 | Install, enable, and disable writing `.claude-plugin/loadout.json` through `file.update` | `wired` |
 | MCP Registry and skill-repository catalog sources | `wired` |
 | Per-plugin approval for a third-party hook or MCP server | `wired` |
-| MCP Apps side pane | `Locked` |
+| MCP Apps side pane listing enabled tools and resources, with open and focus | `wired` |
+| Sandboxed MCP App view, live tools/list, and tool invocation from the pane | `Locked` |
 | Agent Plugins 1.0.0 | `Locked` |
 | Remote store or plugin marketplace | `Locked` |
 

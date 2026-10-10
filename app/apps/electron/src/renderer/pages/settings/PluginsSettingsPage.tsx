@@ -4,8 +4,9 @@
  * One settings page on the existing navigator. Five views, Market content
  * filters, and catalog source filters use the same list as the host loadout.
  * Install, enable, and disable write through HostTurnKernel. A third-party
- * hook or MCP server waits for the existing permission card. MCP Apps and
- * Agent Plugins 1.0.0 stay Locked.
+ * hook or MCP server waits for the existing permission card. The MCP Apps
+ * side pane reads this loadout. Its sandboxed app view and Agent Plugins
+ * 1.0.0 stay Locked.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -19,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { routes } from '@/lib/navigate'
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
+import { useNavigation, useNavigationState } from '@/contexts/NavigationContext'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import {
   LOCKED_PLUGIN_PHASES,
@@ -60,6 +62,8 @@ import {
   resolvePluginGrant,
   type HostPermissionCard,
 } from '@craft-agent/shared/protocol/plugin-settings-host'
+import { createMcpAppsHost, openMcpAppsFromHuman } from '@craft-agent/shared/protocol/mcp-apps-host'
+import { MCP_APPS_SESSION_ID, mcpAppsLayoutSlot } from '@craft-agent/shared/protocol/mcp-apps-pane'
 import {
   SettingsCard,
   SettingsRow,
@@ -78,9 +82,12 @@ const desktopActor = { kind: 'human' as const, id: 'desktop-user', displayName: 
 export default function PluginsSettingsPage() {
   const { t } = useTranslation()
   const shell = useOptionalAppShellContext()
+  const { updateRightSidebar } = useNavigation()
+  const navState = useNavigationState()
   const workspace = shell?.workspaces.find((item) => item.id === shell.activeWorkspaceId) ?? null
   const filePath = workspace ? pluginLoadoutPath(workspace.rootPath) : null
   const host = useMemo(() => createPluginSettingsHost(), [])
+  const appsHost = useMemo(() => createMcpAppsHost(), [])
   const invocationCount = useRef(0)
   const [view, setView] = useState<PluginView>('installed')
   const [marketFilter, setMarketFilter] = useState<MarketContentFilter>('all')
@@ -157,6 +164,22 @@ export default function PluginsSettingsPage() {
     setReads((current) => [mcp, ...current.filter((item) => item.source.kind !== 'mcp_registry')])
   }, [])
 
+  const openSidePane = useCallback(async () => {
+    if (navState.rightSidebar?.type === 'mcp-apps') return
+    invocationCount.current += 1
+    const result = await openMcpAppsFromHuman(appsHost, {
+      invocationId: `mcp-apps-open-${invocationCount.current}`,
+      sessionId: MCP_APPS_SESSION_ID,
+      actor: desktopActor,
+      catalog,
+      loadout,
+      layout: { open: false, focus: null },
+    })
+    if (result.status !== 'completed') return
+    const slot = mcpAppsLayoutSlot(result.view)
+    updateRightSidebar(slot.type === 'none' ? { type: 'none' } : slot)
+  }, [appsHost, catalog, loadout, navState.rightSidebar, updateRightSidebar])
+
   const mutate = useCallback(async (op: PluginMutationName, pluginId: string) => {
     if (!filePath) return
     invocationCount.current += 1
@@ -226,6 +249,11 @@ export default function PluginsSettingsPage() {
                         label: viewLabel(item, t),
                       }))}
                     />
+                  </div>
+                  <div className="px-4 py-3.5">
+                    <Button variant="secondary" size="sm" onClick={() => { void openSidePane() }}>
+                      {t('settings.plugins.openSidePane')}
+                    </Button>
                   </div>
                   {view === 'market' && (
                     <div className="px-4 py-3.5 space-y-3">
@@ -477,7 +505,7 @@ function catalogReadDescription(
 
 function lockedLabelKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
   switch (phase) {
-    case 'mcp_apps_side_pane':
+    case 'mcp_apps_sandbox':
       return 'settings.plugins.locked.mcpApps'
     case 'agent_plugins_1_0_0':
       return 'settings.plugins.locked.agentPlugins'
@@ -490,7 +518,7 @@ function lockedLabelKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
 
 function lockedDescriptionKey(phase: (typeof LOCKED_PLUGIN_PHASES)[number]): string {
   switch (phase) {
-    case 'mcp_apps_side_pane':
+    case 'mcp_apps_sandbox':
       return 'settings.plugins.locked.mcpAppsDesc'
     case 'agent_plugins_1_0_0':
       return 'settings.plugins.locked.agentPluginsDesc'

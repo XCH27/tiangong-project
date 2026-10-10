@@ -4,8 +4,9 @@
  * Five views share one catalog. Workspace skills and MCP sources are local.
  * Catalog reads can add Market entries. Market content filters narrow that
  * list. Install still admits file.update. Enabling a third-party hook or MCP
- * server waits for the existing permission card. MCP Apps and Agent Plugins
- * 1.0.0 stay Locked. This is not a remote store and it is not a plugin marketplace.
+ * server waits for the existing permission card. The MCP Apps side pane reads
+ * this loadout. Its sandboxed app view stays Locked. Agent Plugins 1.0.0 stay
+ * Locked. This is not a remote store and it is not a plugin marketplace.
  */
 
 export const PLUGIN_VIEWS = ['installed', 'market', 'skills', 'mcp', 'hooks'] as const
@@ -17,12 +18,13 @@ export type MarketContentFilter = (typeof MARKET_CONTENT_FILTERS)[number]
 export const PLUGIN_PHASES = [
   'third_party_hook_approval',
   'mcp_apps_side_pane',
+  'mcp_apps_sandbox',
   'agent_plugins_1_0_0',
 ] as const
 export type PluginPhase = (typeof PLUGIN_PHASES)[number]
 
 export const LOCKED_PLUGIN_PHASES = [
-  'mcp_apps_side_pane',
+  'mcp_apps_sandbox',
   'agent_plugins_1_0_0',
 ] as const
 export type LockedPluginPhase = (typeof LOCKED_PLUGIN_PHASES)[number]
@@ -110,8 +112,9 @@ export function parseMarketFilter(value: string): MarketContentFilter | null {
 export function pluginPhaseStatus(phase: PluginPhase): 'wired' | 'Locked' {
   switch (phase) {
     case 'third_party_hook_approval':
-      return 'wired'
     case 'mcp_apps_side_pane':
+      return 'wired'
+    case 'mcp_apps_sandbox':
     case 'agent_plugins_1_0_0':
       return 'Locked'
     default: {
