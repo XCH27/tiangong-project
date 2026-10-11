@@ -114,3 +114,22 @@ Snapshot version `1` is the only readable version. A different version throws `u
 | Signed production update feed and a signed Fleet release | `Locked` |
 | `.fleet/zcode` integration | not applied in this checkout |
 | Live paid providers, quota ledger, automatic Pi tool admission, plugin marketplace, full Pi SDK host | `Locked` |
+
+## Candidate reconstruction recipe export (0210)
+
+Product baseline is ZCode (`.fleet/zcode` + ordered `patches/zcode/`), per D56. The full ordered
+reconstruction series `0001`–`0209` is authored on `codex/fleet-workbench-audit`. This spine
+records the tip export from commit `eea24fea` without reintroducing Craft `app/` as baseline:
+
+| Order | Patch | Previously observed cumulative tree |
+|---|---|---|
+| 0210 | [0210-steerable-guide-and-session-durability.patch](0210-steerable-guide-and-session-durability.patch) | `225208f8e4384d80bce57fbba2b1b37abd54879e` |
+
+Patch 0210 extends the ZCode reconstruction recipe through candidate tip `79f6e6d1` (tree
+`225208f8…`): steerable Guide/control projection, cold Session BackgroundTask durability, Host
+Stop settlement, and related page-assistant Setting leaves already present on
+`codex/fleet-workbench`. Source-gate alignment only; does not invent Ready or change Craft `app/`.
+
+When reconstructing a fresh pin checkout, apply earlier ordered patches from the fleet-workbench
+recipe before 0210. Use `git apply <absolute-patch-path>` from the fresh checkout; stop on a
+rejected hunk.
