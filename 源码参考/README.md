@@ -14,6 +14,13 @@
 - 任何新克隆项目先放入对应分类，再更新 `docs/14-源码参考目录专项审计.md`。
 - `software/*` 与 `plugins/*` 是本机参考源码 checkout，按根 `.gitignore` 忽略；Fleet 仓库只跟踪本 README 与 `clone_repos.sh` / `update_repos.sh` 等索引脚本，不再把第三方目录作为 gitlink/submodule 跟踪。更新参考源码不得污染 Fleet 主仓 `git status`。
 
+## 自动同步
+
+- `reference-repos.tsv` 记录 Fleet 主仓当前跟踪的参考项目 gitlink、upstream URL 和同步 ref。
+- `.github/workflows/sync-reference-repos.yml` 每周一运行，也可手动触发。它不会克隆参考源码，只用 `git ls-remote` 查询 upstream HEAD，并更新 Fleet 仓库里的 gitlink commit 指针。
+- 自动同步只开 PR，不直接合入主线。合并前仍需按许可红绿灯和架构边界判断是否应该读取或使用更新后的参考源码。
+- 本地预检查可运行 `DRY_RUN=1 bash scripts/sync-reference-gitlinks.sh`。
+
 当前分类：
 
 ## software
