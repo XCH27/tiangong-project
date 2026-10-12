@@ -193,6 +193,48 @@ Production edits need Lead acknowledgement of the reproduced path. Inspect curre
 hash/parent/license gaps honestly; do not create a Library database, native editor, alternate
 workflow engine, dependency, copied reference source or Craft product path. Root owns visible UI.
 
+Confirmed actual handoff failures additionally delegate `dynamic-workflow/src/engine/engine-artifacts.ts`,
+its original Engine/state/constructor seam and `engine-artifact-publication-sequence.ts` to R for
+same-ID publication sequencing, capacity/primary checks, original journal replay and failure/Stop.
+One transient Map belongs to the original Engine; it is not another persisted version authority.
+R also owns `bootstrap/src/app/workflow-artifact-publish.ts`, stateless
+`workflow-artifact-recovery.ts` and the original adapter `storage/index.ts` immutable byte helper
+for stable parent-Session/run/site/ordinal publication and cold observation. Root owns the optional
+text publication identity contract. Reuse the original immutable byte owner, not the media-intent
+JSON namespace. Normal text writes retain behavior. The existing test-only model completion
+LoggerFactory helper may complete its missing no-op fields; no production model policy changes.
+Existing-data continuation permits exact observation of one pre-keyed legacy publication by the
+original parent Session and producer toolCallId on the same ArtifactStore find path. Root owns its
+optional request field. R may adapt the existing lookup/recovery helpers and actual cold fixtures;
+new keyed identity stays preferred, ambiguous or corrupt matches fail visibly. No file rename,
+latest-selection, inferred migration, new store or second byte copy is permitted.
+
+### P-View parent UI — S continuation
+
+S takes a new Lead-issued integrated worktree and owns `PluginViewPane.tsx`, the narrow
+`AnimatedSidePanePanel.tsx` scope props, same-owner native-plugin control helper/hooks, existing
+locales and focused original-parent tests. Generalize the original native navigation target to
+real whiteboard OR real plugin-view target in `nativeWhiteboardNavigation.ts`, with the same
+`WorkspaceShellLayout.tsx` listener and `useAppPanels.ts` preserve map matching real surface IDs.
+Preserve the whiteboard facade/constants; no fake board ID, extra navigation or Session owner.
+Use action-time original workspace connection and active/ordinary empty Session without models,
+show original Session approval while preserving the plugin pane, and send required Session/UUID
+operation fields through the existing service. Reject concurrent view actions before Session
+creation; keep iframe/context/remote/service A-to-B-to-A fences and no automatic writable replay.
+Clear old read projection before a disconnected context can reuse it. Root owns Shared/services/
+Core/Host/Desktop/gates/testlists; C owns the acknowledged backend wrapper/resolver. Only authored
+show:false renderer fixtures are allowed; Root retains sole visible native GUI control.
+
+### W fork/cold continuation — S read/test
+
+After parent-UI delivery, S takes a new Lead-issued integrated worktree to exercise actual
+original Runtime/App/V4 fork and SQLite/native whiteboard recovery. Claim only
+`core/test/native-whiteboard-fork.test.ts` and focused same-owner test helpers. Trace real
+checkpoint IDs, scope/absolute paths and copied message anchors through ordinary Session and
+workspace forks; native Save/read/branch/cold reopen must not become unrecoverable or promote a
+parent action onto a child. Use authored local fixtures, no paid models/visible GUI/user-repo git
+mutation. Production fixes require a confirmed counterexample and Lead exact path acknowledgement.
+
 ## W UI continuation — S worker
 
 Lead delegates these existing UI paths after the coherent integrated native backend commit:
