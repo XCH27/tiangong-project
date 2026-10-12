@@ -51,7 +51,8 @@ def reconstruct(candidate: Path, patch_directory: Path) -> tuple[int, str]:
     Refuse occupied checkouts rather than resetting source, ignored profiles or dependencies.
     """
     def git(*args: str) -> str:
-        return subprocess.check_output(["git", "-C", str(candidate), *args], text=True).strip()
+        # status 可刷新真实索引的 stat cache；只读预检禁止这类可选写入。
+        return subprocess.check_output(["git", "--no-optional-locks", "-C", str(candidate), *args], text=True).strip()
     if git("rev-parse", "HEAD") != BASE:
         raise ValueError("Reconstruction requires a fresh checkout of the exact ZCode base")
     if git("status", "--porcelain", "--untracked-files=all", "--ignored=matching"):

@@ -13,6 +13,19 @@ class VerificationRoutingTests(unittest.TestCase):
             root = Path(temporary)
             (root / "scripts").mkdir()
             (root / ".fleet/zcode").mkdir(parents=True)
+            candidate_scripts = root / ".fleet/zcode/scripts"
+            candidate_scripts.mkdir()
+            source = Path(__file__).resolve().parents[2] / ".fleet/zcode/scripts/verify-delivery.mjs"
+            shutil.copy2(source, candidate_scripts / "verify-delivery.mjs")
+            (candidate_scripts / "spawn-command.mjs").write_text(
+                'import {appendFileSync} from "node:fs";\n'
+                'import {basename} from "node:path";\n'
+                'export function runCommand(command,args) {\n'
+                ' const value=basename(command)+" "+args.join(" ");\n'
+                ' appendFileSync(process.env.FLEET_TEST_COMMAND_LOG,value+"\\n");\n'
+                ' if(args.includes("typecheck") && process.env.FLEET_TEST_FAIL_PRESERVATION==="1") process.exit(7);\n'
+                '}\n'
+            )
             (root / "app").mkdir()
             script = root / "scripts/fleet-verify.sh"
             shutil.copy2(Path(__file__).resolve().parents[1] / "fleet-verify.sh", script)
@@ -24,6 +37,7 @@ class VerificationRoutingTests(unittest.TestCase):
                 command.write_text(
                     '#!/bin/sh\n'
                     'echo "' + name + ' $*" >> "$FLEET_TEST_COMMAND_LOG"\n'
+                    + ('[ "$1" = "verify:delivery" ] && exec "$FLEET_TEST_REAL_NODE" "$PWD/scripts/verify-delivery.mjs"\n' if name == "pnpm" else '') +
                     'case "$*" in *typecheck*) '
                     '[ "$FLEET_TEST_FAIL_PRESERVATION" = "1" ] && exit 7 ;; esac\n'
                     'exit 0\n'
@@ -31,6 +45,7 @@ class VerificationRoutingTests(unittest.TestCase):
                 command.chmod(0o755)
             env = {**os.environ, "PATH": str(commands) + os.pathsep + os.environ["PATH"],
                    "FLEET_TEST_COMMAND_LOG": str(log),
+                   "FLEET_TEST_REAL_NODE": shutil.which("node"),
                    "FLEET_TEST_FAIL_PRESERVATION": "1" if fail_preservation else "0"}
             result = subprocess.run(["bash", str(script)] + ([mode] if mode else []),
                                     cwd=root, env=env, text=True, capture_output=True, timeout=10)

@@ -186,3 +186,19 @@ on both development Node 26.3 and packaged Node 22.16. Exact logs remain under
 `plugin-market-audit-sol`. Inherited strict CLI oversized-file debt remains a failing release gate.
 No live plugin/provider inference, saved-profile migration or whole-product `usable` promotion is
 asserted; historical waves stay Locked.
+
+## ZCode product completion (D59)
+
+`modules/zcode-product-completion.md` is execution-ready for Q,C,P,D corrections, with
+verified strict CLI debt, workflow response race and actual resident App plugin/decision factory
+counterexamples. W is execution-ready for the concrete native JSON/registered tool/original Session
+and FS CAS loop selected by Lead in the spec; no spatial framework is promoted. Current
+ZCode inventory replaces historical Craft capability labels as evidence, not an automatic promotion.
+
+Q/Desktop is also execution-ready: direct checks exposed that the canonical command omitted
+Main/preload/renderer/scheduler. Existing type exports and a declaration derived from the actual
+preload API now close preload/renderer gaps; Main consumer errors still block the full new gate.
+W backend tests cover actual Core/file/broker/SQLite, actual Host RPC and close/cold recovery,
+including synchronous reverse-request timer settlement and retry checkpoint anchors. The current
+styled pane/close worker uses authored port fixtures; visible native Host/pane/quit/relaunch proof
+and full current-source delivery/reconstruction remain required. No whole-project `usable` claim.

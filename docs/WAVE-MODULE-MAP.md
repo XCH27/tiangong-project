@@ -186,3 +186,16 @@ bounded packet; they cannot silently expand these lifecycle slices.
 Spec/packet: `modules/zcode-plugin-market-rectification.md`,
 `agent-packets/zcode-plugin-market-rectification.md`. Lead owns integration/build/render/recipe.
 This authorization does not promote capabilities or historical waves.
+
+## ZC-COMPLETE — sustained ZCode completion (D59)
+
+| Slice | Gate | Owner | Scope |
+|---|---|---|---|
+| ZC-COMPLETE/Q | In Progress | Sol quality worker | Same-owner contract/telemetry/debug extraction; strict gates retained |
+| ZC-COMPLETE/Q-Desktop | In Progress | Lead; next disjoint Sol packets | Close the missing Main/preload/renderer/scheduler type gate and exact consumer errors without waivers |
+| ZC-COMPLETE/C | In Progress | Sol product worker | Existing workflow projection generation and reload/error ownership |
+| ZC-COMPLETE/P,D | In Progress | Sol capability worker | Resident plugin canonical reads and actual decision factory selection |
+| ZC-COMPLETE/W | In Progress | Lead + Sol UI/backend workers | Selected native JSON/ToolExecutor/Session/FS CAS loop; original pane/draft/close ownership |
+
+Spec and exact claims: `modules/zcode-product-completion.md`, `agent-packets/zcode-product-completion.md`.
+Historical Craft W1–W5 stay Locked. These gates do not promote capability results.

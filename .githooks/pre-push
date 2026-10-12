@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+project_root=$(git rev-parse --show-toplevel)
+exec bash "$project_root/scripts/fleet-verify.sh"
