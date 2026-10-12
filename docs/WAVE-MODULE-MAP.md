@@ -195,7 +195,9 @@ This authorization does not promote capabilities or historical waves.
 | ZC-COMPLETE/Q-Desktop | In Progress | Lead; next disjoint Sol packets | Close the missing Main/preload/renderer/scheduler type gate and exact consumer errors without waivers |
 | ZC-COMPLETE/C | In Progress | Sol product worker | Existing workflow projection generation and reload/error ownership |
 | ZC-COMPLETE/P,D | In Progress | Sol capability worker | Resident plugin canonical reads and actual decision factory selection |
+| ZC-COMPLETE/P-View | In Progress | Lead + Sol backend worker | Original Session/ToolExecutor/permission/SDK path for existing MCP Apps tools; retire direct write bypass |
 | ZC-COMPLETE/W | In Progress | Lead + Sol UI/backend workers | Selected native JSON/ToolExecutor/Session/FS CAS loop; original pane/draft/close ownership |
+| ZC-COMPLETE/C-Handoff | In Progress | Sol acceptance worker | Read/test existing workflow/file/artifact/Session production and cold handoff; source fixes require Lead path acknowledgement |
 
 Spec and exact claims: `modules/zcode-product-completion.md`, `agent-packets/zcode-product-completion.md`.
 Historical Craft W1–W5 stay Locked. These gates do not promote capability results.

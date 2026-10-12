@@ -85,6 +85,28 @@ Acceptance: registered tools + original broker + file CAS + actual SQLite, human
 deny/Stop/save failure/late ACK/Host change, two-process create race, cold reopen, rendered pane,
 checkpoint/revision and zero paid/model transport. No generic writer on read-only FileService.
 
+### P — plugin view tool admission
+
+An actual Host/SDK counterexample shows `plugins/view/callTool` writing plugin data without an
+original Session, per-call approval or timeline. Preserve MCP Apps resources/read and the iframe
+tool name/arguments/result format. The managed parent resolves the action-time original workspace
+connection and ordinary active/empty V4 Session without a provider call. Tool execution now requires
+Session and operation identities; legacy direct calls fail visibly instead of retaining the bypass.
+
+The Host derives the stored Session scope, canonical enabled/grant/view/server membership and
+exact server configuration, then selects the original registered MCP entry by server/tool metadata.
+The same native control runner reuses original foreground lease, Stop, residency, ToolExecutor,
+hooks, permission broker, Session receipt and checkpoint owners. Trust activation precedes the
+first native tool dispatch. Recheck current grant/config/entry ownership after permission waiting;
+the original MCP adapter receives the exact expected configuration and availability guard.
+
+Capture the raw result from that single admitted SDK call before existing Agent normalization.
+Any durable raw reply reference belongs to the original Session ArtifactStore and receipt, not
+another writer/store. Preserve `content`, `structuredContent` and `isError`; no second SDK call to
+reconstruct a result. Operation correlation cannot authorize automatic replay of a possibly
+completed writable tool. Unknown/Stopped/lost receipts require visible reconciliation. Keep
+ordinary model MCP normalization, current policy, hooks and trusted official CUA boundary intact.
+
 Original admission/Runtime/App/Session and canonical plugin/registry/workflow/store owners remain.
 UI request generations are projections only. Source extraction preserves closures, receiver,
 evaluation order, public ABI and identity; class/runtime owners are not cloned. Existing tests and

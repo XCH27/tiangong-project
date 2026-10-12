@@ -202,3 +202,14 @@ W backend tests cover actual Core/file/broker/SQLite, actual Host RPC and close/
 including synchronous reverse-request timer settlement and retry checkpoint anchors. The current
 styled pane/close worker uses authored port fixtures; visible native Host/pane/quit/relaunch proof
 and full current-source delivery/reconstruction remain required. No whole-project `usable` claim.
+
+P-View is execution-ready for the bounded existing plugin-tool bypass correction selected in the
+spec/packet. An actual Host and SDK counterexample writes owned data without any Session or
+per-call permission/timeline. Original native control/executor/MCP capture owners are reused;
+required Session/operation DTOs and parent UI remain Lead-owned, with real permission/withdrawal/
+scope/Stop/cold acceptance required. This is not a new generic action endpoint.
+
+C-Handoff is execution-ready for R's read/test continuation of existing workflow/file/artifact/
+Session production and restart. It may add bounded actual-consumer fixtures; a reproduced source
+defect still requires Lead path acknowledgement. It does not open a new Library database, native
+editor, proposed Craft contract or historical wave. The current product inventory remains evidence.

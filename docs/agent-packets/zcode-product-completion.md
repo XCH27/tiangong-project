@@ -169,6 +169,30 @@ Original Browser manager, Playwright/CDP and native recorder own state; no secon
 Any shared schema/permission or meaningful behavior change requires exact Lead acknowledgement.
 Root issues the exact starting SHA before either continuation; unopened claims are read-only.
 
+## P/plugin view continuation — accepted original control seam
+
+Lead opens the selected plugin-view admission behavior in the completion spec. C owns the new
+`bootstrap/src/zcode-protocol/plugin-view-control.ts`, a bounded Core native-plugin-view wrapper,
+same-owner resolver leaves and actual Host/SDK/SQLite/scope/grant-withdrawal/Stop tests. Root issues
+the typed internal control interface before wrapper implementation. Resource reads keep their
+existing owner. Root owns shared required Session/operation DTOs, service/parent UI bridge,
+original native control/persistence factoring, executor context plumbing and MCP handler capture.
+No generic arbitrary tool wire endpoint, caller approval/config override, duplicate effect retry,
+extra MCP client or new store is allowed. Other claims remain disjoint.
+
+## R/current production handoff — original workflow acceptance
+
+After Q/Desktop consumer delivery, R receives a new integrated worktree for read/test work on
+the existing App/Host, dynamic workflow, ArtifactStore, Session, file and artifact-view owners.
+Use an actual registered/saved workflow and SQLite/native output with authored deterministic
+local ports, not invented journal rows or live paid providers. Prove start, tool permission,
+committed artifact/version, original public reader/ownership, shutdown/reopen and zero duplicate
+effect; include consequential concurrency/failure/foreign-owner cases from that concrete loop.
+Claim `bootstrap/test/production-handoff.test.ts` and focused same-owner fixture helpers only.
+Production edits need Lead acknowledgement of the reproduced path. Inspect current provenance/
+hash/parent/license gaps honestly; do not create a Library database, native editor, alternate
+workflow engine, dependency, copied reference source or Craft product path. Root owns visible UI.
+
 ## W UI continuation — S worker
 
 Lead delegates these existing UI paths after the coherent integrated native backend commit:
