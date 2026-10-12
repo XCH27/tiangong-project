@@ -22,6 +22,7 @@ pnpm verify:pre-push
 pnpm --filter @zcode/desktop build:no-runtime-assets
 pnpm test:staged-agent-recovery
 pnpm test:page-assistant-ui
+pnpm test:plugin-market-ui
 
 # Strict CLI source debt remains a failing check; it must not hide build/runtime evidence.
 pnpm lint:cli

@@ -2,13 +2,17 @@
 
 Reference projects are evidence and source material. They are not the roadmap.
 
+D56 supersedes historical Craft-as-base wording: product owners are ZCode plus ordered patches.
+Reference mechanisms must adapt to those existing owners. REA (D58) is external analysis tooling;
+installed TraeWork/MiniMax resources are read-only evidence, not product implementation sources.
+
 ## Green-Light Sources
 
 The following projects may be copied or adapted within the stated boundary, with license and attribution preserved:
 
 | Source | License Boundary | Allowed Use |
 |---|---|---|
-| `craft-agents-oss` | Apache-2.0 | Main application base. Pin: tag `v0.11.0` → commit `f4e172bf372f4ccc7389a189be1e0b0541f96282` (lightweight tag; parent `c9d9a26fbefa3a5165ee9aa50cb30c25466afd81` is v0.10.5). See `docs/UPSTREAM-BASELINE.md` and D51. |
+| `craft-agents-oss` | Apache-2.0 | Interaction reference and historical pin only (D56). Tag `v0.11.0` → `f4e172bf372f4ccc7389a189be1e0b0541f96282`; D51 evidence does not select the product base. |
 | `AionUi` | Apache-2.0 | CLI runtime catalog, custom agents, ACP, process lifecycle, team/skill patterns. Must adapt into Craft session/permission/timeline. |
 | `open-design` | Apache-2.0 | Runtime definitions, prompt transport, artifact/eval/design workflow patterns. Check subdirectory licenses before copying assets/templates. |
 | `rtk` | Apache-2.0 | Output compression, savings discovery, hook matrix ideas. Do not auto-install global hooks without permission. |

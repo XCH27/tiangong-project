@@ -228,9 +228,20 @@ Build/behavior verification is `scripts/fleet-verify.sh`; source replay alone do
 | 0209 | [0209-typesafe-laya-catalog-contracts.patch](0209-typesafe-laya-catalog-contracts.patch) | `cd34b15cc6e025ad84ce0ad637b56e4da285dcc5` |
 | 0210 | [0210-steerable-guide-and-session-durability.patch](0210-steerable-guide-and-session-durability.patch) | `225208f8e4384d80bce57fbba2b1b37abd54879e` |
 | 0211 | [0211-kernel-lifecycle-rectification.patch](0211-kernel-lifecycle-rectification.patch) | `10f55ae9c07d183a134a54cd561d937c5eba3c2a` |
+| 0212 | [0212-plugin-market-consistency-cancellation.patch](0212-plugin-market-consistency-cancellation.patch) | `e76f0601a4944aa5e2e9c693eb3ef2b4761087c1` |
 
 Rectification candidate: `85efd4aacbb187acc9b41da8a3e77e425879cc65`. This patch includes the current-source build caller,
 Session-owned receipt isolation, actual shutdown/retry and parent budgets, ordered cold recovery,
 ACP refusal/fallback honesty, original preference commits and real-consumer regression gates.
 No new store, SQL migration, account removal or provider replay. Full strict CLI lint retains
 87 inherited oversized-file errors; replay/build/behavior success does not waive that gate.
+
+## D58 plugin-market corrections
+
+Candidate `8c347cb02f4dc9e52c77f71084a9a82f21ef1a97`, tree `e76f0601a4944aa5e2e9c693eb3ef2b4761087c1`. Patch 0212 preserves prior lifecycle fixes and corrects
+original plugin overview/detail generations, source errors, cold-load settlement, timely NDJSON
+cancellation and human add-dialog operation/context ownership. Original service/registry/files/
+grants remain canonical; no new dependencies or data migrations. Authored handler/file fixtures
+and actual rendered market/dialog paths provide bounded evidence; installed reference products
+and REA are analysis references only. Strict inherited CLI lint remains a failing release check.
+See `docs/audits/2026-10-12-plugin-market-reference-rectification.md`.

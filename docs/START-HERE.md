@@ -20,6 +20,9 @@ The owner-authorized existing-code rectification follows
 [ZK-FIX packet](agent-packets/zcode-kernel-rectification.md), under D57.
 This opens only those corrective slices; historical downstream waves stay Locked.
 
+Existing plugin-market corrections follow [the ZCode spec](modules/zcode-plugin-market-rectification.md)
+and [ZP-FIX packet](agent-packets/zcode-plugin-market-rectification.md), under D58.
+
 ## Current Delivery Spine
 
 The product path is the ZCode candidate at `.fleet/zcode` (D56). This branch's W0.1 Craft v0.11

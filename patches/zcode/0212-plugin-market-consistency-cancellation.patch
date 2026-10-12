@@ -1,0 +1,2209 @@
+diff --git a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/transport.ts b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/transport.ts
+index 947af88c..7a327fb0 100644
+--- a/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/transport.ts
++++ b/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/transport.ts
+@@ -42,6 +42,7 @@ export class ZCodeProtocolNdjsonConnection {
+   private buffer = "";
+   private processing: Promise<void> = Promise.resolve();
+   private lastQueuedMessageStarted: Promise<void> = Promise.resolve();
++  private processingHeadStarted?: Promise<void>;
+   private readonly closedPromise: Promise<void>;
+   private resolveClosed!: () => void;
+   private rejectClosed!: (error: Error) => void;
+@@ -171,7 +172,14 @@ export class ZCodeProtocolNdjsonConnection {
+     if (this.shouldBypassProcessingQueue(message)) {
+       // 停止/取消控制必须等它前面的普通请求真正进入 handler、建立 abort
+       // controller，再越过该请求的异步执行；只延后一轮微任务会让控制请求提前成为空操作。
+-      void this.lastQueuedMessageStarted
++      // 插件取消等待当前执行进入 handler，不等待后续普通请求的开始；否则
++      // 「目录请求等取消、取消等后续请求、后续请求等目录完成」会形成死锁。
++      // operation 身份和 AbortController 仍只由 server 持有。
++      const admission =
++        "method" in message && message.method === zcodeProtocolMethods.pluginsCancelOperation
++          ? (this.processingHeadStarted ?? Promise.resolve())
++          : this.lastQueuedMessageStarted;
++      void admission
+         .then(() => this.handleMessage(message))
+         .catch((error: unknown) => {
+           this.fail(error instanceof Error ? error : new Error(String(error)));
+@@ -183,11 +191,17 @@ export class ZCodeProtocolNdjsonConnection {
+       markStarted = resolve;
+     });
+     this.lastQueuedMessageStarted = started;
++    this.processingHeadStarted ??= started;
+     this.processing = this.processing
+       .then(async () => {
+-        const handling = this.handleMessage(message);
+-        markStarted();
+-        await handling;
++        this.processingHeadStarted = started;
++        try {
++          const handling = this.handleMessage(message);
++          markStarted();
++          await handling;
++        } finally {
++          if (this.processingHeadStarted === started) this.processingHeadStarted = undefined;
++        }
+       })
+       .catch((error: unknown) => {
+         markStarted();
+@@ -228,7 +242,9 @@ export class ZCodeProtocolNdjsonConnection {
+       "id" in message &&
+       "method" in message &&
+       (message.method === zcodeProtocolMethods.sessionStop ||
+-        message.method === zcodeProtocolMethods.workspaceCancelGenerateText)
++        message.method === zcodeProtocolMethods.workspaceCancelGenerateText ||
++        // 插件目录请求也会占住队列；取消必须到达原 operation 的 AbortController，不能排在它完成后。
++        message.method === zcodeProtocolMethods.pluginsCancelOperation)
+     );
+   }
+ 
+diff --git a/apps/zcode-cli/packages/bootstrap/test/helpers/plugin-cancel-ndjson-process.ts b/apps/zcode-cli/packages/bootstrap/test/helpers/plugin-cancel-ndjson-process.ts
+new file mode 100644
+index 00000000..1a01dc7b
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/helpers/plugin-cancel-ndjson-process.ts
+@@ -0,0 +1,19 @@
++import { ZCodeProtocolAgentServer } from "../../src/zcode-protocol/server.js";
++import { ZCodeProtocolNdjsonConnection } from "../../src/zcode-protocol/transport.js";
++
++// The parent supplies only isolated fixture paths; this process must never create a model App.
++const server = new ZCodeProtocolAgentServer({
++  env: process.env,
++  createZCodeApp: async () => {
++    throw new Error("Catalog cancellation must not start inference");
++  },
++});
++const connection = new ZCodeProtocolNdjsonConnection({
++  input: process.stdin,
++  output: process.stdout,
++  handleMessage: (message) => server.handleMessage(message),
++});
++server.setNotificationSink((message) => connection.send(message));
++connection.start();
++await connection.waitForClose();
++await server.shutdown();
+diff --git a/apps/zcode-cli/packages/bootstrap/test/plugin-cancel-ndjson.test.ts b/apps/zcode-cli/packages/bootstrap/test/plugin-cancel-ndjson.test.ts
+new file mode 100644
+index 00000000..47e368c4
+--- /dev/null
++++ b/apps/zcode-cli/packages/bootstrap/test/plugin-cancel-ndjson.test.ts
+@@ -0,0 +1,291 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { spawn } from "node:child_process";
++import { createServer } from "node:http";
++import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { loadKnownMarketplacesSync } from "@zcode/adapters/plugins";
++import { zcodeProtocolMethods } from "@zcode/shared";
++
++async function observed(promise: Promise<void>, label: string, timeoutMs: number) {
++  let timer: ReturnType<typeof setTimeout> | undefined;
++  try {
++    await Promise.race([
++      promise,
++      new Promise<never>((_, reject) => {
++        timer = setTimeout(() => reject(new Error(`${label} blocked`)), timeoutMs);
++      }),
++    ]);
++  } finally {
++    if (timer) clearTimeout(timer);
++  }
++}
++
++async function fixture() {
++  const root = await mkdtemp(join(tmpdir(), "zcode-plugin-cancel-"));
++  const home = join(root, "home");
++  const storage = join(root, "storage");
++  const workspace = join(root, "workspace");
++  await mkdir(join(home, "cli"), { recursive: true });
++  await mkdir(workspace);
++  await writeFile(join(home, "cli", "config.json"), JSON.stringify({ storage: { dir: storage } }));
++  const reached = Promise.withResolvers<void>();
++  const release = Promise.withResolvers<void>();
++  const socketClosed = Promise.withResolvers<void>();
++  let aborted = false;
++  const catalog = createServer(async (_request, response) => {
++    response.on("close", () => {
++      if (!response.writableEnded) {
++        aborted = true;
++        socketClosed.resolve();
++      }
++    });
++    reached.resolve();
++    await release.promise;
++    response.setHeader("Content-Type", "application/json");
++    response.end(JSON.stringify({ name: "cancel-fixture", plugins: [] }));
++  });
++  await new Promise<void>((resolve) => catalog.listen(0, "127.0.0.1", resolve));
++  const address = catalog.address();
++  assert.ok(address && typeof address !== "string");
++  const child = spawn(
++    process.execPath,
++    [
++      "--import",
++      import.meta.resolve("tsx"),
++      fileURLToPath(new URL("./helpers/plugin-cancel-ndjson-process.ts", import.meta.url)),
++    ],
++    {
++      cwd: workspace,
++      env: {
++        PATH: process.env.PATH,
++        TMPDIR: tmpdir(),
++        NODE_ENV: "test",
++        ZCODE_HOME: home,
++        ZCODE_STORAGE_DIR: storage,
++      },
++      stdio: ["pipe", "pipe", "pipe"],
++    },
++  );
++  const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
++    child.once("exit", (code, signal) => resolve({ code, signal }));
++  });
++  const responses = new Map<number, Record<string, any>>();
++  const waiters = new Map<number, (value: Record<string, any>) => void>();
++  const responseOrder: number[] = [];
++  let buffer = "";
++  let errors = "";
++  child.stderr.on("data", (chunk) => {
++    errors += chunk.toString();
++  });
++  child.stdout.on("data", (chunk) => {
++    buffer += chunk.toString();
++    for (let newline = buffer.indexOf("\n"); newline >= 0; newline = buffer.indexOf("\n")) {
++      const value = JSON.parse(buffer.slice(0, newline));
++      buffer = buffer.slice(newline + 1);
++      if (typeof value.id !== "number") continue;
++      responses.set(value.id, value);
++      responseOrder.push(value.id);
++      waiters.get(value.id)?.(value);
++      waiters.delete(value.id);
++    }
++  });
++  return {
++    get reached() {
++      return observed(reached.promise, "catalog admission", 5_000);
++    },
++    get socketClosed() {
++      return observed(socketClosed.promise, "catalog abort", 1_000);
++    },
++    get aborted() {
++      return aborted;
++    },
++    responses,
++    responseOrder,
++    workspace: { workspacePath: workspace, workspaceKey: workspace },
++    source: `http://127.0.0.1:${address.port}/catalog.json`,
++    send(id: number, method: string, params: unknown) {
++      child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
++    },
++    sendBatch(messages: Array<{ id: number; method: string; params: unknown }>) {
++      child.stdin.write(`${messages.map((message) => JSON.stringify(message)).join("\n")}\n`);
++    },
++    async response(id: number, timeoutMs = 1_000) {
++      if (responses.has(id)) return responses.get(id)!;
++      let timer: ReturnType<typeof setTimeout> | undefined;
++      try {
++        return await Promise.race([
++          new Promise<Record<string, any>>((resolve) => waiters.set(id, resolve)),
++          new Promise<never>((_, reject) => {
++            timer = setTimeout(
++              () => reject(new Error(`Response ${id} blocked; ${errors}`)),
++              timeoutMs,
++            );
++          }),
++        ]);
++      } finally {
++        if (timer) clearTimeout(timer);
++        waiters.delete(id);
++      }
++    },
++    known: () => loadKnownMarketplacesSync(join(storage, "cli", "plugins")),
++    release: () => release.resolve(),
++    async close() {
++      release.resolve();
++      child.stdin.end();
++      const deadline = setTimeout(() => child.kill("SIGKILL"), 2_000);
++      const result = await exit;
++      clearTimeout(deadline);
++      await new Promise<void>((resolve) => {
++        catalog.close(() => resolve());
++        catalog.closeAllConnections();
++      });
++      await rm(root, { recursive: true, force: true });
++      assert.deepEqual(result, { code: 0, signal: null }, errors);
++    },
++  };
++}
++
++test(
++  "NDJSON cancellation reaches the original plugin operation while its catalog GET remains held",
++  { timeout: 8_000 },
++  async () => {
++    const f = await fixture();
++    try {
++      f.send(1, zcodeProtocolMethods.pluginsMarketplaceAdd, {
++        workspace: f.workspace,
++        source: f.source,
++        operationId: "held-catalog",
++      });
++      await f.reached;
++      f.send(2, zcodeProtocolMethods.pluginsCancelOperation, { operationId: "held-catalog" });
++      assert.deepEqual((await f.response(2)).result, {
++        operationId: "held-catalog",
++        cancelled: true,
++      });
++      const cancelled = await f.response(1);
++      assert.ok(cancelled.error);
++      assert.equal(cancelled.result, undefined);
++      await f.socketClosed;
++      assert.equal(f.aborted, true);
++      assert.deepEqual(
++        f.known(),
++        [],
++        "cancelled catalog must not persist a successful marketplace",
++      );
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "an unknown cancellation leaves the running operation and ordinary response order intact",
++  { timeout: 8_000 },
++  async () => {
++    const f = await fixture();
++    try {
++      f.send(1, zcodeProtocolMethods.pluginsMarketplaceAdd, {
++        workspace: f.workspace,
++        source: f.source,
++        operationId: "held-catalog",
++      });
++      await f.reached;
++      f.send(2, zcodeProtocolMethods.sessionList, { workspace: f.workspace });
++      f.send(3, zcodeProtocolMethods.pluginsCancelOperation, { operationId: "unrelated" });
++      assert.deepEqual((await f.response(3)).result, {
++        operationId: "unrelated",
++        cancelled: false,
++      });
++      assert.equal(f.aborted, false);
++      assert.equal(f.responses.has(1), false);
++      assert.equal(
++        f.responses.has(2),
++        false,
++        "ordinary request must still wait for the held catalog",
++      );
++      f.release();
++      assert.ok((await f.response(1)).result);
++      assert.ok((await f.response(2)).result);
++      assert.ok(f.responseOrder.indexOf(1) < f.responseOrder.indexOf(2));
++      assert.equal(f.known().length, 1);
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "one NDJSON input batch registers the original operation before cancellation bypasses queued work",
++  { timeout: 8_000 },
++  async () => {
++    const f = await fixture();
++    try {
++      f.send(0, zcodeProtocolMethods.sessionList, { workspace: f.workspace });
++      await f.response(0, 5_000);
++      f.sendBatch([
++        {
++          id: 1,
++          method: zcodeProtocolMethods.pluginsMarketplaceAdd,
++          params: {
++            workspace: f.workspace,
++            source: f.source,
++            operationId: "batch-catalog",
++          },
++        },
++        { id: 2, method: zcodeProtocolMethods.sessionList, params: { workspace: f.workspace } },
++        {
++          id: 3,
++          method: zcodeProtocolMethods.pluginsCancelOperation,
++          params: { operationId: "batch-catalog" },
++        },
++      ]);
++      assert.deepEqual((await f.response(3)).result, {
++        operationId: "batch-catalog",
++        cancelled: true,
++      });
++      assert.ok((await f.response(1)).error);
++      assert.ok((await f.response(2)).result);
++      assert.ok(f.responseOrder.indexOf(1) < f.responseOrder.indexOf(2));
++      assert.deepEqual(f.known(), []);
++      f.send(4, zcodeProtocolMethods.pluginsCancelOperation, { operationId: "batch-catalog" });
++      assert.deepEqual((await f.response(4)).result, {
++        operationId: "batch-catalog",
++        cancelled: false,
++      });
++    } finally {
++      await f.close();
++    }
++  },
++);
++
++test(
++  "an intervening ordinary request cannot delay cancellation of the running operation",
++  { timeout: 8_000 },
++  async () => {
++    const f = await fixture();
++    try {
++      f.send(1, zcodeProtocolMethods.pluginsMarketplaceAdd, {
++        workspace: f.workspace,
++        source: f.source,
++        operationId: "held-catalog",
++      });
++      await f.reached;
++      f.send(2, zcodeProtocolMethods.sessionList, { workspace: f.workspace });
++      f.send(3, zcodeProtocolMethods.pluginsCancelOperation, { operationId: "held-catalog" });
++      assert.deepEqual((await f.response(3)).result, {
++        operationId: "held-catalog",
++        cancelled: true,
++      });
++      assert.ok((await f.response(1)).error);
++      assert.ok((await f.response(2)).result);
++      assert.ok(f.responseOrder.indexOf(1) < f.responseOrder.indexOf(2));
++      await f.socketClosed;
++      assert.deepEqual(f.known(), []);
++    } finally {
++      await f.close();
++    }
++  },
++);
+diff --git a/package.json b/package.json
+index b51e8471..59b8ddc8 100644
+--- a/package.json
++++ b/package.json
+@@ -48,7 +48,7 @@
+     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
+     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+     "test:provider-subscriptions": "tsx --test apps/zcode-cli/packages/bootstrap/test/kernel-model-commit.test.ts packages/services/test/subscription-login-interaction.test.ts packages/services/test/chatgpt-authorization.test.ts apps/zcode-cli/packages/core/test/subscription-turn-binding.test.ts apps/zcode-cli/packages/bootstrap/test/subscription-account-intent.test.ts packages/services/test/subscription-command-admission.test.ts packages/services/test/subscription-network.test.ts packages/services/test/subscription-catalog.test.ts packages/services/test/subscription-connections.test.ts packages/services/test/subscription-usage.test.ts packages/services/test/api-key-plan-usage.test.ts packages/services/test/subscription-bundle.test.ts apps/zcode-cli/packages/adapters/test/pi-subscription.test.ts",
+-    "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-grants.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts apps/zcode-cli/packages/bootstrap/test/session-control-steerable.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/pluginManagementGrants.test.ts packages/ui/test/pluginMcpSurfaceHonesty.test.ts packages/ui/test/nativeGuideSurfaceHonesty.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/cuaComposerEntryState.test.ts",
++    "test:fleet-local": "tsx --test packages/services/test/fleet-local-startup.test.ts packages/services/test/plugin-storage-scope.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-uninstall-data.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-grants.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-views.test.ts apps/zcode-cli/packages/bootstrap/test/agent-plugins-format.test.ts apps/zcode-cli/packages/bootstrap/test/session-control-steerable.test.ts && tsx --test --test-concurrency=1 apps/zcode-cli/packages/bootstrap/test/plugin-cancel-ndjson.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/pluginMarketConsistency.test.ts packages/ui/test/pluginMarketRequestRaces.test.ts packages/ui/test/pluginManagementGrants.test.ts packages/ui/test/pluginMcpSurfaceHonesty.test.ts packages/ui/test/nativeGuideSurfaceHonesty.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/cuaComposerEntryState.test.ts",
+     "test:provider-catalog": "tsx --test packages/services/test/model-knowledge.test.ts packages/services/test/openrouter-catalog-metadata.test.ts packages/services/test/provider-overlay-revision.test.ts packages/services/test/model-enabled-revision.test.ts packages/services/test/model-connectivity-diagnostics.test.ts packages/services/test/subscription-catalog-replacement.test.ts packages/services/test/cc-switch-import.test.ts packages/services/test/model-preferences.test.ts packages/services/test/decision-source-save.test.ts packages/services/test/model-purpose-defaults.test.ts packages/services/test/provider-purpose-provisioning.test.ts packages/services/test/browser-service-boundary.test.ts packages/services/test/model-discovery-persistence.test.ts packages/services/test/provider-settings-lifecycle.test.ts packages/services/test/provider-catalog.test.ts packages/services/test/provider-protocol-policy.test.ts packages/services/test/catalog-fact-lifecycle.test.ts",
+     "test:context-usage": "tsx --test packages/ui/test/subscriptionAccountLifecycle.test.ts apps/zcode-cli/packages/bootstrap/test/context-usage.test.ts apps/zcode-cli/packages/adapters/test/usage-last-request.test.ts packages/ui/test/subscriptionUsageLifecycle.test.ts packages/ui/test/subscriptionUiError.test.ts && tsx --tsconfig packages/ui/tsconfig.json --test packages/ui/test/subscriptionAllowanceDetails.test.tsx packages/ui/test/modelEvidenceSelection.test.ts packages/ui/test/modelToolCapabilityDraft.test.ts packages/ui/test/contextUsageModelScope.test.ts packages/ui/test/providerStatus.test.ts packages/ui/test/ccSwitchImportViewModel.test.ts packages/ui/test/pluginCapabilityProjection.test.ts packages/ui/test/usageErrorCopy.test.tsx packages/ui/test/teamSubscriptionProducts.test.ts apps/zcode-cli/packages/bootstrap/test/cancelled-model-observation.test.ts",
+     "test:usage-hooks": "node scripts/test-usage-hooks.mjs",
+@@ -80,7 +80,8 @@
+     "test:side-pane-lifecycle-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/sidePaneCloseSnapshot.browser.test.tsx __sidePaneCloseTests",
+     "test:kernel-recovery": "tsx --test apps/zcode-cli/packages/core/test/goal-verification.test.ts apps/zcode-cli/packages/core/test/usage-before-publication.test.ts apps/zcode-cli/packages/adapters/test/file-write-integrity.test.ts apps/zcode-cli/packages/adapters/test/file-write-concurrency.test.ts apps/zcode-cli/packages/core/test/file-write-publication.test.ts apps/zcode-cli/packages/core/test/background-agent-stop.test.ts apps/zcode-cli/packages/core/test/stop-late-effect.test.ts apps/zcode-cli/packages/core/test/plugin-hook-withdrawal.test.ts apps/zcode-cli/packages/bootstrap/test/plugin-availability.test.ts apps/zcode-cli/packages/bootstrap/test/project-plugin-hooks.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-recovery.test.ts apps/zcode-cli/packages/dynamic-workflow/test/world-run-amend-recovery.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt.test.ts apps/zcode-cli/packages/core/test/late-tool-receipt-accounting.test.ts apps/zcode-cli/packages/bootstrap/test/late-tool-receipt-projection.test.ts apps/zcode-cli/packages/bootstrap/test/resident-plugin-withdrawal.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-recovery.test.ts apps/zcode-cli/packages/core/test/bash-stop-recovery.test.ts apps/zcode-cli/packages/core/test/bash-stop-cold-projection.test.ts apps/zcode-cli/packages/core/test/subagent-stop-cold-projection.test.ts apps/zcode-cli/packages/core/test/remote-host-attachment-stop-session.test.ts apps/zcode-cli/packages/core/test/host-cold-background-works-honesty.test.ts apps/zcode-cli/packages/core/test/cold-background-works-materialization.test.ts apps/zcode-cli/packages/core/test/background-task-completed-durability.test.ts apps/zcode-cli/packages/core/test/background-task-started-durability.test.ts apps/zcode-cli/packages/core/test/background-task-updated-durability.test.ts apps/zcode-cli/packages/core/test/agent-background-task-durability.test.ts apps/zcode-cli/packages/core/test/workflow-background-task-completed-durability.test.ts apps/zcode-cli/packages/core/test/background-agent-stop-race.test.ts apps/zcode-cli/packages/bootstrap/test/session-shutdown.test.ts apps/zcode-cli/packages/bootstrap/test/session-shutdown-retry.test.ts apps/zcode-cli/packages/bootstrap/test/cold-workflow-background-recovery.test.ts apps/zcode-cli/packages/bootstrap/test/remote-host-stop-receipts.test.ts apps/zcode-cli/packages/bootstrap/test/remote-host-stop-bindings.test.ts apps/zcode-cli/packages/bootstrap/test/cold-workflow-clock-order.test.ts apps/zcode-cli/packages/core/test/background-task-lifecycle-order.test.ts && tsx --test --test-concurrency=1 apps/zcode-cli/packages/bootstrap/test/protocol-shutdown-process.test.ts packages/services/test/zcode-stdio-shutdown-settlement.test.ts",
+     "lint:cli": "pnpm --dir apps/zcode-cli lint",
+-    "test:staged-agent-recovery": "tsx --test packages/services/test/staged-agent-receipt-recovery.test.ts"
++    "test:staged-agent-recovery": "tsx --test packages/services/test/staged-agent-receipt-recovery.test.ts",
++    "test:plugin-market-ui": "node scripts/test-usage-hooks.mjs packages/ui/test/pluginMarketConsistency.browser.test.tsx __pluginMarketConsistencyTests --desktop-styles"
+   },
+   "dependencies": {
+     "border-beam": "^1.0.1",
+diff --git a/packages/ui/src/settings/PluginStorePage.tsx b/packages/ui/src/settings/PluginStorePage.tsx
+index 13c528e8..4b30a402 100644
+--- a/packages/ui/src/settings/PluginStorePage.tsx
++++ b/packages/ui/src/settings/PluginStorePage.tsx
+@@ -1,5 +1,6 @@
+ /* eslint-disable max-lines -- 插件商店容器统一编排列表/详情、市场源对话框、卸载确认、试用跳转与技能刷新收尾，集中维护保证交互一致。 */
+ import { PluginAddMenu } from "@/settings/PluginAddMenu.js";
++import { createPluginMarketplaceAddAttempt } from "@/settings/pluginMarketplaceAddAttempt.js";
+ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+ import { RefreshCw, Settings } from "lucide-react";
+ import { ControlHintTooltip } from "@/ControlHintTooltip.js";
+@@ -34,7 +35,6 @@ import {
+   resolvePluginDisplayName,
+   type StorePluginItem,
+ } from "@/settings/pluginStoreListing.js";
+-import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID } from "@zcode/shared";
+ import { PluginUninstallConfirmDialog } from "@/settings/PluginUninstallConfirmDialog.js";
+ import { usePluginUninstall } from "@/settings/usePluginUninstall.js";
+ import { consumePluginStoreOpenTarget } from "@/lib/pluginStoreNavigation.js";
+@@ -112,6 +112,26 @@ export function PluginStorePage({
+   const [sourcesOpen, setSourcesOpen] = useState(false);
+   const [addSourceOpen, setAddSourceOpen] = useState(false);
+   const [addMarketplaceError, setAddMarketplaceError] = useState<string | null>(null);
++  const addScope = useMemo(
++    () => ({ active: true, key: crypto.randomUUID() }),
++    [pluginManagementService, workspacePath, workspaceIdentity, skillMarket],
++  );
++  const addAttemptRef = useRef<{
++    scope: typeof addScope;
++    attempt: ReturnType<typeof createPluginMarketplaceAddAttempt>;
++  } | null>(null);
++  useEffect(() => {
++    addScope.active = true;
++    return () => {
++      addScope.active = false;
++      const pending = addAttemptRef.current;
++      if (pending?.scope === addScope) {
++        // Context departure invalidates this UI only; saved facts stay with the original Host.
++        pending.attempt.dismiss();
++        addAttemptRef.current = null;
++      }
++    };
++  }, [addScope]);
+   const rootRef = useRef<HTMLDivElement | null>(null);
+   // 返回列表页时恢复进入详情前的滚动位置（设置页 main 容器滚动）。
+   const storeScrollTopRef = useRef(0);
+@@ -341,20 +361,44 @@ export function PluginStorePage({
+ 
+   const handleAddMarketplace = useCallback(
+     async (source: string) => {
+-      const succeeded = await addMarketplace(
+-        source,
+-        pluginManagementService,
+-        skillMarket ? "skills" : undefined,
+-      );
+-      // 添加市场源的错误要和提交入口同层展示；否则全局错误条会被 Dialog 遮罩压到下面。
+-      setAddMarketplaceError(
+-        succeeded ? null : (usePluginManagementStore.getState().error ?? null),
+-      );
+-      // 自定义市场不属于公开分段；添加成功后直接切到「个人」，让用户立刻看到刚加的来源。
+-      if (succeeded) setSegment("personal");
+-      return succeeded;
++      if (!addScope.active || addAttemptRef.current?.scope === addScope) return false;
++      const attempt = createPluginMarketplaceAddAttempt(pluginManagementService);
++      const pending = { scope: addScope, attempt };
++      addAttemptRef.current = pending;
++      try {
++        const succeeded = await addMarketplace(
++          source,
++          pluginManagementService,
++          skillMarket ? "skills" : undefined,
++          attempt.operationId,
++        );
++        if (!addScope.active || attempt.closed || addAttemptRef.current !== pending) return false;
++        // 添加市场源的错误要和提交入口同层展示；否则全局错误条会被 Dialog 遮罩压到下面。
++        setAddMarketplaceError(
++          succeeded ? null : (usePluginManagementStore.getState().error ?? null),
++        );
++        // 自定义市场不属于公开分段；添加成功后直接切到「个人」，让用户立刻看到刚加的来源。
++        if (succeeded) setSegment("personal");
++        return succeeded;
++      } finally {
++        if (addAttemptRef.current === pending) addAttemptRef.current = null;
++      }
+     },
+-    [addMarketplace, pluginManagementService, skillMarket],
++    [addMarketplace, addScope, pluginManagementService, skillMarket],
++  );
++
++  const handleAddSourceOpenChange = useCallback(
++    (open: boolean) => {
++      if (!addScope.active) return;
++      const pending = addAttemptRef.current;
++      if (!open && pending?.scope === addScope) {
++        void pending.attempt.close().catch((error: unknown) => {
++          if (addScope.active) toast(error instanceof Error ? error.message : String(error));
++        });
++      }
++      setAddSourceOpen(open);
++    },
++    [addScope],
+   );
+ 
+   const handleUsePrompt = useCallback(
+@@ -415,13 +459,17 @@ export function PluginStorePage({
+           data-testid="plugin-store-title"
+           className="text-2xl font-semibold tracking-tight text-foreground lg:text-3xl"
+         >
+-          {intl.formatMessage({ id: skillMarket ? "workspace.openSkillStore" : "workspace.openPluginsSettings" })}
++          {intl.formatMessage({
++            id: skillMarket ? "workspace.openSkillStore" : "workspace.openPluginsSettings",
++          })}
+         </h1>
+       ) : null}
+       {view === "store" ? (
+         <div className="flex flex-wrap items-start justify-between gap-3">
+           <p className="min-w-0 flex-1 text-ui-base leading-6 text-foreground-subtle">
+-            {intl.formatMessage({ id: skillMarket ? "settings.skillStore.subtitle" : "settings.plugins.store.subtitle" })}
++            {intl.formatMessage({
++              id: skillMarket ? "settings.skillStore.subtitle" : "settings.plugins.store.subtitle",
++            })}
+           </p>
+           {/* 顶栏动作：刷新 / 市场源管理（齿轮）/ 新建市场源。 */}
+           <div className="flex shrink-0 items-center gap-2">
+@@ -568,20 +616,19 @@ export function PluginStorePage({
+             ) : undefined
+           }
+         />
++      ) : skillMarket && marketMarketplaces.length === 0 ? (
++        <div
++          className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-border p-6"
++          data-testid="skill-store-empty"
++        >
++          <p className="text-ui-base text-foreground-subtle">
++            {intl.formatMessage({ id: "settings.skillStore.empty" })}
++          </p>
++          <Button type="button" variant="outline" onClick={() => setAddSourceOpen(true)}>
++            {intl.formatMessage({ id: "settings.skillStore.addSource" })}
++          </Button>
++        </div>
+       ) : (
+-        skillMarket && marketMarketplaces.length === 0 ? (
+-          <div
+-            className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-border p-6"
+-            data-testid="skill-store-empty"
+-          >
+-            <p className="text-ui-base text-foreground-subtle">
+-              {intl.formatMessage({ id: "settings.skillStore.empty" })}
+-            </p>
+-            <Button type="button" variant="outline" onClick={() => setAddSourceOpen(true)}>
+-              {intl.formatMessage({ id: "settings.skillStore.addSource" })}
+-            </Button>
+-          </div>
+-        ) : (
+         <PluginStoreListView
+           order={storeOrder}
+           items={items}
+@@ -595,7 +642,6 @@ export function PluginStorePage({
+           onSegmentChange={setSegment}
+           onOpenManage={onManageInstalled}
+         />
+-        )
+       )}
+ 
+       <PluginUninstallConfirmDialog
+@@ -627,8 +673,9 @@ export function PluginStorePage({
+         operationId={operationId}
+       />
+       <AddMarketplaceSourceDialog
++        key={addScope.key}
+         open={addSourceOpen}
+-        onOpenChange={setAddSourceOpen}
++        onOpenChange={handleAddSourceOpenChange}
+         onAddMarketplace={handleAddMarketplace}
+         operationId={operationId}
+         error={addMarketplaceError}
+diff --git a/packages/ui/src/settings/pluginMarketplaceAddAttempt.ts b/packages/ui/src/settings/pluginMarketplaceAddAttempt.ts
+new file mode 100644
+index 00000000..c0bad84d
+--- /dev/null
++++ b/packages/ui/src/settings/pluginMarketplaceAddAttempt.ts
+@@ -0,0 +1,30 @@
++import type { IPluginManagementService } from "@zcode/services";
++
++/** UI lifetime only; the original backend operation/controller owns cancellation and writes. */
++export function createPluginMarketplaceAddAttempt(service: IPluginManagementService) {
++  const operationId = `plugin-market-add:${crypto.randomUUID()}`;
++  let closed = false;
++  let cancellation: Promise<void> | undefined;
++  return {
++    operationId,
++    get closed() {
++      return closed;
++    },
++    dismiss() {
++      closed = true;
++    },
++    async close() {
++      closed = true;
++      if (cancellation) return cancellation;
++      const pending = service.cancelPluginOperation({ operationId }).then(() => {});
++      cancellation = pending;
++      try {
++        await pending;
++      } catch (error) {
++        // A failed acknowledgement remains retryable against the same original operation.
++        if (cancellation === pending) cancellation = undefined;
++        throw error;
++      }
++    },
++  };
++}
+diff --git a/packages/ui/src/store/pluginManagementStore.ts b/packages/ui/src/store/pluginManagementStore.ts
+index de08577c..a174598d 100644
+--- a/packages/ui/src/store/pluginManagementStore.ts
++++ b/packages/ui/src/store/pluginManagementStore.ts
+@@ -1,4 +1,9 @@
+ import { create } from "zustand";
++import { createPluginDescriptionAction } from "@/store/pluginManagementStoreDescriptions.js";
++import {
++  capturePluginContext,
++  isPluginContextCurrent,
++} from "@/store/pluginManagementStoreRequests.js";
+ import { createPluginGrantActions } from "@/store/pluginManagementStoreGrants.js";
+ import type {
+   ZCodeAvailablePluginSummary,
+@@ -21,9 +26,7 @@ export interface PluginDescribeEntry {
+   error?: string;
+ }
+ 
+-// 设置页「插件管理」的数据源: 经 IPluginManagementService 薄服务由 zcode-cli 提供 (list + enable/disable)。
+-// UI 不再直触 IZCodeAgentService，plugins/* 旧协议词的消费收拢到服务实现一处。
+-// 与已 retired 的 marketplace pluginStore 无关, 故单独建一个精简 store。
++// 插件投影经 IPluginManagementService 读取 CLI 的原事实源，UI 不直触 agent。
+ export interface PluginManagementState {
+   workspacePath: string | null;
+   workspaceIdentity: string | null;
+@@ -60,6 +63,7 @@ export interface PluginManagementState {
+     source: string,
+     pluginService: IPluginManagementService,
+     catalog?: "skills",
++    operationId?: string,
+   ) => Promise<boolean>;
+   updateMarketplace: (
+     marketplace: string | null,
+@@ -168,16 +172,15 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+       workspacePath,
+       workspaceIdentity: normalizedIdentity,
+       configScope: normalizedConfigScope,
+-      // 有缓存时后台刷新、保留列表, 避免切换 workspace 时闪烁; 无缓存才显示阻塞 loading。
++      // 同上下文有缓存时后台刷新，否则显示 loading。
+       loading: !hasCache,
+       marketplaceAvailabilityKnown: hasCache ? current.marketplaceAvailabilityKnown : false,
+       error: null,
+       lastFailedPluginId: null,
+-      // 配置保存后的 overview 刷新可能还没结束，用户已切到另一层配置视图；
+-      // 旧层的 operationId 不能继续把新层的输入控件置灰。旧操作结束时由版本号防止
+-      // 它误清理新层后来启动的同名操作。
+-      ...(contextChanged ? { operationId: null } : {}),
++      // 切层释放旧忙碌投影；请求 epoch/版本防止旧完成清掉新操作。
++      ...(contextChanged ? { operationId: null, togglingPluginId: null } : {}),
+     });
++    capturePluginContext(set, get, pluginService);
+     await loadInto(set, get, {
+       workspacePath,
+       workspaceIdentity: normalizedIdentity,
+@@ -197,10 +200,11 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+       workspaceIdentity,
+       configScope,
+       pluginService,
++      forceFresh: true,
+     });
+   },
+ 
+-  async addMarketplace(source, pluginService, catalog) {
++  async addMarketplace(source, pluginService, catalog, operationId) {
+     return runWorkspaceOperation(
+       set,
+       get,
+@@ -211,12 +215,15 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+           ...workspace,
+           source,
+           ...(catalog ? { catalog } : {}),
++          ...(operationId ? { operationId } : {}),
+         });
+       },
+     );
+   },
+ 
+   async updateMarketplace(marketplace, pluginService) {
++    const context = capturePluginContext(set, get, pluginService);
++    const operationVersion = get().operationVersion + 1;
+     let refreshError: string | null = null;
+     const succeeded = await runWorkspaceOperation(
+       set,
+@@ -228,9 +235,7 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+           ...workspace,
+           ...(marketplace ? { marketplace } : {}),
+         });
+-        // 刷新允许部分成功，因此仍要 reload overview 保留成功来源；但仅 warn
+-        // 并返回 true，桌面与手机 Web 都会把旧快照误报成刷新成功。先记住错误，reload 后再写入
+-        // 共用 store 的可见错误态，同时返回 false，让所有入口获得一致的部分失败语义。
++        // 部分失败仍加载成功来源，但同操作刷新后展示诊断并返回 false。
+         const blockingDiagnostic = result.diagnostics?.find(
+           (diagnostic) => diagnostic.severity === "error",
+         );
+@@ -242,7 +247,12 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+         }
+       },
+     );
+-    if (succeeded && refreshError) {
++    if (
++      succeeded &&
++      refreshError &&
++      isPluginContextCurrent(get, context) &&
++      get().operationVersion === operationVersion
++    ) {
+       // 列表刷新失败无插件目标，归属清空（不指向任何插件）。
+       set({ error: refreshError, lastFailedPluginId: null });
+       return false;
+@@ -278,9 +288,7 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+           marketplace,
+           scope,
+         });
+-        // CLI 为了保留结构化诊断，安装失败会返回成功的 RPC envelope，
+-        // 并把实际错误放进 diagnostics。旧 UI 忽略返回值后继续刷新，看起来像按钮无响应，
+-        // 也没有错误和重试入口；这里将 error diagnostic 收敛到既有 operation 错误态。
++        // CLI 错误位于 diagnostics，须投影到原 operation 错误态。
+         throwForErrorDiagnostic(result.diagnostics);
+       },
+     );
+@@ -388,55 +396,5 @@ export const usePluginManagementStore = create<PluginManagementState>((set, get)
+     return setPluginEnabledOptimistically(set, get, pluginId, enabled, pluginService, scope);
+   },
+ 
+-  async describePlugin(pluginId, pluginName, marketplace, pluginService, force = false) {
+-    const { workspacePath, workspaceIdentity, describeCache } = get();
+-    if (!workspacePath) return;
+-    const cached = describeCache[pluginId];
+-    // 已加载或正在加载时命中缓存，不重复请求；force 时强制重试。
+-    if (!force && cached && cached.status !== "error") return;
+-    set({
+-      describeCache: { ...get().describeCache, [pluginId]: { status: "loading" } },
+-    });
+-    try {
+-      const data = await pluginService.describePlugin({
+-        workspacePath,
+-        ...(workspaceIdentity ? { workspaceIdentity } : {}),
+-        marketplace,
+-        pluginName,
+-      });
+-      const blockingDiagnostic = data.diagnostics?.find(
+-        (diagnostic) => diagnostic.severity === "error",
+-      );
+-      if (data.components.length === 0 && blockingDiagnostic) {
+-        // CLI 的 describe 对不可解析来源采用 diagnostics 回包而非 RPC reject。
+-        // 旧 UI 把该回包缓存为 loaded，详情只显示空白且永远没有重试入口；这里将无组件的
+-        // error diagnostic 映射成可恢复错误态，同时保留正常的部分成功回包。
+-        set({
+-          describeCache: {
+-            ...get().describeCache,
+-            [pluginId]: { status: "error", error: blockingDiagnostic.message },
+-          },
+-        });
+-        return;
+-      }
+-      set({
+-        describeCache: {
+-          ...get().describeCache,
+-          [pluginId]: { status: "loaded", data },
+-        },
+-      });
+-    } catch (error) {
+-      logger.error("[plugins] describe failed", {
+-        pluginId,
+-        marketplace,
+-        error: toMessage(error),
+-      });
+-      set({
+-        describeCache: {
+-          ...get().describeCache,
+-          [pluginId]: { status: "error", error: toMessage(error) },
+-        },
+-      });
+-    }
+-  },
++  describePlugin: createPluginDescriptionAction(set, get),
+ }));
+diff --git a/packages/ui/src/store/pluginManagementStoreDescriptions.ts b/packages/ui/src/store/pluginManagementStoreDescriptions.ts
+new file mode 100644
+index 00000000..d3e5f35d
+--- /dev/null
++++ b/packages/ui/src/store/pluginManagementStoreDescriptions.ts
+@@ -0,0 +1,49 @@
++import type { PluginDescribeEntry, PluginManagementState } from "@/store/pluginManagementStore.js";
++import {
++  capturePluginContext,
++  isPluginContextCurrent,
++} from "@/store/pluginManagementStoreRequests.js";
++import { logger } from "@/logger.js";
++
++export function createPluginDescriptionAction(
++  set: (partial: Partial<PluginManagementState>) => void,
++  get: () => PluginManagementState,
++): PluginManagementState["describePlugin"] {
++  return async (pluginId, pluginName, marketplace, pluginService, force = false) => {
++    const context = capturePluginContext(set, get, pluginService);
++    const { workspacePath, workspaceIdentity, describeCache } = get();
++    if (!workspacePath) return;
++    const cached = describeCache[pluginId];
++    if (!force && cached && cached.status !== "error") return;
++    const pending: PluginDescribeEntry = { status: "loading" };
++    set({ describeCache: { ...get().describeCache, [pluginId]: pending } });
++    // entry 身份同时挡住 force 重试、刷新、Host/scope 切换后的迟到响应。
++    const isCurrent = () =>
++      isPluginContextCurrent(get, context) && get().describeCache[pluginId] === pending;
++    const publish = (entry: PluginDescribeEntry) => {
++      if (isCurrent()) set({ describeCache: { ...get().describeCache, [pluginId]: entry } });
++    };
++    try {
++      const data = await pluginService.describePlugin({
++        workspacePath,
++        ...(workspaceIdentity ? { workspaceIdentity } : {}),
++        marketplace,
++        pluginName,
++      });
++      const blockingDiagnostic = data.diagnostics?.find(
++        (diagnostic) => diagnostic.severity === "error",
++      );
++      // 无组件的错误仍可重试；部分成功的组件与诊断保持原契约。
++      publish(
++        data.components.length === 0 && blockingDiagnostic
++          ? { status: "error", error: blockingDiagnostic.message }
++          : { status: "loaded", data },
++      );
++    } catch (error) {
++      if (!isCurrent()) return;
++      const message = error instanceof Error ? error.message : String(error);
++      logger.error("[plugins] describe failed", { pluginId, marketplace, error: message });
++      publish({ status: "error", error: message });
++    }
++  };
++}
+diff --git a/packages/ui/src/store/pluginManagementStoreEnabled.ts b/packages/ui/src/store/pluginManagementStoreEnabled.ts
+index 30ef0f1f..8b8fd626 100644
+--- a/packages/ui/src/store/pluginManagementStoreEnabled.ts
++++ b/packages/ui/src/store/pluginManagementStoreEnabled.ts
+@@ -1,6 +1,11 @@
+ import type { IPluginManagementService } from "@zcode/services";
+ import type { ZCodePluginScope } from "@zcode/shared";
+ import { logger } from "@/logger.js";
++import {
++  capturePluginContext,
++  invalidatePluginRead,
++  isPluginContextCurrent,
++} from "@/store/pluginManagementStoreRequests.js";
+ import { loadInto } from "@/store/pluginManagementStoreLoading.js";
+ import type { PluginManagementState } from "@/store/pluginManagementStore.js";
+ 
+@@ -9,7 +14,7 @@ function toMessage(error: unknown): string {
+ }
+ 
+ let nextToggleRequestId = 0;
+-const activeToggleRequests = new Map<string, number>();
++const toggleRequests = new WeakMap<() => PluginManagementState, Map<string, number>>();
+ 
+ function buildToggleRequestKey(input: {
+   workspacePath: string;
+@@ -32,6 +37,13 @@ export async function setPluginEnabledOptimistically(
+   const { workspacePath, workspaceIdentity, configScope } = get();
+   if (!workspacePath) return false;
+ 
++  let activeToggleRequests = toggleRequests.get(get);
++  if (!activeToggleRequests) {
++    activeToggleRequests = new Map();
++    toggleRequests.set(get, activeToggleRequests);
++  }
++  const context = capturePluginContext(set, get, pluginService);
++  invalidatePluginRead(set, context, false);
+   const requestKey = buildToggleRequestKey({
+     workspacePath,
+     workspaceIdentity,
+@@ -43,6 +55,7 @@ export async function setPluginEnabledOptimistically(
+   const isCurrentRequest = (): boolean => {
+     const current = get();
+     return (
++      isPluginContextCurrent(get, context) &&
+       activeToggleRequests.get(requestKey) === requestId &&
+       current.workspacePath === workspacePath &&
+       current.workspaceIdentity === workspaceIdentity &&
+@@ -56,6 +69,8 @@ export async function setPluginEnabledOptimistically(
+   // 在 catch 中恢复快照，避免用户把正常的异步写入误判成“点了没反应”。
+   set({
+     togglingPluginId: pluginId,
++    // 启停同样接管旧读取；失败时不能遗留被撤销读取的 loading。
++    loading: false,
+     error: null,
+     lastFailedPluginId: null,
+     ...(previousPlugin
+@@ -86,6 +101,7 @@ export async function setPluginEnabledOptimistically(
+       workspaceIdentity,
+       configScope,
+       pluginService,
++      forceFresh: true,
+     });
+     return isCurrentRequest();
+   } catch (error) {
+diff --git a/packages/ui/src/store/pluginManagementStoreLoading.ts b/packages/ui/src/store/pluginManagementStoreLoading.ts
+index 81231379..f3a48a85 100644
+--- a/packages/ui/src/store/pluginManagementStoreLoading.ts
++++ b/packages/ui/src/store/pluginManagementStoreLoading.ts
+@@ -2,6 +2,12 @@ import type { IPluginManagementService } from "@zcode/services";
+ import type { ZCodePluginScope } from "@zcode/shared";
+ import { logger } from "@/logger.js";
+ import type { PluginManagementState } from "@/store/pluginManagementStore.js";
++import {
++  capturePluginContext,
++  invalidatePluginRead,
++  isPluginContextCurrent,
++  type PluginRequestContext,
++} from "@/store/pluginManagementStoreRequests.js";
+ 
+ function toMessage(error: unknown): string {
+   return error instanceof Error ? error.message : String(error);
+@@ -11,8 +17,6 @@ function buildWorkspaceKey(workspacePath: string, workspaceIdentity: string | nu
+   return workspaceIdentity?.trim() || workspacePath;
+ }
+ 
+-const inFlightLoads = new Map<string, Promise<void>>();
+-
+ export async function runWorkspaceOperation(
+   set: (partial: Partial<PluginManagementState>) => void,
+   get: () => PluginManagementState,
+@@ -22,18 +26,24 @@ export async function runWorkspaceOperation(
+ ): Promise<boolean> {
+   const { workspacePath, workspaceIdentity, configScope } = get();
+   if (!workspacePath) return false;
++  const context = capturePluginContext(set, get, pluginService);
++  invalidatePluginRead(set, context, false);
+   const operationVersion = get().operationVersion + 1;
+-  set({ operationId, operationVersion, error: null, lastFailedPluginId: null });
++  // 操作已撤销旧列表读取的所有权，也必须结束它留下的 cold-open loading。
++  set({ operationId, operationVersion, error: null, lastFailedPluginId: null, loading: false });
+   const isCurrentContext = (): boolean => {
+     const current = get();
+     return (
++      isPluginContextCurrent(get, context) &&
+       current.workspacePath === workspacePath &&
+       current.workspaceIdentity === workspaceIdentity &&
+       current.configScope === configScope
+     );
+   };
+   const ownsVisibleOperation = (): boolean =>
+-    isCurrentContext() && get().operationId === operationId;
++    isCurrentContext() &&
++    get().operationId === operationId &&
++    get().operationVersion === operationVersion;
+   try {
+     await operation({
+       workspacePath,
+@@ -47,6 +57,7 @@ export async function runWorkspaceOperation(
+       workspaceIdentity,
+       configScope,
+       pluginService,
++      forceFresh: true,
+     });
+     return isCurrentContext();
+   } catch (error) {
+@@ -76,27 +87,29 @@ export async function loadInto(
+     workspaceIdentity: string | null;
+     configScope: ZCodePluginScope | null;
+     pluginService: IPluginManagementService;
++    forceFresh?: boolean;
+   },
+ ): Promise<void> {
+   const workspaceKey = buildWorkspaceKey(params.workspacePath, params.workspaceIdentity);
+-  const loadKey = `${workspaceKey}\u0000${params.configScope ?? "effective"}`;
+-  const existing = inFlightLoads.get(loadKey);
+-  if (existing) {
++  const context = capturePluginContext(set, get, params.pluginService);
++  const owner = context.owner;
++  const existing = owner.load;
++  if (!params.forceFresh && existing?.generation === owner.generation) {
+     logger.debug("[plugins] join in-flight list", {
+       configScope: params.configScope,
+       workspaceKey,
+     });
+-    await existing;
++    await existing.promise;
+     return;
+   }
+-  const loadTask = runLoadInto(set, get, { ...params, workspaceKey });
+-  inFlightLoads.set(loadKey, loadTask);
++  const generation = invalidatePluginRead(set, context);
++  const loadTask = runLoadInto(set, get, { ...params, workspaceKey, context, generation });
++  owner.load = { generation, promise: loadTask };
+   try {
+     await loadTask;
+   } finally {
+-    if (inFlightLoads.get(loadKey) === loadTask) {
+-      inFlightLoads.delete(loadKey);
+-    }
++    // 旧读取的 finally 不能释放新一代读取的登记。
++    if (owner.load?.promise === loadTask) owner.load = undefined;
+   }
+ }
+ 
+@@ -109,18 +122,32 @@ async function runLoadInto(
+     configScope: ZCodePluginScope | null;
+     workspaceKey: string;
+     pluginService: IPluginManagementService;
++    context: PluginRequestContext;
++    generation: number;
+   },
+ ): Promise<void> {
++  const errorAtStart = get().error;
++  const operationVersionAtStart = get().operationVersion;
++  const isCurrent = () =>
++    isPluginContextCurrent(get, params.context) &&
++    params.context.owner.generation === params.generation;
+   const setIfCurrent = (partial: Partial<PluginManagementState>): void => {
+     const current = get();
+     if (
++      !isCurrent() ||
+       current.workspacePath !== params.workspacePath ||
+       current.workspaceIdentity !== params.workspaceIdentity ||
+       current.configScope !== params.configScope
+     ) {
+       return;
+     }
+-    set(partial);
++    // 同代读取也可能在操作进行中启动；它不能覆盖随后出现的操作失败。
++    if (current.operationVersion !== operationVersionAtStart || current.error !== errorAtStart) {
++      const { error: _error, lastFailedPluginId: _failedPlugin, ...rest } = partial;
++      set(rest);
++    } else {
++      set(partial);
++    }
+   };
+   try {
+     // React StrictMode、settings service 引用刷新或快速切换设置页时，
+@@ -148,9 +175,11 @@ async function runLoadInto(
+       installedPlugins: overviewResult.installedPlugins,
+       restorableBuiltins: overviewResult.restorableBuiltins,
+       diagnostics,
++      error: null,
+       loading: false,
+     });
+   } catch (error) {
++    if (!isCurrent()) return;
+     logger.error("[plugins] overview/list failed", {
+       workspacePath: params.workspacePath,
+       workspaceKey: params.workspaceKey,
+@@ -173,6 +202,9 @@ async function runLoadInto(
+         installedPlugins: [],
+         restorableBuiltins: [],
+         diagnostics: result.diagnostics,
++        // 安装列表的回退不代表目录读取成功；保留未知来源保护并展示原失败。
++        error: toMessage(error),
++        lastFailedPluginId: null,
+         loading: false,
+       });
+       return;
+diff --git a/packages/ui/src/store/pluginManagementStoreRequests.ts b/packages/ui/src/store/pluginManagementStoreRequests.ts
+new file mode 100644
+index 00000000..a7365640
+--- /dev/null
++++ b/packages/ui/src/store/pluginManagementStoreRequests.ts
+@@ -0,0 +1,57 @@
++import type { IPluginManagementService } from "@zcode/services";
++import type { PluginManagementState } from "@/store/pluginManagementStore.js";
++
++type Get = () => PluginManagementState;
++type Set = (partial: Partial<PluginManagementState>) => void;
++interface RequestOwner {
++  key: string;
++  service: IPluginManagementService;
++  epoch: number;
++  generation: number;
++  load?: { generation: number; promise: Promise<void> };
++}
++export interface PluginRequestContext {
++  owner: RequestOwner;
++  epoch: number;
++  key: string;
++}
++// 原 store 是投影唯一所有者；弱引用只登记其异步请求，不存另一份插件事实。
++const owners = new WeakMap<Get, RequestOwner>();
++function contextKey(get: Get): string {
++  const { workspacePath, workspaceIdentity, configScope } = get();
++  return JSON.stringify([workspacePath, workspaceIdentity, configScope]);
++}
++export function capturePluginContext(
++  set: Set,
++  get: Get,
++  service: IPluginManagementService,
++): PluginRequestContext {
++  const key = contextKey(get);
++  let owner = owners.get(get);
++  if (!owner) {
++    owner = { key, service, epoch: 0, generation: 0 };
++    owners.set(get, owner);
++  } else if (owner.key !== key || owner.service !== service) {
++    // A→B→A 或同路径 Host 重连不能复用 A 的未完成读取/详情。
++    owner.key = key;
++    owner.service = service;
++    owner.epoch += 1;
++    owner.generation += 1;
++    owner.load = undefined;
++    set({ describeCache: {}, operationId: null, togglingPluginId: null });
++  }
++  return { owner, epoch: owner.epoch, key };
++}
++export function isPluginContextCurrent(get: Get, context: PluginRequestContext): boolean {
++  return context.owner.epoch === context.epoch && contextKey(get) === context.key;
++}
++export function invalidatePluginRead(
++  set: Set,
++  context: PluginRequestContext,
++  clearDetails = true,
++): number {
++  context.owner.generation += 1;
++  // 刷新已改变详情所依据的目录；旧请求只能被丢弃，不能重新填回缓存。
++  if (clearDetails) set({ describeCache: {} });
++  return context.owner.generation;
++}
+diff --git a/packages/ui/test/pluginMarketConsistency.browser.test.tsx b/packages/ui/test/pluginMarketConsistency.browser.test.tsx
+new file mode 100644
+index 00000000..100b9ad2
+--- /dev/null
++++ b/packages/ui/test/pluginMarketConsistency.browser.test.tsx
+@@ -0,0 +1,311 @@
++import { act } from "react";
++import { ZCODE_OFFICIAL_PLUGIN_MARKETPLACE_ID as official } from "@zcode/shared";
++import { createRoot } from "react-dom/client";
++import { ServiceProvider } from "../src/hooks/useServices.js";
++import { PlatformProvider } from "../src/hooks/usePlatform.js";
++import { TabStoreProvider } from "../src/store/TabStoreProvider.js";
++import { ZCodeIntlProvider } from "../src/i18n/IntlProvider.js";
++import { TooltipProvider } from "../src/components/ui/tooltip.js";
++import { PluginStorePage } from "../src/settings/PluginStorePage.js";
++import { usePluginManagementStore as store } from "../src/store/pluginManagementStore.js";
++import { requestPluginStoreOpen } from "../src/lib/pluginStoreNavigation.js";
++
++globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const results: Array<{ name: string; error?: string }> = [];
++function check(value: unknown, message: string): asserts value {
++  if (!value) throw new Error(message);
++}
++
++// Renderer ports use authored data. Canonical filesystem/transport tests separately prove writes
++// and cancellation; this suite verifies the real page consumes failure and refreshed detail state.
++async function run() {
++  for (const locale of ["zh-CN", "en-US"] as const) {
++    const node = document.createElement("div");
++    node.style.width = "640px";
++    document.body.append(node);
++    const root = createRoot(node);
++    const workspacePath = `/plugin-market-render/${crypto.randomUUID()}`;
++    const id = `writer@${official}`;
++    let unavailable = true;
++    let version = 1;
++    let detailReads = 0;
++    let mutations = 0;
++    const adds: Array<{ operationId?: string }> = [];
++    const cancellations: Array<{ operationId: string }> = [];
++    let releaseAdd: (() => void) | undefined;
++    const plugin = {
++      id: `saved@${official}`,
++      name: "saved",
++      marketplace: official,
++      enabled: true,
++      source: "marketplace",
++      scope: "user",
++      components: [],
++      rootPath: "/authored/saved",
++      configuredOptions: { tone: "keep" },
++    };
++    const service = {
++      listPlugins: async () => ({ plugins: [plugin], diagnostics: [] }),
++      getPluginsOverview: async () => {
++        if (unavailable) throw new Error("Authored catalog unavailable");
++        return {
++          marketplaces: [{ id: official, name: "Official", source: { kind: "builtin" } }],
++          availablePlugins: [
++            {
++              id,
++              name: "writer",
++              marketplace: official,
++              version: `${version}.0.0`,
++              listing: {
++                displayName: "Authored Writer",
++                description: "Test catalog",
++                category: "productivity",
++              },
++            },
++          ],
++          installedPlugins: [],
++          restorableBuiltins: [],
++          diagnostics: [],
++        };
++      },
++      updatePluginMarketplace: async () => ({ diagnostics: [] }),
++      describePlugin: async () => {
++        detailReads += 1;
++        return {
++          metadata: { name: "writer", version: `${version}.0.0` },
++          components: [
++            { kind: "skill", items: [{ name: `generation-${version}`, description: "Authored" }] },
++          ],
++          diagnostics: [],
++        };
++      },
++      installPlugin: async () => {
++        mutations += 1;
++        throw new Error("Unexpected install");
++      },
++      addPluginMarketplace: async (input: { operationId?: string }) => {
++        adds.push(input);
++        await new Promise<void>((resolve) => {
++          releaseAdd = resolve;
++        });
++      },
++      cancelPluginOperation: async (input: { operationId: string }) => {
++        cancellations.push(input);
++        return { ...input, cancelled: true };
++      },
++    };
++    const services = {
++      pluginManagementService: service,
++      clientConfigService: { getSnapshot: async () => ({ pluginStoreOrder: null }) },
++      zcodeSessionService: {},
++      skillsService: {},
++    };
++    const click = async (selector: string) => {
++      const target =
++        node.querySelector<HTMLElement>(selector) ?? document.querySelector<HTMLElement>(selector);
++      check(target, `Missing ${selector}`);
++      await act(async () => target.click());
++    };
++    const settleClosedDialog = async () => {
++      const dialog = document.querySelector<HTMLElement>(
++        '[data-testid="plugin-store-add-source-dialog"]',
++      );
++      if (dialog) {
++        check(dialog.dataset.state === "closed", "Dialog did not enter its closed state");
++        // The shipped stylesheet keeps the closed Radix node for its exit animation.
++        await act(async () => {
++          await Promise.all(
++            dialog.getAnimations().map((animation) => animation.finished.catch(() => {})),
++          );
++        });
++      }
++      check(
++        !document.querySelector('[data-testid="plugin-store-add-source-dialog"]'),
++        "Closed dialog remained after its exit animation",
++      );
++    };
++    store.setState({ ...store.getInitialState() }, true);
++    const page = (key: string) => (
++      <ServiceProvider services={services as never}>
++        <PlatformProvider
++          platform={
++            {
++              openExternal: async () => {
++                throw new Error("Unexpected external navigation");
++              },
++            } as never
++          }
++        >
++          <TabStoreProvider>
++            <ZCodeIntlProvider initialLocale={locale}>
++              <TooltipProvider>
++                <PluginStorePage
++                  key={key}
++                  workspacePath={workspacePath}
++                  onManageInstalled={() => {}}
++                />
++              </TooltipProvider>
++            </ZCodeIntlProvider>
++          </TabStoreProvider>
++        </PlatformProvider>
++      </ServiceProvider>
++    );
++    try {
++      await act(async () => root.render(page("read")));
++      check(
++        node
++          .querySelector('[data-testid="plugin-store-error"]')
++          ?.textContent?.includes("Authored catalog unavailable"),
++        "Catalog failure was concealed by the installed-list fallback",
++      );
++      check(
++        store.getState().plugins[0]?.configuredOptions?.tone === "keep",
++        "Saved options lost on partial failure",
++      );
++      check(
++        !store.getState().marketplaceAvailabilityKnown,
++        "Failed overview became a known empty source",
++      );
++      results.push({
++        name: `${locale}: actual market exposes source failure and keeps installed configuration`,
++      });
++      unavailable = false;
++      await click('[data-testid="plugin-store-refresh"]');
++      check(
++        !node.querySelector('[data-testid="plugin-store-error"]'),
++        "Successful retry left stale failure",
++      );
++      await click(`[data-testid="plugin-store-card"][data-plugin-id="${id}"]`);
++      check(node.textContent?.includes("generation-1"), "Original component details missing");
++      version = 2;
++      await act(async () => {
++        await store.getState().updateMarketplace(null, service as never);
++      });
++      check(
++        node.textContent?.includes("generation-2"),
++        "Refreshed page retained obsolete component details",
++      );
++      check(!node.textContent?.includes("generation-1"), "Stale detail remained after refresh");
++      check(detailReads === 2, "Current details were not read exactly once per catalog generation");
++      check(mutations === 0, "Read-only detail/retry unexpectedly installed a plugin");
++      results.push({
++        name: `${locale}: actual detail follows refreshed catalog without install or grant`,
++      });
++      requestPluginStoreOpen({ intent: "add-marketplace" });
++      await act(async () => root.render(page("add")));
++      const input = document.querySelector<HTMLInputElement>(
++        '[data-testid="plugin-store-add-source-input"]',
++      );
++      check(input, "Original add-source dialog did not open");
++      await act(async () => {
++        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
++          input,
++          "https://authored.invalid/catalog.json",
++        );
++        input.dispatchEvent(new Event("input", { bubbles: true }));
++      });
++      await click('[data-testid="plugin-store-add-source-submit"]');
++      check(
++        adds.length === 1 && adds[0].operationId,
++        "Human add omitted its backend operation identity",
++      );
++      await act(async () => {
++        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
++      });
++      check(
++        cancellations.length === 1 && cancellations[0].operationId === adds[0].operationId,
++        "Closing did not cancel the exact original request",
++      );
++      await settleClosedDialog();
++      // An already completed/late ACK remains the backend's fact; it must not reopen the closed UI.
++      await act(async () => {
++        releaseAdd?.();
++      });
++      check(
++        !document.querySelector('[data-testid="plugin-store-add-source-dialog"]'),
++        "Late add completion reopened the dialog",
++      );
++      results.push({
++        name: `${locale}: closing human add requests cancellation through its original operation id`,
++      });
++      requestPluginStoreOpen({ intent: "add-marketplace" });
++      await act(async () => root.render(page("context")));
++      const fillSource = async (value: string) => {
++        const field = document.querySelector<HTMLInputElement>(
++          '[data-testid="plugin-store-add-source-input"]',
++        );
++        check(field, "Context dialog did not open");
++        await act(async () => {
++          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
++            field,
++            value,
++          );
++          field.dispatchEvent(new Event("input", { bubbles: true }));
++        });
++      };
++      await fillSource("https://original-host.invalid/catalog.json");
++      await click('[data-testid="plugin-store-add-source-submit"]');
++      check(adds.length === 2, "Original Host add did not start");
++      const finishOriginal = releaseAdd;
++      const nextAdds: Array<{ operationId?: string }> = [];
++      const nextCancellations: Array<{ operationId: string }> = [];
++      let finishNext: (() => void) | undefined;
++      services.pluginManagementService = {
++        ...service,
++        addPluginMarketplace: async (input: { operationId?: string }) => {
++          nextAdds.push(input);
++          await new Promise<void>((resolve) => {
++            finishNext = resolve;
++          });
++        },
++        cancelPluginOperation: async (value: { operationId: string }) => {
++          nextCancellations.push(value);
++          return { ...value, cancelled: true };
++        },
++      };
++      // Same actual page instance, replaced Host service: both parent and dialog lifetime matter.
++      await act(async () => root.render(page("context")));
++      check(
++        document.querySelector<HTMLInputElement>('[data-testid="plugin-store-add-source-input"]')
++          ?.value === "",
++        "New Host retained the old pending dialog input",
++      );
++      await fillSource("https://next-host.invalid/catalog.json");
++      await click('[data-testid="plugin-store-add-source-submit"]');
++      check(
++        nextAdds.length === 1 && nextAdds[0].operationId !== adds[1].operationId,
++        "Pending original Host blocked the new Host or reused its operation identity",
++      );
++      await act(async () => {
++        finishOriginal?.();
++      });
++      check(
++        document.querySelector<HTMLInputElement>('[data-testid="plugin-store-add-source-input"]')
++          ?.value === "https://next-host.invalid/catalog.json",
++        "Original Host completion closed or cleared the new dialog",
++      );
++      await act(async () =>
++        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
++      );
++      check(
++        nextCancellations[0]?.operationId === nextAdds[0].operationId && cancellations.length === 1,
++        "Close cancelled an operation owned by the wrong Host",
++      );
++      await act(async () => {
++        finishNext?.();
++      });
++      results.push({
++        name: `${locale}: new Host add remains independent of a pending original dialog`,
++      });
++    } catch (error) {
++      results.push({ name: `${locale}: plugin market consistency`, error: String(error) });
++    } finally {
++      await act(async () => root.unmount());
++      node.remove();
++      store.setState({ ...store.getInitialState() }, true);
++    }
++  }
++}
++(window as unknown as Record<string, unknown>).__pluginMarketConsistencyTests = run().then(
++  () => results,
++);
+diff --git a/packages/ui/test/pluginMarketConsistency.test.ts b/packages/ui/test/pluginMarketConsistency.test.ts
+new file mode 100644
+index 00000000..77ef2c40
+--- /dev/null
++++ b/packages/ui/test/pluginMarketConsistency.test.ts
+@@ -0,0 +1,370 @@
++import assert from "node:assert/strict";
++import { readFile } from "node:fs/promises";
++import test from "node:test";
++import { pluginMarketFixture, holdPluginReads, deferred } from "./pluginMarketFixture.js";
++
++// ZP-FIX/U: successful writes must read after commit, not join the read they supersede.
++test("configuration save supersedes held reads and survives reopening the projection", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    await f.store.getState().configurePlugin(f.id, { tone: "old" }, f.service);
++    const held = await holdPluginReads(f.agent);
++    const oldRead = f.store.getState().refresh(f.service);
++    await held.ready;
++    const saved = f.store.getState().configurePlugin(f.id, { tone: "new" }, f.service);
++    // Mutation is actually persisted before the old read is released.
++    for (let i = 0; i < 100; i++) {
++      const disk = JSON.parse(await readFile(f.configPath, "utf8"));
++      if (disk.plugins.options[f.id].tone === "new") break;
++      await new Promise((resolve) => setTimeout(resolve, 5));
++    }
++    held.release();
++    assert.equal(await saved, true);
++    await oldRead;
++    assert.equal(
++      f.store.getState().plugins.find((entry) => entry.id === f.id)?.configuredOptions?.tone,
++      "new",
++    );
++    held.restore();
++    f.store.setState({ ...f.store.getInitialState() }, true);
++    await f.store
++      .getState()
++      .initialize({ workspacePath: f.workspace, configScope: "user", pluginService: f.service });
++    assert.equal(
++      f.store.getState().plugins.find((entry) => entry.id === f.id)?.configuredOptions?.tone,
++      "new",
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("catalog refresh replaces cached details and ignores a held old description", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    const id = "writer@audit-market";
++    await f.store.getState().describePlugin(id, "writer", "audit-market", f.service);
++    assert.equal(f.store.getState().describeCache[id].data?.metadata?.version, "1.0.0");
++    const original = f.agent.describePlugin;
++    const ready = deferred();
++    const release = deferred();
++    f.agent.describePlugin = async (input) => {
++      const result = await original(input);
++      ready.resolve();
++      await release.promise;
++      return result;
++    };
++    const oldDetail = f.store
++      .getState()
++      .describePlugin(id, "writer", "audit-market", f.service, true);
++    await ready.promise;
++    await f.publish("2.0.0", "second");
++    assert.equal(await f.store.getState().updateMarketplace("audit-market", f.service), true);
++    f.agent.describePlugin = original;
++    await f.store.getState().describePlugin(id, "writer", "audit-market", f.service);
++    release.resolve();
++    await oldDetail;
++    const detail = f.store.getState().describeCache[id].data!;
++    assert.equal(detail.metadata?.version, "2.0.0");
++    assert.ok(
++      detail.components.some((group) => group.items.some((item) => item.name === "second")),
++    );
++    assert.equal(
++      f.store.getState().availablePlugins.find((entry) => entry.id === id)?.version,
++      "2.0.0",
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("overview failure preserves installed fallback and exposes an error until retry", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    const original = f.agent.getPluginsOverview;
++    f.agent.getPluginsOverview = async () => {
++      throw new Error("fixture catalog transport failure");
++    };
++    await f.store.getState().refresh(f.service);
++    assert.equal(f.store.getState().error, "fixture catalog transport failure");
++    assert.equal(f.store.getState().marketplaceAvailabilityKnown, false);
++    assert.ok(f.store.getState().plugins.some((entry) => entry.id === f.id));
++    f.agent.getPluginsOverview = original;
++    await f.store.getState().refresh(f.service);
++    assert.equal(f.store.getState().error, null);
++    assert.equal(f.store.getState().marketplaceAvailabilityKnown, true);
++    assert.ok(f.store.getState().marketplaces.some((entry) => entry.name === "audit-market"));
++  } finally {
++    await f.close();
++  }
++});
++
++test("enable and grant commits supersede held snapshots without changing grant ownership", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    await f.store.getState().installPlugin("writer", "audit-market", f.service);
++    const id = "writer@audit-market";
++    assert.equal(
++      f.store.getState().plugins.find((entry) => entry.id === id)?.grant?.granted,
++      false,
++    );
++    for (const mutation of [
++      () => f.store.getState().setEnabled(id, false, f.service),
++      () => f.store.getState().setEnabled(id, true, f.service),
++      () =>
++        f.store
++          .getState()
++          .grantPlugin(
++            id,
++            f.store.getState().plugins.find((entry) => entry.id === id)!.grant!.fingerprint,
++            f.service,
++          ),
++      () => f.store.getState().revokePluginGrant(id, f.service),
++    ]) {
++      const held = await holdPluginReads(f.agent);
++      const old = f.store.getState().refresh(f.service);
++      await held.ready;
++      assert.equal(await mutation(), true);
++      const current = await f.agent.listPlugins({
++        workspacePath: f.workspace,
++        configScope: "user",
++      });
++      held.release();
++      await old;
++      held.restore();
++      assert.deepEqual(
++        f.store.getState().plugins.find((entry) => entry.id === id),
++        current.plugins.find((entry) => entry.id === id),
++      );
++    }
++    f.store.setState({ ...f.store.getInitialState() }, true);
++    await f.store
++      .getState()
++      .initialize({ workspacePath: f.workspace, configScope: "user", pluginService: f.service });
++    const reopened = f.store.getState().plugins.find((entry) => entry.id === id)!;
++    assert.equal(reopened.enabled, true);
++    assert.equal(reopened.grant?.granted, false);
++    assert.deepEqual(reopened.mcpServerNames, []);
++  } finally {
++    await f.close();
++  }
++});
++
++test("scope A→B→A rejects late A snapshot and description", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    await f.store.getState().configurePlugin(f.id, { tone: "old" }, f.service);
++    const held = await holdPluginReads(f.agent);
++    const old = f.store.getState().refresh(f.service);
++    await held.ready;
++    const original = f.agent.describePlugin;
++    const ready = deferred();
++    const release = deferred();
++    f.agent.describePlugin = async (input) => {
++      const result = await original(input);
++      ready.resolve();
++      await release.promise;
++      return result;
++    };
++    const oldDetail = f.store
++      .getState()
++      .describePlugin("writer@audit-market", "writer", "audit-market", f.service);
++    await ready.promise;
++    await f.store.getState().initialize({
++      workspacePath: f.workspace,
++      configScope: "workspace",
++      pluginService: f.service,
++    });
++    await f.agent.configurePlugin({
++      workspacePath: f.workspace,
++      pluginId: f.id,
++      options: { tone: "new" },
++      scope: "user",
++    });
++    await f.store
++      .getState()
++      .initialize({ workspacePath: f.workspace, configScope: "user", pluginService: f.service });
++    held.release();
++    release.resolve();
++    await Promise.all([old, oldDetail]);
++    assert.equal(
++      f.store.getState().plugins.find((entry) => entry.id === f.id)?.configuredOptions?.tone,
++      "new",
++    );
++    assert.equal(f.store.getState().describeCache["writer@audit-market"], undefined);
++    assert.equal(f.store.getState().operationId, null);
++  } finally {
++    await f.close();
++  }
++});
++
++test("same workspace service replacement rejects the old service read", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    await f.store.getState().configurePlugin(f.id, { tone: "old" }, f.service);
++    const held = await holdPluginReads(f.agent);
++    const old = f.store.getState().refresh(f.service);
++    await held.ready;
++    await f.agent.configurePlugin({
++      workspacePath: f.workspace,
++      pluginId: f.id,
++      options: { tone: "new" },
++      scope: "user",
++    });
++    const replacement = { ...f.service };
++    await f.store
++      .getState()
++      .initialize({ workspacePath: f.workspace, configScope: "user", pluginService: replacement });
++    held.release();
++    await old;
++    assert.equal(
++      f.store.getState().plugins.find((entry) => entry.id === f.id)?.configuredOptions?.tone,
++      "new",
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("a force description retry wins over its older pending request", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    const original = f.agent.describePlugin;
++    const ready = deferred();
++    const release = deferred();
++    f.agent.describePlugin = async (input) => {
++      const result = await original(input);
++      ready.resolve();
++      await release.promise;
++      return result;
++    };
++    const id = "writer@audit-market";
++    const old = f.store.getState().describePlugin(id, "writer", "audit-market", f.service);
++    await ready.promise;
++    f.agent.describePlugin = original;
++    await f.publish("2.0.0", "second");
++    await f.agent.updatePluginMarketplace({
++      workspacePath: f.workspace,
++      marketplace: "audit-market",
++    });
++    await f.store.getState().describePlugin(id, "writer", "audit-market", f.service, true);
++    release.resolve();
++    await old;
++    assert.equal(f.store.getState().describeCache[id].data?.metadata?.version, "2.0.0");
++  } finally {
++    await f.close();
++  }
++});
++
++test("market add preserves the optional backend cancellation id", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    const original = f.agent.addPluginMarketplace;
++    const calls: unknown[] = [];
++    f.agent.addPluginMarketplace = async (input) => {
++      calls.push(input);
++      return original(input);
++    };
++    const source = `${f.root}/market`;
++    assert.equal(
++      await f.store.getState().addMarketplace(source, f.service, undefined, "exact-cancel-id"),
++      true,
++    );
++    assert.equal((calls[0] as { operationId: string }).operationId, "exact-cancel-id");
++    assert.equal(await f.store.getState().addMarketplace(source, f.service), true);
++    assert.equal(Object.hasOwn(calls[1] as object, "operationId"), false);
++  } finally {
++    await f.close();
++  }
++});
++
++test("a held pre-toggle read cannot erase the pending optimistic toggle", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    await f.store.getState().setEnabled(f.id, false, f.service);
++    const held = await holdPluginReads(f.agent);
++    const old = f.store.getState().refresh(f.service);
++    await held.ready;
++    const original = f.agent.setPluginEnabled;
++    const ready = deferred();
++    const release = deferred();
++    f.agent.setPluginEnabled = async (input) => {
++      ready.resolve();
++      await release.promise;
++      return original(input);
++    };
++    const toggle = f.store.getState().setEnabled(f.id, true, f.service);
++    await ready.promise;
++    held.release();
++    await old;
++    assert.equal(f.store.getState().plugins.find((entry) => entry.id === f.id)?.enabled, true);
++    assert.equal(f.store.getState().togglingPluginId, f.id);
++    release.resolve();
++    assert.equal(await toggle, true);
++    assert.equal(f.store.getState().togglingPluginId, null);
++  } finally {
++    await f.close();
++  }
++});
++
++test("failed source add settles loading after superseding a cold initial read", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    f.store.setState({ ...f.store.getInitialState() }, true);
++    const held = await holdPluginReads(f.agent);
++    const initialize = f.store
++      .getState()
++      .initialize({ workspacePath: f.workspace, configScope: "user", pluginService: f.service });
++    await held.ready;
++    assert.equal(f.store.getState().loading, true);
++    // Existing authored empty directory is an invalid marketplace; no external source is fetched.
++    assert.equal(await f.store.getState().addMarketplace(f.workspace, f.service), false);
++    assert.equal(f.store.getState().loading, false);
++    assert.equal(f.store.getState().operationId, null);
++    const error = f.store.getState().error;
++    assert.ok(error);
++    held.release();
++    await initialize;
++    assert.equal(f.store.getState().loading, false);
++    assert.equal(f.store.getState().error, error);
++    assert.equal(f.store.getState().marketplaceAvailabilityKnown, false);
++  } finally {
++    await f.close();
++  }
++});
++
++test("older failed add does not clear loading owned by a newer initializer", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    f.store.setState(
++      { ...f.store.getInitialState(), workspacePath: f.workspace, configScope: "user" },
++      true,
++    );
++    const original = f.agent.addPluginMarketplace;
++    const ready = deferred();
++    const release = deferred();
++    f.agent.addPluginMarketplace = async (input) => {
++      ready.resolve();
++      await release.promise;
++      return original(input);
++    };
++    const add = f.store.getState().addMarketplace(f.workspace, f.service);
++    await ready.promise;
++    const held = await holdPluginReads(f.agent);
++    const initialize = f.store
++      .getState()
++      .initialize({ workspacePath: f.workspace, configScope: "user", pluginService: f.service });
++    await held.ready;
++    assert.equal(f.store.getState().loading, true);
++    release.resolve();
++    assert.equal(await add, false);
++    assert.equal(f.store.getState().loading, true);
++    const error = f.store.getState().error;
++    held.release();
++    await initialize;
++    assert.equal(f.store.getState().loading, false);
++    assert.equal(f.store.getState().error, error);
++  } finally {
++    await f.close();
++  }
++});
+diff --git a/packages/ui/test/pluginMarketFixture.ts b/packages/ui/test/pluginMarketFixture.ts
+new file mode 100644
+index 00000000..c7ff228b
+--- /dev/null
++++ b/packages/ui/test/pluginMarketFixture.ts
+@@ -0,0 +1,160 @@
++import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
++import { join } from "node:path";
++import os from "node:os";
++import { createPluginManagementService } from "../../services/src/plugins/pluginManagementService.js";
++import type { IPluginManagementService } from "@zcode/services";
++import * as handlers from "../../../apps/zcode-cli/packages/bootstrap/src/zcode-protocol/plugins.js";
++import { usePluginManagementStore as store } from "../src/store/pluginManagementStore.js";
++
++export function deferred<T = void>() {
++  let resolve!: (value: T | PromiseLike<T>) => void;
++  const promise = new Promise<T>((finish) => {
++    resolve = finish;
++  });
++  return { promise, resolve };
++}
++
++// Canonical service → production handlers → authored files, without running package contributions.
++export async function pluginMarketFixture() {
++  const root = await mkdtemp(join(os.tmpdir(), "fleet-plugin-market-consistency-"));
++  const home = join(root, "home");
++  const storage = join(root, "storage");
++  const workspace = join(root, "workspace");
++  const plugin = join(root, "plugin");
++  const market = join(root, "market");
++  const configPath = join(home, "cli", "config.json");
++  const previous = { home: process.env.ZCODE_HOME, storage: process.env.ZCODE_STORAGE_DIR };
++  process.env.ZCODE_HOME = home;
++  process.env.ZCODE_STORAGE_DIR = storage;
++  for (const dir of [
++    join(home, "cli"),
++    workspace,
++    join(plugin, ".zcode-plugin"),
++    join(market, ".claude-plugin"),
++  ]) {
++    await mkdir(dir, { recursive: true });
++  }
++  await writeFile(
++    join(plugin, ".zcode-plugin", "plugin.json"),
++    JSON.stringify({
++      name: "auditprobe",
++      version: "1.0.0",
++      userConfig: { tone: { type: "string", title: "Tone", default: "old" } },
++    }),
++  );
++  await writeFile(
++    configPath,
++    JSON.stringify({ storage: { dir: storage }, plugins: { dirs: [plugin] } }),
++  );
++  const logger = { debug() {}, info() {}, warn() {}, error() {} };
++  const context = { deps: { env: process.env }, logger } as Parameters<
++    typeof handlers.listPlugins
++  >[0];
++  const params = (input: Record<string, unknown>) => {
++    const { workspacePath, workspaceIdentity, ...rest } = input;
++    return {
++      ...rest,
++      workspace: {
++        workspacePath,
++        workspaceKey: workspaceIdentity || workspacePath,
++        ...(workspaceIdentity ? { workspaceIdentity } : {}),
++      },
++    };
++  };
++  const methods = [
++    "listPlugins",
++    "getPluginsOverview",
++    "configurePlugin",
++    "describePlugin",
++    "addPluginMarketplace",
++    "updatePluginMarketplace",
++    "setPluginEnabled",
++    "installPlugin",
++    "grantPlugin",
++    "revokePluginGrant",
++    "uninstallPlugin",
++    "resetPluginConfig",
++  ] as const;
++  const agent = Object.fromEntries(
++    methods.map((method) => [
++      method,
++      (input: Record<string, unknown>) => handlers[method](context, params(input)),
++    ]),
++  ) as unknown as IPluginManagementService;
++  const service = createPluginManagementService({ zcodeAgentService: agent as never });
++  const publish = async (version: string, skill: string) => {
++    const packageRoot = join(market, "plugins", "writer");
++    await mkdir(join(packageRoot, ".claude-plugin"), { recursive: true });
++    await mkdir(join(packageRoot, "skills", skill), { recursive: true });
++    await writeFile(
++      join(packageRoot, ".claude-plugin", "plugin.json"),
++      JSON.stringify({
++        name: "writer",
++        version,
++        mcpServers: { probe: { command: "not-executed-audit-fixture" } },
++      }),
++    );
++    await writeFile(
++      join(packageRoot, "skills", skill, "SKILL.md"),
++      `---\nname: ${skill}\ndescription: ${skill}\n---\nBody\n`,
++    );
++    await writeFile(
++      join(market, ".claude-plugin", "marketplace.json"),
++      JSON.stringify({
++        name: "audit-market",
++        plugins: [{ name: "writer", source: "./plugins/writer", version }],
++      }),
++    );
++  };
++  await publish("1.0.0", "first");
++  await service.addPluginMarketplace({ workspacePath: workspace, source: market });
++  store.setState({ ...store.getInitialState() }, true);
++  await store
++    .getState()
++    .initialize({ workspacePath: workspace, configScope: "user", pluginService: service });
++  const id = store.getState().plugins.find((entry) => entry.name === "auditprobe")!.id;
++  return {
++    root,
++    workspace,
++    configPath,
++    id,
++    service,
++    agent,
++    store,
++    publish,
++    async close() {
++      if (previous.home === undefined) delete process.env.ZCODE_HOME;
++      else process.env.ZCODE_HOME = previous.home;
++      if (previous.storage === undefined) delete process.env.ZCODE_STORAGE_DIR;
++      else process.env.ZCODE_STORAGE_DIR = previous.storage;
++      store.setState({ ...store.getInitialState() }, true);
++      await rm(root, { recursive: true, force: true });
++    },
++  };
++}
++
++export async function holdPluginReads(agent: IPluginManagementService) {
++  const ready = deferred();
++  const release = deferred();
++  const originals = {
++    listPlugins: agent.listPlugins,
++    getPluginsOverview: agent.getPluginsOverview,
++  };
++  let reads = 0;
++  for (const method of ["listPlugins", "getPluginsOverview"] as const) {
++    agent[method] = (async (input: never) => {
++      const result = await originals[method](input);
++      reads += 1;
++      if (reads <= 2) {
++        if (reads === 2) ready.resolve();
++        await release.promise;
++      }
++      return result;
++    }) as (typeof agent)[typeof method];
++  }
++  return {
++    ready: ready.promise,
++    release: () => release.resolve(),
++    restore: () => Object.assign(agent, originals),
++  };
++}
+diff --git a/packages/ui/test/pluginMarketRequestRaces.test.ts b/packages/ui/test/pluginMarketRequestRaces.test.ts
+new file mode 100644
+index 00000000..6f2ba5b3
+--- /dev/null
++++ b/packages/ui/test/pluginMarketRequestRaces.test.ts
+@@ -0,0 +1,213 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import type { IPluginManagementService } from "@zcode/services";
++import { usePluginManagementStore } from "../src/store/pluginManagementStore.js";
++import { loadInto } from "../src/store/pluginManagementStoreLoading.js";
++import { deferred, pluginMarketFixture } from "./pluginMarketFixture.js";
++
++// Controlled response timing covers request ownership separately from the real handlers suite.
++function projection() {
++  let state = {
++    ...usePluginManagementStore.getInitialState(),
++    workspacePath: "/fixture",
++    configScope: "user" as const,
++  };
++  return {
++    get: () => state,
++    set: (value: Partial<typeof state>) => {
++      state = { ...state, ...value };
++    },
++  };
++}
++function pendingService() {
++  const pending: Array<{
++    list: ReturnType<typeof deferred<any>>;
++    overview: ReturnType<typeof deferred<any>>;
++  }> = [];
++  let lists = 0,
++    overviews = 0;
++  const service = {
++    listPlugins() {
++      const index = lists++;
++      pending[index] ??= { list: deferred(), overview: deferred() };
++      return pending[index].list.promise;
++    },
++    getPluginsOverview() {
++      const index = overviews++;
++      pending[index] ??= { list: deferred(), overview: deferred() };
++      return pending[index].overview.promise;
++    },
++  } as unknown as IPluginManagementService;
++  const complete = (index: number, label: string) => {
++    pending[index].list.resolve({ plugins: [], diagnostics: [] });
++    pending[index].overview.resolve({
++      marketplaces: [{ name: label }],
++      availablePlugins: [],
++      installedPlugins: [],
++      restorableBuiltins: [],
++      diagnostics: [],
++    });
++  };
++  return { service, pending, complete, reads: () => lists };
++}
++const request = (
++  p: ReturnType<typeof projection>,
++  service: IPluginManagementService,
++  forceFresh = false,
++) =>
++  loadInto(p.set, p.get, {
++    workspacePath: "/fixture",
++    workspaceIdentity: null,
++    configScope: "user",
++    pluginService: service,
++    forceFresh,
++  });
++
++test("loads deduplicate only inside the originating store and service", async () => {
++  const a = projection(),
++    b = projection(),
++    f = pendingService();
++  const a1 = request(a, f.service),
++    a2 = request(a, f.service),
++    b1 = request(b, f.service);
++  assert.equal(f.reads(), 2);
++  f.complete(0, "a");
++  f.complete(1, "b");
++  await Promise.all([a1, a2, b1]);
++  assert.equal(a.get().marketplaces[0].name, "a");
++  assert.equal(b.get().marketplaces[0].name, "b");
++});
++
++test("old load finally cannot release a newer generation's dedup registration", async () => {
++  const p = projection(),
++    f = pendingService();
++  const old = request(p, f.service);
++  const fresh = request(p, f.service, true);
++  f.complete(0, "old");
++  await old;
++  const joined = request(p, f.service);
++  assert.equal(f.reads(), 2);
++  f.complete(1, "fresh");
++  await Promise.all([fresh, joined]);
++  assert.equal(p.get().marketplaces[0].name, "fresh");
++});
++
++test("replaced service errors cannot start fallback or erase its successor snapshot", async () => {
++  const p = projection(),
++    oldService = pendingService(),
++    newService = pendingService();
++  const old = request(p, oldService.service);
++  const current = request(p, newService.service);
++  newService.complete(0, "current");
++  await current;
++  oldService.pending[0].list.resolve({ plugins: [], diagnostics: [] });
++  oldService.pending[0].overview.resolve(Promise.reject(new Error("stale failure")));
++  await old;
++  assert.equal(oldService.reads(), 1);
++  assert.equal(p.get().marketplaces[0].name, "current");
++  assert.equal(p.get().error, null);
++});
++
++test("older same-id mutation failure cannot set error or release its newer busy owner", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    const original = f.agent.configurePlugin;
++    const first = deferred();
++    const second = deferred();
++    let calls = 0;
++    f.agent.configurePlugin = async (input) => {
++      calls++;
++      if (calls === 1) {
++        await first.promise;
++        throw new Error("old failure");
++      }
++      await second.promise;
++      return original(input);
++    };
++    const old = f.store.getState().configurePlugin(f.id, { tone: "old" }, f.service);
++    const current = f.store.getState().configurePlugin(f.id, { tone: "new" }, f.service);
++    const version = f.store.getState().operationVersion;
++    first.resolve();
++    assert.equal(await old, false);
++    assert.equal(f.store.getState().error, null);
++    assert.equal(f.store.getState().operationVersion, version);
++    assert.equal(f.store.getState().operationId, `plugin:configure:${f.id}`);
++    second.resolve();
++    assert.equal(await current, true);
++    assert.equal(f.store.getState().operationId, null);
++    assert.equal(
++      f.store.getState().plugins.find((entry) => entry.id === f.id)?.configuredOptions?.tone,
++      "new",
++    );
++  } finally {
++    await f.close();
++  }
++});
++
++test("held read cannot clear a newer mutation failure", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    const { holdPluginReads } = await import("./pluginMarketFixture.js");
++    const held = await holdPluginReads(f.agent);
++    const old = f.store.getState().refresh(f.service);
++    await held.ready;
++    f.agent.configurePlugin = async () => {
++      throw new Error("current mutation failure");
++    };
++    assert.equal(await f.store.getState().configurePlugin(f.id, { tone: "new" }, f.service), false);
++    held.release();
++    await old;
++    assert.equal(f.store.getState().error, "current mutation failure");
++  } finally {
++    await f.close();
++  }
++});
++
++test("a read started during mutation cannot replace its later failure with overview fallback", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    const mutationReady = deferred();
++    const fail = deferred();
++    f.agent.configurePlugin = async () => {
++      mutationReady.resolve();
++      await fail.promise;
++      throw new Error("current mutation failure");
++    };
++    const operation = f.store.getState().configurePlugin(f.id, { tone: "new" }, f.service);
++    await mutationReady.promise;
++    const ready = deferred();
++    const release = deferred();
++    f.agent.getPluginsOverview = async () => {
++      ready.resolve();
++      await release.promise;
++      throw new Error("older catalog failure");
++    };
++    const read = f.store.getState().refresh(f.service);
++    await ready.promise;
++    fail.resolve();
++    assert.equal(await operation, false);
++    release.resolve();
++    await read;
++    assert.equal(f.store.getState().error, "current mutation failure");
++    assert.equal(f.store.getState().marketplaceAvailabilityKnown, false);
++  } finally {
++    await f.close();
++  }
++});
++
++test("failed mutation retains already loaded details while invalidating old reads", async () => {
++  const f = await pluginMarketFixture();
++  try {
++    const id = "writer@audit-market";
++    await f.store.getState().describePlugin(id, "writer", "audit-market", f.service);
++    const detail = f.store.getState().describeCache[id];
++    f.agent.configurePlugin = async () => {
++      throw new Error("fixture write refused");
++    };
++    assert.equal(await f.store.getState().configurePlugin(f.id, { tone: "new" }, f.service), false);
++    assert.equal(f.store.getState().describeCache[id], detail);
++    assert.equal(detail.status, "loaded");
++  } finally {
++    await f.close();
++  }
++});

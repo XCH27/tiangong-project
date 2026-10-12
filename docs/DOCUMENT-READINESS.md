@@ -150,3 +150,39 @@ Full strict CLI lint remains failing with the same 87 inherited oversized-file e
 new errors and desktop fixture error were corrected without policy waivers. Source/build/fixture
 results do not imply signed distribution, live SSH/WSL/Windows/provider proof, whole-product
 `usable`, or historical wave readiness. Original user data/profile roots were not migrated.
+
+### D57 direct GUI restart evidence
+
+Isolated review app PID 49971 quit normally; original local Host exited 0 and CLI cleanup
+completed. Rebuilt committed desktop reopened as PID 54957. Existing sessions/projects restored;
+Memory remained off. Seven saved configuration and canonical Session/message/input/entry facts
+had identical before/after hashes. Evidence:
+`/Volumes/AIGC/.fleet-tmp/current-agent-review/gui-restart-evidence.json`. No provider turn.
+
+## Existing ZCode plugin-market corrective slice (D58)
+
+`modules/zcode-plugin-market-rectification.md` and the ZP-FIX packet are execution-ready only for
+U/T. Four real service/handler/NDJSON counterexamples prove stale post-save projection, stale
+detail cache, concealed catalog failure and queued cancellation. Evidence remains external at
+`/Volumes/AIGC/.fleet-tmp/plugin-market-audit-sol`; it is not a second product authority.
+
+### D58 local integration evidence — 2026-10-12
+
+Candidate `8c347cb02f4dc9e52c77f71084a9a82f21ef1a97`, source tree
+`e76f0601a4944aa5e2e9c693eb3ef2b4761087c1`, reconstructed by 212 ordered patches. Current
+root types, architecture (0 violations), root lint (0 errors, 69 inherited warnings), CLI and
+desktop builds passed. Fleet-local integration passed 99 test executions: 38 backend/existing,
+4 actual child-process cancellation, 57 UI/helper including 34 focused corrective cases.
+Actual PluginStorePage/Dialog with shipped CSS passed 8 zh/en cases: source failure, detail
+refresh, exact human cancellation identity and Host replacement while the prior add hangs.
+The renderer waits for the shipped exit animation before asserting removal; product behavior
+was not changed to satisfy a fixture. Independent Sol review verified stale error/optimistic
+projection, forced detail, context and cold-loading race corrections.
+
+Heavy new child-process cancellation tests run serially after ordinary backend cases: the first
+concurrent invocation had a pre-admission startup timeout; no product deadline/assertion was
+raised. The rebuilt staged CLI still persisted separate Session receipts through EOF/new processes
+on both development Node 26.3 and packaged Node 22.16. Exact logs remain under
+`plugin-market-audit-sol`. Inherited strict CLI oversized-file debt remains a failing release gate.
+No live plugin/provider inference, saved-profile migration or whole-product `usable` promotion is
+asserted; historical waves stay Locked.

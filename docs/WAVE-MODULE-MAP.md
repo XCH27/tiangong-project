@@ -175,3 +175,14 @@ D57 integration has completed the local build/store/transport/renderer ladder re
 CLI debt and owner/live-environment acceptance remain separate. This does not open historical
 Craft waves. New competitor/reference intake and plugin-market corrections require their own
 bounded packet; they cannot silently expand these lifecycle slices.
+
+## ZP-FIX — existing ZCode plugin market corrections (D58)
+
+| Slice | Execution gate | Owner | Scope |
+|---|---|---|---|
+| ZP-FIX/U | In Progress | Sol UI worker | Existing overview generation, detail cache, source failure projection. |
+| ZP-FIX/T | In Progress | Sol transport worker | Existing NDJSON plugin cancellation control dispatch. |
+
+Spec/packet: `modules/zcode-plugin-market-rectification.md`,
+`agent-packets/zcode-plugin-market-rectification.md`. Lead owns integration/build/render/recipe.
+This authorization does not promote capabilities or historical waves.
