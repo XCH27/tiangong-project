@@ -237,6 +237,24 @@ mutation. Production fixes require a confirmed counterexample and Lead exact pat
 
 ## W UI continuation — S worker
 
+Final native acceptance extends S's exact UI correction to `hooks/useZCodeConfig.ts` and the
+existing task-model recovery helper only after the full original Workbench reproduces React
+update depth on uncached/native Session navigation. Select stable store inputs and derive options
+outside `getSnapshot`; preserve original preference/config authority. Further tooltip/timeline
+owner edits require a confirmed causal path, not a dependency upgrade or replacement shell.
+
+R's readonly projection continuation consumes Lead commit `0a53fbc`: Shared/service DTO and
+method, original Core read/list exports and narrow context, original App readonly FS view and
+explicit cold Host dependency. R owns `zcode-protocol/native-whiteboard-projection.ts`, focused
+actual Host/Core/UI fixtures, `nativeWhiteboardControl.ts` observer facade and
+`useNativeWhiteboardControls.ts` read/list calls. Root owns dispatcher/test-list registration and
+all public seams. No model/App resume, metadata/checkpoint repair, hooks, actor messages,
+foreground lease, usage or file write belongs to this observer. Keep mutations/Agent tools on
+the original executor; unsupported observation must not fall back to synthetic human turns.
+Derive stored scope and validate original attachment ownership before reading. Prove zero
+durable actor effects, intact unrelated-board inspection despite an unsafe older checkpoint,
+concurrent Save, complete parser/boundary behavior and current UI/context ownership.
+
 The integrated strict gate additionally delegates `core/src/runtime/methods/turn.ts` and
 `compact-active.ts`, their same-owner private leaves and concrete original turn/compaction
 regressions to S. Preserve the original Runtime, catch/finally and mutable closures; no waiver,

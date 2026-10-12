@@ -81,6 +81,22 @@ original confirmation/close ownership. Losing a draft requires explicit discard.
 edits refresh the same document; conflict keeps committed state and unsaved drawing inspectable.
 Existing PNG-to-chat remains. ArtifactStore holds derived receipts/exports, not editable authority.
 
+Viewing a saved board is a readonly file projection. Actual acceptance exposed that the automatic
+five-second refresh used the explicit native tool command: it fabricated visible human prompts,
+grew receipts and occupied the foreground lane. `session/whiteboardProjection` therefore accepts
+only the original Session/workspace and typed read/list input. It has no mutation, tool name or
+operation identity. UI refresh/gallery use this observer; manual Save, Agent tools and existing
+explicit Session control reads retain the original executor. Reuse the exact native bounded
+file/parser/hash helpers and readonly methods of the original FS adapter. Active App and cold
+Host share that capability; custom factories must inject a matching cold reader. Missing capability
+fails visibly rather than creating another adapter behind the custom owner.
+
+Readonly inspection derives scope from original active/stored Session metadata before FS access;
+it never creates/resumes an App, repairs Session paths/checkpoints, initializes models/hooks or
+writes user messages, entries, usage or Session timestamps. An unsafe older checkpoint remains
+unsafe for mutation/undo but cannot prevent inspecting another valid board. Remote attachment
+ownership stays with the original authenticated Host/service connection, not caller metadata.
+
 Acceptance: registered tools + original broker + file CAS + actual SQLite, human/Agent parity,
 deny/Stop/save failure/late ACK/Host change, two-process create race, cold reopen, rendered pane,
 checkpoint/revision and zero paid/model transport. No generic writer on read-only FileService.
